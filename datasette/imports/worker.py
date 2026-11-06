@@ -4,9 +4,12 @@ and stream its rows to the parent as newline-delimited JSON.
 
 Run it as::
 
-    python -m datasette.imports.worker PATH [--format NAME]
+    python -m datasette.imports.worker [--format NAME]
         [--plugins-dir DIR] [--progress-interval SECONDS]
-        [--memory-limit BYTES] [--parent-pid PID]
+        [--memory-limit BYTES] [--parent-pid PID] [--] PATH
+
+(the parent always puts ``--`` before the path, so a file called
+``-data.csv`` is not taken for an option).
 
 The parent (:mod:`datasette.imports.subprocess_import`) reads the stream,
 detects column types and inserts the rows through Datasette's write queue.
@@ -45,9 +48,11 @@ In order:
     Keys are the loader's dictionary keys, normally strings.
 
 row
-    ``[1, "Cleo", null, ...]`` - the row's values in column-list order, one
-    per column known when it was sent. ``null`` is a value that is ``None``
-    or a key the row did not have (the inserter treats both the same way).
+    ``[1, "Cleo", null, ...]`` - the row's values in column-list order, at
+    most one per column known when it was sent. A row may stop early: a
+    row whose last keys are missing is sent without the trailing nulls.
+    ``null`` is a value that is ``None`` or a key the row did not have (the
+    inserter treats both the same way).
     Values are whatever the loader yielded, encoded with ``json.dumps``:
     strings, numbers (integers of any size up to Python's 4,300 digit
     limit), booleans, nested lists and objects. ``NaN``, ``Infinity`` and
@@ -57,12 +62,17 @@ row
     ``surrogatepass`` error handler, which ``json.loads(bytes)`` reverses.
     Values of other types (``datetime``, ``Decimal``) are sent as ``str()``.
 
-``row`` message (a row holding ``bytes``)
+``row`` message (a row holding ``bytes``, or a sparse row)
     ``{"type": "row", "values": [...], "base64": [2]}`` - the same as a row
-    line, except that the values at the listed positions are base64
-    strings to decode to ``bytes``. Out of band, so nothing inside a row
-    line is ever a tagged value: ``{"$base64": true}`` in a row line is just
-    a nested object.
+    line, except that the values at the listed indexes of ``values`` are
+    base64 strings to decode to ``bytes``. Out of band, so nothing inside a
+    row line is ever a tagged value: ``{"$base64": true}`` in a row line is
+    just a nested object. With ``"at": [0, 517, 9]``, ``values[i]`` belongs
+    to column ``at[i]`` and every other column is missing. The worker sends
+    a row this way when more than 32 of the known columns, and more than
+    two thirds of them, are missing from it (JSON objects that each have a
+    few of many optional keys), instead of a row line made mostly of
+    nulls. The keys keep the row's own order.
 
 ``progress`` (every ``--progress-interval`` seconds, any time after the header)
     ``{"type": "progress", "rows": 52000, "bytes": 7864320, "size":
@@ -84,17 +94,26 @@ row
 
 ``end`` (mandatory last message of a successful import)
     ``{"type": "end", "rows": 100000, "bytes": 15185971, "seconds": 1.9,
-    "cpu": 1.8, "max_rss": 41000000}`` - the number of rows sent, so the
-    parent can tell a clean finish from a stream that was cut short. The
-    worker then exits with status 0.
+    "cpu": 1.8, "max_rss": 41000000, "write_seconds": 0.4}`` - the number of
+    rows sent, so the parent can tell a clean finish from a stream that was
+    cut short. ``write_seconds`` is the time spent writing to stdout, which
+    is mostly time blocked on a full pipe while the parent catches up.
+    ``max_rss`` is ``null`` where there is no ``resource`` module
+    (Windows). The worker then exits with status 0.
 
 ``error`` (instead of ``end``)
     ``{"type": "error", "error": "LoaderError", "message": "Line 11 is not
     valid JSON: ...", "rows": 10}`` - every row the loader produced before
     the error has been sent before this message (``rows`` says how many).
-    The traceback goes to stderr and the worker exits with status 1. An
-    ``error`` can also be the first message, before any ``header``, if the
-    file cannot be read or no loader recognizes it.
+    That includes ``SystemExit`` and ``KeyboardInterrupt`` raised by a
+    plugin. The traceback goes to stderr and the worker exits with status
+    1. An ``error`` can also be the first message, before any ``header``, if
+    the file cannot be read or no loader recognizes it.
+
+A worker that dies without an ``error`` message (a segfault, ``os._exit()``
+in a plugin, a signal) loses the rows still in its buffer: at most 64KB of
+them, or ``--progress-interval`` seconds' worth. A segfault's Python
+traceback goes to stderr (``faulthandler``).
 
 Anything else - no ``end`` or ``error``, a row count that does not match,
 a line that is not JSON, a non-zero exit after ``end`` - is a crash or a
@@ -103,7 +122,9 @@ protocol error, and the parent treats it as one.
 ``--memory-limit`` sets ``RLIMIT_AS`` (soft and hard) for this process
 before any plugin is loaded, so a loader that tries to use more fails with
 ``MemoryError`` (reported as an ``error`` message if there is still enough
-memory to do that) or is killed. On Linux the worker also makes itself the
+memory to do that) or is killed. Where no limit can be set (Windows has no
+``resource`` module) the worker sends a ``log`` warning and carries on
+without one. On Linux the worker also makes itself the
 out-of-memory killer's first choice (``oom_score_adj`` 1000) and, given
 ``--parent-pid``, asks to be killed when the parent dies
 (``PR_SET_PDEATHSIG``) - otherwise it notices when its next write to the
@@ -129,6 +150,11 @@ PROTOCOL_VERSION = 1
 # Rows are written to stdout once this many bytes of them are waiting
 FLUSH_BYTES = 64 * 1024
 DEFAULT_PROGRESS_INTERVAL = 0.2
+# A row is sent as a sparse "row" message ("at" positions) instead of a row
+# line when more than this many known columns are missing from it...
+SPARSE_MIN_MISSING = 32
+# ...and it has fewer than 1 / SPARSE_RATIO of them
+SPARSE_RATIO = 3
 # Exit statuses
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -173,21 +199,40 @@ def encode_row(values: list) -> str:
         return _encode_row_slowly(values)
 
 
-def _encode_row_slowly(values):
+def _encode_row_slowly(values, at=None):
+    """
+    A ``row`` message for a row that cannot be a plain row line: it holds
+    bytes, or an integer too long for ``int()``/``str()``. With ``at``, a
+    sparse row (``values[i]`` is the value of column ``at[i]``).
+    """
     values = list(values)
     positions = []
     for i, value in enumerate(values):
         if isinstance(value, _BYTES_TYPES):
             values[i] = base64.b64encode(bytes(value)).decode("ascii")
             positions.append(i)
-        elif isinstance(value, int) and value.bit_length() > 14000:
-            # More digits than int() and str() allow by default: send the
-            # text the inserter would store for it
-            values[i] = _int_to_text(value)
-    message = {"type": "row", "values": values}
+        elif isinstance(value, int) and not isinstance(value, bool):
+            try:
+                str(value)
+            except ValueError:
+                # More digits than int() and str() allow (4,300 by default,
+                # PYTHONINTMAXSTRDIGITS): send the text the inserter would
+                # store for it - exactly where a row line would fail
+                values[i] = _int_to_text(value)
+    message = {"type": "row"}
+    if at is not None:
+        message["at"] = at
+    message["values"] = values
     if positions:
         message["base64"] = positions
     return _NESTED_ENCODER.encode(message)
+
+
+def _encode_sparse_row(at, values):
+    try:
+        return _ENCODER.encode({"type": "row", "at": at, "values": values})
+    except (_BytesValue, ValueError):
+        return _encode_row_slowly(values, at)
 
 
 def _int_to_text(value):
@@ -219,6 +264,8 @@ class _Writer:
         self.pending = collections.deque()
         self.pending_bytes = 0
         self.last_flush = time.monotonic()
+        # Time spent in write(): mostly blocked on a full pipe
+        self.write_seconds = 0.0
         self._lock = threading.Lock()
 
     def line(self, line):
@@ -239,9 +286,11 @@ class _Writer:
             if lines:
                 data = ("\n".join(lines) + "\n").encode("utf-8", "surrogatepass")
                 view = memoryview(data)
+                start = time.perf_counter()
                 # A raw write can be partial (interrupted by a signal)
                 while view:
                     view = view[self.out.write(view) :]
+                self.write_seconds += time.perf_counter() - start
             self.out.flush()
 
 
@@ -361,10 +410,20 @@ def _protect_stdout():
 
 
 def _limit_resources(memory_limit, parent_pid):
+    "Returns a list of warnings to send once the header is out."
+    warnings = []
     if memory_limit:
-        import resource
+        try:
+            import resource
 
-        resource.setrlimit(resource.RLIMIT_AS, (memory_limit, memory_limit))
+            resource.setrlimit(resource.RLIMIT_AS, (memory_limit, memory_limit))
+        except (ImportError, ValueError, OSError) as ex:
+            # No resource module on Windows; macOS may refuse RLIMIT_AS
+            warnings.append(
+                f"Could not limit the import worker's memory to "
+                f"{memory_limit:,} bytes ({type(ex).__name__}: {ex}), "
+                "running without a limit"
+            )
     if sys.platform.startswith("linux"):
         # Out of memory: kill this process before the server
         try:
@@ -386,6 +445,7 @@ def _limit_resources(memory_limit, parent_pid):
             if os.getppid() != parent_pid:
                 # The parent died before prctl() took effect
                 os._exit(EXIT_ERROR)
+    return warnings
 
 
 def load_plugins_dir(plugins_dir):
@@ -421,6 +481,8 @@ class RowStreamer:
         self.position = position
         self.progress_interval = progress_interval
         self.columns = []
+        # key -> position in columns
+        self.index = {}
         self.count = 0
 
     def progress(self):
@@ -436,7 +498,7 @@ class RowStreamer:
     def send(self, rows):
         writer = self.writer
         columns = self.columns
-        known = set(columns)
+        index = self.index
         keys = tuple(columns)
         count = self.count
         encode = _ENCODER.encode
@@ -445,23 +507,44 @@ class RowStreamer:
         last_progress = time.monotonic()
         try:
             for row in rows:
+                line = None
                 if tuple(row) == keys:
                     values = list(row.values())
                 else:
-                    new = [key for key in row if key not in known]
+                    new = [key for key in row if key not in index]
                     if new:
-                        columns.extend(new)
-                        known.update(new)
+                        for key in new:
+                            index[key] = len(columns)
+                            columns.append(key)
                         writer.message({"type": "columns", "add": new})
-                    keys = tuple(columns)
+                        keys = tuple(columns)
                     if tuple(row) == keys:
                         values = list(row.values())
                     else:
-                        values = [row.get(key) for key in columns]
-                try:
-                    line = encode(values)
-                except (_BytesValue, ValueError):
-                    line = _encode_row_slowly(values)
+                        present = len(row)
+                        missing = len(columns) - present
+                        if (
+                            missing > SPARSE_MIN_MISSING
+                            and present * SPARSE_RATIO < len(columns)
+                        ):
+                            # Mostly missing: positions and values only
+                            line = _encode_sparse_row(
+                                [index[key] for key in row], list(row.values())
+                            )
+                        else:
+                            values = [row.get(key) for key in columns]
+                            # Trailing nulls are implied - unless this row
+                            # added columns, which must reach the parent
+                            # once even if they hold None, as they do in
+                            # an in-process import
+                            if not new:
+                                while values and values[-1] is None:
+                                    values.pop()
+                if line is None:
+                    try:
+                        line = encode(values)
+                    except (_BytesValue, ValueError):
+                        line = _encode_row_slowly(values)
                 pending.append(line)
                 writer.pending_bytes += len(line)
                 count += 1
@@ -482,14 +565,18 @@ class RowStreamer:
 
 
 def _usage():
-    import resource
-
+    "``(cpu seconds, peak RSS in bytes or None)``."
+    try:
+        import resource
+    except ImportError:
+        # Windows
+        return time.process_time(), None
     usage = resource.getrusage(resource.RUSAGE_SELF)
     max_rss = usage.ru_maxrss * (1 if sys.platform == "darwin" else 1024)
     return usage.ru_utime + usage.ru_stime, max_rss
 
 
-def run(args, writer):
+def run(args, writer, warnings=()):
     "Load the file and stream it. Returns the exit status."
     from datasette.imports import loaders as loaders_module
 
@@ -521,6 +608,15 @@ def run(args, writer):
                 "scores": {score.name: score.score for score in scores},
             }
         )
+        for warning in warnings:
+            writer.message(
+                {
+                    "type": "log",
+                    "level": "WARNING",
+                    "logger": __name__,
+                    "message": warning,
+                }
+            )
         writer.flush()
         streamer = RowStreamer(writer, position, args.progress_interval)
         # Started before the loader produces anything, so progress (how far
@@ -548,6 +644,7 @@ def run(args, writer):
                 "seconds": round(time.monotonic() - start, 6),
                 "cpu": round(cpu, 6),
                 "max_rss": max_rss,
+                "write_seconds": round(writer.write_seconds, 6),
             }
         )
         writer.flush()
@@ -555,15 +652,22 @@ def run(args, writer):
     except BrokenPipeError:
         # The parent has gone away: nobody is listening
         raise
-    except Exception as ex:  # noqa: BLE001
+    except BaseException as ex:  # noqa: BLE001
+        # Exception, but also SystemExit or KeyboardInterrupt from a plugin:
+        # the rows it produced before that are still worth sending
         import traceback
 
         traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
+        text = str(ex)
+        if isinstance(ex, SystemExit):
+            text = f"The loader called sys.exit({ex.code!r})"
+        elif isinstance(ex, KeyboardInterrupt):
+            text = "The worker was interrupted"
         message = {
             "type": "error",
             "error": type(ex).__name__,
-            "message": str(ex),
+            "message": text,
             "rows": count,
         }
         if isinstance(ex, loaders_module.LoaderError):
@@ -654,10 +758,15 @@ def main(argv=None):
         print("--direct-db needs --table", file=sys.stderr)
         return EXIT_USAGE
     out = _protect_stdout()
-    _limit_resources(args.memory_limit, args.parent_pid)
+    # A loader that segfaults leaves a Python traceback on stderr, which
+    # the parent keeps for its error message
+    import faulthandler
+
+    faulthandler.enable()
+    warnings = _limit_resources(args.memory_limit, args.parent_pid)
     writer = _Writer(out)
     try:
-        return run(args, writer)
+        return run(args, writer, warnings)
     except BrokenPipeError:
         # Don't try to flush anything on the way out
         os._exit(EXIT_ERROR)

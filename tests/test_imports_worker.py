@@ -26,10 +26,14 @@ from datasette.imports import worker as worker_module
 from datasette.imports.inserter import import_rows
 from datasette.imports.loaders import load_path
 from datasette.imports.subprocess_import import (
+    DEFAULT_MAX_WORKERS,
     ProtocolDecoder,
     ProtocolError,
     WorkerImportError,
+    import_file,
+    import_file_in_process,
     import_file_via_worker,
+    worker_slots,
 )
 from datasette.plugins import pm
 
@@ -97,6 +101,11 @@ BEHAVIOUR_PLUGIN = """
                 os._exit(3)
             if action == "exit0":
                 os._exit(0)
+            if action == "sysexit":
+                import sys
+                sys.exit(0)
+            if action == "abort":
+                os.abort()
             if action == "sleep":
                 time.sleep(60)
             if action == "allocate":
@@ -218,6 +227,10 @@ def test_protocol_special_values():
     assert worker_module.encode_row([1, "a", None]) == '[1,"a",null]'
 
 
+HEADER_A = b'{"type":"header","protocol":1}\n{"type":"columns","add":["a"]}\n'
+HEADER_AB = b'{"type":"header","protocol":1}\n{"type":"columns","add":["a","b"]}\n'
+
+
 @pytest.mark.parametrize(
     "data,error",
     (
@@ -231,12 +244,41 @@ def test_protocol_special_values():
         ),
         (
             b'{"type":"header","protocol":1}\n{"type":"columns","add":["a"]}\n[1],[2]\n',
-            "Extra data",
+            "Line 3 of the worker's output has extra data after its JSON value",
         ),
         (
             b'{"type":"header","protocol":1}\n{"type":"columns","add":["a"]}\n[1,\n[2]]\n',
-            "not valid JSON",
+            "Line 3 of the worker's output is not a complete JSON value",
         ),
+        # Lines that are not one value each but would parse as the right
+        # number of rows if they were joined with commas: the batched
+        # json.loads() the first version used accepted these
+        (HEADER_A + b"[[1]],[[2]\n[3]]\n", "Line 3 of the worker's output has extra"),
+        (HEADER_A + b"[1]\n[2],[3\n[4]]\n", "Line 4 of the worker's output has extra"),
+        (
+            HEADER_A + b'{"type":"end","rows":0},[1\n[2]]\n',
+            "Line 3 of the worker's output has extra data",
+        ),
+        (
+            HEADER_A + b"[1]\n[\xff]\n",
+            "Line 4 of the worker's output is not valid UTF-8",
+        ),
+        (
+            HEADER_AB + b'{"type":"row","at":[0,0],"values":[1,2]}\n',
+            "bad column positions",
+        ),
+        (HEADER_AB + b'{"type":"row","at":[2],"values":[1]}\n', "bad column positions"),
+        (
+            HEADER_AB + b'{"type":"row","at":[-1],"values":[1]}\n',
+            "bad column positions",
+        ),
+        (
+            HEADER_AB + b'{"type":"row","at":[0],"values":[1,2]}\n',
+            "bad column positions",
+        ),
+        (b'{"type":"row","values":[]}\n', "a row before the header"),
+        (b'["x"]\n', "a row before the header"),
+        (b"\n\n  [1]\n", "Line 3 of the worker's output is not a row or a message"),
         (
             b'{"type":"header","protocol":1}\n{"type":"columns","add":["a"]}\n[1,2]\n',
             "more values than",
@@ -870,3 +912,380 @@ def test_worker_dies_with_its_parent(tmp_path):
     else:
         os.kill(worker_pid, signal.SIGKILL)
         raise AssertionError("The worker outlived its parent")
+
+
+# Regression tests from the review -------------------------------------------
+
+
+def test_long_line_decodes_in_linear_time():
+    # The first decoder re-joined and re-split the partial line on every
+    # read: a 32MB line in 64KB reads took seconds, quadratic in its length
+    value = "x" * (32 * 1024 * 1024)
+    data = HEADER_A + json.dumps([value]).encode() + b"\n" + b'["y"]\n'
+    decoder = ProtocolDecoder()
+    rows = []
+    start = time.perf_counter()
+    for i in range(0, len(data), 65536):
+        rows.extend(rows_of(decoder.feed(data[i : i + 65536])))
+    elapsed = time.perf_counter() - start
+    assert decoder.close() == b""
+    assert [len(row["a"]) for row in rows] == [len(value), 1]
+    # About 0.1s; the old decoder took 5-10s for this
+    assert elapsed < 2.0
+
+
+@pytest.mark.asyncio
+async def test_huge_value_through_the_worker(db, tmp_path):
+    big = "é" * (4 * 1024 * 1024)
+    path = write(tmp_path / "huge.csv", f"a,b\n1,{big}\n2,y\n")
+    result = await import_file_via_worker(db, "t", path)
+    assert result.rows == 2
+    assert await table_rows(db, "t") == [(1, big), (2, "y")]
+
+
+def sparse_rows(count=300, keys=200, per_row=4):
+    rng = random.Random(1)
+    names = [f"k{i}" for i in range(keys)]
+    rows = []
+    for i in range(count):
+        row = {"id": i}
+        for key in rng.sample(names, per_row):
+            row[key] = rng.choice([None, i, "text", 1.5, [1, {"x": None}]])
+        rows.append(row)
+    # Keys in a different order from the column list, a None-only new key,
+    # a row with no keys at all, bytes in a sparse row
+    rows.append({"k5": 1, "id": -1, "only_none": None})
+    rows.append({})
+    rows.append({"id": -2, "blob_key": b"\x00\x01"})
+    return rows
+
+
+def test_sparse_rows_are_sent_as_positions():
+    rows = sparse_rows()
+    out = io.BytesIO()
+    writer = worker_module._Writer(out)
+    writer.message({"type": "header", "protocol": 1, "loader": "test", "size": 0})
+    streamer = worker_module.RowStreamer(
+        writer, worker_module.InputPosition(__file__), 0
+    )
+    streamer.send(rows)
+    writer.flush()
+    data = out.getvalue()
+    lines = data.splitlines()
+    sparse = [line for line in lines if line.startswith(b'{"type":"row","at":')]
+    # Most rows have 5 of ~200 keys: positions, not 200 nulls each
+    assert len(sparse) > len(rows) * 0.8
+    assert len(data) / len(rows) < 120
+    _, messages = decode_all(data, [1, 7, 4096])
+    received = rows_of(messages)
+    assert len(received) == len(rows)
+    for sent, got in zip(rows, received):
+        # Same values; keys come in the row's own order
+        assert {k: v for k, v in got.items() if v is not None} == {
+            k: v for k, v in sent.items() if v is not None
+        }
+    assert received[-1]["blob_key"] == b"\x00\x01"
+    # A column that only ever holds None still reaches the parent
+    assert "only_none" in received[-3]
+
+
+def test_trailing_nulls_are_trimmed_but_new_columns_are_kept():
+    out = io.BytesIO()
+    writer = worker_module._Writer(out)
+    streamer = worker_module.RowStreamer(
+        writer, worker_module.InputPosition(__file__), 0
+    )
+    streamer.send([{"a": 1, "b": 2, "c": 3}, {"a": 4}, {"b": None, "a": 5, "d": None}])
+    writer.flush()
+    assert out.getvalue().splitlines() == [
+        b'{"type":"columns","add":["a","b","c"]}',
+        b"[1,2,3]",
+        b"[4]",
+        b'{"type":"columns","add":["d"]}',
+        # d is new: sent, even though it is None
+        b"[5,null,null,null]",
+    ]
+
+
+async def table_shape(db, table):
+    columns = [
+        (row["name"], row["type"])
+        for row in (await db.execute(f"pragma table_info([{table}])")).rows
+    ]
+    rows = (await db.execute(f"select * from [{table}] order by rowid")).rows
+    return columns, [tuple(row) for row in rows]
+
+
+@pytest.mark.asyncio
+async def test_sparse_ndjson_matches_in_process_import(db, tmp_path):
+    rows = [
+        row for row in sparse_rows() if not any(type(v) is bytes for v in row.values())
+    ]
+    path = write(tmp_path / "sparse.ndjson", "\n".join(map(json.dumps, rows)) + "\n")
+    result = await import_file_via_worker(db, "worker", path)
+    loaded = load_path(path)
+    await import_rows(db, "in_process", loaded.rows, batch_size=1000)
+    assert result.rows == len(rows)
+    assert await table_shape(db, "worker") == await table_shape(db, "in_process")
+    # Far fewer bytes than one null per known column per row
+    assert result.stats["bytes_read"] < os.path.getsize(path) * 2
+
+
+def test_int_digit_limit_is_the_same_with_or_without_bytes():
+    limit = sys.get_int_max_str_digits()
+    at_limit = 10 ** (limit - 1)
+    too_long = 10**limit
+    decoder = ProtocolDecoder()
+    decoder.feed(HEADER_AB)
+    for values in ([at_limit, None], [at_limit, b"x"]):
+        line = worker_module.encode_row(values)
+        [(_, [row])] = decoder.feed(line.encode() + b"\n")
+        # Within the limit: a number either way
+        assert row["a"] == at_limit
+    for values in ([too_long, None], [too_long, b"x"]):
+        line = worker_module.encode_row(values)
+        [(_, [row])] = decoder.feed(line.encode() + b"\n")
+        assert row["a"] == "1" + "0" * limit
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ("-data.csv", "--help.csv"))
+async def test_path_that_looks_like_an_option(db, tmp_path, monkeypatch, name):
+    write(tmp_path / name, "a,b\n1,2\n")
+    monkeypatch.chdir(tmp_path)
+    result = await import_file_via_worker(db, "t", name)
+    assert result.rows == 1
+    assert await table_rows(db, "t") == [(1, 2)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ("sysexit", "abort"))
+async def test_worker_exits_part_way(db, tmp_path, action):
+    plugins = plugin_dir(tmp_path, BEHAVIOUR_PLUGIN)
+    # About 200KB of rows: more than the worker's 64KB buffer
+    path = behaviour_file(tmp_path, 10000, action)
+    with pytest.raises(WorkerImportError) as ex:
+        await import_file_via_worker(db, "t", path, plugins_dir=plugins)
+    error = ex.value
+    count = (await db.execute("select count(*) from t")).single_value()
+    assert count == error.result.rows == error.result.rows_read
+    if action == "sysexit":
+        # A plugin's sys.exit() is reported like any error, after every row
+        # (the first version lost the buffered rows and said "truncated")
+        assert error.kind == "error"
+        assert error.error_type == "SystemExit"
+        assert str(error) == "The loader called sys.exit(0)"
+        assert count == 10000
+    else:
+        # Killed by SIGABRT: the rows still buffered are lost, and
+        # faulthandler's traceback is on stderr
+        assert error.kind == "killed"
+        assert error.signal == signal.SIGABRT
+        assert "Fatal Python error: Aborted" in error.stderr
+        assert "in load" in error.stderr
+        assert 0 < count < 10000
+
+
+# A worker run where the resource module cannot be imported, as on Windows
+NO_RESOURCE_WORKER = [
+    sys.executable,
+    "-P",
+    "-c",
+    (
+        "import runpy, sys; sys.modules['resource'] = None; "
+        "sys.argv[0] = 'worker'; "
+        "runpy.run_module('datasette.imports.worker', run_name='__main__')"
+    ),
+]
+
+
+@pytest.mark.asyncio
+async def test_worker_without_the_resource_module(db, tmp_path):
+    path = events_csv(tmp_path / "events.csv", rows=100)
+    result = await import_file_via_worker(
+        db,
+        "t",
+        path,
+        argv=NO_RESOURCE_WORKER + ["--memory-limit", str(10**9), "--", path],
+    )
+    assert result.complete
+    assert result.rows == 100
+    assert result.worker["max_rss"] is None
+    assert result.worker["cpu"] > 0
+    assert any("Could not limit" in warning for warning in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_stopping_the_worker_without_sigkill_or_process_groups(
+    db, tmp_path, monkeypatch
+):
+    # What Windows has: Process.kill() and terminate()
+    from datasette.imports import subprocess_import
+
+    monkeypatch.setattr(subprocess_import, "_SIGKILL", None)
+    monkeypatch.setattr(subprocess_import, "_PROCESS_GROUPS", False)
+    plugins = plugin_dir(tmp_path, BEHAVIOUR_PLUGIN)
+    path = behaviour_file(tmp_path, 3000, "sleep")
+    started = asyncio.Event()
+    pids = []
+
+    def progress(p):
+        pids.append(p.pid)
+        if p.rows_written >= 1000:
+            started.set()
+
+    task = asyncio.ensure_future(
+        import_file_via_worker(
+            db, "t", path, plugins_dir=plugins, progress=progress, stop_timeout=0.5
+        )
+    )
+    await asyncio.wait_for(started.wait(), 30)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert gone(pids[0])
+
+
+GEO_DOC = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "id": 1,
+            "properties": {"name": "one"},
+            "geometry": {"type": "Point", "coordinates": [1, 2]},
+        }
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_plugins_dir_defaults_to_the_datasette_instance(tmp_path):
+    plugins = plugin_dir(tmp_path, GEOJSON_PLUGIN)
+    path = write(tmp_path / "places.geojson", json.dumps(GEO_DOC))
+    # Datasette registers --plugins-dir plugins in this process too
+    ds = Datasette(plugins_dir=plugins)
+    try:
+        db = ds.add_database(Database(ds, is_temp_disk=True), name="scratch")
+        result = await import_file_via_worker(db, "places", path)
+        assert result.loader == "testgeo"
+        # False: don't load any plugins directory in the worker
+        plain = await import_file_via_worker(db, "plain", path, plugins_dir=False)
+        assert plain.loader == "json"
+        db.close()
+    finally:
+        pm.unregister(name="test_loader_plugin.py")
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+async def test_slots_limit_concurrent_workers(db, tmp_path):
+    paths = [events_csv(tmp_path / f"e{i}.csv", rows=10000) for i in range(4)]
+    pids = set()
+    most = []
+
+    def running(pid):
+        # Without reaping it, which would confuse asyncio's child watcher
+        try:
+            with open(f"/proc/{pid}/stat") as fp:
+                return fp.read().rsplit(")", 1)[1].split()[0] != "Z"
+        except OSError:
+            return False
+
+    def progress(p):
+        pids.add(p.pid)
+        most.append(sum(1 for pid in pids if running(pid)))
+
+    async def run(slots, prefix):
+        await asyncio.gather(
+            *(
+                import_file_via_worker(
+                    db, f"{prefix}{i}", path, progress=progress, slots=slots
+                )
+                for i, path in enumerate(paths)
+            )
+        )
+
+    await run(asyncio.Semaphore(1), "one")
+    assert max(most) == 1
+    pids.clear()
+    most.clear()
+    # The default: DEFAULT_MAX_WORKERS per Datasette instance
+    await run(None, "default")
+    assert max(most) <= DEFAULT_MAX_WORKERS
+    assert worker_slots(db.ds) is worker_slots(db.ds)
+    for prefix in ("one", "default"):
+        for i in range(4):
+            count = (
+                await db.execute(f"select count(*) from {prefix}{i}")
+            ).single_value()
+            assert count == 10000
+
+
+@pytest.mark.asyncio
+async def test_in_process_import_matches_the_worker(db, tmp_path):
+    path = events_csv(tmp_path / "events.csv")
+    progress = []
+    in_process = await import_file_in_process(
+        db, "in_process", path, batch_size=500, progress=progress.append
+    )
+    worker = await import_file(db, "worker", path, batch_size=500)
+    assert in_process.complete and worker.complete
+    assert in_process.loader == worker.loader == "csv"
+    assert in_process.rows == worker.rows == 3000
+    assert in_process.import_result.types == worker.import_result.types
+    assert in_process.worker is None and in_process.returncode is None
+    assert await table_shape(db, "in_process") == await table_shape(db, "worker")
+    assert progress[-1].rows_written == 3000
+    assert progress[-1].fraction == 1.0
+    # use_worker=False is the in-process path
+    again = await import_file(db, "again", path, use_worker=False)
+    assert again.worker is None
+    assert again.rows == 3000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ("keep", "drop"))
+async def test_in_process_error_keeps_rows_like_the_worker(db, tmp_path, on_error):
+    lines = [json.dumps({"id": i}) for i in range(10)] + ["{not json"]
+    path = write(tmp_path / "bad.ndjson", "\n".join(lines) + "\n")
+    errors = []
+    for table, function in (
+        ("w", import_file_via_worker),
+        ("p", import_file_in_process),
+    ):
+        with pytest.raises(WorkerImportError) as ex:
+            await function(db, table, path, on_error=on_error)
+        errors.append(ex.value)
+    for error in errors:
+        assert error.kind == "error"
+        assert error.error_type == "LoaderError"
+        assert str(error).startswith("Line 11 is not valid JSON")
+        assert error.result.rows_read == 10
+        assert error.result.rows == (10 if on_error == "keep" else 0)
+        assert error.result.table_exists == (on_error == "keep")
+    if on_error == "keep":
+        assert await table_rows(db, "w") == await table_rows(db, "p")
+    else:
+        assert not await db.table_exists("p")
+
+
+@pytest.mark.asyncio
+async def test_in_process_unrecognized_and_missing(db, tmp_path):
+    binary = write(tmp_path / "binary.bin", bytes(range(256)) * 10)
+    for path, error_type in (
+        (binary, "UnrecognizedFormat"),
+        (str(tmp_path / "missing.csv"), "FileNotFoundError"),
+    ):
+        with pytest.raises(WorkerImportError) as ex:
+            await import_file_in_process(db, "t", path)
+        assert ex.value.error_type == error_type
+        assert not ex.value.result.table_exists
+    assert not await db.table_exists("t")
+
+
+def test_end_message_reports_pipe_write_time(tmp_path):
+    path = events_csv(tmp_path / "events.csv", rows=100)
+    returncode, messages, _ = run_worker(path)
+    assert returncode == 0
+    assert messages[-1]["write_seconds"] >= 0

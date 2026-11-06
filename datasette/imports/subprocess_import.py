@@ -44,15 +44,18 @@ of the server.
 
 import asyncio
 import base64
+import contextlib
 import dataclasses
 import functools
 import inspect
-import json
+import json.decoder
+import json.scanner
 import logging
 import os
 import signal
 import sys
 import time
+import weakref
 
 from datasette.imports.inserter import ImportResult, import_rows
 
@@ -67,8 +70,14 @@ READ_SIZE = 256 * 1024
 STDERR_TAIL = 8 * 1024
 ON_ERROR = ("keep", "drop")
 
-_ROW = 0x5B  # "["
-_CONTROL = 0x7B  # "{"
+# The C scanner json.loads() uses, called directly: it parses one value at
+# a position in a string and says where the value ended
+_SCAN = json.scanner.make_scanner(json.decoder.JSONDecoder())
+# Windows has neither: WorkerProcess falls back to Process.kill()/terminate()
+_SIGKILL = getattr(signal, "SIGKILL", None)
+_PROCESS_GROUPS = hasattr(os, "killpg") and os.name == "posix"
+# Default number of workers that may run at once for one Datasette instance
+DEFAULT_MAX_WORKERS = 2
 
 
 class ProtocolError(Exception):
@@ -179,8 +188,15 @@ class ProtocolDecoder:
 
     :meth:`feed` returns a list of ``(kind, payload)`` pairs, where ``kind``
     is ``"rows"`` (payload: a list of row dictionaries) or a control
-    message type (payload: the message). Consecutive row lines are parsed
-    with a single ``json.loads()`` call.
+    message type (payload: the message). Consecutive rows come as one
+    ``"rows"`` pair.
+
+    Each line is parsed on its own with the C JSON scanner, which must end
+    exactly at the line's newline: a line is one JSON value or the stream
+    is rejected, so line boundaries can never be read differently. The
+    incomplete last line of a read is kept as a list of pieces and joined
+    once its newline arrives, so a long line costs time in proportion to
+    its length, however many reads it takes.
     """
 
     def __init__(self):
@@ -190,16 +206,38 @@ class ProtocolDecoder:
         self.rows = 0
         self.lines = 0
         self.finished = None
-        self._partial = b""
+        self._pieces = []
 
     def feed(self, data):
-        if self._partial:
-            data = self._partial + data
-        lines = data.split(b"\n")
-        self._partial = lines.pop()
+        end = data.rfind(b"\n") + 1
+        if not end:
+            if data:
+                self._pieces.append(data)
+            return []
+        if self._pieces:
+            self._pieces.append(data[:end])
+            complete = b"".join(self._pieces)
+            self._pieces = []
+        else:
+            complete = data[:end] if end < len(data) else data
+        if end < len(data):
+            self._pieces.append(data[end:])
         out = []
+        bad_encoding = None
         try:
-            self._decode(lines, out)
+            text = complete.decode("utf-8", "surrogatepass")
+        except UnicodeDecodeError as ex:
+            # Decode the lines before the bad one, then reject it
+            good = complete.rfind(b"\n", 0, ex.start) + 1
+            text = complete[:good].decode("utf-8", "surrogatepass")
+            bad_encoding = ex
+        try:
+            self._decode(text, out)
+            if bad_encoding is not None:
+                raise ProtocolError(
+                    f"Line {self.lines + 1} of the worker's output is not "
+                    f"valid UTF-8: {bad_encoding}"
+                )
         except ProtocolError as ex:
             ex.messages = out
             raise
@@ -210,36 +248,95 @@ class ProtocolDecoder:
         Call at the end of the stream. Returns the incomplete last line, if
         any (the worker died part way through writing it).
         """
-        partial, self._partial = self._partial, b""
+        partial = b"".join(self._pieces)
+        self._pieces = []
         return partial
 
-    def _decode(self, lines, out):
-        row_lines = []
-        first_row_line = 0
-        for line in lines:
+    def _decode(self, text, out):
+        # ``text`` is a run of complete lines, each ending with "\n"
+        self._run = None
+        try:
+            self._decode_lines(text, out)
+        finally:
+            # Rows before a bad line are good: hand them over too
+            if self._run:
+                self.rows += len(self._run)
+                out.append(("rows", self._run))
+            self._run = None
+
+    def _decode_lines(self, text, out):
+        scan = _SCAN
+        find = text.find
+        columns = self.columns
+        rows = None
+        pos = 0
+        length = len(text)
+        while pos < length:
             self.lines += 1
-            if not line:
+            first = text[pos]
+            if first == "\n":
+                pos += 1
                 continue
-            first = line[0]
-            if first == _ROW:
-                if not row_lines:
-                    first_row_line = self.lines
-                row_lines.append(line)
-                continue
-            if row_lines:
-                out.append(("rows", self._rows(row_lines, first_row_line)))
-                row_lines = []
-            if first == _CONTROL:
-                message = self._control(line)
-                if message is not None:
-                    out.append(message)
-            elif line.strip():
+            if first != "[" and first != "{":
                 raise ProtocolError(
                     f"Line {self.lines} of the worker's output is not a row "
-                    f"or a message: {line[:60]!r}"
+                    f"or a message: {text[pos : pos + 60]!r}"
                 )
-        if row_lines:
-            out.append(("rows", self._rows(row_lines, first_row_line)))
+            start = pos
+            try:
+                value, pos = scan(text, pos)
+            except StopIteration:
+                raise ProtocolError(
+                    f"Line {self.lines} of the worker's output is not valid JSON"
+                ) from None
+            except ValueError as ex:
+                raise ProtocolError(
+                    f"Line {self.lines} of the worker's output is not valid JSON: {ex}"
+                ) from None
+            # Exactly one JSON value per line: it must end at the newline,
+            # and must not have used a newline as whitespace inside it
+            if text[pos] != "\n":
+                if text[pos] == "\r" and text[pos + 1] == "\n":
+                    # Tolerate \r\n, should Windows translate newlines
+                    pos += 1
+                else:
+                    raise ProtocolError(
+                        f"Line {self.lines} of the worker's output has extra "
+                        f"data after its JSON value: {text[pos : pos + 60]!r}"
+                    )
+            if find("\n", start, pos) != -1:
+                raise ProtocolError(
+                    f"Line {self.lines} of the worker's output is not a "
+                    "complete JSON value"
+                )
+            pos += 1
+            if first == "[":
+                # A JSON value that starts with "[" is a list
+                if rows is None:
+                    self._check_can_send_rows(self.lines)
+                    rows = self._run = []
+                if len(value) > len(columns):
+                    raise ProtocolError(
+                        f"Line {self.lines}: a row has more values than the "
+                        f"{len(columns)} columns announced"
+                    )
+                rows.append(dict(zip(columns, value)))
+                continue
+            if value.get("type") == "row":
+                # A row with bytes, or a sparse row: part of the same run
+                if rows is None:
+                    self._check_can_send_rows(self.lines)
+                    rows = self._run = []
+                rows.append(self._row_message(value))
+                continue
+            if rows is not None:
+                self.rows += len(rows)
+                out.append(("rows", rows))
+                rows = self._run = None
+            message = self._control(value)
+            if message is not None:
+                out.append(message)
+        # _decode() hands over the last run of rows
 
     def _check_can_send_rows(self, line_number):
         if self.header is None:
@@ -247,51 +344,8 @@ class ProtocolDecoder:
         if self.finished is not None:
             raise ProtocolError(f"Line {line_number}: a row after the end")
 
-    def _rows(self, lines, first_line):
-        self._check_can_send_rows(first_line)
-        try:
-            batch = json.loads(b"[" + b",".join(lines) + b"]")
-        except ValueError:
-            batch = None
-        # The count check also catches lines that only parse when joined
-        if (
-            batch is None
-            or len(batch) != len(lines)
-            or not all(type(values) is list for values in batch)
-        ):
-            for offset, line in enumerate(lines):
-                try:
-                    values = json.loads(line)
-                except ValueError as ex:
-                    raise ProtocolError(
-                        f"Line {first_line + offset} of the worker's output is "
-                        f"not valid JSON: {ex}"
-                    ) from None
-                if type(values) is not list:
-                    raise ProtocolError(
-                        f"Line {first_line + offset}: a row must be one JSON array"
-                    )
-            raise ProtocolError(
-                f"Lines {first_line}-{first_line + len(lines) - 1} of the "
-                "worker's output are not one JSON array per line"
-            )
-        columns = self.columns
-        if batch and max(map(len, batch)) > len(columns):
-            raise ProtocolError(
-                f"Near line {first_line}: a row has more values than the "
-                f"{len(columns)} columns announced"
-            )
-        self.rows += len(batch)
-        return [dict(zip(columns, values)) for values in batch]
-
-    def _control(self, line):
-        try:
-            message = json.loads(line)
-        except ValueError as ex:
-            raise ProtocolError(
-                f"Line {self.lines} of the worker's output is not valid JSON: {ex}"
-            ) from None
-        if type(message) is not dict or not isinstance(message.get("type"), str):
+    def _control(self, message):
+        if not isinstance(message.get("type"), str):
             raise ProtocolError(f"Line {self.lines}: a message needs a type")
         kind = message["type"]
         if self.header is None:
@@ -324,8 +378,6 @@ class ProtocolDecoder:
                 raise ProtocolError(f"Line {self.lines}: columns needs a list")
             self.columns.extend(add)
             return None
-        if kind == "row":
-            return ("rows", [self._row_message(message)])
         if kind in ("end", "error"):
             self.finished = message
             return (kind, message)
@@ -335,18 +387,33 @@ class ProtocolDecoder:
         return (kind, message)
 
     def _row_message(self, message):
-        self._check_can_send_rows(self.lines)
         values = message.get("values")
+        at = message.get("at")
         positions = message.get("base64") or []
-        if type(values) is not list or len(values) > len(self.columns):
+        columns = self.columns
+        if type(values) is not list or len(values) > len(columns):
             raise ProtocolError(f"Line {self.lines}: bad row message")
         try:
             for position in positions:
                 values[position] = base64.b64decode(values[position], validate=True)
         except (TypeError, ValueError, IndexError) as ex:
             raise ProtocolError(f"Line {self.lines}: bad base64 value: {ex}") from None
-        self.rows += 1
-        return dict(zip(self.columns, values))
+        if at is None:
+            return dict(zip(columns, values))
+        # Sparse: values[i] is the value of column at[i]
+        try:
+            if (
+                type(at) is not list
+                or len(at) != len(values)
+                or len(set(at)) != len(at)
+                or (at and min(at) < 0)
+            ):
+                raise ValueError
+            return {columns[p]: value for p, value in zip(at, values)}
+        except (TypeError, ValueError, IndexError):
+            raise ProtocolError(
+                f"Line {self.lines}: bad column positions in a row message"
+            ) from None
 
 
 def worker_command(
@@ -361,7 +428,7 @@ def worker_command(
     """The command line that runs the worker for ``path``."""
     # -P: don't put the current directory on sys.path, where a json.py
     # would shadow the standard library
-    argv = [sys.executable, "-P", "-m", WORKER_MODULE, os.fspath(path)]
+    argv = [sys.executable, "-P", "-m", WORKER_MODULE]
     if format:
         argv += ["--format", format]
     if plugins_dir:
@@ -371,7 +438,8 @@ def worker_command(
     if progress_interval is not None:
         argv += ["--progress-interval", str(progress_interval)]
     argv += ["--parent-pid", str(os.getpid())]
-    return argv + list(extra_args)
+    # The path goes after "--", so "-data.csv" is not read as an option
+    return argv + list(extra_args) + ["--", os.fspath(path)]
 
 
 class WorkerProcess:
@@ -453,18 +521,33 @@ class WorkerProcess:
         finally:
             self.decode_seconds += time.perf_counter() - start
 
-    def _signal(self, signum):
-        if self.process is None or self.process.returncode is not None:
+    def _signal(self, kill):
+        """
+        Send SIGKILL (``kill=True``) or SIGTERM to the worker's process group,
+        in case a plugin started processes of its own. Where there are no
+        process groups or no SIGKILL (Windows), ``Process.kill()`` and
+        ``terminate()`` both call TerminateProcess.
+        """
+        process = self.process
+        if process is None or process.returncode is not None:
             return
-        try:
-            # The whole process group, in case a plugin started processes
-            os.killpg(self.process.pid, signum)
-        except (AttributeError, ProcessLookupError, PermissionError):
-            # No process groups (Windows), or the group is gone
+        signum = _SIGKILL if kill else signal.SIGTERM
+        if _PROCESS_GROUPS and signum is not None:
             try:
-                self.process.send_signal(signum)
+                os.killpg(process.pid, signum)
+                return
             except ProcessLookupError:
+                # Nothing left in the group: the worker has been reaped
+                return
+            except PermissionError:
                 pass
+        try:
+            if kill:
+                process.kill()
+            else:
+                process.terminate()
+        except ProcessLookupError:
+            pass
 
     def abort(self):
         """
@@ -472,11 +555,11 @@ class WorkerProcess:
         now. Safe to call more than once.
         """
         self.aborted = True
-        self._signal(signal.SIGKILL)
+        self._signal(kill=True)
 
     def kill_now(self):
         "Kill the worker now, but let the rows already decoded be used."
-        self._signal(signal.SIGKILL)
+        self._signal(kill=True)
 
     async def stop(self, timeout=2.0):
         """
@@ -490,11 +573,11 @@ class WorkerProcess:
                 try:
                     await asyncio.wait_for(self.process.wait(), timeout)
                 except TimeoutError:
-                    self._signal(signal.SIGTERM)
+                    self._signal(kill=False)
                     try:
                         await asyncio.wait_for(self.process.wait(), timeout)
                     except TimeoutError:
-                        self._signal(signal.SIGKILL)
+                        self._signal(kill=True)
                         await self.process.wait()
             if self._stderr_task is not None:
                 try:
@@ -510,7 +593,7 @@ class WorkerProcess:
         "Terminate the worker, then kill it if it is still there after ``timeout``."
         if self.process is not None and self.process.returncode is None:
             self.aborted = True
-            self._signal(signal.SIGTERM)
+            self._signal(kill=False)
         await self.stop(timeout)
 
 
@@ -745,6 +828,35 @@ async def _drop_table(db, table):
     await db.execute_write_fn(drop)
 
 
+_WORKER_SLOTS = weakref.WeakKeyDictionary()
+
+
+def worker_slots(ds, max_workers=None):
+    """
+    The :class:`asyncio.Semaphore` that limits how many import workers run
+    at once for the Datasette instance ``ds`` (``DEFAULT_MAX_WORKERS``
+    unless ``max_workers`` is given the first time this is called for it).
+    Imports wait for a slot before their worker starts.
+    """
+    slots = _WORKER_SLOTS.get(ds)
+    if slots is None:
+        slots = asyncio.Semaphore(max_workers or DEFAULT_MAX_WORKERS)
+        _WORKER_SLOTS[ds] = slots
+    return slots
+
+
+def subprocesses_available():
+    "False where a worker cannot be started: Pyodide (emscripten), WASI."
+    return sys.platform not in ("emscripten", "wasi")
+
+
+def _remove(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 async def import_file_via_worker(
     db,
     table,
@@ -761,6 +873,7 @@ async def import_file_via_worker(
     progress_interval=None,
     delete_input=False,
     stop_timeout=2.0,
+    slots=None,
     argv=None,
     env=None,
 ):
@@ -771,7 +884,10 @@ async def import_file_via_worker(
 
     :param format: use the loader with this name instead of sniffing
     :param plugins_dir: a directory of plugins for the worker to load, as
-        ``datasette --plugins-dir`` does (entry point plugins always load)
+        ``datasette --plugins-dir`` does (entry point plugins always load).
+        By default the Datasette instance's own ``plugins_dir`` (from
+        ``--plugins-dir`` or a configuration directory), so the worker sees
+        the same loaders as the server; ``False`` for none
     :param sample_size: rows used to detect column types
     :param batch_size: rows per ``execute_write_fn()`` call after the sample
     :param widen: passed to :func:`~datasette.imports.inserter.import_rows`
@@ -781,15 +897,20 @@ async def import_file_via_worker(
     :param on_error: ``"keep"`` the rows imported before a failure, or
         ``"drop"`` the table
     :param memory_limit: address space limit (``RLIMIT_AS``) for the worker,
-        in bytes. It counts reserved address space, not memory used: the
-        worker starts at about 65MB (130-200MB with glibc's per-thread
-        malloc arena, which this turns off with ``MALLOC_ARENA_MAX=1``), and
-        the JSON loader needs about five times the file's size
+        in bytes. It counts reserved address space, not memory used: see
+        ``prototypes/data_csv/worker_crash_experiments.py memory-json`` for
+        what the JSON loader needs. With a limit, the worker runs with
+        ``MALLOC_ARENA_MAX=1`` (unless ``env`` is given), because glibc's
+        per-thread malloc arena reserves 64MB that the limit counts
     :param progress_interval: seconds between the worker's progress messages
     :param delete_input: delete ``path`` afterwards, whatever happens - for
         a temporary copy of stdin or a download
     :param stop_timeout: seconds to wait for the worker to exit before
         terminating it, and then before killing it
+    :param slots: an :class:`asyncio.Semaphore` (any async context manager)
+        to hold while the worker runs; by default :func:`worker_slots` for
+        ``db.ds``, so at most ``DEFAULT_MAX_WORKERS`` workers run at once.
+        ``contextlib.nullcontext()`` for no limit
     :param argv: run this command instead of the worker (for tests)
     :param env: environment variables for the worker
 
@@ -799,18 +920,19 @@ async def import_file_via_worker(
     """
     if on_error not in ON_ERROR:
         raise ValueError(f"on_error must be one of {ON_ERROR}")
-    start = time.perf_counter()
-    worker = None
-    watched = None
-    state = None
     try:
         if await _table_exists(db, table):
             raise ValueError(f"Table {table!r} already exists")
+        ds = getattr(db, "ds", None)
+        if plugins_dir is None:
+            plugins_dir = getattr(ds, "plugins_dir", None)
+        if slots is None:
+            slots = worker_slots(ds) if ds is not None else contextlib.nullcontext()
         if argv is None:
             argv = worker_command(
                 path,
                 format=format,
-                plugins_dir=plugins_dir,
+                plugins_dir=plugins_dir or None,
                 memory_limit=memory_limit,
                 progress_interval=progress_interval,
             )
@@ -819,6 +941,44 @@ async def import_file_via_worker(
             # use: 64MB per thread for its own malloc arena. One arena is
             # plenty for the worker's two threads
             env = {**os.environ, "MALLOC_ARENA_MAX": "1"}
+        async with slots:
+            return await _import_via_worker(
+                db,
+                table,
+                argv,
+                env=env,
+                sample_size=sample_size,
+                batch_size=batch_size,
+                widen=widen,
+                progress=progress,
+                on_error=on_error,
+                memory_limit=memory_limit,
+                stop_timeout=stop_timeout,
+            )
+    finally:
+        if delete_input:
+            _remove(path)
+
+
+async def _import_via_worker(
+    db,
+    table,
+    argv,
+    *,
+    env,
+    sample_size,
+    batch_size,
+    widen,
+    progress,
+    on_error,
+    memory_limit,
+    stop_timeout,
+):
+    start = time.perf_counter()
+    worker = None
+    watched = None
+    state = None
+    try:
         worker = WorkerProcess(argv, env=env)
         await worker.start()
         state = _Import(worker, table, progress)
@@ -897,9 +1057,214 @@ async def import_file_via_worker(
         if on_error == "drop" and watched is not None and watched.row_writes:
             await asyncio.shield(_drop_table(db, table))
         raise
+
+
+class _GuardedRows:
+    """
+    Iterates over a loader's rows, but ends cleanly - remembering the
+    exception - if the loader raises part way through, so import_rows()
+    still inserts every row before it (as the worker path does).
+    """
+
+    def __init__(self, rows):
+        self._rows = iter(rows)
+        self.error = None
+        self.count = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.error is not None:
+            raise StopIteration
+        try:
+            row = next(self._rows)
+        except StopIteration:
+            raise
+        except Exception as ex:  # noqa: BLE001
+            self.error = ex
+            raise StopIteration from None
+        self.count += 1
+        return row
+
+
+class _CollectWarnings(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.messages = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+async def import_file_in_process(
+    db,
+    table,
+    path,
+    *,
+    format=None,
+    sample_size=1000,
+    batch_size=1000,
+    widen="auto",
+    progress=None,
+    on_error="keep",
+    delete_input=False,
+):
+    """
+    The same import as :func:`import_file_via_worker`, with the same result
+    and errors, but loading the file in a thread of this process: for
+    Pyodide and anywhere else a subprocess cannot be started. The loader
+    shares the server's memory and GIL (a JSON file is parsed whole while
+    holding it), and a loader that crashes takes the server with it.
+
+    A loader error part way through keeps the rows before it, exactly as
+    the worker does, and raises :class:`WorkerImportError` with
+    ``kind="error"``; ``returncode``, ``worker`` and ``pid`` are ``None``.
+    Loader warnings in ``result.warnings`` come from the
+    ``datasette.imports`` loggers, so an in-process import running at the
+    same time may contribute some.
+    """
+    from datasette.imports import loaders as loaders_module
+    from datasette.imports.worker import InputPosition
+
+    if on_error not in ON_ERROR:
+        raise ValueError(f"on_error must be one of {ON_ERROR}")
+    start = time.perf_counter()
+    loader_logger = logging.getLogger("datasette.imports")
+    warnings = _CollectWarnings()
+    loader_logger.addHandler(warnings)
+    watched = None
+    loaded = None
+    size = None
+    try:
+        if await _table_exists(db, table):
+            raise ValueError(f"Table {table!r} already exists")
+
+        def result(import_result, rows_read, complete, table_exists):
+            return WorkerImportResult(
+                table=table,
+                loader=loaded.loader.name if loaded else None,
+                rows=import_result.rows if (import_result and table_exists) else 0,
+                rows_read=rows_read,
+                complete=complete,
+                table_exists=table_exists,
+                schema=loaded.schema.columns if (loaded and loaded.schema) else None,
+                import_result=import_result,
+                size=size,
+                seconds=time.perf_counter() - start,
+                worker=None,
+                returncode=None,
+                warnings=warnings.messages,
+                stats={
+                    "write_seconds": watched.write_seconds if watched else 0.0,
+                    "writes": watched.writes if watched else 0,
+                },
+            )
+
+        loop = asyncio.get_running_loop()
+        try:
+            position = InputPosition(path)
+            size = position.size
+            loaded = await loop.run_in_executor(
+                None, functools.partial(loaders_module.load_path, path, format=format)
+            )
+        except Exception as ex:
+            # Cannot read it, no loader recognizes it, or it failed at once
+            raise WorkerImportError(
+                str(ex),
+                kind="error",
+                result=result(None, 0, False, False),
+                error_type=type(ex).__name__,
+            ) from ex
+        rows = _GuardedRows(loaded.rows)
+        watched = _WatchedDatabase(db, on_failure=lambda: None)
+
+        async def written(rows_written):
+            if progress is None:
+                return
+            outcome = progress(
+                ImportProgress(
+                    table=table,
+                    loader=loaded.loader.name,
+                    rows_read=rows.count,
+                    rows_written=rows_written,
+                    bytes=position.get(),
+                    size=size,
+                )
+            )
+            if inspect.isawaitable(outcome):
+                await outcome
+
+        try:
+            import_result = await import_rows(
+                watched,
+                table,
+                rows,
+                schema=loaded.schema.columns if loaded.schema else None,
+                sample_size=sample_size,
+                batch_size=batch_size,
+                widen=widen,
+                progress=written,
+            )
+        except BaseException:
+            if on_error == "drop" and watched.row_writes:
+                await asyncio.shield(_drop_table(db, table))
+            raise
+        error = rows.error
+        table_exists = import_result.created
+        if error is not None and on_error == "drop" and table_exists:
+            await _drop_table(db, table)
+            table_exists = False
+        outcome = result(import_result, rows.count, error is None, table_exists)
+        if error is not None:
+            raise WorkerImportError(
+                str(error),
+                kind="error",
+                result=outcome,
+                error_type=type(error).__name__,
+            ) from error
+        return outcome
     finally:
+        loader_logger.removeHandler(warnings)
         if delete_input:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            _remove(path)
+
+
+async def import_file(
+    db,
+    table,
+    path,
+    *,
+    use_worker=None,
+    format=None,
+    sample_size=1000,
+    batch_size=1000,
+    widen="auto",
+    progress=None,
+    on_error="keep",
+    delete_input=False,
+    **worker_options,
+):
+    """
+    Import ``path`` with :func:`import_file_via_worker` where subprocesses
+    are available, otherwise (``use_worker=False``, Pyodide) with
+    :func:`import_file_in_process`. Same result and errors either way.
+    ``worker_options`` (``plugins_dir``, ``memory_limit``, ``slots``...)
+    only apply to the worker.
+    """
+    if use_worker is None:
+        use_worker = subprocesses_available()
+    options = {
+        "format": format,
+        "sample_size": sample_size,
+        "batch_size": batch_size,
+        "widen": widen,
+        "progress": progress,
+        "on_error": on_error,
+        "delete_input": delete_input,
+    }
+    if use_worker:
+        return await import_file_via_worker(
+            db, table, path, **options, **worker_options
+        )
+    return await import_file_in_process(db, table, path, **options)

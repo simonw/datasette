@@ -672,6 +672,27 @@ async def test_table_csv_json_export_interface(ds_client):
     ] == inputs
 
 
+@pytest.mark.asyncio
+async def test_sort_and_csv_export_preserve_blank_filter(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key?content__exact=")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    table = soup.find("table")
+    content_header = next(
+        th for th in table.select("thead th") if th.get_text(strip=True) == "content"
+    )
+    assert "content__exact=" in content_header.find("a")["href"]
+    assert "_sort=content" in content_header.find("a")["href"]
+
+    form = soup.find("div", {"class": "advanced-export"}).find("form")
+    inputs = {
+        input.get("name"): input.get("value")
+        for input in form.find_all("input")
+        if input.get("name")
+    }
+    assert inputs["content__exact"] == ""
+
+
 def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefix):
     for path, expected_json, expected_csv in (
         (

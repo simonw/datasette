@@ -15,17 +15,41 @@ real Datasette instance, committing every 1,000 rows:
   only suits loading before the server starts.
 - ``import_rows_10k``: ``import_rows()`` with 10,000-row batches.
 
-Each mode runs in its own subprocess; prints wall time, CPU time and peak
-RSS.
+Each mode runs in its own subprocess; prints wall time, CPU time, peak
+RSS and the CPU time of each thread (from ``/proc/self/task/TID/stat``):
+the event loop, the executor threads that parse, and Datasette's write
+thread. ``--switch-interval`` sets ``sys.setswitchinterval()`` (default
+0.005 s), how often a thread waiting for the GIL forces the running one to
+let go: if the threaded mode's extra CPU time is GIL hand-off overhead, it
+changes with this.
 """
 
 import argparse
 import asyncio
 import json
+import os
 import resource
 import subprocess
 import sys
+import threading
 import time
+
+
+def thread_cpu_seconds():
+    "CPU seconds used so far by each live thread, by thread name."
+    ticks = os.sysconf("SC_CLK_TCK")
+    out = {}
+    for thread in threading.enumerate():
+        try:
+            with open(f"/proc/self/task/{thread.native_id}/stat") as fp:
+                fields = fp.read().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        # utime and stime are fields 14 and 15; [0] here is field 3
+        cpu = (int(fields[11]) + int(fields[12])) / ticks
+        if cpu >= 0.1:
+            out[thread.name] = round(cpu, 1)
+    return out
 
 
 async def run(mode, path):
@@ -66,6 +90,8 @@ async def run(mode, path):
         "ru_maxrss_mb": round(
             resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1
         ),
+        "switch_interval": sys.getswitchinterval(),
+        "thread_cpu_seconds": thread_cpu_seconds(),
     }
     ds.close()
     return out
@@ -76,15 +102,21 @@ def main():
     parser.add_argument("file")
     parser.add_argument("--modes", default="import_rows,one_write_fn")
     parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--switch-interval", type=float, default=None)
     parser.add_argument("--one", help=argparse.SUPPRESS)
     options = parser.parse_args()
+    if options.switch_interval:
+        sys.setswitchinterval(options.switch_interval)
     if options.one:
         print(json.dumps(asyncio.run(run(options.one, options.file))))
         return
     for i in range(options.repeat):
         for mode in options.modes.split(","):
+            extra = []
+            if options.switch_interval:
+                extra = ["--switch-interval", str(options.switch_interval)]
             output = subprocess.run(
-                [sys.executable, __file__, options.file, "--one", mode],
+                [sys.executable, __file__, options.file, "--one", mode, *extra],
                 capture_output=True,
                 text=True,
                 check=True,

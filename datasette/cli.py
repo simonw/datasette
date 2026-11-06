@@ -1242,6 +1242,8 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir
         except (OSError, sqlite3.Error, SourceError) as ex:
             if not session:
                 remove_temporary(sources)
+            if isinstance(ex, SourceError):
+                raise click.ClickException(str(ex))
             raise click.ClickException(f"--save {save}: {ex}")
         db = next(
             (

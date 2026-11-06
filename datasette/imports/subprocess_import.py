@@ -24,6 +24,22 @@ A failed *insert* in the parent (a ``write_wrapper`` plugin raising, a full
 disk) kills the worker and re-raises that exception; cancellation kills
 the worker and re-raises ``CancelledError``. In both cases the table keeps
 the chunks already committed (or is dropped, with ``on_error="drop"``).
+
+Why the parent does the writes
+------------------------------
+
+Prototype 3 measured the alternative, the worker inserting into the
+database file itself (``--direct-db``, see
+``prototypes/data_csv/bench_worker.py``). It was about 1.4 times faster on
+a 1GB CSV (about 130,000 rows/s against 93,000) and left the server's
+event loop alone, but it bypasses ``write_wrapper`` plugins, events and
+the write queue, adds a second writing process to contend for the
+database's lock, and is a second write path next to the in-process one
+that Pyodide (no subprocesses) needs anyway. Writing in the parent is
+still faster than loading in-process (81,000-87,000 rows/s), and keeps
+loaders that hold the GIL for a long time - ``json.load()`` of a whole
+file stalled the event loop for 150-200ms on a 27MB file in-process - out
+of the server.
 """
 
 import asyncio

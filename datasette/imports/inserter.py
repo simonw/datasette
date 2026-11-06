@@ -610,10 +610,11 @@ class TypedInserter:
 
         Rows are dictionaries - or, with ``columns`` (a list of keys), lists
         or tuples of values in that order, which saves building a dictionary
-        per row. A positional row can be shorter than ``columns``: the rest
-        of its values are ``None``. Its keys behave exactly as dictionary
-        keys do (new ones add columns at the end, in order), and a later
-        chunk can have more ``columns`` (or put them in another order). A
+        per row. A positional row can be shorter than ``columns``, and is
+        then exactly the dictionary of the keys it reaches: the rest of its
+        values are ``None``, and a key that no row has reached yet adds no
+        column (new keys add columns at the end, in order). A later chunk
+        can have more ``columns`` (or put them in another order). A
         dictionary among positional rows is read by its keys. A row that is
         a string, or not a sequence at all, raises ``TypeError``; one longer
         than ``columns`` raises ``ValueError``.
@@ -709,7 +710,7 @@ class TypedInserter:
         del self.widenings[widening_count:]
 
     def _write(self, conn, rows, columns=None):
-        if not self._columns and not columns and not any(rows):
+        if not self._columns and not any(rows):
             # Only empty rows so far: a table needs at least one column, so
             # hold on to them until a key turns up
             self._pending_empty += len(rows)
@@ -903,17 +904,26 @@ class TypedInserter:
         """
         Turn rows of values in ``columns`` order (and any dicts among them)
         into new lists in table column order, adding new columns.
+
+        A row stands for the dictionary ``dict(zip(columns, row))``, so a
+        key that no row is long enough to reach adds no column yet. The
+        worker decoder announces keys ahead of the rows that have them: a
+        column made for one of those now would be all NULL, an INTEGER
+        column that its first text value then widened.
         """
         by_key = self._by_key
-        for key in columns:
-            if key not in by_key:
-                self._new_column(key)
         kinds = set(map(type, rows))
         plain = kinds <= _SEQUENCE_TYPES
+        too_long = False
         if plain:
-            too_long = max(map(len, rows)) > len(columns)
+            reach = max(map(len, rows))
+            too_long = reach > len(columns)
+            if not too_long:
+                for key in columns[:reach]:
+                    if key not in by_key:
+                        self._new_column(key)
         else:
-            too_long = False
+            reach = 0
             for row in rows:
                 if isinstance(row, dict):
                     for key in row:
@@ -929,10 +939,16 @@ class TypedInserter:
                     )
                 elif len(row) > len(columns):
                     too_long = True
+                elif len(row) > reach:
+                    # In row order, as for dictionaries
+                    for key in columns[reach : len(row)]:
+                        if key not in by_key:
+                            self._new_column(key)
+                    reach = len(row)
         if too_long:
             raise ValueError(f"A row has more values than the {len(columns)} columns")
         width = len(self._columns)
-        positions = [by_key[key].index for key in columns]
+        positions = [by_key[key].index for key in columns[:reach]]
         if plain and positions == list(range(len(positions))):
             # The usual case: the columns are the table's, in its order
             values = list(map(list, rows))

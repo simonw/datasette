@@ -1771,35 +1771,102 @@ def test_widening_methods_record(widen):
 # Positional rows -------------------------------------------------------------
 
 
-@pytest.mark.parametrize("seed", range(20))
-def test_positional_rows_give_the_same_table_as_dicts(seed):
-    rng = random.Random(seed)
-    rows = _tricky_rows(rng, rng.randint(1, 40))
+def _worker_rows(rows, rng):
+    """
+    ``rows`` as the worker protocol sends them, as (chunk, columns) pairs
+    for TypedInserter.write(): positional rows without trailing nulls -
+    except in a row that added keys, which reach the parent once even if
+    they hold None - and now and then a sparse row as a dictionary. The
+    column list is announced ahead of the rows: the parent decodes a whole
+    read of the pipe before it writes a chunk.
+    """
     order = []
     for row in rows:
         order.extend(key for key in row if key not in order)
-    reference, _ = load(rows, sample_size=len(rows))
-    widen = rng.choice(AVAILABLE)
-    conn = connect(widen, isolation_level=None)
-    inserter = new_inserter("t", widen)
+    seen = set()
     position = 0
     while position < len(rows):
         chunk = rows[position : position + rng.randint(1, 6)]
         position += len(chunk)
-        # The columns known so far, as the worker protocol announces them
-        known = {key for row in rows[:position] for key in row}
+        ahead = position + rng.choice((0, 0, 1, 3, 10))
+        known = {key for row in rows[:ahead] for key in row}
         columns = [key for key in order if key in known]
         values = []
         for row in chunk:
-            row_values = [row.get(key) for key in columns]
-            while row_values and row_values[-1] is None:
-                row_values.pop()
+            added = not seen.issuperset(row)
+            seen.update(row)
+            if row and rng.random() < 0.15:
+                values.append(dict(row))
+                continue
+            # The columns known when the worker sent this row
+            row_values = [row.get(key) for key in order if key in seen]
+            if not added:
+                while row_values and row_values[-1] is None:
+                    row_values.pop()
             values.append(tuple(row_values) if rng.random() < 0.5 else row_values)
-        inserter.write(conn, values, columns)
-    while inserter.backlog:
-        inserter.convert(conn)
+        yield chunk, values, columns
+
+
+def _widenings(inserter):
+    return [
+        (w.column, w.from_type, w.to_type, w.at_row, w.method)
+        for w in inserter.widenings
+    ]
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_positional_rows_give_the_same_table_as_dicts(seed):
+    # The same chunks as dictionaries and as the worker sends them: the
+    # same table, columns in the same order, and the same widenings - a
+    # key announced ahead of the rows that have it must not make an
+    # all-NULL INTEGER column that a later chunk widens
+    rng = random.Random(seed)
+    rows = _tricky_rows(rng, rng.randint(1, 40))
+    widen = rng.choice(AVAILABLE)
+    conns, inserters = [], []
+    for _ in range(2):
+        conns.append(connect(widen, isolation_level=None))
+        inserters.append(new_inserter("t", widen))
+    for chunk, values, columns in _worker_rows(rows, rng):
+        inserters[0].write(conns[0], chunk)
+        inserters[1].write(conns[1], values, columns)
+    for conn, inserter in zip(conns, inserters):
+        while inserter.backlog:
+            inserter.convert(conn)
+        inserter.finish(conn)
+    by_dicts, positional = conns
+    assert list(declared(positional).items()) == list(declared(by_dicts).items())
+    assert _snapshot(positional) == _snapshot(by_dicts)
+    assert _widenings(inserters[1]) == _widenings(inserters[0])
+    reference, _ = load(rows, sample_size=len(rows))
+    assert _snapshot(positional) == _snapshot(reference)
+
+
+def test_positional_rows_add_only_the_columns_they_reach():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    # "late" is announced, but no row in this chunk reaches it
+    inserter.write(conn, [["1"], ("2",)], ["id", "late"])
+    assert declared(conn) == {"id": "INTEGER"}
+    inserter.write(conn, [["3", "x"]], ["id", "late"])
+    assert inserter.widenings == []
+    assert list(declared(conn).items()) == [("id", "INTEGER"), ("late", "TEXT")]
+    # A dictionary adds its keys, in row order with the positional rows
+    inserter.write(conn, [{"d": "1"}, ["4", None, "y"]], ["id", "late", "c"])
+    assert list(declared(conn)) == ["id", "late", "d", "c"]
+    # A row that reaches a key holding None adds it, as {"e": None} would
+    inserter.write(conn, [["5", None, None, None]], ["id", "late", "c", "e"])
     inserter.finish(conn)
-    assert _snapshot(conn) == _snapshot(reference)
+    assert list(declared(conn)) == ["id", "late", "d", "c", "e"]
+    assert inserter.widenings == []
+    assert conn.execute("select * from t order by rowid").fetchall() == [
+        (1, None, None, None, None),
+        (2, None, None, None, None),
+        (3, "x", None, None, None),
+        (None, None, 1, None, None),
+        (4, None, None, "y", None),
+        (5, None, None, None, None),
+    ]
 
 
 def test_positional_rows_in_another_order_and_dicts_among_them():

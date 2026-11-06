@@ -510,6 +510,13 @@ async def table_rows(db, table):
     return [tuple(row) for row in (await db.execute(f"select * from [{table}]")).rows]
 
 
+def widenings(import_result):
+    return [
+        (w.column, w.from_type, w.to_type, w.at_row, w.method)
+        for w in import_result.widenings
+    ]
+
+
 @pytest.mark.asyncio
 async def test_import_matches_in_process_import(db, tmp_path):
 
@@ -528,6 +535,7 @@ async def test_import_matches_in_process_import(db, tmp_path):
     assert result.worker["rows"] == 3000
     assert result.import_result.types == expected.types
     assert result.import_result.types["late"] == "text"
+    assert widenings(result.import_result) == widenings(expected)
     assert await table_rows(db, "via_worker") == await table_rows(db, "in_process")
     # Progress: rows written after each chunk, bytes from the worker
     written = [p.rows_written for p in progress]
@@ -1161,11 +1169,43 @@ async def test_sparse_ndjson_matches_in_process_import(db, tmp_path):
     path = write(tmp_path / "sparse.ndjson", "\n".join(map(json.dumps, rows)) + "\n")
     result = await import_file_via_worker(db, "worker", path)
     loaded = load_path(path)
-    await import_rows(db, "in_process", loaded.rows, batch_size=1000)
+    expected = await import_rows(db, "in_process", loaded.rows, batch_size=1000)
     assert result.rows == len(rows)
     assert await table_shape(db, "worker") == await table_shape(db, "in_process")
+    assert widenings(result.import_result) == widenings(expected)
     # Far fewer bytes than one null per known column per row
     assert result.stats["bytes_read"] < os.path.getsize(path) * 2
+
+
+@pytest.mark.asyncio
+async def test_keys_that_turn_up_late_match_in_process_import(db, tmp_path):
+    # The parent decodes a whole read of the pipe before it writes a chunk,
+    # so it knows of keys that only later rows have. Those must not become
+    # columns early: all NULL, INTEGER, then widened to text, converting
+    # every row before them
+    rows = []
+    for i in range(20_000):
+        row = {"id": i, "pad": "x" * 100}
+        for name, start in (("late_a", 5_500), ("late_b", 10_700), ("late_c", 15_900)):
+            if i >= start:
+                row[name] = f"s{i}"
+        rows.append(row)
+    path = write(tmp_path / "late.ndjson", "\n".join(map(json.dumps, rows)) + "\n")
+    via_worker = await import_file_via_worker(db, "worker", path)
+    in_process = await import_file_in_process(db, "in_process", path)
+    assert via_worker.rows == in_process.rows == 20_000
+    assert widenings(via_worker.import_result) == []
+    assert widenings(in_process.import_result) == []
+    assert via_worker.import_result.convert_seconds == 0
+    assert await table_shape(db, "worker") == await table_shape(db, "in_process")
+    types = await db.execute("select name, type from pragma_table_info('worker')")
+    assert [tuple(row) for row in types] == [
+        ("id", "INTEGER"),
+        ("pad", "TEXT"),
+        ("late_a", "TEXT"),
+        ("late_b", "TEXT"),
+        ("late_c", "TEXT"),
+    ]
 
 
 def test_int_digit_limit_is_the_same_with_or_without_bytes():

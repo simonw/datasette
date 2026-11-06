@@ -17,8 +17,8 @@ from datasette.imports.inserter import (
 )
 from datasette.plugins import pm
 
-STRATEGIES = ("schema", "rebuild", "deferred")
-IMMEDIATE = ("schema", "rebuild")
+STRATEGIES = ("auto", "schema", "rebuild", "deferred")
+IMMEDIATE = ("auto", "schema", "rebuild")
 
 
 def declared(conn, table="t"):
@@ -177,7 +177,8 @@ def test_widens_after_sample(widen):
         ("t", "integer", "text", 5),
         ("f", "float", "text", 7),
     ]
-    assert {w.method for w in result.widenings} == {widen}
+    expected = {"rebuild"} if widen == "auto" else {widen}
+    assert {w.method for w in result.widenings} == expected
     assert column(conn, "n") == [(i, "integer") for i in range(8)]
     assert column(conn, "t") == [
         ("0", "text"),
@@ -466,7 +467,7 @@ def test_schema_type_validation():
 
 def test_schema_strategy_falls_back_to_rebuild():
     conn = sqlite3.connect(":memory:")
-    inserter = TypedInserter("t")
+    inserter = TypedInserter("t", widen="schema")
     inserter.write(conn, [{"a": "1"}, {"a": "2"}])
     # Someone else adds an index: editing the schema in place is not safe
     conn.execute("create index t_a on t(a)")
@@ -479,7 +480,7 @@ def test_schema_strategy_falls_back_to_rebuild():
 
 def test_schema_strategy_after_add_column():
     conn = sqlite3.connect(":memory:")
-    inserter = TypedInserter("t")
+    inserter = TypedInserter("t", widen="schema")
     inserter.write(conn, [{"a": "1"}])
     inserter.write(conn, [{"a": "2", "b": "3"}])
     inserter.write(conn, [{"a": "2.5", "b": "x"}])
@@ -490,6 +491,45 @@ def test_schema_strategy_after_add_column():
         (1.0, None),
         (2.0, "3"),
         (2.5, "x"),
+    ]
+
+
+def test_auto_strategy_edits_in_place_unless_values_must_change():
+    conn = sqlite3.connect(":memory:")
+    inserter = TypedInserter("t")
+    inserter.write(conn, [{"a": "1", "b": "1"}])
+    inserter.write(conn, [{"a": "1.5", "b": "2"}])
+    inserter.write(conn, [{"a": "2", "b": "x"}])
+    inserter.write(conn, [{"a": "y", "b": "3"}])
+    inserter.finish(conn)
+    assert [(w.column, w.to_type, w.method) for w in inserter.widenings] == [
+        ("a", "float", "schema"),
+        ("b", "text", "rebuild"),
+        ("a", "text", "rebuild"),
+    ]
+    assert conn.execute("select a, typeof(a), b from t order by rowid").fetchall() == [
+        ("1", "text", "1"),
+        ("1.5", "text", "2"),
+        ("2", "text", "x"),
+        ("y", "text", "3"),
+    ]
+
+
+def test_schema_edit_visible_to_other_shared_cache_connections():
+    uri = f"file:{uuid.uuid4().hex}?mode=memory&cache=shared"
+    writer = sqlite3.connect(uri, uri=True, isolation_level=None)
+    reader = sqlite3.connect(uri, uri=True)
+    reader.execute("PRAGMA query_only=1")
+    result = insert_rows(
+        writer, "t", [{"a": "1"}, {"a": "2.5"}], sample_size=1, batch_size=1
+    )
+    assert [w.method for w in result.widenings] == ["schema"]
+    assert reader.execute("select type from pragma_table_info('t')").fetchall() == [
+        ("REAL",)
+    ]
+    assert reader.execute("select a, typeof(a) from t").fetchall() == [
+        (1.0, "real"),
+        (2.5, "real"),
     ]
 
 

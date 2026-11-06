@@ -77,7 +77,7 @@ _TYPE_ALIASES = {
 }
 _NoneType = type(None)
 
-WIDEN_STRATEGIES = ("schema", "rebuild", "deferred")
+WIDEN_STRATEGIES = ("auto", "schema", "rebuild", "deferred")
 
 # SQLite skips these around numbers when applying affinity (sqlite3Isspace)
 _WS = "[ \\t\\n\\v\\f\\r]*"
@@ -229,17 +229,29 @@ class TypedInserter:
         Python types). A ``None`` type means "detect this column"; that is
         how a loader declares column names and order, which matters for a
         zero-row file. Typed columns are never widened.
-    :param widen: how to widen a column - ``"schema"`` (default) rewrites
-        the declared type in ``sqlite_schema`` in place, then converts the
-        stored values only when widening to text; ``"rebuild"`` copies the
-        table into a new one; ``"deferred"`` leaves the declared type alone
-        (SQLite keeps odd values as text or real) and rebuilds once in
-        :meth:`finish`. ``"schema"`` falls back to ``"rebuild"`` if the
-        connection refuses ``PRAGMA writable_schema`` or the table has been
-        changed by someone else (indexes, triggers, edited definition).
+    :param widen: how to widen a column:
+
+        - ``"auto"`` (default): integer -> float (and text -> blob) edits
+          the declared type in ``sqlite_schema`` in place - no stored value
+          has to change, so this takes well under a millisecond at any table
+          size. Widening to text rebuilds the table, because the stored
+          numbers have to become text and copying the table measured faster
+          than an in-place ``UPDATE``.
+        - ``"schema"``: always edit in place, with an ``UPDATE`` converting
+          stored numbers when widening to text.
+        - ``"rebuild"``: always copy the table into a new one.
+        - ``"deferred"``: leave declared types alone while importing (SQLite
+          keeps most odd values as text or real) and rebuild once in
+          :meth:`finish`. Cheapest, but lossy for values that the stale
+          affinity converts: ``"007"`` arriving in an integer column is
+          stored as 7, a 20 digit integer string as a rounded float.
+
+        In-place edits fall back to a rebuild if the connection refuses
+        ``PRAGMA writable_schema`` or the table has been changed by someone
+        else (indexes, triggers, an edited definition).
     """
 
-    def __init__(self, table, *, schema=None, widen="schema"):
+    def __init__(self, table, *, schema=None, widen="auto"):
         if widen not in WIDEN_STRATEGIES:
             raise ValueError(f"widen= must be one of {WIDEN_STRATEGIES}")
         self.table = table
@@ -506,6 +518,14 @@ class TypedInserter:
             # Declared types stay as they are until finish()
             return
         start = time.perf_counter()
+        if method == "auto":
+            converts = any(
+                rank >= _T and self._by_key[key].declared < _T
+                for key, rank in changes.items()
+            )
+            method = "rebuild" if converts else "schema"
+            for widening in new_widenings:
+                widening.method = method
         if method == "rebuild" or not self._edit_schema(conn, changes):
             if method == "schema":
                 for widening in new_widenings:
@@ -693,7 +713,7 @@ def insert_rows(
     schema=None,
     sample_size=1000,
     batch_size=100,
-    widen="schema",
+    widen="auto",
     progress=None,
 ):
     """
@@ -752,7 +772,7 @@ async def import_rows(
     schema=None,
     sample_size=1000,
     batch_size=100,
-    widen="schema",
+    widen="auto",
     progress=None,
 ):
     """

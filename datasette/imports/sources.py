@@ -805,12 +805,23 @@ def suggest_save_path(avoid: Iterable[str] = (), base: str = "data") -> str:
     Suggesting a file that exists would add tables to someone's database,
     or fail because it already has one of them.
     """
-    avoid = {os.path.realpath(path) for path in avoid}
+    avoid = set(map(_realpath, avoid)) - {None}
     candidate, i = f"{base}.db", 2
-    while os.path.lexists(candidate) or os.path.realpath(candidate) in avoid:
+    while os.path.lexists(candidate) or _realpath(candidate) in avoid:
         candidate = f"{base}_{i}.db"
         i += 1
     return candidate
+
+
+def _realpath(path: str) -> str | None:
+    """
+    ``os.path.realpath()``, or None for a relative path if the current
+    directory has been deleted (then nothing exists relative to it).
+    """
+    try:
+        return os.path.realpath(path)
+    except OSError:
+        return None
 
 
 def remove_tree(path: str) -> None:

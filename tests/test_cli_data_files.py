@@ -33,6 +33,7 @@ from datasette.imports.sources import (
     parse_source,
     sanitize_table_name,
     save_command,
+    suggest_save_path,
     suggested_table_name,
     table_name_for_url,
 )
@@ -1312,6 +1313,26 @@ def test_pipe_table_name():
     for path in ("/dev/fd/63", "/proc/self/fd/12", "/proc/1234/fd/3"):
         assert suggested_table_name(Source(path, "file", path)) == "pipe"
     assert suggested_table_name(Source("/dev/stdin", "file", "/dev/stdin")) == "stdin"
+
+
+def test_suggest_save_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert suggest_save_path() == "data.db"
+    (tmp_path / "data.db").write_bytes(b"")
+    assert suggest_save_path() == "data_2.db"
+    assert suggest_save_path([str(tmp_path / "data_2.db")]) == "data_3.db"
+
+
+def test_serving_from_a_deleted_directory(data_dir, tmp_path, monkeypatch):
+    # The working directory can be gone - another test suite's temporary
+    # directory, say: nothing exists relative to it, so data.db is free
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    monkeypatch.chdir(gone)
+    gone.rmdir()
+    assert suggest_save_path(["relative.db", str(tmp_path / "x.db")]) == "data.db"
+    rows = get_json([str(data_dir / "dogs.csv")], "/scratch/dogs.json?_shape=array")
+    assert len(rows) == 3
 
 
 def test_save_path_errors_are_clean(data_dir):

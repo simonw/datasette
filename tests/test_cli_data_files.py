@@ -974,3 +974,43 @@ def test_sigterm_interrupts_loading_then_handler_is_restored():
         for _ in range(1000):
             pass
     assert signal.getsignal(signal.SIGTERM) is previous
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (True, False))
+async def test_cancelling_a_load_drops_the_table(data_dir, exclusive):
+    import asyncio
+
+    from datasette.app import Datasette
+    from datasette.imports.scratch import load_source
+
+    path = data_dir / "many.ndjson"
+    path.write_text("".join(f'{{"id": {i}}}\n' for i in range(200_000)))
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    loop = asyncio.get_running_loop()
+    try:
+        source = _sources(path)[0]
+        seen = []
+
+        def progress(rows):
+            # Called from the write thread when exclusive
+            seen.append(rows)
+            if len(seen) == 2:
+                loop.call_soon_threadsafe(task.cancel)
+
+        task = asyncio.ensure_future(
+            load_source(
+                db,
+                source,
+                workdir=str(data_dir),
+                progress=progress,
+                exclusive=exclusive,
+            )
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert 0 < seen[-1] < 200_000
+        assert await db.table_names() == []
+    finally:
+        ds.close()

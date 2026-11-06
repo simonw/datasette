@@ -32,7 +32,7 @@ def main():
     ]
     sql = """
     select stdin.country, count(*) as events, round(sum(e.price), 2) as revenue,
-      sum(e.qty = n.qty) as ndjson_rows_agreeing
+      count(n.id) as matched_in_ndjson, round(avg(n.price), 2) as ndjson_avg_price
     from events_100k e
     join stdin on e.city = stdin.city
     join events_100k_2 n on n.id = e.id

@@ -30,8 +30,8 @@ def wait_for(predicate, timeout=60):
             value = predicate()
             if value:
                 return value
-        except Exception:
-            pass
+        except (OSError, ValueError):  # not up yet
+            time.sleep(0.05)
         time.sleep(0.2)
     raise TimeoutError
 
@@ -55,7 +55,7 @@ def main():
     args += ["-m", metadata, "-p", str(PORT)]
     if url:
         args.insert(4, url)
-    log = open(os.path.join(work, "stderr.txt"), "w+")
+    log = open(os.path.join(work, "stderr.txt"), "w+")  # noqa: SIM115
     process = subprocess.Popen(
         args,
         stdin=subprocess.PIPE,

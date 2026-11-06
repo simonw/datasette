@@ -30,6 +30,10 @@ def leftovers():
     )
 
 
+def restore_sigint():
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--after", type=float, default=3.0)
@@ -45,7 +49,7 @@ def main():
         stderr=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         env=env,
-        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL),
+        preexec_fn=restore_sigint,  # noqa: PLW1509
     )
     start = time.monotonic()
     if options.when_serving:
@@ -55,7 +59,7 @@ def main():
                     f"http://127.0.0.1:{options.port}/-/versions.json", timeout=1
                 )
                 break
-            except Exception:
+            except OSError:
                 time.sleep(0.1)
     else:
         time.sleep(options.after)

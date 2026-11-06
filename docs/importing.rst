@@ -87,11 +87,9 @@ Datasette works out the format of each input from its contents (see :ref:`import
 
 The suffix is only treated as a format if it is the name of one. A colon in a URL's query string is always part of the URL.
 
-``-:csv`` works as well, but because anything starting with ``-`` looks like an option to the command line it needs a ``--`` in front of it::
+For standard input, use ``stdin`` and the format, as in ``stdin:ndjson`` above. ``-:csv`` works too, but because it starts with ``-`` the command line would read it as an option. To use it, put it after ``--`` and spell out the ``serve`` command, which can usually be left out::
 
-    cat data.txt | datasette -- -:csv
-
-``stdin:csv`` needs no ``--``.
+    cat data.txt | datasette serve -- -:csv
 
 .. _importing_formats:
 

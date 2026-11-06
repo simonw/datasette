@@ -19,6 +19,7 @@ import pytest
 from click.testing import CliRunner
 
 from datasette import cli as cli_module
+from datasette.app import Datasette
 from datasette.cli import cli, serve
 from datasette.imports import scratch as scratch_module
 from datasette.imports.scratch import (
@@ -41,6 +42,7 @@ from datasette.imports.sources import (
     suggested_table_name,
     table_name_for_url,
 )
+from datasette.utils import escape_sqlite
 from datasette.utils.asgi import Forbidden
 
 FORMATS = ["csv", "tsv", "json", "ndjson"]
@@ -758,6 +760,37 @@ def test_save_is_all_or_nothing(data_dir):
     )
     assert result.exit_code == 1
     assert scratch_module.existing_tables(str(save)) == ["keep"]
+
+
+@pytest.mark.parametrize("table", ("a]b", 'a"b', "[a]"))
+def test_save_is_all_or_nothing_whatever_the_table_name(data_dir, table):
+    # [name] quoting has no escape for "]": the drop that undoes the first
+    # table failed, silently, and left it in the file
+    save = data_dir / "existing.db"
+    sqlite3.connect(save).execute("create table keep (id)").connection.close()
+    bad = data_dir / "bad.ndjson"
+    bad.write_text('{"id": 1}\n{oops\n')
+    result = run(
+        [f"{table}:{data_dir / 'dogs.csv'}", str(bad), "--save", str(save)]
+        + ["--get", "/"]
+    )
+    assert result.exit_code == 1
+    assert scratch_module.existing_tables(str(save)) == ["keep"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table", ("a]b", 'a"b'))
+async def test_drop_table_whatever_the_name(table):
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        with scratch_module.import_writes():
+            await db.execute_write(f"create table {escape_sqlite(table)} (id)")
+        await scratch_module.drop_table(db, table)
+        assert await db.table_names() == []
+    finally:
+        db.close()
+        ds.close()
 
 
 def test_save_failing_before_load_creates_nothing(data_dir):

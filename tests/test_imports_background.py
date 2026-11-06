@@ -40,6 +40,7 @@ from datasette.imports.scratch import (
 from datasette.imports.sources import Source, assign_table_names, spool_in_thread
 from datasette.imports.subprocess_import import worker_slots
 from datasette.tokens import TokenRestrictions
+from datasette.utils import escape_sqlite
 
 CSV = "id,name,score\n1,Cleo,4.5\n2,Pancakes,3\n3,Fido,\n"
 ROOT = {"id": "root"}
@@ -917,6 +918,26 @@ async def test_cancel_with_drop_removes_the_partial_table(tmp_path):
         assert not job.table_exists and job.rows_kept == 0
         assert job.status() == "import cancelled (the table was removed)"
         assert await db.table_names() == []
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table", ("a]b", 'a"b', "[x]"))
+async def test_cancel_counts_the_rows_kept_whatever_the_table_name(tmp_path, table):
+    # [name] quoting has no escape for "]": the count after a cancellation
+    # failed, silently, and kept the rows last reported
+    ds, db = _scratch_ds()
+    try:
+        job = await _start_stalled(ds, db, tmp_path, table=table)
+        with import_writes():
+            await db.execute_write(
+                f"insert into {escape_sqlite(table)} (n) values (100), (101)"
+            )
+        assert job.cancel()
+        assert await job.wait(5)
+        assert job.state == "cancelled"
+        assert job.table_exists and job.rows_kept == 6
     finally:
         await ds.invoke_shutdown()
 

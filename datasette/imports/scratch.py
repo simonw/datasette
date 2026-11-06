@@ -42,6 +42,7 @@ from datasette.imports.sources import (
     SourceError,
     remove_tree,
 )
+from datasette.utils import escape_sqlite
 
 SCRATCH_NAME = "scratch"
 DEFAULT_BATCH_SIZE = 1000
@@ -337,7 +338,7 @@ async def drop_table(db, table: str) -> None:
     "Drop ``table`` from ``db`` if it exists, as the import process."
 
     def _drop(conn):
-        conn.execute(f"drop table if exists {_quote(table)}")
+        conn.execute(f"drop table if exists {escape_sqlite(table)}")
 
     with import_writes():
         await db.execute_write_fn(_drop)
@@ -375,10 +376,6 @@ def release_table(db, table: str) -> None:
 
 def is_reserved(db, table: str) -> bool:
     return table.lower() in _loading.get(db, ())
-
-
-def _quote(name: str) -> str:
-    return "[{}]".format(name.replace("]", "]]"))
 
 
 def _table_exists(conn, table: str) -> bool:
@@ -579,7 +576,7 @@ async def _load_exclusive(
         if cancelled.is_set():
             if imported.created:
                 with contextlib.suppress(Exception):
-                    conn.execute(f"drop table if exists {_quote(table)}")
+                    conn.execute(f"drop table if exists {escape_sqlite(table)}")
             return None, _Cancelled()
         return imported, None
 

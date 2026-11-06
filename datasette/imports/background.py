@@ -112,6 +112,7 @@ from datasette.imports.subprocess_import import (
     import_file,
     worker_slots,
 )
+from datasette.utils import escape_sqlite
 
 logger = logging.getLogger(__name__)
 
@@ -744,30 +745,36 @@ class TableImport:
         db = self.db
         try:
             exists = await _table_taken(db, self.table)
-            ours = exists and (
-                self.rows > 0 or self.table_exists or (self._checked and is_scratch(db))
-            )
-            if not ours:
-                if exists and not self._checked:
-                    self.existing_table = True
-                self.table_exists = False
-                return
-            self.created_table = True
-            if self.on_error == "drop":
+        except Exception:
+            logger.warning("Could not check for the table of %r", self, exc_info=True)
+            return
+        ours = exists and (
+            self.rows > 0 or self.table_exists or (self._checked and is_scratch(db))
+        )
+        if not ours:
+            if exists and not self._checked:
+                self.existing_table = True
+            self.table_exists = False
+            return
+        self.created_table = True
+        if self.on_error == "drop":
+            try:
                 await drop_table(db, self.table)
-                self.table_exists = False
+            except Exception:
+                logger.exception("Could not drop the partial table of %r", self)
+                self.table_exists = True
                 return
+            self.table_exists = False
+            return
+        self.table_exists = True
+        try:
             count = (
-                await db.execute(f"select count(*) from {_quote(self.table)}")
+                await db.execute(f"select count(*) from {escape_sqlite(self.table)}")
             ).first()[0]
-        except Exception:  # noqa: BLE001 - only a count for the notice
+        except Exception:
+            logger.warning("Could not count the rows of %r", self, exc_info=True)
             return
         self.rows = count
-        self.table_exists = True
-
-
-def _quote(name: str) -> str:
-    return "[{}]".format(name.replace("]", "]]"))
 
 
 async def _table_taken(db, table: str) -> bool:

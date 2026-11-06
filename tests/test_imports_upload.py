@@ -935,6 +935,33 @@ async def test_cancelled_by_someone_else(ds, temp_dir, stalling_imports):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("table", ("a]b", 'a"b', "[x]"))
+async def test_cancel_drops_the_table_whatever_its_name(
+    ds, temp_dir, stalling_imports, table
+):
+    response = await upload(ds, actor=WRITER, table=table)
+    assert response.status_code == 202, response.text
+    job = import_registry(ds).get("data", table)
+    await wait_for(lambda: job.state == "importing" and job.table_exists)
+    cancelled = await ds.client.post(path_of(response.json()["cancel_url"]), actor=ROOT)
+    assert cancelled.status_code == 200, cancelled.text
+    assert job.state == "cancelled"
+    assert not job.table_exists
+    assert await ds.get_database("data").table_names() == ["existing"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table", ("a]b", 'a"b'))
+async def test_failed_import_drops_the_table_whatever_its_name(ds, temp_dir, table):
+    content = b'{"a": 1}\n' * 1500 + b"{oops\n"
+    response = await upload(ds, content, "bad.ndjson", actor=WRITER, table=table)
+    job = await finished(ds, response)
+    assert job.state == "failed" and job.created_table
+    assert not job.table_exists
+    assert await ds.get_database("data").table_names() == ["existing"]
+
+
+@pytest.mark.asyncio
 async def test_shutdown_drops_a_partial_table(ds, tmp_path, temp_dir, stalling_imports):
     response = await upload(ds, actor=WRITER)
     assert response.status_code == 202, response.text

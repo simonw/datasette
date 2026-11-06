@@ -1,6 +1,6 @@
 """
-Plugin hooks for the read-only ``scratch`` database that ``datasette
-data.csv`` loads into.
+Plugin hooks for loading data: the read-only ``scratch`` database that
+``datasette data.csv`` loads into, and the progress of background imports.
 
 Read-only is enforced twice:
 
@@ -16,7 +16,26 @@ Read-only is enforced twice:
 
 ``top_database`` shows, on the scratch database page, the ``--save``
 command that would load the same data into a file.
+
+Background imports (:mod:`datasette.imports.background`):
+
+- ``top_homepage``, ``top_database`` and ``top_table`` show a notice for
+  each import that is still running, and for each one that failed or was
+  cancelled (its table is incomplete). While anything is running, a little
+  script polls ``/-/imports.json`` every second and updates the text; it
+  stops when nothing is running.
+- ``/-/imports`` and ``/-/imports.json`` list the imports the actor can see:
+  those into tables they have ``view-table`` for.
+- ``POST /DATABASE/TABLE/-/cancel-import`` cancels one, for actors with the
+  ``cancel-import`` action - nobody but root by default. It changes what
+  ends up in a table, so like other actions that change data it has to be
+  granted. CSRF protection is Datasette's usual ``Sec-Fetch-Site`` /
+  ``Origin`` check on every POST.
+- A request for a table that an import has not created yet (or never
+  will, because it failed) gets a 404 that says so, with the progress.
 """
+
+import json
 
 import markupsafe
 
@@ -36,12 +55,30 @@ WRITE_ACTIONS = {
     "execute-write-sql",
 }
 REASON = "The scratch database is read-only: only the import process writes to it"
+CANCEL_ACTION = "cancel-import"
+# How often the progress notices poll /-/imports.json while anything runs
+POLL_MILLISECONDS = 1000
 
 
 def _scratch_names(datasette):
     from datasette.imports.scratch import is_scratch
 
     return [db.name for db in datasette.databases.values() if is_scratch(db)]
+
+
+@hookimpl
+def register_actions(datasette):
+    from datasette.permissions import Action
+    from datasette.resources import TableResource
+
+    return [
+        Action(
+            name=CANCEL_ACTION,
+            abbr="ci",
+            description="Cancel an import that is loading data into a table",
+            resource_class=TableResource,
+        )
+    ]
 
 
 @hookimpl
@@ -92,20 +129,312 @@ def write_wrapper(datasette, database, request, transaction):
     return refuse
 
 
+# Import progress --------------------------------------------------------------------
+
+
+def _registry(datasette):
+    from datasette.imports.background import existing_registry
+
+    return existing_registry(datasette)
+
+
+def _table_resource(database, table):
+    from datasette.resources import TableResource
+
+    return TableResource(database=database, table=table)
+
+
+async def _visible(datasette, actor, jobs):
+    "The imports whose table ``actor`` may view."
+    visible = []
+    for job in jobs:
+        if await datasette.allowed(
+            action="view-table",
+            resource=_table_resource(job.database, job.table),
+            actor=actor,
+        ):
+            visible.append(job)
+    return visible
+
+
+async def _can_cancel(datasette, actor, job):
+    return await datasette.allowed(
+        action=CANCEL_ACTION,
+        resource=_table_resource(job.database, job.table),
+        actor=actor,
+    )
+
+
+async def _import_data(datasette, request, job):
+    data = job.to_dict()
+    data["table_url"] = datasette.absolute_url(
+        request, datasette.urls.table(job.database, job.table)
+    )
+    data["cancel_url"] = datasette.absolute_url(request, _cancel_path(datasette, job))
+    data["can_cancel"] = job.active and await _can_cancel(datasette, request.actor, job)
+    return data
+
+
+def _cancel_path(datasette, job):
+    return datasette.urls.table(job.database, job.table) + "/-/cancel-import"
+
+
+def _poll_url(datasette, database=None, table=None):
+    import urllib.parse
+
+    params = {}
+    if database is not None:
+        params["database"] = database
+    if table is not None:
+        params["table"] = table
+    url = datasette.urls.path("-/imports.json")
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    return url
+
+
+def _notice_class(jobs):
+    states = {job.state for job in jobs}
+    if "failed" in states:
+        return "message-error"
+    if "cancelled" in states:
+        return "message-warning"
+    return "message-info"
+
+
+async def _render_notice(
+    datasette, request, jobs, *, intro=None, poll_url, link_tables=True
+):
+    """
+    HTML for a list of imports, with cancel buttons for actors allowed to
+    cancel, and the polling script if any import is still running.
+    """
+    h = markupsafe.escape
+    active = any(job.active for job in jobs)
+    items = []
+    for job in jobs:
+        name = h(job.table)
+        if link_tables and job.table_exists:
+            href = datasette.urls.table(job.database, job.table)
+            name = f'<a href="{h(href)}">{name}</a>'
+        progress = ""
+        if job.active:
+            value = "" if job.percent is None else f' value="{job.percent}"'
+            progress = f' <progress max="100"{value}></progress>'
+        cancel = ""
+        if job.active and await _can_cancel(datasette, request.actor, job):
+            next_url = request.path + (
+                f"?{request.query_string}" if request.query_string else ""
+            )
+            cancel = (
+                f' <form class="import-cancel" method="post" '
+                f'action="{h(_cancel_path(datasette, job))}" '
+                'style="display: inline">'
+                f'<input type="hidden" name="next" value="{h(next_url)}">'
+                '<button type="submit">Cancel import</button></form>'
+            )
+        items.append(
+            f'<li data-import-id="{h(job.id)}" data-state="{h(job.state)}">'
+            f'{name}: <span class="import-status">{h(job.status())}</span>'
+            f"{progress}{cancel}</li>"
+        )
+    poll = f' data-poll="{h(poll_url)}"' if active else ""
+    parts = [
+        f'<div class="imports-notice {_notice_class(jobs)}"{poll}>',
+        f"<p>{intro}</p>" if intro else "",
+        f'<ul class="import-list">{"".join(items)}</ul>',
+    ]
+    if active:
+        parts.append(
+            '<p class="imports-finished" hidden>Finished: '
+            '<a href="">reload this page</a> to see the data.</p>'
+        )
+    parts.append("</div>")
+    if active:
+        parts.append(_POLL_SCRIPT)
+    return markupsafe.Markup("".join(parts))
+
+
+# Updates the notices in place: the status text, the progress bar and the
+# notice's colour. Stops when nothing is running, or after repeated errors
+_POLL_SCRIPT = (
+    """<script>
+(function () {
+  if (window.datasetteImportPolling) return;
+  window.datasetteImportPolling = true;
+  var ACTIVE = ["queued", "downloading", "importing"];
+  var failures = 0;
+  function notices() {
+    return document.querySelectorAll(".imports-notice[data-poll]");
+  }
+  function update(notice, data) {
+    var running = false, failed = false, cancelled = false;
+    (data.imports || []).forEach(function (job) {
+      var item = notice.querySelector('[data-import-id="' + job.id + '"]');
+      if (!item) return;
+      var status = item.querySelector(".import-status");
+      if (status && status.textContent !== job.status) {
+        status.textContent = job.status;
+      }
+      item.setAttribute("data-state", job.state);
+      var bar = item.querySelector("progress");
+      if (ACTIVE.indexOf(job.state) !== -1) {
+        running = true;
+        if (bar && job.percent !== null) bar.value = job.percent;
+        if (bar && job.percent === null) bar.removeAttribute("value");
+      } else {
+        if (bar) bar.remove();
+        var form = item.querySelector("form");
+        if (form) form.remove();
+        failed = failed || job.state === "failed";
+        cancelled = cancelled || job.state === "cancelled";
+      }
+    });
+    if (failed || cancelled) {
+      notice.classList.remove("message-info", "message-warning");
+      notice.classList.add(failed ? "message-error" : "message-warning");
+    }
+    if (!running) {
+      notice.removeAttribute("data-poll");
+      var finished = notice.querySelector(".imports-finished");
+      if (finished) finished.hidden = false;
+    }
+  }
+  function poll() {
+    var list = Array.prototype.slice.call(notices());
+    if (!list.length) return;
+    if (document.hidden) {
+      setTimeout(poll, """
+    + str(POLL_MILLISECONDS * 2)
+    + """);
+      return;
+    }
+    Promise.all(list.map(function (notice) {
+      return fetch(notice.getAttribute("data-poll"), {
+        credentials: "same-origin",
+        headers: {"accept": "application/json"}
+      }).then(function (response) {
+        if (!response.ok) throw new Error(response.status);
+        return response.json();
+      }).then(function (data) { update(notice, data); });
+    })).then(function () {
+      failures = 0;
+    }, function () {
+      failures += 1;
+    }).then(function () {
+      if (failures < 10) {
+        setTimeout(poll, """
+    + str(POLL_MILLISECONDS)
+    + """ * (failures + 1));
+      }
+    });
+  }
+  setTimeout(poll, """
+    + str(POLL_MILLISECONDS)
+    + """);
+})();
+</script>"""
+)
+
+
+def _shown(jobs):
+    """
+    Running imports, and failed or cancelled ones (their tables are
+    incomplete). Finished ones too while others run, so the list does not
+    jump about.
+    """
+    if any(job.active for job in jobs):
+        return [job for job in jobs if job.table_exists or job.state != "done"]
+    return [job for job in jobs if job.state in ("failed", "cancelled")]
+
+
+@hookimpl
+def top_homepage(datasette, request):
+    registry = _registry(datasette)
+    if registry is None or not registry.imports():
+        return None
+
+    async def inner():
+        jobs = _shown(await _visible(datasette, request.actor, registry.imports()))
+        if not jobs:
+            return None
+        return await _render_notice(
+            datasette, request, jobs, poll_url=_poll_url(datasette)
+        )
+
+    return inner
+
+
+@hookimpl
+def top_table(datasette, request, database, table):
+    registry = _registry(datasette)
+    job = registry.get(database, table) if registry is not None else None
+    if job is None or job.state == "done":
+        return None
+
+    async def inner():
+        if job.active:
+            intro = (
+                "This table is still being imported, so you are seeing the "
+                "rows loaded so far. Counts, facets and sorting will change "
+                "as more arrive."
+            )
+        else:
+            intro = "This table is incomplete."
+        return await _render_notice(
+            datasette,
+            request,
+            [job],
+            intro=intro,
+            poll_url=_poll_url(datasette, database, table),
+            link_tables=False,
+        )
+
+    return inner
+
+
 @hookimpl
 def top_database(datasette, request, database):
     from datasette.imports.scratch import is_scratch
-    from datasette.imports.sources import quote_command
 
     db = datasette.databases.get(database)
-    if db is None or not is_scratch(db) or not db.save_command:
+    if db is None:
         return None
+    registry = _registry(datasette)
+    jobs = registry.imports(database) if registry is not None else []
+    if not jobs and not (is_scratch(db) and db.save_command):
+        return None
+
+    async def inner():
+        parts = []
+        shown = _shown(await _visible(datasette, request.actor, jobs))
+        if shown:
+            parts.append(
+                await _render_notice(
+                    datasette,
+                    request,
+                    shown,
+                    poll_url=_poll_url(datasette, database),
+                )
+            )
+        if is_scratch(db) and db.save_command:
+            parts.append(_save_banner(datasette, db, database, jobs))
+        return markupsafe.Markup("".join(parts))
+
+    return inner
+
+
+def _save_banner(datasette, db, database, jobs):
+    from datasette.imports.sources import quote_command
+
     h = markupsafe.escape
+    if jobs:
+        names = [job.table for job in jobs if job.table_exists]
+    else:
+        names = [loaded.table for loaded in db.loaded if loaded.created]
     tables = ", ".join(
-        f'<a href="{h(datasette.urls.table(database, loaded.table))}">'
-        f"{h(loaded.table)}</a>"
-        for loaded in db.loaded
-        if loaded.created
+        f'<a href="{h(datasette.urls.table(database, name))}">{h(name)}</a>'
+        for name in names
     )
     parts = [
         (
@@ -137,4 +466,217 @@ def top_database(datasette, request, database):
         f"<p>Then <code>{h(quote_command(['datasette', save_path]))}</code> "
         "opens it without loading anything.</p></div>"
     )
-    return markupsafe.Markup("".join(parts))
+    return "".join(parts)
+
+
+@hookimpl
+def handle_exception(datasette, request, exception):
+    from datasette.utils.asgi import TableNotFound
+
+    if not isinstance(exception, TableNotFound):
+        return None
+    registry = _registry(datasette)
+    if registry is None:
+        return None
+    job = registry.get(exception.database_name, exception.table)
+    if job is None or (job.table_exists and not job.active):
+        return None
+
+    async def inner():
+        from datasette.utils.asgi import Response
+
+        if not (await _visible(datasette, request.actor, [job])):
+            return None
+        if job.active:
+            message = f"Table {job.table} is not ready yet: {job.status()}"
+        else:
+            message = f"Table {job.table} was not created: {job.status()}"
+        if request.path.endswith(".json"):
+            return Response.json(
+                {
+                    "ok": False,
+                    "error": message,
+                    "status": 404,
+                    "title": None,
+                    "import": await _import_data(datasette, request, job),
+                },
+                status=404,
+            )
+        notice = await _render_notice(
+            datasette,
+            request,
+            [job],
+            intro=(
+                "This table is being imported and will appear here soon."
+                if job.active
+                else "This table could not be imported."
+            ),
+            poll_url=_poll_url(datasette, job.database, job.table),
+            link_tables=False,
+        )
+        html = await datasette.render_template(
+            "imports.html",
+            {
+                "title": job.table,
+                "database": job.database,
+                "notice": notice,
+                "imports_url": datasette.urls.path("-/imports"),
+            },
+            request=request,
+            view_name="imports",
+        )
+        return Response.html(html, status=404)
+
+    return inner
+
+
+@hookimpl
+def register_routes(datasette):
+    return [
+        (r"^/-/imports(\.(?P<format>json))?$", imports_view),
+        (
+            r"^/(?P<database>[^/]+)/(?P<table>[^/]+)/-/cancel-import$",
+            cancel_import_view,
+        ),
+    ]
+
+
+async def imports_view(datasette, request):
+    """
+    ``/-/imports.json``: the imports the actor can see, optionally only those
+    into ``?database=`` or ``?table=``. ``/-/imports`` is the same as a page.
+    """
+    from datasette.utils.asgi import Response
+
+    await datasette.ensure_permission(action="view-instance", actor=request.actor)
+    registry = _registry(datasette)
+    jobs = registry.imports() if registry is not None else []
+    database = request.args.get("database")
+    table = request.args.get("table")
+    if database is not None:
+        jobs = [job for job in jobs if job.database == database]
+    if table is not None:
+        jobs = [job for job in jobs if job.table.lower() == table.lower()]
+    jobs = await _visible(datasette, request.actor, jobs)
+    if request.url_vars.get("format") == "json":
+        headers = {"cache-control": "no-store"}
+        if datasette.cors:
+            from datasette.utils import add_cors_headers
+
+            add_cors_headers(headers)
+        return Response.json(
+            {
+                "ok": True,
+                "active": sum(1 for job in jobs if job.active),
+                "imports": [await _import_data(datasette, request, j) for j in jobs],
+            },
+            headers=headers,
+        )
+    notice = ""
+    if jobs:
+        notice = await _render_notice(
+            datasette,
+            request,
+            jobs,
+            poll_url=_poll_url(datasette, database, table),
+        )
+    return Response.html(
+        await datasette.render_template(
+            "imports.html",
+            {
+                "title": "Imports",
+                "database": None,
+                "notice": notice,
+                "imports_url": None,
+            },
+            request=request,
+            view_name="imports",
+        )
+    )
+
+
+async def cancel_import_view(datasette, request):
+    """
+    ``POST /DATABASE/TABLE/-/cancel-import`` cancels the import into that
+    table and waits (up to five seconds) for it to stop. A form post
+    redirects back to the page it came from, with a message; anything
+    else gets JSON: ``{"ok": true, "import": {...}}``.
+    """
+    from datasette.utils import tilde_decode
+    from datasette.utils.asgi import Response
+
+    database = tilde_decode(request.url_vars["database"])
+    table = tilde_decode(request.url_vars["table"])
+    content_type = request.headers.get("content-type", "")
+    is_form = content_type.startswith(
+        ("application/x-www-form-urlencoded", "multipart/form-data")
+    )
+
+    def error(message, status):
+        return Response.json({"ok": False, "errors": [message]}, status=status)
+
+    if request.method != "POST":
+        return Response.json(
+            {"ok": False, "errors": ["Use POST to cancel an import"]},
+            status=405,
+            headers={"allow": "POST"},
+        )
+    registry = _registry(datasette)
+    job = registry.get(database, table) if registry is not None else None
+    if job is None or not await _visible(datasette, request.actor, [job]):
+        return error(f"No import into {database}.{table}", 404)
+    if not await _can_cancel(datasette, request.actor, job):
+        return error(
+            "Permission denied: you cannot cancel imports into this table", 403
+        )
+    next_url = None
+    if is_form:
+        next_url = (await request.post_vars()).get("next")
+    else:
+        body = await request.post_body()
+        if body.strip():
+            try:
+                json.loads(body)
+            except ValueError:
+                return error("Invalid JSON body", 400)
+    was_active = job.cancel()
+    if was_active:
+        await job.wait(timeout=5)
+    if is_form:
+        from datasette.app import Datasette
+
+        if was_active:
+            datasette.add_message(
+                request, f"Cancelled the import into {table}", Datasette.INFO
+            )
+        else:
+            datasette.add_message(
+                request,
+                f"The import into {table} had already finished",
+                Datasette.WARNING,
+            )
+        return Response.redirect(_safe_next(datasette, next_url, job))
+    if not was_active:
+        return Response.json(
+            {
+                "ok": False,
+                "errors": [f"The import into {table} is not running ({job.state})"],
+                "import": await _import_data(datasette, request, job),
+            },
+            status=409,
+        )
+    return Response.json(
+        {"ok": True, "import": await _import_data(datasette, request, job)}
+    )
+
+
+def _safe_next(datasette, next_url, job):
+    # Only a path on this site: never //evil.example or https://...
+    if (
+        next_url
+        and next_url.startswith("/")
+        and not next_url.startswith("//")
+        and "\\" not in next_url
+    ):
+        return next_url
+    return datasette.urls.table(job.database, job.table)

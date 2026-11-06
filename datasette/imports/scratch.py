@@ -305,14 +305,20 @@ async def drop_table(db, table: str) -> None:
         await db.execute_write_fn(_drop)
 
 
-# Tables that load_source() is loading right now, per database. A name is
+# Tables that are being loaded right now, per database - by load_source()
+# or a background import (datasette/imports/background.py). A name is
 # reserved (synchronously, on the event loop) before anything else happens
 # and released when the load ends, so two imports in this process can never
 # both decide that they are the one creating a table
 _loading = weakref.WeakKeyDictionary()
 
 
-def _reserve(db, table: str) -> None:
+def reserve_table(db, table: str) -> None:
+    """
+    Claim ``table`` in ``db`` for an import in this process, or raise
+    :class:`TableExists` if another import has claimed it. Call
+    :func:`release_table` when the import ends, however it ends.
+    """
     names = _loading.setdefault(db, set())
     # SQLite compares table names case-insensitively (ASCII only, so this is
     # if anything stricter)
@@ -322,10 +328,19 @@ def _reserve(db, table: str) -> None:
     names.add(key)
 
 
-def _release(db, table: str) -> None:
+def release_table(db, table: str) -> None:
+    "Give up a claim made with :func:`reserve_table`."
     names = _loading.get(db)
     if names is not None:
         names.discard(table.lower())
+
+
+def is_reserved(db, table: str) -> bool:
+    return table.lower() in _loading.get(db, ())
+
+
+_reserve = reserve_table
+_release = release_table
 
 
 def _quote(name: str) -> str:

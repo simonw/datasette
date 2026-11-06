@@ -35,6 +35,7 @@ Nothing here needs a Datasette instance.
 """
 
 import asyncio
+import contextlib
 import dataclasses
 import os
 import re
@@ -379,6 +380,96 @@ def spool_path(path: str, directory: str, progress=None) -> str:
         return spool(stream, directory, "pipe-", progress)
 
 
+async def spool_in_thread(
+    open_stream: Callable,
+    directory: str,
+    prefix: str = "stdin-",
+    progress: "ProgressCallback | None" = None,
+    *,
+    progress_interval: float = 0.25,
+) -> str:
+    """
+    :func:`spool` on a daemon thread of its own, for a stream that can block
+    for as long as the program writing it likes: standard input, a pipe.
+    ``open_stream()`` is called on that thread and returns a binary stream,
+    which is closed afterwards unless it is ``sys.stdin.buffer``.
+
+    The event loop never waits for a read. Cancelling returns at once and
+    removes the partial file; the thread stops at its next read, or with
+    the process (a read from a pipe cannot be interrupted, and a thread in
+    the default executor would make ``asyncio.run()`` and interpreter exit
+    wait for it). ``progress(bytes, None)`` is called on the event loop, at
+    most every ``progress_interval`` seconds and once at the end.
+    """
+    import threading
+
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    stop = threading.Event()
+    fd, path = tempfile.mkstemp(dir=directory, prefix=prefix)
+
+    def call_on_loop(fn, *args):
+        try:
+            loop.call_soon_threadsafe(fn, *args)
+        except RuntimeError:
+            # The loop has closed: nobody is waiting any more
+            pass
+
+    def report(done):
+        if progress is not None and not future.done():
+            progress(done, None)
+
+    def settle(result, error):
+        if future.done():
+            return
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(result)
+
+    def work():
+        stream = None
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                stream = open_stream()
+                read = getattr(stream, "read1", stream.read)
+                done = 0
+                last = 0.0
+                while not stop.is_set():
+                    chunk = read(1024 * 1024)
+                    if not chunk:
+                        break
+                    fp.write(chunk)
+                    done += len(chunk)
+                    now = time.monotonic()
+                    if now - last >= progress_interval:
+                        last = now
+                        call_on_loop(report, done)
+            if stop.is_set():
+                _unlink(path)
+                return
+            call_on_loop(report, done)
+            call_on_loop(settle, path, None)
+        except BaseException as ex:  # noqa: BLE001 - handed to the loop
+            _unlink(path)
+            call_on_loop(settle, None, ex)
+        finally:
+            if stream is not None and stream is not getattr(sys.stdin, "buffer", None):
+                with contextlib.suppress(Exception):
+                    stream.close()
+
+    thread = threading.Thread(
+        target=work, name=f"datasette-spool-{prefix.rstrip('-')}", daemon=True
+    )
+    thread.start()
+    try:
+        return await future
+    except BaseException:
+        stop.set()
+        _unlink(path)
+        raise
+
+
 async def download(
     url: str,
     directory: str,
@@ -451,6 +542,26 @@ def _unlink(path):
         pass
 
 
+def use_local_file(source: Source) -> bool:
+    """
+    For a file source: set ``source.path`` to the file and return True if
+    it is a regular file, return False if it is something that has to be
+    copied first (a named pipe, ``/dev/fd/N``). Raises :class:`SourceError`
+    if it does not exist or is a directory.
+    """
+    location = source.location
+    try:
+        mode = os.stat(location).st_mode
+    except FileNotFoundError:
+        raise SourceError(f"Path '{location}' does not exist.") from None
+    if stat.S_ISDIR(mode):
+        raise SourceError(f"{source.spec}: '{location}' is a directory")
+    if stat.S_ISREG(mode):
+        source.path = location
+        return True
+    return False
+
+
 async def fetch(
     source: Source,
     directory: str,
@@ -471,24 +582,21 @@ async def fetch(
         source.temporary = True
     elif source.kind == "stdin":
         stream = stdin if stdin is not None else sys.stdin.buffer
-        source.path = await asyncio.get_running_loop().run_in_executor(
-            None, spool, stream, directory, "stdin-", progress
+        source.path = await spool_in_thread(
+            lambda: stream, directory, "stdin-", progress
         )
         source.temporary = True
     else:
         location = source.location
-        try:
-            mode = os.stat(location).st_mode
-        except FileNotFoundError:
-            raise SourceError(f"Path '{location}' does not exist.") from None
-        if stat.S_ISDIR(mode):
-            raise SourceError(f"{source.spec}: '{location}' is a directory")
-        if stat.S_ISREG(mode):
-            source.path = location
-        else:
-            # A named pipe or /dev/fd/N: sniffing would consume it
-            source.path = await asyncio.get_running_loop().run_in_executor(
-                None, spool_path, location, directory, progress
+        if not use_local_file(source):
+            # A named pipe or /dev/fd/N: sniffing would consume it. Opening
+            # a named pipe blocks until something writes to it, so that
+            # happens on the spooling thread too
+            source.path = await spool_in_thread(
+                lambda: open(location, "rb"),  # noqa: SIM115 - closed by the thread
+                directory,
+                "pipe-",
+                progress,
             )
             source.temporary = True
 

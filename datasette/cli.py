@@ -29,16 +29,19 @@ from .app import (
     pm,
 )
 from .database import Database
+from .imports.background import TerminalReporter, import_registry
 from .imports.loaders import get_loaders
 from .imports.scratch import (
     DEFAULT_BATCH_SIZE,
     SAVE_BATCH_SIZE,
     SCRATCH_NAME,
+    LoadedTable,
     MemoryScratchDatabase,
     ReloadSession,
     ScratchDatabase,
     check_save_file,
     create_save_file,
+    drop_table,
     free_bytes,
     is_scratch,
     load_sources,
@@ -62,6 +65,7 @@ from .imports.sources import (
     save_command,
     spool,
     suggest_save_path,
+    use_local_file,
 )
 from .inspect import inspect_tables
 from .utils import (
@@ -587,13 +591,15 @@ def serve(
     internal,
     save=None,
     return_instance=False,
+    background_imports=False,
 ):
     """
     Serve up specified SQLite database files with a web UI
 
     FILES can also be CSV, TSV, JSON or newline-delimited JSON files, http://
     or https:// URLs, or - for standard input. These are loaded into a
-    temporary read-only database called scratch, or into the --save file.
+    temporary read-only database called scratch, or into the --save file,
+    in the background while Datasette serves (--get loads them first).
     Use name:source to pick a table name and source:csv (or tsv, json,
     ndjson) to skip format detection; for standard input that is stdin:csv.
 
@@ -748,16 +754,32 @@ def serve(
 
     data_import = None
     if source_args:
+        # Without --get, inputs load in the background while Datasette
+        # serves, so only what can fail at once is checked here
+        background = background_imports if return_instance else not get
         with _sigterm_interrupts():
             data_import = _prepare_import(
-                ds, source_args, save, reload, reloader, memory, plugins_dir
+                ds,
+                source_args,
+                save,
+                reload,
+                reloader,
+                memory,
+                plugins_dir,
+                background=background,
             )
 
     if return_instance:
-        # Private utility mechanism for writing unit tests
+        # Private utility mechanism for writing unit tests. Loads the inputs
+        # before returning, unless background_imports=True: then they are
+        # registered as background tasks, which start with the first request
+        # or ds.start_background_tasks()
         if data_import:
-            with _sigterm_interrupts():
-                run_sync(data_import.run)
+            if background_imports:
+                data_import.start_in_background(ds)
+            else:
+                with _sigterm_interrupts():
+                    run_sync(data_import.run)
         return ds
 
     if headers and not get:
@@ -812,11 +834,10 @@ def serve(
     # on the loop (asyncio.create_task, Lock/Queue/Event objects, ...) is
     # still alive when the server starts handling requests.
     async def _serve_async():
-        # Load CSV/JSON/URL/stdin inputs before anything else, so startup
-        # hooks and the first request see the tables
+        # CSV/JSON/URL/stdin inputs load in background tasks, which start
+        # once the server does: see datasette/imports/background.py
         if data_import:
-            with _sigterm_interrupts():
-                await data_import.run()
+            data_import.start_in_background(ds)
 
         # Populate internal catalog tables before invoke_startup
         await check_databases(ds)
@@ -1013,6 +1034,96 @@ class _DataImport:
         #: Appended to "into table T" in the summary
         self.where = ""
 
+    def start_in_background(self, ds):
+        """
+        Import each source in a background task of its own (see
+        datasette/imports/background.py), printing progress on stderr.
+        Tables kept from earlier in a --reload session are not loaded again.
+
+        A failure or cancellation keeps the rows loaded so far in scratch,
+        where the pages say the table is incomplete, but drops them from a
+        --save file, which has nowhere to say so.
+        """
+        db = self.db
+        session = self.session
+        target_path = self.target_path
+        registry = import_registry(ds)
+        registry.add_listener(
+            TerminalReporter(sys.stderr, where=self.where, warn_large=is_scratch(db))
+        )
+        for source in self.plan.reuse:
+            loaded = LoadedTable(
+                source=source,
+                table=source.table,
+                loader="?",
+                rows=0,
+                seconds=0.0,
+                reused=True,
+            )
+            if is_scratch(db):
+                db.loaded.append(loaded)
+            click.echo(_describe_loaded(loaded, self.where), err=True)
+        drops = {table.lower(): table for table in self.plan.drop}
+        for source in self.plan.load:
+            old_table = drops.pop(source.table.lower(), None)
+            registry.start(
+                db,
+                source,
+                workdir=self.workdir,
+                on_error="keep" if is_scratch(db) else "drop",
+                batch_size=(DEFAULT_BATCH_SIZE if is_scratch(db) else SAVE_BATCH_SIZE),
+                before=functools.partial(self._before, source, old_table),
+                on_fetched=self._on_fetched,
+                on_finish=self._on_finish,
+            )
+        if drops:
+            # Tables an earlier --reload worker loaded from inputs that are
+            # no longer there: the command line is the same for every
+            # worker, so in practice there are none
+            async def drop_old(datasette):
+                for table in drops.values():
+                    await drop_table(db, table)
+                    if session:
+                        session.forget(target_path, table)
+
+            ds.add_background_task(drop_old, name=f"drop old tables {db.name}")
+
+    async def _before(self, source, old_table, job):
+        if old_table is not None:
+            # An earlier --reload worker loaded this input before it changed
+            await drop_table(self.db, old_table)
+            if self.session:
+                self.session.forget(self.target_path, old_table)
+        if self.session:
+            # Not complete until on_finish says so: a worker that is
+            # restarted part way through leaves a table to load again
+            self.session.remember(self.target_path, source, complete=False)
+
+    def _on_fetched(self, job):
+        if self.session:
+            # Keep the download or stdin copy for the next --reload worker
+            self.session.remember_copy(job.source)
+            job.source.temporary = False
+
+    def _on_finish(self, job):
+        if job.state != "done":
+            return
+        if self.session:
+            self.session.remember(
+                self.target_path, job.source, complete=True, loader=job.loader
+            )
+        if is_scratch(self.db) and job.table_exists:
+            self.db.loaded.append(
+                LoadedTable(
+                    source=job.source,
+                    table=job.table,
+                    loader=job.loader,
+                    rows=job.rows,
+                    seconds=job.seconds or 0.0,
+                    widenings=list(job.widenings),
+                )
+            )
+
     async def run(self):
         status = StatusLine(sys.stderr)
         start = time.perf_counter()
@@ -1135,12 +1246,21 @@ def _describe_loaded(loaded, where=""):
     return line
 
 
-def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir):
+def _prepare_import(
+    ds, source_args, save, reload, reloader, memory, plugins_dir, background=False
+):
     """
     Parse the data source arguments, pick table names, check them against
     the --save file, download URLs, read stdin and sniff every input - so
     that bad input fails before anything is loaded - then add the database
     they load into to ``ds``.
+
+    With ``background=True`` URLs, standard input and pipes are left for
+    their background imports to fetch, so the server can start at once;
+    local files are still checked and sniffed here, because a mistake on
+    the command line is better reported straight away. Standard input is
+    still read here in a --reload session: a reload part way through
+    reading it would lose what had been read.
     """
     formats = [loader.name for loader in get_loaders()]
     try:
@@ -1200,9 +1320,19 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir
                 continue
             if source.kind == "stdin":
                 check_stdin_available()
+                if background and not session:
+                    continue
                 # On the main thread, so Ctrl+C interrupts the read
                 source.path = spool(sys.stdin.buffer, workdir)
                 source.temporary = True
+            elif background and source.needs_copy:
+                if source.kind == "file" and os.path.isdir(source.location):
+                    raise SourceError(
+                        f"{source.spec}: '{source.location}' is a directory"
+                    )
+                continue
+            if source.kind == "file" and use_local_file(source):
+                continue
             progress = None
             if source.kind == "url":
                 status.start(f"Downloading {source.location}")
@@ -1219,7 +1349,8 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir
                 session.remember_copy(source)
                 source.temporary = False
         for source in plan.load:
-            sniff(source)
+            if source.path is not None:
+                sniff(source)
     except SourceError as ex:
         status.clear()
         if not session:
@@ -1237,6 +1368,13 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir
         try:
             if create_save_file(save):
                 created_file = save
+                if background:
+                    # Pages are read while rows are written: in the default
+                    # rollback journal mode a long write transaction (a
+                    # column changing type rebuilds the table) locks
+                    # readers out. Only for a file created here: an
+                    # existing database keeps its journal mode
+                    _enable_wal(save)
             else:
                 free_before = free_bytes(save)
         except (OSError, sqlite3.Error, SourceError) as ex:
@@ -1295,6 +1433,14 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir
     elif db.name != SCRATCH_NAME:
         data_import.where = f" in {db.name}"
     return data_import
+
+
+def _enable_wal(path):
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    finally:
+        conn.close()
 
 
 def _download_progress(source, status, warn):

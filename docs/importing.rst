@@ -279,7 +279,7 @@ With :ref:`--get <cli_datasette_get>`, Datasette loads every input before it han
 
     datasette events.csv --get '/scratch/events.json?_shape=array&_size=3'
 
-With ``--reload``, Datasette restarts when your code, templates, plugins or metadata change, as usual, and also when one of the input files changes. Within one ``--reload`` session:
+With ``--reload``, Datasette restarts when code such as a plugin, the configuration or the metadata changes, as usual, and also when one of the input files changes. Within one ``--reload`` session:
 
 - URLs are downloaded and standard input is read only once. Later restarts load the same copy. Stop and start Datasette to download a URL again.
 - ``scratch`` lasts until you stop Datasette. A restart keeps the tables whose inputs have not changed, and loads just the inputs that changed again::

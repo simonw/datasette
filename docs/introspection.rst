@@ -323,7 +323,7 @@ The top-level ``launched`` flag reports whether the instance has run its one-tim
 /-/imports
 ----------
 
-Lists the :ref:`background imports <importing_background>` this Datasette instance is running or has run - for example the files passed to ``datasette data.csv`` - with their progress. Up to 200 finished imports are kept. ``/-/imports`` shows them as a page, with the same progress bars and "Cancel import" buttons as the progress notices on other pages, and ``/-/imports.json`` returns them as JSON.
+Lists the :ref:`background imports <importing_background>` this Datasette instance is running or has run - for example the files passed to ``datasette data.csv`` - with their progress. Up to 200 finished imports are kept. ``/-/imports`` shows them as a page, with the same progress bars and "Cancel import" buttons as the progress notices on other pages and where each import came from, and ``/-/imports.json`` returns them as JSON. The page labels each import ``database / table`` when they are into more than one database.
 
 This endpoint needs ``view-instance``, and only lists imports into tables the actor is allowed to view. Add ``?database=name`` to only list imports into that database, and ``?table=name`` to only list imports into tables of that name. Imports that ``--get`` runs before answering its request are not listed, since they have finished by the time any request is handled.
 

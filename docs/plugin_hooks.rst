@@ -1201,7 +1201,7 @@ Datasette never looks at the file extension or a ``Content-Type``. Every loader 
 1. Every loader sniffs the first 64KB of the file.
 2. If no loader scores ``0.7`` or more and the file is longer than that, Datasette reads four times as much (256KB, then 1MB) and asks every loader again. Return a low score when you can't tell yet.
 3. The highest score wins. If two loaders tie, a plugin loader beats a built-in loader, then loaders are ordered by ``name``.
-4. If no loader scores at least ``0.1``, the import fails with a "Could not recognize the file format" error. An empty file fails with "File is empty".
+4. If no loader scores at least ``0.1``, the import fails. The error says that the file does not look like any format Datasette can read, lists the formats by name and suggests naming one: see :ref:`importing_formats`. It does not include the scores, which are only logged, at ``DEBUG`` level - use ``sniff_path()``, below, to see them. An empty file, or one with nothing but whitespace in it, fails with an error that says it is empty.
 5. If ``sniff()`` raises an exception, that loader scores ``0.0`` and Datasette logs a warning. Scores outside the range ``0.0`` to ``1.0`` are clamped.
 
 To make the same choice in your own code, ``sniff_path(path)`` in ``datasette.imports.loaders`` returns ``(first_bytes, scores)`` after steps 1 and 2, with the scores ranked as in step 3, and ``choose_loader(scores, first_bytes)`` applies step 4: it returns the winning loader or raises ``EmptyFile`` or ``UnrecognizedFormat``, both subclasses of ``LoaderError`` with the scores in ``.scores``. ``load_path(path)`` does all of that and starts loading.

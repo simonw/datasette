@@ -53,6 +53,10 @@ Each argument that is not a SQLite database can be one of the following:
 - ``-``, to read standard input: ``curl -s https://example.com/data.json | datasette -``
 - A named pipe or a shell process substitution, which is copied to a temporary file first: ``datasette <(gunzip -c data.csv.gz)``
 
+A file that starts with SQLite's header is served as a database, as usual. So is a completely empty file, as Datasette has always done - unless its name ends in ``.csv``, ``.tsv``, ``.tab``, ``.json``, ``.ndjson``, ``.jsonl``, ``.nl``, ``.txt`` or ``.geojson``. An empty file with one of those extensions, or any other data file with nothing but whitespace in it, stops Datasette with an error::
+
+    Error: empty.csv is empty
+
 Datasette picks a table name for each input:
 
 - For a file, the file name without its extension. Anything other than letters, numbers and underscores becomes ``_``, so ``Sales Report (2024).csv`` loads into ``Sales_Report_2024``.
@@ -87,9 +91,13 @@ Datasette works out the format of each input from its contents (see :ref:`import
 
 The suffix is only treated as a format if it is the name of one. A colon in a URL's query string is always part of the URL.
 
-For standard input, use ``stdin`` and the format, as in ``stdin:ndjson`` above. ``-:csv`` works too, but because it starts with ``-`` the command line would read it as an option. To use it, put it after ``--`` and spell out the ``serve`` command, which can usually be left out::
+For standard input, use ``stdin`` and the format, as in ``stdin:ndjson`` above. ``-:csv`` works too, but because it starts with ``-`` the command line would read it as an option. To use it, put it after ``--``::
 
-    cat data.txt | datasette serve -- -:csv
+    cat data.txt | datasette -- -:csv
+
+Everything after ``--`` is an input, so any options have to go before it::
+
+    cat data.txt | datasette --get /scratch/stdin.json -- -:csv
 
 .. _importing_formats:
 
@@ -120,7 +128,7 @@ Text with no delimiters at all is read as CSV with a single column, as long as i
 
 If Datasette can't recognize an input it stops with an error before loading anything::
 
-    Error: Could not load ragged.csv: it does not look like any format Datasette can read (csv, json, ndjson, tsv). ...
+    Error: Could not load ragged.csv: it does not look like any format Datasette can read (csv, json, ndjson, tsv). To load it as one of these, add the format to the argument: FILE:csv, or stdin:csv for standard input
 
 Adding the format, as in ``ragged.csv:csv``, often fixes this: see :ref:`importing_messy`.
 
@@ -143,6 +151,8 @@ The ``scratch`` database page lists the tables that were loaded and shows the co
 
 The suggested file name is one that does not exist yet. Passwords, keys, tokens and signatures in URLs are shown as ``REDACTED`` in that command, since anyone who can see the page can see it: put the real values back before you run it. If one of the inputs was standard input you will need to pipe the same data into the command again.
 
+If you use :ref:`permissions <authentication_permissions>` to hide some of the tables, the list only names the tables the actor viewing the page is allowed to see. The command names every input, so it is only shown to actors who are allowed to view every table it loads.
+
 .. _importing_save:
 
 Saving to a SQLite file
@@ -156,7 +166,9 @@ If the file does not exist Datasette creates it, in SQLite's `WAL mode <https://
 
     datasette events.db
 
-A database in WAL mode can keep its latest changes in a separate ``events.db-wal`` file next to it, and that file can still be there after Datasette stops. SQLite reads it whenever the database is opened again, so ``datasette events.db`` sees every row, but a copy of ``events.db`` on its own might be missing some or all of them. Before you copy the database somewhere else, stop Datasette and merge that file into the database::
+A database in WAL mode keeps its latest changes in a separate ``events.db-wal`` file next to it while it is in use. When Datasette stops normally, for example with ``Ctrl+C``, it merges that file into a ``--save`` file that it created, so ``events.db`` on its own has every row and you can copy it anywhere.
+
+The ``events.db-wal`` file can still be there afterwards if Datasette did not stop normally - if it was killed with ``SIGKILL`` or crashed, say - or if you used ``--save`` with an existing database that was already in WAL mode. SQLite reads it whenever the database is opened again, so ``datasette events.db`` sees every row, but a copy of ``events.db`` on its own might be missing some or all of them. Before you copy such a database somewhere else, stop Datasette and merge that file into the database::
 
     sqlite3 events.db 'PRAGMA wal_checkpoint(TRUNCATE)'
 
@@ -179,12 +191,12 @@ Datasette starts serving as soon as it has checked the inputs, then imports them
 
 While an import runs, Datasette shows its progress:
 
-- The homepage, the database page and the page for the table show a progress bar for each import, updated every second.
-- The table page shows the rows loaded so far, with a note that counts, facets and sorting will change as more rows arrive. It suggests reloading the page when the import has finished.
-- Visiting a table that has not been created yet, because its import is still queued or downloading, shows a "will appear here soon" page with the progress, with a ``404`` status. If the import failed before it created the table, the page says so.
-- ``/-/imports`` lists every import and ``/-/imports.json`` returns the same information as JSON: see :ref:`JsonDataView_imports`.
+- The homepage, the database page and the page for the table show a progress bar for each import, updated every second. On the homepage and the database page, each table's name becomes a link to it once the table has been created, and imports into different databases are labelled ``database / table``.
+- The table page shows the rows loaded so far, with a note that counts, facets and sorting will change as more rows arrive. If the page is still open when the import ends, the note changes to "Import finished." and suggests reloading the page to see all of the data - or to "Import failed." or "Import cancelled.".
+- Visiting a table that has not been created yet, because its import is still queued or downloading, shows a "will appear here soon" page with the progress, with a ``404`` status. If you leave it open it reloads itself once the table exists, showing the table. If the import failed before it created the table, the page says so. The table's ``.json`` URL returns a ``404`` in the :ref:`standard error format <json_api_errors>`, with an ``import`` key that describes the import as :ref:`/-/imports.json <JsonDataView_imports>` does.
+- ``/-/imports`` lists every import, with where each one came from, and ``/-/imports.json`` returns the same information as JSON: see :ref:`JsonDataView_imports`.
 - Each import is a :ref:`background task <datasette_add_background_task>` called ``import DATABASE.TABLE``, listed on the :ref:`/-/tasks <JsonDataView_tasks>` page for actors with the ``permissions-debug`` permission.
-- Datasette prints a line to the terminal (standard error) when each import starts, every ten seconds while it runs and when it finishes:
+- Datasette prints a line to the terminal (standard error) when each import from the command line starts, every ten seconds while it runs and when it finishes, then a summary once there is more than one and they have all finished. :ref:`Uploads <importing_upload>` are not printed. Tabs, newlines and other control characters in file names, table and column names, notes and errors are printed as spaces:
 
 ::
 
@@ -201,12 +213,16 @@ If an import into ``scratch`` fails part way through, the rows loaded before the
 
     import failed: Line 4 is not valid JSON: Expecting ',' delimiter at column 25 (the table has the first 3 rows)
 
+When everything has finished, the homepage and the database page go on listing the imports that left an incomplete table, or failed before they created one. They leave out failed or cancelled :ref:`uploads <importing_upload>` and imports into a ``--save`` file, which leave nothing behind because their rows are removed again, and list at most the ten most recent finished imports, with a link to ``/-/imports`` for the rest. ``/-/imports`` lists them all, saying how each one ended.
+
 .. _importing_cancel:
 
 Cancelling an import
 ~~~~~~~~~~~~~~~~~~~~
 
-Actors with the :ref:`cancel-import <actions_cancel_import>` permission see a "Cancel import" button next to each running import. Like a failed import, a cancelled import into ``scratch`` keeps the rows loaded so far and its table is labelled incomplete. A cancelled import into a ``--save`` file is removed.
+Actors with the :ref:`cancel-import <actions_cancel_import>` permission see a "Cancel import" button next to each running import. Like a failed import, a cancelled import into ``scratch`` keeps the rows loaded so far and its table is labelled incomplete. A cancelled import into a ``--save`` file is removed. The button asks first, saying which of those will happen::
+
+    Stop importing events? The rows imported so far will be kept, and the table marked incomplete.
 
 Only the root user can cancel imports by default. Start Datasette with ``--root`` and sign in using the link it prints to see the buttons::
 
@@ -275,7 +291,7 @@ Datasette waits up to five seconds for the import to stop, then responds with th
       }
     }
 
-The ``import`` key is only included if the actor is allowed to view the table. Errors are returned as ``{"ok": false, "errors": [...]}`` with one of these status codes:
+The ``import`` key is only included if the actor is allowed to view the table. Errors use Datasette's :ref:`standard error format <json_api_errors>`, ``{"ok": false, "error": "...", "errors": ["..."], "status": 404}``, with one of these status codes:
 
 - ``403`` if the actor cannot cancel imports into that table.
 - ``404`` if there is no import into that table, or the actor can neither cancel it nor see the table.
@@ -289,7 +305,7 @@ Stopping Datasette, for example with ``Ctrl+C``, stops any imports that are stil
 --get and --reload
 ------------------
 
-With :ref:`--get <cli_datasette_get>`, Datasette loads every input before it handles the request, then prints the response and exits. Nothing runs in the background, so ``/-/imports.json`` has no imports in it. If any input fails to load, Datasette exits with an error and keeps nothing: tables already loaded into a ``--save`` file in that run are dropped again, and a ``--save`` file that the run created is deleted. This is useful for scripts and for trying things out::
+With :ref:`--get <cli_datasette_get>`, Datasette loads every input before it handles the request, then prints the response and exits. Nothing runs in the background, so ``/-/imports.json`` has no imports in it. If any input fails to load, or you interrupt the load with ``Ctrl+C``, Datasette exits with an error and keeps nothing: tables already loaded into a ``--save`` file in that run are dropped again, and a ``--save`` file that the run created is deleted. A ``--save`` file that the run created is also deleted if the inputs had no rows to load into it. This is useful for scripts and for trying things out::
 
     datasette events.csv --get '/scratch/events.json?_shape=array&_size=3'
 

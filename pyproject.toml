@@ -64,7 +64,7 @@ dev = [
     "pytest-xdist>=2.2.1",
     "pytest-asyncio>=1.2.0",
     "beautifulsoup4>=4.8.1",
-    "black==26.5.1",
+    "black==26.10.1",
     "blacken-docs==1.20.0",
     "pytest-timeout>=1.4.2",
     "trustme>=0.7",
@@ -73,7 +73,7 @@ dev = [
     "ruff>=0.16.0",
     "opentelemetry-sdk>=1.37",
     # docs
-    "Sphinx==7.4.7",
+    "Sphinx==9.0.4",
     "furo==2025.12.19",
     "sphinx-autobuild",
     "codespell>=2.2.5",

@@ -746,6 +746,40 @@ async def test_unrecognized_format(db, tmp_path):
     assert not await db.table_exists("t")
 
 
+FAILING_PLUGIN = """
+    from datasette import hookimpl
+
+    @hookimpl
+    def register_import_loaders():
+        raise RuntimeError("this plugin is broken")
+"""
+
+
+@pytest.mark.asyncio
+async def test_plugin_that_fails_to_register_loaders(db, tmp_path):
+    # The worker logs the failure while choosing a loader, before its
+    # header: a warning, not a protocol error that hides what happened
+    plugins = plugin_dir(tmp_path, FAILING_PLUGIN)
+    path = write(tmp_path / "binary.bin", bytes(range(256)) * 10)
+    with pytest.raises(WorkerImportError) as ex:
+        await import_file_via_worker(db, "t", path, plugins_dir=plugins)
+    assert ex.value.kind == "error"
+    assert ex.value.error_type == "UnrecognizedFormat"
+    assert "register_import_loaders() failed" in " ".join(ex.value.result.warnings)
+    # The core loaders still work
+    csv_path = write(tmp_path / "ok.csv", "a,b\n1,2\n")
+    result = await import_file_via_worker(db, "t", csv_path, plugins_dir=plugins)
+    assert result.rows == 1
+    assert any("register_import_loaders() failed" in w for w in result.warnings)
+
+
+def test_log_before_the_header():
+    decoder = ProtocolDecoder()
+    log = {"type": "log", "level": "WARNING", "message": "Plugin x failed"}
+    events = decoder.feed(json.dumps(log).encode() + b"\n" + HEADER_A + b"[1]\n")
+    assert [kind for kind, _ in events] == ["log", "header", "rows"]
+
+
 @pytest.mark.asyncio
 async def test_existing_table_is_an_error(db, tmp_path):
 

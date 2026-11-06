@@ -410,6 +410,10 @@ class ProtocolDecoder:
             if kind == "error":
                 self.finished = message
                 return ("error", message)
+            if kind == "log":
+                # Logged while choosing the loader, such as a plugin whose
+                # register_import_loaders() failed
+                return ("log", message)
             raise ProtocolError(f"Line {self.lines}: expected the header, got {kind!r}")
         if self.finished is not None:
             raise ProtocolError(f"Line {self.lines}: {kind!r} after the end")

@@ -28,7 +28,7 @@ the parent can tell them apart from the first byte without parsing.
 
 In order:
 
-``header`` (mandatory, first)
+``header`` (mandatory, first but for ``log`` messages)
     ``{"type": "header", "protocol": 1, "loader": "csv", "path": ...,
     "size": 15185971, "scores": {"csv": 1.0, "tsv": 0.0, ...}}`` - sent as
     soon as the loader is chosen, before ``load()`` starts. ``size`` is the
@@ -90,9 +90,11 @@ row
     parent should not treat a quiet worker as a dead one. Rows never wait
     in the worker's buffer for longer than the interval.
 
-``log`` (any time after the header)
+``log`` (any time, even before the header)
     ``{"type": "log", "level": "WARNING", "logger": "...", "message":
-    "..."}`` - a warning (or worse) the loader or a plugin logged. With
+    "..."}`` - a warning (or worse) the loader or a plugin logged, for
+    example while the loader is chosen, before the header, when a plugin's
+    ``register_import_loaders()`` fails. With
     ``"note": true`` it is a :class:`~datasette.imports.loaders.Note` the
     loader yielded, something to show the person importing the file, such
     as the JSON loader's "Importing the 2 objects in 'results', ignoring

@@ -1061,7 +1061,12 @@ class LimitedWriter:
         self.bytes_count = 0
 
     async def write(self, bytes):
-        self.bytes_count += len(bytes)
+        content_bytes = (
+            bytes.encode("utf-8")
+            if self.limit_bytes and isinstance(bytes, str)
+            else bytes
+        )
+        self.bytes_count += len(content_bytes)
         if self.limit_bytes and (self.bytes_count > self.limit_bytes):
             raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
         await self.writer.write(bytes)

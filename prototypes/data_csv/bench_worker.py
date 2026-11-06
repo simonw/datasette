@@ -32,6 +32,7 @@ interleaved, and prints a table.
 
 import argparse
 import asyncio
+import functools
 import json
 import os
 import resource
@@ -40,7 +41,7 @@ import subprocess
 import sys
 import time
 
-MODES = ("inprocess", "worker", "direct")
+MODES = ("inprocess", "worker", "direct", "oldworker")
 
 
 def percentile(values, fraction):
@@ -161,15 +162,42 @@ async def run_inprocess(db, path, batch_size):
     return {"rows": result.rows, "load_seconds": round(rows.seconds, 3)}
 
 
-async def run_worker(db, path, batch_size):
+OLD_DIR = os.environ.get("BENCH_WORKER_OLD_DIR")
+
+
+async def run_worker(db, path, batch_size, old=False):
     from datasette.imports.subprocess_import import import_file_via_worker
 
-    result = await import_file_via_worker(db, "t", path, batch_size=batch_size)
+    argv = None
+    if old:
+        # An older parent and worker, saved as OLD_DIR/old_subprocess_import.py
+        # and OLD_DIR/old_worker.py (git show <commit>:datasette/imports/...)
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "old_subprocess_import", os.path.join(OLD_DIR, "old_subprocess_import.py")
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        import_file_via_worker = module.import_file_via_worker
+        argv = [
+            sys.executable,
+            "-P",
+            os.path.join(OLD_DIR, "old_worker.py"),
+            path,
+            "--parent-pid",
+            str(os.getpid()),
+        ]
+    result = await import_file_via_worker(
+        db, "t", path, batch_size=batch_size, argv=argv
+    )
     return {
         "rows": result.rows,
         "worker_cpu": result.worker["cpu"],
         "worker_seconds": result.worker["seconds"],
         "worker_max_rss_mb": round(result.worker["max_rss"] / 1e6, 1),
+        # Time the worker spent in write() to the pipe: blocked on the parent
+        "worker_pipe_wait": result.worker.get("write_seconds"),
         "decode_seconds": round(result.stats["decode_seconds"], 3),
         "write_seconds": round(result.stats["write_seconds"], 3),
         "pipe_mb": round(result.stats["bytes_read"] / 1e6, 1),
@@ -228,7 +256,12 @@ async def one_run(mode, path, batch_size, probe_interval, idle, queries):
     children_before = resource.getrusage(resource.RUSAGE_CHILDREN)
     probes.start(queries)
     start = time.perf_counter()
-    runner = {"inprocess": run_inprocess, "worker": run_worker, "direct": run_direct}
+    runner = {
+        "inprocess": run_inprocess,
+        "worker": run_worker,
+        "direct": run_direct,
+        "oldworker": functools.partial(run_worker, old=True),
+    }
     details = await runner[mode](db, path, batch_size)
     seconds = time.perf_counter() - start
     during = await probes.finish()
@@ -332,7 +365,7 @@ def main():
     parser.add_argument("command", choices=("run", "all"))
     parser.add_argument("--file", required=True)
     parser.add_argument("--mode", choices=MODES)
-    parser.add_argument("--modes", nargs="+", default=list(MODES))
+    parser.add_argument("--modes", nargs="+", default=list(MODES[:3]))
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=1000)
     parser.add_argument(

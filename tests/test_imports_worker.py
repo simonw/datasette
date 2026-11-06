@@ -36,6 +36,7 @@ from datasette.imports.subprocess_import import (
     worker_slots,
 )
 from datasette.plugins import pm
+from datasette.utils import module_from_path
 
 WORKER = [sys.executable, "-P", "-m", "datasette.imports.worker"]
 
@@ -44,6 +45,11 @@ WORKER = [sys.executable, "-P", "-m", "datasette.imports.worker"]
 def db():
     ds = Datasette()
     db = ds.add_database(Database(ds, is_temp_disk=True), name="scratch")
+    # Switch the new file to WAL before any thread connects: connections
+    # opened at the same time to a fresh is_temp_disk Database race on
+    # PRAGMA journal_mode=WAL and one can fail with "database is locked"
+    # (about 2 in 100 fresh databases with 4 reads and a write at once)
+    db.connect()
     yield db
     db.close()
 
@@ -94,7 +100,14 @@ BEHAVIOUR_PLUGIN = """
                 lines = fp.read().split("\\n")
             count, action = int(lines[1]), lines[2]
             for i in range(count):
-                yield {"id": i, "name": f"row {i}", "data": b"\\x00\\xff" if action == "bytes" else None}
+                row = {"id": i, "name": f"row {i}", "data": b"\\x00\\xff" if action == "bytes" else None}
+                if action in ("spellings", "slowspellings"):
+                    # "1.50" is stored as a float: the inserter keeps the
+                    # text in a TEMP table until the import finishes
+                    row["code"] = f"{i}.50"
+                if action == "slowspellings":
+                    time.sleep(0.001)
+                yield row
             if action == "raise":
                 raise LoaderError(f"Broken after {count} rows")
             if action == "exit3":
@@ -106,7 +119,7 @@ BEHAVIOUR_PLUGIN = """
                 sys.exit(0)
             if action == "abort":
                 os.abort()
-            if action == "sleep":
+            if action in ("sleep", "spellings"):
                 time.sleep(60)
             if action == "allocate":
                 hog = []
@@ -169,6 +182,13 @@ ROUND_TRIP_ROWS = [
 ]
 
 
+def as_stored(value):
+    "What the inserter stores for a nested value (inserter._storable)."
+    if isinstance(value, (list, dict, tuple)):
+        return json.dumps(value, default=str, ensure_ascii=False)
+    return value
+
+
 def test_protocol_round_trip():
     out = io.BytesIO()
     writer = worker_module._Writer(out)
@@ -188,13 +208,15 @@ def test_protocol_round_trip():
         rows = rows_of(messages)
         assert len(rows) == len(ROUND_TRIP_ROWS)
         for sent, received in zip(ROUND_TRIP_ROWS, rows):
-            # Missing keys come back as None, which the inserter treats the same
+            # Missing keys come back as None, which the inserter treats the
+            # same; nested values come as the JSON text the inserter stores
             assert {k: v for k, v in received.items() if v is not None} == {
-                k: v for k, v in sent.items() if v is not None
+                k: as_stored(v) for k, v in sent.items() if v is not None
             }
         assert type(rows[5]["blob"]) is bytes
         # A nested object with a "$base64" key is just data
-        assert rows[3]["nested"] == {"$base64": True, "a": [1]}
+        assert rows[3]["nested"] == '{"$base64": true, "a": [1]}'
+        assert rows[4]["nested"] == '[1, "two", null, {"x": []}]'
         assert decoder.columns == ["id", "text", "n", "nested", "blob", "new_key"]
         assert messages[-1] == ("end", {"type": "end", "rows": len(ROUND_TRIP_ROWS)})
 
@@ -982,7 +1004,7 @@ def test_sparse_rows_are_sent_as_positions():
     for sent, got in zip(rows, received):
         # Same values; keys come in the row's own order
         assert {k: v for k, v in got.items() if v is not None} == {
-            k: v for k, v in sent.items() if v is not None
+            k: as_stored(v) for k, v in sent.items() if v is not None
         }
     assert received[-1]["blob_key"] == b"\x00\x01"
     # A column that only ever holds None still reaches the parent
@@ -1289,3 +1311,76 @@ def test_end_message_reports_pipe_write_time(tmp_path):
     returncode, messages, _ = run_worker(path)
     assert returncode == 0
     assert messages[-1]["write_seconds"] >= 0
+
+
+async def temp_tables(db):
+    return await db.execute_write_fn(
+        lambda conn: [
+            row[0] for row in conn.execute("select name from temp.sqlite_master")
+        ]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_process", (False, True))
+async def test_cancelling_drops_the_temp_spellings_table(db, tmp_path, in_process):
+    # import_rows() leaves its TEMP spellings table on the write connection
+    # when it is cancelled; the parent drops it
+    plugins = plugin_dir(tmp_path, BEHAVIOUR_PLUGIN)
+    started = asyncio.Event()
+
+    def progress(p):
+        if p.rows_written >= 1000:
+            started.set()
+
+    if in_process:
+        # In-process imports use this process's plugins. The loader thread
+        # cannot be interrupted, so it is slow rather than stuck
+        path = behaviour_file(tmp_path, 5000, "slowspellings")
+        plugin = module_from_path(
+            os.path.join(plugins, "test_loader_plugin.py"), name="spellings_loader"
+        )
+        pm.register(plugin, name="spellings_loader")
+        coroutine = import_file_in_process(db, "t", path, progress=progress)
+    else:
+        path = behaviour_file(tmp_path, 3000, "spellings")
+        coroutine = import_file_via_worker(
+            db, "t", path, plugins_dir=plugins, progress=progress, stop_timeout=0.5
+        )
+    try:
+        task = asyncio.ensure_future(coroutine)
+        await asyncio.wait_for(started.wait(), 30)
+        assert len(await temp_tables(db)) == 1
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        if in_process:
+            pm.unregister(name="spellings_loader")
+    assert await temp_tables(db) == []
+    assert (await db.execute("select count(*) from t")).single_value() >= 1000
+
+
+@pytest.mark.asyncio
+async def test_nested_values_arrive_as_the_text_the_inserter_stores(db, tmp_path):
+    rows = [
+        {"id": 1, "geometry": {"type": "Point", "coordinates": [1.5, -2]}},
+        {"id": 2, "geometry": [1, [2, [3, None]]], "tags": ["a", "é", "\ud800"]},
+        {"id": 3, "geometry": {"nan": math.nan, "inf": math.inf}},
+        {"id": 4, "geometry": "plain text", "tags": []},
+        {"id": 5, "geometry": 7, "tags": {}},
+        {"id": 6, "geometry": {"$base64": True, "encoded": "AAA="}},
+    ]
+    path = write(tmp_path / "nested.ndjson", "\n".join(map(json.dumps, rows)) + "\n")
+    await import_file_via_worker(db, "worker", path)
+    loaded = load_path(path)
+    await import_rows(db, "in_process", loaded.rows)
+    assert await table_shape(db, "worker") == await table_shape(db, "in_process")
+    # The parent gets text, not lists and dicts to serialize again
+    process = await asyncio.create_subprocess_exec(
+        *WORKER, "--", path, stdout=asyncio.subprocess.PIPE
+    )
+    stdout, _ = await process.communicate()
+    _, messages = decode_all(stdout)
+    first = rows_of(messages)[0]
+    assert first["geometry"] == '{"type": "Point", "coordinates": [1.5, -2]}'

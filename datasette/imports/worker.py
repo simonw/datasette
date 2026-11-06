@@ -55,7 +55,11 @@ row
     inserter treats both the same way).
     Values are whatever the loader yielded, encoded with ``json.dumps``:
     strings, numbers (integers of any size up to Python's 4,300 digit
-    limit), booleans, nested lists and objects. ``NaN``, ``Infinity`` and
+    limit) and booleans. A nested list or object (or tuple) is sent as its
+    JSON text, ``json.dumps(value, default=str, ensure_ascii=False)``,
+    which is exactly what the inserter stores for one: the parent never
+    rebuilds and re-serializes a big nested value such as a GeoJSON
+    geometry. ``NaN``, ``Infinity`` and
     ``-Infinity`` are written the way Python's ``json`` module reads and
     writes them by default (not strict JSON). Lone surrogates, which
     ``json.loads`` accepts in ``\\ud800`` escapes, are written with the
@@ -133,7 +137,8 @@ closed pipe fails.
 ``--direct-db`` is an experiment, not part of the protocol: the worker
 inserts the rows into that SQLite file itself with
 :func:`~datasette.imports.inserter.insert_rows` and sends only ``header``,
-``schema``, ``progress`` and ``end``/``error``.
+``schema``, ``progress`` and ``end`` (with the import's ``widenings``) or
+``error``.
 """
 
 import argparse
@@ -161,6 +166,32 @@ EXIT_ERROR = 1
 EXIT_USAGE = 2
 
 _BYTES_TYPES = (bytes, bytearray, memoryview)
+_NESTED_TYPES = (list, dict, tuple)
+
+
+def _nested_text(value):
+    # Exactly what the inserter stores for a list or dict (_storable() and
+    # _text_form() in inserter.py)
+    return json.dumps(value, default=str, ensure_ascii=False)
+
+
+def _plain(values):
+    """
+    ``values`` with nested lists and dicts replaced by their JSON text (a
+    new list), or ``values`` itself if there are none.
+    """
+    if any(isinstance(value, _NESTED_TYPES) for value in values):
+        return [
+            _nested_text(value) if isinstance(value, _NESTED_TYPES) else value
+            for value in values
+        ]
+    return values
+
+
+def _maybe_nested(line):
+    # Without a "[" (after the row's own) or "{" in the encoded row, no value
+    # can be a list or dict: keeps the check off the path of plain rows
+    return line.find("[", 1) != -1 or line.find("{") != -1
 
 
 class _BytesValue(Exception):
@@ -194,9 +225,14 @@ def encode_row(values: list) -> str:
     ``row`` control message if any value is ``bytes``.
     """
     try:
-        return _ENCODER.encode(values)
+        line = _ENCODER.encode(values)
     except (_BytesValue, ValueError):
-        return _encode_row_slowly(values)
+        return _encode_row_slowly(_plain(values))
+    if _maybe_nested(line):
+        flat = _plain(values)
+        if flat is not values:
+            return encode_row(flat)
+    return line
 
 
 def _encode_row_slowly(values, at=None):
@@ -229,6 +265,7 @@ def _encode_row_slowly(values, at=None):
 
 
 def _encode_sparse_row(at, values):
+    values = _plain(values)
     try:
         return _ENCODER.encode({"type": "row", "at": at, "values": values})
     except (_BytesValue, ValueError):
@@ -544,7 +581,12 @@ class RowStreamer:
                     try:
                         line = encode(values)
                     except (_BytesValue, ValueError):
-                        line = _encode_row_slowly(values)
+                        line = _encode_row_slowly(_plain(values))
+                    else:
+                        if _maybe_nested(line):
+                            flat = _plain(values)
+                            if flat is not values:
+                                line = encode_row(flat)
                 pending.append(line)
                 writer.pending_bytes += len(line)
                 count += 1
@@ -627,8 +669,20 @@ def run(args, writer, warnings=()):
             schema, rows = loaders_module.split_schema(loader.load(path), loader.name)
             if schema is not None:
                 writer.message({"type": "schema", **schema.to_dict()})
+            extra = {}
             if args.direct_db:
-                count = _insert_directly(args, writer, schema, rows, position)
+                result = _insert_directly(args, writer, schema, rows, position)
+                count = result.rows
+                extra["widenings"] = [
+                    {
+                        "column": widening.column,
+                        "to_type": widening.to_type,
+                        "at_row": widening.at_row,
+                        "method": widening.method,
+                        "seconds": round(widening.seconds, 3),
+                    }
+                    for widening in result.widenings
+                ]
             else:
                 count = streamer.send(rows)
         finally:
@@ -645,6 +699,7 @@ def run(args, writer, warnings=()):
                 "cpu": round(cpu, 6),
                 "max_rss": max_rss,
                 "write_seconds": round(writer.write_seconds, 6),
+                **extra,
             }
         )
         writer.flush()
@@ -716,7 +771,7 @@ def _insert_directly(args, writer, schema, rows, position):
         )
     finally:
         conn.close()
-    return result.rows
+    return result
 
 
 def build_parser():

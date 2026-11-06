@@ -76,7 +76,8 @@ def main():
                 f"longest feed() {longest * 1000:7.1f}ms"
             )
     for path in args.stream:
-        data = open(path, "rb").read()
+        with open(path, "rb") as fp:
+            data = fp.read()
         for piece in (65536, 262144):
             for name, module in modules:
                 seconds, rows = stream(module, data, piece)

@@ -3,27 +3,43 @@ Import a file into a Datasette database through a worker subprocess.
 
 :func:`import_file_via_worker` starts ``python -m datasette.imports.worker``
 (see :mod:`datasette.imports.worker` for the protocol), reads the rows it
-streams on stdout without blocking the event loop, and inserts them with
+streams on stdout, and inserts them with
 :func:`~datasette.imports.inserter.import_rows` - so every chunk goes
 through ``db.execute_write_fn()``, where ``write_wrapper`` plugins see it,
 and column types are detected here in the parent. A loader that crashes,
 hangs or runs out of memory takes down the worker, not the server.
 
+The worker's output is decoded on the event loop, a read (at most 256KB)
+at a time, in time proportional to its size. A single huge value is the
+exception: a 64MB string is parsed in one go, which holds the loop for
+about 0.2s (an in-process import parses it in a thread, but holding the
+GIL, for about 0.1s).
+
+:func:`import_file_in_process` does the same import in a thread of this
+process, with the same result and errors, for Pyodide (no subprocesses);
+:func:`import_file` picks one. At most ``DEFAULT_MAX_WORKERS`` workers run
+at once per Datasette instance (:func:`worker_slots`).
+
 What happens to rows when an import fails part way through
 ------------------------------------------------------------
 
 Rows are committed a chunk at a time while they arrive, so people can query
-the table during the import. If the *worker* fails at row N (a loader
-error, a crash, being killed, a malformed or truncated stream), every row
-it sent before failing is still inserted and the import is finished
-normally (types settled, temporary state dropped), so the table holds
-exactly the first rows of the file. Then :class:`WorkerImportError` is
-raised. With ``on_error="keep"`` (the default) that table stays, and the
-error says how many rows it holds; ``on_error="drop"`` drops it instead.
-A failed *insert* in the parent (a ``write_wrapper`` plugin raising, a full
-disk) kills the worker and re-raises that exception; cancellation kills
-the worker and re-raises ``CancelledError``. In both cases the table keeps
-the chunks already committed (or is dropped, with ``on_error="drop"``).
+the table during the import. If the *worker* fails (a loader error, a
+crash, being killed, a malformed or truncated stream), every row the parent
+*received* is still inserted and the import is finished normally (types
+settled, temporary state dropped), so the table holds exactly the first N
+rows of the file, and the error says N. On a loader error, ``SystemExit``
+or ``MemoryError`` the worker sends every row it produced before saying so;
+a worker that dies without a word (a segfault, ``os._exit()``, SIGKILL)
+takes the rows still in its buffer with it - at most 64KB, or the progress
+interval's worth - so N can be lower than the row the loader reached.
+Then :class:`WorkerImportError` is raised. With ``on_error="keep"`` (the
+default) that table stays; ``on_error="drop"`` drops it instead. A failed
+*insert* in the parent (a ``write_wrapper`` plugin raising, a full disk)
+kills the worker and re-raises that exception; cancellation kills the
+worker and re-raises ``CancelledError``. In both cases the table keeps the
+chunks already committed (or is dropped, with ``on_error="drop"``), and the
+inserter's ``TEMP`` spellings table is dropped from the write connection.
 
 Why the parent does the writes
 ------------------------------
@@ -597,23 +613,46 @@ class WorkerProcess:
         await self.stop(timeout)
 
 
+_SPELLINGS_LIKE = r"\_import\_spellings\_%"
+
+
+def _temp_spellings(conn):
+    "The inserter's TEMP spellings tables on this connection."
+    return {
+        row[0]
+        for row in conn.execute(
+            "select name from temp.sqlite_master where type = 'table' "
+            "and name like ? escape '\\'",
+            [_SPELLINGS_LIKE],
+        )
+    }
+
+
 class _WatchedDatabase:
     """
     Passes everything through to a Database, but calls ``on_failure`` when
     a write fails or is cancelled, and times the writes. import_rows() waits
     for its next chunk of rows before re-raising a failed write; killing
     the worker first means that never waits on a worker that has stalled.
+
+    It also notes the ``TEMP`` spellings table the inserter may create on
+    the write connection: a table that appears during one of this import's
+    write functions is this import's, because nothing else runs on the write
+    thread meanwhile. import_rows() drops it on an exception but not on
+    cancellation (an inserter.py bug); :meth:`drop_temp_tables` does that.
     """
 
     def __init__(self, db, on_failure):
         self._db = db
         self._on_failure = on_failure
+        self.attempts = 0
         self.writes = 0
         # Writes that inserted rows: TypedInserter.write() returns how many.
         # Once one succeeded, the table is ours - it did not exist when the
         # import started, and the first write created it
         self.row_writes = 0
         self.write_seconds = 0.0
+        self.temp_tables = set()
 
     def __getattr__(self, name):
         return getattr(self._db, name)
@@ -621,12 +660,15 @@ class _WatchedDatabase:
     async def execute_write_fn(self, fn, *args, **kwargs):
         @functools.wraps(fn)
         def timed(conn):
+            before = _temp_spellings(conn)
             start = time.perf_counter()
             try:
                 return fn(conn)
             finally:
                 self.write_seconds += time.perf_counter() - start
+                self.temp_tables |= _temp_spellings(conn) - before
 
+        self.attempts += 1
         try:
             result = await self._db.execute_write_fn(timed, *args, **kwargs)
         except BaseException:
@@ -636,6 +678,20 @@ class _WatchedDatabase:
         if type(result) is int and result > 0:
             self.row_writes += 1
         return result
+
+    async def drop_temp_tables(self):
+        "Drop the TEMP spellings table this import left behind, if any."
+        if not self.attempts:
+            return
+
+        def drop(conn):
+            # The write queue runs this after any write of ours that was
+            # still going when we were cancelled: read the set now
+            for name in sorted(self.temp_tables):
+                conn.execute(f'DROP TABLE IF EXISTS temp."{name}"')
+            self.temp_tables.clear()
+
+        await self._db.execute_write_fn(drop)
 
 
 class _Import:
@@ -1054,6 +1110,8 @@ async def _import_via_worker(
         if worker is not None:
             worker.abort()
             await asyncio.shield(worker.stop(stop_timeout))
+        if watched is not None:
+            await asyncio.shield(watched.drop_temp_tables())
         if on_error == "drop" and watched is not None and watched.row_writes:
             await asyncio.shield(_drop_table(db, table))
         raise
@@ -1207,6 +1265,7 @@ async def import_file_in_process(
                 progress=written,
             )
         except BaseException:
+            await asyncio.shield(watched.drop_temp_tables())
             if on_error == "drop" and watched.row_writes:
                 await asyncio.shield(_drop_table(db, table))
             raise

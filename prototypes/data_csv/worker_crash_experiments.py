@@ -23,6 +23,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 
 from datasette.app import Datasette
@@ -320,40 +321,72 @@ async def memory_plugin(args):
 
 
 async def memory_json(args):
-    "The real JSON loader (json.load() of the whole file) under a memory cap."
+    """
+    The real JSON loader (json.load() of the whole file) under a memory cap:
+    the smallest RLIMIT_AS that lets the import finish, found by bisection,
+    with glibc's default malloc arenas and with MALLOC_ARENA_MAX=1. Both
+    arms pass ``env`` explicitly: with ``env=None`` import_file_via_worker
+    sets MALLOC_ARENA_MAX=1 itself whenever there is a memory_limit, which
+    is why the first version of this experiment compared one arm with
+    itself.
+    """
     path = os.path.join(args.data, "events-100k.json")
-    results = {}
-    # The worker's address space just before it starts loading
-    baseline = {}
+    MB = 1024 * 1024
+    results = {"file_mb": round(os.path.getsize(path) / 1e6, 1)}
 
-    def progress(p):
-        if p.pid and "vm" not in baseline:
-            baseline["vm"] = vm_size(p.pid)
+    def environment(arenas):
+        env = {k: v for k, v in os.environ.items() if k != "MALLOC_ARENA_MAX"}
+        if arenas == "1":
+            env["MALLOC_ARENA_MAX"] = "1"
+        return env
 
-    ds, db = await setup()
-    ok = await run_import(ds, db, path, progress=progress)
-    results["no_limit"] = {"outcome": ok, "worker_vm_mb": baseline.get("vm", 0) / 1e6}
-    probe = subprocess.Popen(
-        [sys.executable, "-P", "-m", "datasette.imports.worker", path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    probe.stdout.readline()
-    header_vm = vm_size(probe.pid)
-    probe.kill()
-    probe.wait()
-    results["worker_vm_at_header_mb"] = round(header_vm / 1e6, 1)
-    # glibc reserves 64MB of address space for each thread's malloc arena,
-    # which RLIMIT_AS counts: compare with MALLOC_ARENA_MAX=1
+    # Address space at the header and at the end, without a limit
     for arenas in ("default", "1"):
-        env = None if arenas == "default" else {**os.environ, "MALLOC_ARENA_MAX": "1"}
-        for extra_mb in (64, 128, 192, 256, 384):
-            ds, db = await setup()
-            limit = header_vm + extra_mb * 1024 * 1024
-            outcome = await run_import(ds, db, path, memory_limit=limit, env=env)
-            results[f"arenas={arenas} limit=header+{extra_mb}MB"] = {
-                key: outcome.get(key)
-                for key in ("raised", "error_type", "message", "rows", "rows_kept")
+        probe = subprocess.Popen(
+            [sys.executable, "-P", "-m", "datasette.imports.worker", "--", path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=environment(arenas),
+        )
+        probe.stdout.readline()
+        header_vm = vm_size(probe.pid)
+        drain = threading.Thread(target=probe.stdout.read)
+        drain.start()
+        peak_vm = header_vm
+        while probe.poll() is None:
+            peak_vm = max(peak_vm, vm_size(probe.pid) or 0)
+            time.sleep(0.002)
+        drain.join()
+        results[f"arenas={arenas} vm_at_header_mb"] = round(header_vm / MB, 1)
+        results[f"arenas={arenas} vm_peak_sampled_mb"] = round(peak_vm / MB, 1)
+
+    async def works(limit_mb, arenas):
+        ds, db = await setup()
+        outcome = await run_import(
+            ds, db, path, memory_limit=limit_mb * MB, env=environment(arenas)
+        )
+        db.close()
+        return outcome
+
+    for repeat in range(args.repeat):
+        for arenas in ("default", "1"):
+            low, high = 32, 1024
+            failure = None
+            while high - low > 4:
+                middle = (low + high) // 2
+                outcome = await works(middle, arenas)
+                if outcome["raised"] is None:
+                    high = middle
+                else:
+                    low = middle
+                    failure = {
+                        key: outcome.get(key)
+                        for key in ("kind", "error_type", "message", "rows_kept")
+                    }
+            results[f"repeat {repeat} arenas={arenas}"] = {
+                "works_at_mb": high,
+                "fails_at_mb": low,
+                "failure_at_low": failure,
             }
     return results
 
@@ -471,6 +504,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True)
     parser.add_argument("--work", required=True)
+    parser.add_argument("--repeat", type=int, default=2, help="memory-json")
     parser.add_argument("scenarios", nargs="*", default=list(SCENARIOS))
     args = parser.parse_args()
     os.makedirs(args.work, exist_ok=True)

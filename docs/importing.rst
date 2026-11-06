@@ -156,6 +156,10 @@ If the file does not exist Datasette creates it, in SQLite's `WAL mode <https://
 
     datasette events.db
 
+A database in WAL mode can keep its latest changes in a separate ``events.db-wal`` file next to it, and that file can still be there after Datasette stops. SQLite reads it whenever the database is opened again, so ``datasette events.db`` sees every row, but a copy of ``events.db`` on its own might be missing some or all of them. Before you copy the database somewhere else, stop Datasette and merge that file into the database::
+
+    sqlite3 events.db 'PRAGMA wal_checkpoint(TRUNCATE)'
+
 Loading into a table that already exists is an error, reported before anything is loaded::
 
     Error: Table 'events' already exists in events.db, so events.csv cannot be loaded into it. Choose another table name with NAME:events.csv, use a different --save file or drop that table first.
@@ -164,7 +168,7 @@ To load the file into a different table, :ref:`choose a table name <importing_ta
 
     datasette events_2025:events.csv --save events.db
 
-If an import into a ``--save`` file fails or is cancelled, the rows it had loaded are removed again, since a SQLite file has nowhere to record that a table is incomplete. A ``--save`` file that Datasette created in this run is deleted again if nothing ends up in it.
+If an import into a ``--save`` file fails or is cancelled, the rows it had loaded are removed again, since a SQLite file has nowhere to record that a table is incomplete. The space they took up stays in the file as free pages, which SQLite reuses for new data: run ``sqlite3 events.db VACUUM`` after Datasette has stopped to give it back. A ``--save`` file that Datasette created in this run is deleted again if nothing ends up in it.
 
 .. _importing_background:
 

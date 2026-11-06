@@ -135,28 +135,7 @@ form.sql.core input[data-execute-write-submit]:disabled {
         {% if analysis_error %}
             <p class="message-error">{{ analysis_error }}</p>
         {% elif analysis_rows %}
-            <div class="table-wrapper"><table class="execute-write-analysis">
-                <thead>
-                    <tr>
-                        <th scope="col">Operation</th>
-                        <th scope="col">Database</th>
-                        <th scope="col">Table</th>
-                        <th scope="col">Required permission</th>
-                        <th scope="col">Allowed</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in analysis_rows %}
-                        <tr>
-                            <td><code>{{ row.operation }}</code></td>
-                            <td><code>{{ row.database }}</code></td>
-                            <td><code>{{ row.table }}</code></td>
-                            <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% endif %}</td>
-                            <td>{% if row.allowed is none %}{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table></div>
+            {% include "_execute_write_analysis_table.html" %}
         {% else %}
             <p>Analysis will show each affected table and required permission.</p>
         {% endif %}

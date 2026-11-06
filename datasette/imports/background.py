@@ -228,6 +228,11 @@ class TableImport:
                 return min(self.downloaded / self.download_size, 1.0)
             return None
         if self.state == "importing" and self.bytes is not None and self.size:
+            if not self.bytes and self.rows:
+                # Rows but no bytes read: the loader has the file open in a
+                # way the worker cannot see into (the JSON loader reports 0
+                # throughout), so the position says nothing
+                return None
             return min(self.bytes / self.size, 1.0)
         return None
 
@@ -442,9 +447,25 @@ class TableImport:
         self.pid = progress.pid
         if progress.loader:
             self.loader = progress.loader
-        if progress.rows_written:
+        created = bool(progress.rows_written) and not self.table_exists
+        if created:
             self.table_exists = True
         self.registry._notify(self, "progress")
+        if created:
+            # The first chunk has created the table. Datasette refreshes its
+            # catalog of tables at most once a second, as requests arrive:
+            # until then the table page would be a 404
+            return self._refresh_catalog()
+        return None
+
+    async def _refresh_catalog(self):
+        datasette = self.registry.datasette
+        if datasette is None:
+            return
+        try:
+            await datasette.refresh_schemas(force=True)
+        except Exception:
+            logger.exception("Could not refresh the schema for %r", self)
 
     def _finish(self, state, error=None):
         self.state = state
@@ -505,10 +526,15 @@ class TableImport:
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, sniff, source, self._loaders)
             self.loader = source.loader.name
-            if await _table_taken(db, self.table):
-                raise TableExists(f"Table {self.table!r} already exists in {db.name}")
             self._set_state("queued", "worker")
+            # Waiters get a slot in the order they asked, so files load in
+            # the order they were given - nothing above waits for a local
+            # file that has been sniffed already
             async with worker_slots(datasette):
+                if await _table_taken(db, self.table):
+                    raise TableExists(
+                        f"Table {self.table!r} already exists in {db.name}"
+                    )
                 self._set_state("importing")
                 self._import_started = time.monotonic()
                 with import_writes():
@@ -974,12 +1000,18 @@ class TerminalReporter:
         kept = job.rows_kept or 0
         if job.on_error == "keep" and kept:
             outcome = f"; {where} has the first {_plural(kept, 'row')}"
-        elif job.on_error == "drop" and job.state != "queued":
-            outcome = f"; {where} was not kept" if job.rows else ""
+        elif job.on_error == "drop" and job.rows:
+            outcome = f"; the {_plural(job.rows, 'row')} imported were removed"
         else:
             outcome = ""
         if job.state == "failed":
             return f"Failed to import {job.title} into {where}: {job.error}{outcome}"
+        datasette = job.registry.datasette
+        if datasette is not None and getattr(datasette, "_shutdown_invoked", False):
+            return (
+                f"Stopped importing {job.title} into {where}, because Datasette "
+                f"is shutting down{outcome}"
+            )
         return f"Cancelled import of {job.title} into {where}{outcome}"
 
 

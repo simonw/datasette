@@ -41,8 +41,13 @@ Results (4 CPUs shared with another agent's tests, load average 1-4):
   Datasette (0.47s; 5 runs each, interleaved, bench_background_startup.py).
 - big-1gb.csv (6.4M rows): 50.7-56.8s with no load, 59.8s with one client
   making a request about every 0.5s, 199-243s with four clients requesting
-  without pause (230.4s in the latest run). Loading before serving (--get)
-  takes 41.2s.
+  without pause (230.4s) while the inserter used executemany() - its write
+  thread waited for the GIL once per row while pages rendered. With a
+  multi-row INSERT per chunk: 112.6s with four clients (load average 3.9
+  to 6.2 from other work on the machine). On the first 1M rows,
+  interleaved: 35.1-45.6s against 12.7-15.6s with four clients, 7.6-8.4s
+  against 7.9-8.3s with no load. Loading before serving (--get) takes
+  41.2s.
 - The worker's pipe size makes no measurable difference here: 1M rows
   under four clients took 40.3/41.6/44.4s with 64KB and 42.1/43.5/45.6s
   with 1MB, interleaved.
@@ -50,10 +55,10 @@ Results (4 CPUs shared with another agent's tests, load average 1-4):
   table existed, no schema errors, not during a late integer to text
   rebuild of a 4M row table (a 3.4s stall at the end), not while 100
   columns were added one at a time. The failures seen are Datasette's own:
-  ?_sort_desc on an unindexed column of millions of rows answers 500
-  (QueryInterrupted not caught by the table view) when it hits the time
-  limit, during the import and after it alike; a group-by hits the 1s
-  time limit (400). Before the first chunk is committed (the first 0.5-0.8s)
+  ?_sort_desc on an unindexed column of millions of rows hits the time
+  limit, during the import and after it alike - a 400 "SQL query took too
+  long" now, a 500 before the table view caught QueryInterrupted; a
+  group-by hits the 1s time limit (400). Before the first chunk is committed (the first 0.5-0.8s)
   a table page is a 404 that says the table is queued or importing, and a
   SQL query on it a 400 "no such table".
 - Under four clients, latency during the import against after it, p50

@@ -55,14 +55,19 @@ def handle_exception(datasette, request, exception):
         headers = {}
         if datasette.cors:
             add_cors_headers(headers)
-        if request.path.split("?")[0].endswith(".json"):
-            body = dict(info)
-            body.update(error_body(plain_message or message, status))
-            return Response.json(body, status=status, headers=headers)
-        if request.path.split("?")[0].endswith(".csv"):
+        path = request.path.split("?")[0]
+        if path.endswith(".csv"):
             return Response.text(
                 plain_message or message, status=status, headers=headers
             )
+        if (
+            path.endswith(".json")
+            or "application/json" in (request.headers.get("accept") or "")
+            or request.headers.get("content-type") == "application/json"
+        ):
+            body = dict(info)
+            body.update(error_body(plain_message or message, status))
+            return Response.json(body, status=status, headers=headers)
         info.update(
             {
                 "ok": False,

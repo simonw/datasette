@@ -61,6 +61,7 @@ from .imports.sources import (
     fetch,
     human_size,
     maybe_source,
+    one_line,
     parse_source,
     remove_temporary,
     remove_tree,
@@ -1231,23 +1232,28 @@ def _sigterm_interrupts():
 
 
 def _describe_loaded(loaded, where=""):
+    # Names, notes and column names can come from the file: one line each,
+    # with no control characters, see one_line()
+    table = one_line(loaded.table)
+    label = one_line(loaded.source.label)
     if loaded.reused:
         return (
-            f"Kept table {loaded.table}{where} from the previous load: "
-            f"{loaded.source.label} has not changed"
+            f"Kept table {table}{where} from the previous load: "
+            f"{label} has not changed"
         )
-    notes = "".join(f"\n  note: {note}" for note in loaded.notes)
+    notes = "".join(f"\n  note: {one_line(note)}" for note in loaded.notes)
     if not loaded.created:
-        return f"{loaded.source.label} has no rows, so no table was created{notes}"
+        return f"{label} has no rows, so no table was created{notes}"
     line = (
         f"Loaded {loaded.rows:,} row{'' if loaded.rows == 1 else 's'} from "
-        f"{loaded.source.label} ({loaded.loader}) "
-        f"into table {loaded.table}{where} in {loaded.seconds:.2f}s"
+        f"{label} ({loaded.loader}) "
+        f"into table {table}{where} in {loaded.seconds:.2f}s"
     )
     for widening in loaded.widenings:
         line += (
-            f"\n  column {widening.column} changed from {widening.from_type} to "
-            f"{widening.to_type} at row {widening.at_row + 1:,}"
+            f"\n  column {one_line(widening.column)} changed from "
+            f"{widening.from_type} to {widening.to_type} at row "
+            f"{widening.at_row + 1:,}"
         )
     return line + notes
 

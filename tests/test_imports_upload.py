@@ -34,6 +34,7 @@ from datasette.views.upload import (
 )
 
 CSV = b"id,name,score\n1,Cleo,4.5\n2,Pancakes,3\n3,Fido,\n"
+CONTROL_MESSAGE = "Table name cannot contain control or formatting characters"
 ROOT = {"id": "root"}
 # create-table and insert-row on the data database
 WRITER = {"id": "writer"}
@@ -603,6 +604,13 @@ async def test_unknown_format(ds, temp_dir):
         ("SQLite_stuff", "Table names starting with sqlite_ are reserved by SQLite"),
         ("a\nb", "Table name cannot contain newlines"),
         ("a\x00b", "Table name cannot contain NUL characters"),
+        # Escape sequences that set a terminal's title or clear its screen,
+        # an 8-bit CSI, a bidirectional override, a zero-width space
+        ("t\x1b]0;PWNED\x07", CONTROL_MESSAGE),
+        ("t\x9b2J", CONTROL_MESSAGE),
+        ("\u202eabc", CONTROL_MESSAGE),
+        ("a\u200bb", CONTROL_MESSAGE),
+        ("a\u2028b", CONTROL_MESSAGE),
     ],
 )
 async def test_invalid_table_name(ds, table, message):

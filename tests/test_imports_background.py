@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.request
 
 import markupsafe
@@ -1432,6 +1433,78 @@ def test_terminal_reporter_prints_periodic_progress():
         "  importing big: 40% (2,560,000 rows) after 12s",
         "  importing big: 40% (2,560,000 rows) after 12s",
     ]
+
+
+def _control_characters(text):
+    return [
+        ch
+        for ch in text
+        if ch != "\n" and unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_terminal_lines_have_no_control_characters(tmp_path):
+    # Table and column names, notes and errors can come from a file (a URL
+    # on the command line) or an upload: printed raw, ESC ] 0 ; ... BEL
+    # sets the terminal's title, CSI 2 J clears it, a newline fakes a log
+    # line
+    key = "\x1b]0;OWNED\x07col\nINFO: fake"
+    path = tmp_path / "evil.json"
+    path.write_text(
+        json.dumps(
+            {
+                "\x1b[2Jresults": [{key: 1}, {key: 2}, {key: "a\x1b[31m"}],
+                "total": 3,
+            }
+        )
+    )
+    ds, db = _scratch_ds()
+    stream = io.StringIO()
+    registry = import_registry(ds)
+    registry.add_listener(TerminalReporter(stream, interval=0))
+    try:
+        job = registry.start(
+            db, _source(path, table="t\x1b]0;PWNED\x07\x9b2J\u202eabc"), sample_size=1
+        )
+        await ds.start_background_tasks()
+        assert await job.wait(20)
+        assert job.state == "done", job.error
+        assert job.notes and job.widenings
+        output = stream.getvalue()
+        assert _control_characters(output) == []
+        assert "INFO: fake" in output
+        assert not any(line.startswith("INFO") for line in output.splitlines())
+        assert "column ]0;OWNEDcol INFO: fake changed from integer to text" in output
+        assert "into table t]0;PWNED2Jabc" in output
+        # A failure's error too
+        job.state, job.error = "failed", "Line 2:\x1b[2J\nboom"
+        assert _control_characters(TerminalReporter().finished_line(job)) == []
+    finally:
+        await ds.invoke_shutdown()
+
+
+def test_get_lines_have_no_control_characters():
+    from datasette.cli import _describe_loaded
+    from datasette.imports.scratch import LoadedTable
+    from datasette.imports.sources import StatusLine
+
+    source = _source("evil\x1b[2J.json", table="t\x1b]0;PWNED\x07")
+    loaded = LoadedTable(
+        source=source,
+        table=source.table,
+        loader="json",
+        rows=2,
+        seconds=0.1,
+        notes=["Importing the 2 objects in '\x1b[2Jresults'\nINFO: fake"],
+    )
+    stream = io.StringIO()
+    status = StatusLine(stream)
+    status.start(f"Loading {source.label}...")
+    status.done(_describe_loaded(loaded))
+    output = stream.getvalue()
+    assert _control_characters(output) == []
+    assert len(output.splitlines()) == 3
 
 
 # The real server -----------------------------------------------------------------

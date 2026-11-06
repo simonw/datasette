@@ -626,6 +626,43 @@ def remove_temporary(sources: Iterable[Source]) -> None:
 # Progress reporting ----------------------------------------------------------
 
 
+# Control and formatting characters: C0 and C1 controls (ESC starts the
+# sequences that move a terminal's cursor or set its title, and an 8-bit
+# CSI can do the same), bidirectional overrides and zero-width characters
+# (which make text display as something else), and line and paragraph
+# separators
+_INVISIBLE_CATEGORIES = {"Cc", "Cf", "Cs", "Zl", "Zp"}
+_LINE_BREAKS_RE = re.compile(r"[\t\n\v\f\r\x1c-\x1e\x85  ]+")
+
+
+def strip_invisible(text: str) -> str:
+    "``text`` without control, formatting or line separator characters."
+    if text.isprintable():
+        return text
+    return "".join(
+        ch for ch in text if unicodedata.category(ch) not in _INVISIBLE_CATEGORIES
+    )
+
+
+def one_line(text) -> str:
+    """
+    ``text`` made safe to print as part of a line on a terminal: tabs and
+    line breaks become spaces, other control and formatting characters are
+    removed. Table and column names, notes and errors can come from a file
+    or an upload, and could otherwise move the cursor, set the window title
+    or fake a line of the log.
+    """
+    text = str(text)
+    if text.isprintable():
+        return text
+    return strip_invisible(_LINE_BREAKS_RE.sub(" ", text))
+
+
+def safe_lines(text: str) -> str:
+    "Each line of ``text`` made safe with :func:`one_line`."
+    return "\n".join(one_line(line) for line in text.split("\n"))
+
+
 def human_size(num_bytes: float) -> str:
     for unit in ("bytes", "KB", "MB", "GB"):
         if abs(num_bytes) < 1024 or unit == "GB":
@@ -640,7 +677,8 @@ class StatusLine:
     """
     A line of progress on a stream (standard error). On a terminal it is
     rewritten in place at most every ``interval`` seconds; elsewhere only
-    :meth:`done` writes anything, so logs are not flooded.
+    :meth:`done` writes anything, so logs are not flooded. Control and
+    formatting characters are never written (see :func:`one_line`).
     """
 
     def __init__(self, stream=None, interval: float = 0.2):
@@ -660,6 +698,7 @@ class StatusLine:
         if not force and now - self._last < self.interval:
             return
         self._last = now
+        text = one_line(text)
         padding = " " * max(0, self._width - len(text))
         self._width = len(text)
         self.stream.write("\r" + text + padding)
@@ -670,7 +709,7 @@ class StatusLine:
         if self.interactive:
             self.update(text, force=True)
         else:
-            self.stream.write(text + "\n")
+            self.stream.write(one_line(text) + "\n")
             self.stream.flush()
 
     def clear(self) -> None:
@@ -680,8 +719,9 @@ class StatusLine:
             self._width = 0
 
     def done(self, text: str) -> None:
+        "Write ``text``: lines, without control or formatting characters."
         self.clear()
-        self.stream.write(text + "\n")
+        self.stream.write(safe_lines(text) + "\n")
         self.stream.flush()
 
 

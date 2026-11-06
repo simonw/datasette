@@ -102,8 +102,10 @@ from datasette.imports.sources import (
     display_spec,
     fetch,
     human_size,
+    one_line,
     remove_temporary,
     remove_tree,
+    safe_lines,
 )
 from datasette.imports.subprocess_import import (
     WorkerImportError,
@@ -1119,6 +1121,9 @@ class TerminalReporter:
         self._seen = set()
 
     def _write(self, text):
+        # Every line without control or formatting characters, in case a
+        # value that came from a file or an upload got in unescaped
+        text = safe_lines(text)
         stream = self.stream if self.stream is not None else sys.stderr
         try:
             stream.write(text + "\n")
@@ -1131,26 +1136,29 @@ class TerminalReporter:
         if self._started is None:
             self._started = now
         self._seen.add(job.id)
-        where = f"table {job.table}{self.where}"
+        # Table names, titles, errors and notes can come from an upload or a
+        # file: one line each, see one_line()
+        title = one_line(job.title)
+        where = f"table {one_line(job.table)}{self.where}"
         if event == "downloading":
             self._last[job.id] = now
             if job.kind == "stdin":
-                self._write(f"Reading {job.title} for {where}")
+                self._write(f"Reading {title} for {where}")
             else:
-                self._write(f"Downloading {job.title} for {where}")
+                self._write(f"Downloading {title} for {where}")
         elif event == "waiting":
             slots = worker_slots(job.registry.datasette)
             if slots.locked():
-                self._write(
-                    f"Queued {job.title} for {where}: waiting for an import worker"
-                )
+                self._write(f"Queued {title} for {where}: waiting for an import worker")
         elif event == "importing":
             self._last[job.id] = now
             size = f", {human_size(job.downloaded)}" if job.downloaded else ""
             if job.kind == "file" and job.source.path:
                 with contextlib.suppress(OSError):
                     size = f", {human_size(os.path.getsize(job.source.path))}"
-            self._write(f"Importing {job.title} ({job.loader}{size}) into {where}")
+            self._write(
+                f"Importing {title} ({one_line(job.loader)}{size}) into {where}"
+            )
         elif event == "progress":
             if (
                 self.warn_large
@@ -1161,7 +1169,7 @@ class TerminalReporter:
                 self._warned.add(job.id)
                 size = job.download_size or job.downloaded
                 self._write(
-                    f"{job.title} is {human_size(size)}"
+                    f"{title} is {human_size(size)}"
                     f"{'' if job.download_size else ' so far'}. The scratch "
                     "database is deleted when Datasette stops: add --save "
                     "data.db to keep the data."
@@ -1173,12 +1181,12 @@ class TerminalReporter:
                 self._converting.add(job.id)
                 self._last[job.id] = now
                 self._write(
-                    f"  {job.describe()} (a column changed to text after "
-                    "the first rows)"
+                    f"  {one_line(job.describe())} (a column changed to text "
+                    "after the first rows)"
                 )
             elif now - self._last.get(job.id, now) >= self.interval:
                 self._last[job.id] = now
-                self._write(f"  {job.describe()} after {job.seconds:.0f}s")
+                self._write(f"  {one_line(job.describe())} after {job.seconds:.0f}s")
         elif event in FINISHED_STATES:
             self._last.pop(job.id, None)
             self._converting.discard(job.id)
@@ -1199,15 +1207,16 @@ class TerminalReporter:
                 self._started = None
 
     def finished_line(self, job) -> str:
-        where = f"table {job.table}{self.where}"
+        title = one_line(job.title)
+        where = f"table {one_line(job.table)}{self.where}"
         if job.state == "done":
             if not job.table_exists:
-                return f"{job.title} has no rows, so no table was created" + (
+                return f"{title} has no rows, so no table was created" + (
                     _note_lines(job.notes)
                 )
             line = (
-                f"Loaded {_plural(job.rows, 'row')} from {job.title} "
-                f"({job.loader}) into {where} in {job.seconds:.2f}s"
+                f"Loaded {_plural(job.rows, 'row')} from {title} "
+                f"({one_line(job.loader)}) into {where} in {job.seconds:.2f}s"
             )
             if job.waited_seconds >= 0.5:
                 line += (
@@ -1215,14 +1224,14 @@ class TerminalReporter:
                 )
             for widening in job.widenings:
                 line += (
-                    f"\n  column {widening.column} changed from "
+                    f"\n  column {one_line(widening.column)} changed from "
                     f"{widening.from_type} to {widening.to_type} at row "
                     f"{widening.at_row + 1:,}"
                 )
             return line + _note_lines(job.notes)
-        return self._unfinished_line(job, where) + _note_lines(job.notes)
+        return self._unfinished_line(job, title, where) + _note_lines(job.notes)
 
-    def _unfinished_line(self, job, where) -> str:
+    def _unfinished_line(self, job, title, where) -> str:
         kept = job.rows_kept or 0
         if job.on_error == "keep" and kept:
             outcome = f"; {where} has the first {_plural(kept, 'row')}"
@@ -1231,19 +1240,20 @@ class TerminalReporter:
         else:
             outcome = ""
         if job.state == "failed":
-            return f"Failed to import {job.title} into {where}: {job.error}{outcome}"
+            error = one_line(job.error)
+            return f"Failed to import {title} into {where}: {error}{outcome}"
         datasette = job.registry.datasette
         if datasette is not None and getattr(datasette, "_shutdown_invoked", False):
             return (
-                f"Stopped importing {job.title} into {where}, because Datasette "
+                f"Stopped importing {title} into {where}, because Datasette "
                 f"is shutting down{outcome}"
             )
-        return f"Cancelled import of {job.title} into {where}{outcome}"
+        return f"Cancelled import of {title} into {where}{outcome}"
 
 
 def _note_lines(notes) -> str:
     "The loader's notes, one indented line each, to follow a summary line."
-    return "".join(f"\n  note: {note}" for note in notes)
+    return "".join(f"\n  note: {one_line(note)}" for note in notes)
 
 
 __all__ = [

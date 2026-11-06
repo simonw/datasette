@@ -39,7 +39,6 @@ import logging
 import os
 import re
 import tempfile
-import unicodedata
 import urllib.parse
 
 from datasette.events import (
@@ -48,6 +47,7 @@ from datasette.events import (
     DropTableEvent,
     InsertRowsEvent,
 )
+from datasette.imports.sources import strip_invisible
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import BadRequest, DatabaseNotFound, Response
 from datasette.utils.multipart import UploadedFile
@@ -67,11 +67,6 @@ _TOO_LARGE_MESSAGES = ("File too large", "Request body too large")
 # The uploaded file is always saved under this name: the name the browser
 # sent is never used as a path
 SAVED_NAME = "upload"
-# Control and formatting characters: C0 and C1 controls (an 8-bit CSI can
-# drive a terminal the name is printed to), bidirectional overrides and
-# zero-width characters (which make a name display as something else), and
-# line and paragraph separators
-_INVISIBLE_CATEGORIES = {"Cc", "Cf", "Cs", "Zl", "Zp"}
 
 
 class UploadRefused(Exception):
@@ -137,13 +132,6 @@ def upload_ui_context(datasette, db, can_insert_rows) -> dict | None:
     }
 
 
-def _strip_invisible(text: str) -> str:
-    "``text`` without control, formatting or line separator characters."
-    return "".join(
-        ch for ch in text if unicodedata.category(ch) not in _INVISIBLE_CATEGORIES
-    )
-
-
 def display_filename(filename: str | None) -> str:
     """
     The uploaded file's name, for messages, the import's ``source`` and
@@ -152,7 +140,7 @@ def display_filename(filename: str | None) -> str:
     say) or excessive length.
     """
     name = re.split(r"[\\/]", filename or "")[-1]
-    name = _strip_invisible(name).strip()
+    name = strip_invisible(name).strip()
     if len(name) > 200:
         name = name[:197] + "..."
     return name or "uploaded file"
@@ -163,7 +151,7 @@ def default_table_name(filename: str | None) -> str:
     from datasette.imports.sources import table_name_for_path
 
     name = re.split(r"[\\/]", filename or "")[-1]
-    return table_name_for_path(_strip_invisible(name))
+    return table_name_for_path(strip_invisible(name))
 
 
 def check_table_name(name: str) -> None:
@@ -171,6 +159,12 @@ def check_table_name(name: str) -> None:
         raise UploadRefused("Table name cannot contain newlines")
     if "\x00" in name:
         raise UploadRefused("Table name cannot contain NUL characters")
+    if strip_invisible(name) != name:
+        # Escape sequences, bidirectional overrides, zero-width characters:
+        # the name is shown on pages and printed to the terminal
+        raise UploadRefused(
+            "Table name cannot contain control or formatting characters"
+        )
     if name.lower().startswith("sqlite_"):
         raise UploadRefused("Table names starting with sqlite_ are reserved by SQLite")
 

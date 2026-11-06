@@ -350,8 +350,13 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
+                "handle_exception",
                 "permission_resources_sql",
+                "register_actions",
+                "register_routes",
                 "top_database",
+                "top_homepage",
+                "top_table",
                 "write_wrapper"
             ]
         },

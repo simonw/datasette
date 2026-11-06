@@ -90,9 +90,10 @@ Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to pe
 
       FILES can also be CSV, TSV, JSON or newline-delimited JSON files, http:// or
       https:// URLs, or - for standard input. These are loaded into a temporary
-      read-only database called scratch, or into the --save file. Use name:source to
-      pick a table name and source:csv (or tsv, json, ndjson) to skip format
-      detection; for standard input that is stdin:csv.
+      read-only database called scratch, or into the --save file, in the background
+      while Datasette serves (--get loads them first). Use name:source to pick a
+      table name and source:csv (or tsv, json, ndjson) to skip format detection; for
+      standard input that is stdin:csv.
 
       Examples:
           datasette events.csv stats.json

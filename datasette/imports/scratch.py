@@ -127,6 +127,55 @@ class ScratchDatabase(Database):
                 os.unlink(self.path + suffix)
 
 
+class CreatedSaveDatabase(Database):
+    """
+    A ``--save`` file that this run created, loaded in the background while
+    Datasette serves. If nothing ended up in it - every input failed or was
+    cancelled - it is deleted again when it is closed (when Datasette shuts
+    down, after the imports have been cancelled), as it is when loading
+    before serving fails, instead of leaving an empty database behind.
+    ``on_removed(path)`` is called if it was.
+    """
+
+    def __init__(self, ds, path, *, on_removed=None):
+        super().__init__(ds, path=path, is_mutable=True)
+        self.on_removed = on_removed
+        self.removed = False
+
+    def close(self):
+        already_closed = self._closed
+        super().close()
+        if already_closed or self.removed:
+            return
+        if remove_if_empty(self.path):
+            self.removed = True
+            if self.on_removed is not None:
+                self.on_removed(self.path)
+
+
+def remove_if_empty(path: str) -> bool:
+    """
+    Delete the SQLite database ``path`` (and its -wal, -shm and -journal
+    files) if it has no tables, views, indexes or triggers. Returns True if
+    it did.
+    """
+    uri = pathlib.Path(os.path.abspath(path)).as_uri() + "?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        try:
+            count = conn.execute("select count(*) from sqlite_master").fetchone()[0]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    if count:
+        return False
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        with contextlib.suppress(OSError):
+            os.unlink(path + suffix)
+    return True
+
+
 class MemoryScratchDatabase(Database):
     """
     A shared-cache in-memory scratch database. Not used by default: it
@@ -305,14 +354,20 @@ async def drop_table(db, table: str) -> None:
         await db.execute_write_fn(_drop)
 
 
-# Tables that load_source() is loading right now, per database. A name is
+# Tables that are being loaded right now, per database - by load_source()
+# or a background import (datasette/imports/background.py). A name is
 # reserved (synchronously, on the event loop) before anything else happens
 # and released when the load ends, so two imports in this process can never
 # both decide that they are the one creating a table
 _loading = weakref.WeakKeyDictionary()
 
 
-def _reserve(db, table: str) -> None:
+def reserve_table(db, table: str) -> None:
+    """
+    Claim ``table`` in ``db`` for an import in this process, or raise
+    :class:`TableExists` if another import has claimed it. Call
+    :func:`release_table` when the import ends, however it ends.
+    """
     names = _loading.setdefault(db, set())
     # SQLite compares table names case-insensitively (ASCII only, so this is
     # if anything stricter)
@@ -322,10 +377,19 @@ def _reserve(db, table: str) -> None:
     names.add(key)
 
 
-def _release(db, table: str) -> None:
+def release_table(db, table: str) -> None:
+    "Give up a claim made with :func:`reserve_table`."
     names = _loading.get(db)
     if names is not None:
         names.discard(table.lower())
+
+
+def is_reserved(db, table: str) -> bool:
+    return table.lower() in _loading.get(db, ())
+
+
+_reserve = reserve_table
+_release = release_table
 
 
 def _quote(name: str) -> str:

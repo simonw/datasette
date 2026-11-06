@@ -160,13 +160,14 @@ def maybe_source(arg: str) -> bool:
     non-existent paths containing a ``:``. Used before plugins are loaded,
     so it does not need to know the format names.
     """
-    if arg in STDIN_SPECS or is_url(arg):
+    if arg == "-" or is_url(arg):
         return True
     if os.path.isdir(arg):
         return False
     if os.path.exists(arg):
+        # Even a file called "stdin"
         return not is_sqlite_file(arg)
-    return ":" in arg
+    return arg in STDIN_SPECS or ":" in arg
 
 
 def _is_drive(text: str, colon: int, windows: bool) -> bool:

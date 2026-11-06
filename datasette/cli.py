@@ -59,6 +59,7 @@ from .imports.sources import (
     remove_temporary,
     remove_tree,
     save_command,
+    spool,
 )
 from .inspect import inspect_tables
 from .utils import (
@@ -1092,7 +1093,8 @@ def _describe_loaded(loaded, where=""):
     if not loaded.created:
         return f"{loaded.source.label} has no rows, so no table was created"
     line = (
-        f"Loaded {loaded.rows:,} rows from {loaded.source.label} ({loaded.loader}) "
+        f"Loaded {loaded.rows:,} row{'' if loaded.rows == 1 else 's'} from "
+        f"{loaded.source.label} ({loaded.loader}) "
         f"into table {loaded.table}{where} in {loaded.seconds:.2f}s"
     )
     for widening in loaded.widenings:
@@ -1166,6 +1168,9 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
                 continue
             if source.kind == "stdin":
                 check_stdin_available()
+                # On the main thread, so Ctrl+C interrupts the read
+                source.path = spool(sys.stdin.buffer, workdir)
+                source.temporary = True
             progress = None
             if source.kind == "url":
                 status.start(f"Downloading {source.location}")

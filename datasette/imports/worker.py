@@ -64,13 +64,17 @@ row
     line is ever a tagged value: ``{"$base64": true}`` in a row line is just
     a nested object.
 
-``progress`` (every ``--progress-interval`` seconds while rows flow)
+``progress`` (every ``--progress-interval`` seconds, any time after the header)
     ``{"type": "progress", "rows": 52000, "bytes": 7864320, "size":
     15185971}`` - rows sent so far and how far into the input file the
     loader has read (``null`` if that cannot be found out). The position is
     read from the operating system's offset for the loader's open file, so
     it works for any loader without its help; it is ahead of the rows by
-    the loader's read buffer.
+    the loader's read buffer. A thread sends these while the loader is busy
+    before its first row, or between rows, too - unless the loader holds
+    the GIL throughout (``json.load()`` of a whole file does), so the
+    parent should not treat a quiet worker as a dead one. Rows never wait
+    in the worker's buffer for longer than the interval.
 
 ``log`` (any time after the header)
     ``{"type": "log", "level": "WARNING", "logger": "...", "message":
@@ -234,7 +238,10 @@ class _Writer:
             self.last_flush = time.monotonic()
             if lines:
                 data = ("\n".join(lines) + "\n").encode("utf-8", "surrogatepass")
-                self.out.write(data)
+                view = memoryview(data)
+                # A raw write can be partial (interrupted by a signal)
+                while view:
+                    view = view[self.out.write(view) :]
             self.out.flush()
 
 
@@ -515,20 +522,23 @@ def run(args, writer):
             }
         )
         writer.flush()
-        schema, rows = loaders_module.split_schema(loader.load(path), loader.name)
-        if schema is not None:
-            writer.message({"type": "schema", **schema.to_dict()})
-        if args.direct_db:
-            count = _insert_directly(args, writer, schema, rows, position)
-        else:
-            streamer = RowStreamer(writer, position, args.progress_interval)
-            flusher = _Flusher(writer, streamer, args.progress_interval)
-            flusher.start()
-            try:
+        streamer = RowStreamer(writer, position, args.progress_interval)
+        # Started before the loader produces anything, so progress (how far
+        # it has read) keeps coming while a loader reads a whole file first
+        flusher = _Flusher(writer, streamer, args.progress_interval)
+        flusher.start()
+        try:
+            schema, rows = loaders_module.split_schema(loader.load(path), loader.name)
+            if schema is not None:
+                writer.message({"type": "schema", **schema.to_dict()})
+            if args.direct_db:
+                count = _insert_directly(args, writer, schema, rows, position)
+            else:
                 count = streamer.send(rows)
-            finally:
+        finally:
+            if not args.direct_db:
                 count = streamer.count
-                flusher.stop()
+            flusher.stop()
         cpu, max_rss = _usage()
         writer.message(
             {

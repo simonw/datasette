@@ -2355,19 +2355,21 @@ Datasette saves the file to a temporary directory, checks that it can read it an
 
 ``import`` (shown here with some of its keys) describes the import, as ``/-/imports.json`` does: fetch ``imports_url`` to follow its progress. Its ``state`` is ``queued``, then ``importing``, then one of ``done``, ``failed`` or ``cancelled``; ``rows`` counts the rows imported so far and ``error`` says why an import failed. Uploads share a small number of import workers with any files Datasette is loading from the command line, so an upload can stay ``queued``, waiting for a worker, for a while.
 
-The table appears as soon as the first rows have been imported, and its rows can be queried while the rest arrive. Until then ``table_url`` shows a page with the import's progress. If the import fails or is cancelled the table is dropped, so a table is never left half imported. An actor with the ``cancel-import`` permission - only root by default - can cancel the import with a ``POST`` to ``cancel_url``.
+The table appears as soon as the first rows have been imported, and its rows can be queried while the rest arrive. Until then ``table_url`` shows a page with the import's progress. If the import fails, is cancelled, or is still running when Datasette shuts down, the table is dropped. An actor with the ``cancel-import`` permission - only root by default - can cancel the import with a ``POST`` to ``cancel_url``.
 
-The file is deleted once the import has finished, however it finished.
+A ``202`` means the import has started, not that it will create a table: follow ``imports_url`` to see how it ends. An import can fail part way through the file, and one that finds no rows - in a file that only has JSON objects with no keys, say - finishes as ``done`` with ``rows`` of ``0`` and creates no table. A JSON array with no rows in it, such as ``[]``, is refused with a ``400`` straight away.
+
+The file is deleted once the import has finished, however it finished, and when Datasette shuts down. If the Datasette process is killed outright part way through an import - with ``SIGKILL``, by the operating system running out of memory, or by a crash - neither clean-up can happen: the partial table stays in the database, with nothing to say that it is incomplete, and the uploaded file stays in a ``datasette-upload-*`` directory in the system's temporary directory.
 
 Any errors will use the :ref:`standard error format <json_api_errors>`, with these status codes:
 
-* ``400`` for a request without a file, an empty file, a SQLite database file, a file in a format Datasette cannot read, an unknown ``format`` or an invalid table name. Uploads are not available in Pyodide or `Datasette Lite <https://lite.datasette.io/>`__, which cannot run the worker process that imports use, and those requests receive a ``400`` too.
+* ``400`` for a request without a file, an empty file, a JSON array with no rows in it, a SQLite database file, a file in a format Datasette cannot read, an unknown ``format`` or an invalid table name. Uploads are not available in Pyodide or `Datasette Lite <https://lite.datasette.io/>`__, which cannot run the worker process that imports use, and those requests receive a ``400`` too. An upload whose client disconnects after sending the file, before Datasette has checked it and started the import, is not imported.
 * ``403`` if the actor does not have the necessary permissions, or the database is immutable or is the read-only ``scratch`` database that ``datasette data.csv`` creates.
 * ``404`` if the database does not exist.
-* ``409`` if a table or view of that name exists already, or a file is being imported into that table already.
+* ``409`` if a table, view or index of that name exists already - SQLite compares these names without regard to case - or a file is being imported into that table already.
 * ``413`` if the file is larger than the :ref:`setting_max_upload_mb` setting allows - 100 MB by default.
 
-An upload records a ``create-table`` :ref:`event <plugin_event_tracking>` when the import creates the table, an ``alter-table`` event if a column's type had to change after that, and an ``insert-rows`` event with the number of rows once the import is done. If an import that created its table then fails or is cancelled, a ``drop-table`` event records that the table was dropped again.
+An upload records a ``create-table`` :ref:`event <plugin_event_tracking>` when the import creates the table, an ``alter-table`` event if a column's type had to change after that, and an ``insert-rows`` event with the number of rows once the import is done, all with the uploading actor. If an import that created its table then fails or is cancelled, a ``drop-table`` event records that the table was dropped again: with the uploading actor if the import failed, and with no actor (``None``) if it was cancelled, since that could have been another actor or Datasette shutting down.
 
 The create table dialog on the database page uses this endpoint for files that are chosen or dropped onto it, where uploads are available. Pasted text is still parsed in the browser.
 

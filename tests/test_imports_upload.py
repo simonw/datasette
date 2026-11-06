@@ -1046,9 +1046,29 @@ async def test_events_header_only(ds):
 
 
 @pytest.mark.asyncio
+async def test_no_rows_found(ds, temp_dir):
+    """
+    Objects with no keys, one per line, are only found to have no rows by
+    importing them: the import is done, with no table and no events.
+    """
+    response = await upload(ds, b"{}\n{}\n", "blank.ndjson")
+    job = await finished(ds, response)
+    assert (job.state, job.rows, job.table_exists) == ("done", 0, False)
+    assert not await ds.get_database("data").table_exists("blank")
+    assert upload_dirs(temp_dir) == []
+    await asyncio.sleep(0.1)
+    assert events(ds, "blank") == []
+
+
+@pytest.mark.asyncio
 async def test_events_when_a_column_is_widened(ds):
     "A value after the sample that changes a column's type is an alter-table."
-    content = b"n\n" + b"1\n" * 1500 + b"one\n"
+    # create-table's schema is read once the first rows are in, so the
+    # value comes far enough into the file for that to happen first even
+    # on a busy machine. (If it did not, the events would still agree with
+    # each other: create-table would have the changed type, and no
+    # alter-table would follow.)
+    content = b"n\n" + b"1\n" * 30_000 + b"one\n"
     response = await upload(ds, content, "numbers.csv")
     job = await finished(ds, response)
     assert job.state == "done", job.error
@@ -1065,7 +1085,7 @@ async def test_events_when_a_column_is_widened(ds):
     assert alter.before_schema == create.schema
     assert "INTEGER" in alter.before_schema
     assert "TEXT" in alter.after_schema
-    assert insert.num_rows == 1501
+    assert insert.num_rows == 30_001
 
 
 # The create table dialog -----------------------------------------------------------

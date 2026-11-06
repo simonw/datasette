@@ -16,10 +16,12 @@ done.
 - The uploaded file's name is only used to pick the default table name
   and to describe the import; the file is always saved as ``upload`` in a
   directory made for it, which is removed when the import ends however it
-  ends (finished, failed, cancelled, or Datasette shutting down) and
-  straight away for an upload that is refused.
+  ends (finished, failed, cancelled, or Datasette shutting down normally)
+  and straight away for an upload that is refused.
 - An import that fails or is cancelled drops its table: nothing
-  half-imported is left in the database (``on_error="drop"``).
+  half-imported is left in the database (``on_error="drop"``). Only a
+  process that is killed outright (``SIGKILL``, a crash) part way through
+  an import leaves its partial table, and its upload directory, behind.
 - Needs ``create-table`` on the database and ``insert-row`` on the new
   table, like ``/<database>/-/create`` with rows. Never into the read-only
   ``scratch`` database or an immutable one.

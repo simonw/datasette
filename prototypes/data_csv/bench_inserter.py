@@ -233,7 +233,7 @@ def main():
             f" ({result.batches:,} committed batches)"
         )
         print("types:", result.types)
-        print(f"spellings kept until the end: {result.spellings_kept:,}")
+        print(f"spellings kept until the end: {getattr(result, 'spellings_kept', 0):,}")
         for widening in result.widenings:
             print("  ", widening)
         peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024

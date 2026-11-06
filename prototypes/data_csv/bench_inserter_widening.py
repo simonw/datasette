@@ -1,21 +1,27 @@
 """
 How expensive is widening a column, depending on how it is done?
 
-Part 1 - cost of one widening on a table that already holds N rows:
+Part 1 - cost of one widening on a table that already holds N rows of
+big-1gb.csv. The inserter's methods are timed by calling its own _widen()
+on the table, so the SQL is exactly what an import runs:
 
-- sqlite-utils ``table.transform(types=...)`` (a full table rebuild)
-- the inserter's own rebuild (CREATE new / INSERT SELECT / DROP / RENAME)
-- the inserter's in-place schema edit (PRAGMA writable_schema): integer ->
-  float is a metadata change only; integer -> text also runs an UPDATE that
-  converts the stored numbers to text
+- "schema": edit the declared type in place (PRAGMA writable_schema);
+  integer -> float is a metadata change only, widening to text also runs an
+  UPDATE converting the stored numbers back to their text
+- "rebuild": CREATE new / INSERT SELECT / DROP / RENAME
+- sqlite-utils ``table.transform(types=...)`` (a full rebuild) for comparison
 
-for a named shared-cache in-memory database opened the way Datasette opens
-``memory_name`` databases, and for an on-disk WAL database. Times include
-the COMMIT.
+for integer -> float (late_float), integer -> text (late_text) and float ->
+text (price; about 1% of its values, like "553.0", have their original text
+kept, which the conversion looks up - transform() turns them into "553.0"
+by luck and "1.10" into "1.1"). Each method runs on a fresh copy of the same
+table, for a named shared-cache in-memory database opened the way Datasette
+opens ``memory_name`` databases and for an on-disk WAL database. Times
+include the COMMIT.
 
-Part 2 - end to end: the inserter run over N rows of big-1gb.csv in which a
-column turns float, and another text, late (at 90% and 95% of the rows),
-once per widening strategy.
+Part 2 - end to end: insert_rows() over N rows of big-1gb.csv in which qty
+turns float at 90% of the rows, id turns text at 95% and price turns text
+at 97%, once per widening strategy.
 
     uv run python prototypes/data_csv/bench_inserter_widening.py \\
         --csv /path/to/big-1gb.csv --rows 100000 1000000 --work /tmp/work
@@ -23,7 +29,6 @@ once per widening strategy.
 
 import argparse
 import csv
-import functools
 import itertools
 import os
 import resource
@@ -34,7 +39,14 @@ import uuid
 
 import sqlite_utils
 
-from datasette.imports.inserter import TypedInserter, insert_rows
+from datasette.imports.inserter import (
+    _F,
+    _I,
+    _T,
+    TypedInserter,
+    _canonical,
+    insert_rows,
+)
 
 COLUMNS = (
     ("id", "INTEGER"),
@@ -48,10 +60,11 @@ COLUMNS = (
     ("maybe_empty", "INTEGER"),
     ("notes", "TEXT"),
 )
+RANKS = {"INTEGER": _I, "REAL": _F, "TEXT": _T}
 
 
 def open_db(storage, work):
-    """Return (writer, keepalive, label) for the given storage."""
+    """Return (writer, keepalive, path) for the given storage."""
     if storage == "memory":
         # Exactly how datasette/database.py connects to memory_name databases
         uri = f"file:{uuid.uuid4().hex}?mode=memory&cache=shared"
@@ -68,19 +81,28 @@ def open_db(storage, work):
 
 
 def build_table(conn, csv_path, rows):
+    """
+    Load N rows as the inserter would have stored them. Returns the load
+    time and the price values that are not canonical - the ones whose text
+    the inserter would have kept - as (rowid, text).
+    """
     conn.execute(
         "CREATE TABLE t ({})".format(", ".join(f'"{n}" {t}' for n, t in COLUMNS))
     )
     numeric = [i for i, (_, t) in enumerate(COLUMNS) if t != "TEXT"]
+    price = [n for n, _ in COLUMNS].index("price")
+    kept = []
     with open(csv_path, newline="") as fp:
         reader = csv.reader(fp)
         next(reader)
 
         def values():
-            for row in itertools.islice(reader, rows):
+            for rowid, row in enumerate(itertools.islice(reader, rows), 1):
                 for i in numeric:
                     if row[i] == "":
                         row[i] = None
+                if row[price] is not None and not _canonical(row[price], _F):
+                    kept.append((rowid, row[price]))
                 yield row
 
         start = time.perf_counter()
@@ -90,103 +112,73 @@ def build_table(conn, csv_path, rows):
             values(),
         )
         conn.execute("COMMIT")
-    return time.perf_counter() - start
+    return time.perf_counter() - start, kept
 
 
-def declared_sql(types):
-    return "CREATE TABLE t ({})".format(
-        ", ".join(f'"{n}" {types.get(n, t)}' for n, t in COLUMNS)
-    )
-
-
-def schema_edit(conn, types):
-    version = conn.execute("PRAGMA schema_version").fetchone()[0]
-    conn.execute("PRAGMA writable_schema=ON")
-    conn.execute(
-        "UPDATE sqlite_master SET sql = ? WHERE type='table' AND name='t'",
-        [declared_sql(types)],
-    )
-    conn.execute(f"PRAGMA schema_version={version + 1}")
-    conn.execute("PRAGMA writable_schema=OFF")
-
-
-def timed(conn, fn):
-    start = time.perf_counter()
+def adopting_inserter(conn, widen, kept):
+    """
+    A TypedInserter that believes it created table t (as build_table() made
+    it), with the kept price texts in its spellings table.
+    """
+    inserter = TypedInserter("t", widen=widen)
+    for name, sql_type in COLUMNS:
+        column = inserter._new_column(name)
+        column.rank = column.declared = RANKS[sql_type]
+    inserter.created = True
+    inserter._refresh(conn)
+    price = inserter._by_key["price"]
     conn.execute("BEGIN IMMEDIATE")
-    fn()
+    inserter._ensure_spellings_table(conn)
+    conn.executemany(
+        f"INSERT INTO {inserter._spellings_table} (col, rid, val) VALUES (?, ?, ?)",
+        [(price.index, rowid, text) for rowid, text in kept],
+    )
     conn.execute("COMMIT")
-    return time.perf_counter() - start
+    price.spellings = len(kept)
+    return inserter
 
 
-def own_rebuild(conn, types, text_columns=()):
-    current = {r[1]: r[2] for r in conn.execute("PRAGMA table_info(t)")}
-    current.update(types)
-    conn.execute(
-        "CREATE TABLE t_new ({})".format(
-            ", ".join(f'"{n}" {current[n]}' for n, _ in COLUMNS)
-        )
-    )
-    selects = ", ".join(
-        (
-            f"""CASE WHEN typeof("{n}") = 'real' AND "{n}" = CAST("{n}" AS INTEGER)
-        THEN CAST(CAST("{n}" AS INTEGER) AS TEXT) ELSE CAST("{n}" AS TEXT) END"""
-            if n in text_columns
-            else f'"{n}"'
-        )
-        for n, _ in COLUMNS
-    )
-    names = ", ".join(f'"{n}"' for n, _ in COLUMNS)
-    conn.execute(f"INSERT INTO t_new (rowid, {names}) SELECT rowid, {selects} FROM t")
-    conn.execute("DROP TABLE t")
-    conn.execute("ALTER TABLE t_new RENAME TO t")
+def inserter_method(widen, changes):
+    def setup(conn, kept):
+        return adopting_inserter(conn, widen, kept)
+
+    def run(conn, inserter):
+        inserter._widen(conn, changes)
+        return [w.method for w in inserter.widenings]
+
+    return setup, run
 
 
-def schema_text(conn, column):
-    "In-place edit to TEXT plus an UPDATE converting the stored numbers."
-    schema_edit(conn, {column: "TEXT"})
-    conn.execute(
-        f'UPDATE t SET "{column}" = CAST("{column}" AS TEXT) '
-        f"""WHERE typeof("{column}") IN ('integer', 'real')"""
-    )
+def transform_method(types):
+    def setup(conn, kept):
+        return None
+
+    def run(conn, state):
+        sqlite_utils.Database(conn).table("t").transform(types=types)
+
+    return setup, run
 
 
 METHODS = (
-    ("schema edit int->float", lambda conn: schema_edit(conn, {"late_float": "REAL"})),
-    ("schema edit + UPDATE int->text", lambda conn: schema_text(conn, "late_text")),
+    ("inserter schema edit int->float", inserter_method("schema", {"late_float": _F})),
+    ("inserter rebuild int->float", inserter_method("rebuild", {"late_float": _F})),
+    ("sqlite-utils transform int->float", transform_method({"late_float": float})),
     (
-        "own rebuild int->float",
-        lambda conn: own_rebuild(conn, {"late_float": "REAL"}),
+        "inserter schema edit+UPDATE int->text",
+        inserter_method("schema", {"late_text": _T}),
     ),
+    ("inserter rebuild int->text", inserter_method("rebuild", {"late_text": _T})),
+    ("sqlite-utils transform int->text", transform_method({"late_text": str})),
     (
-        "own rebuild int->text",
-        lambda conn: own_rebuild(conn, {"late_text": "TEXT"}, {"late_text"}),
+        "inserter schema edit+UPDATE float->text",
+        inserter_method("schema", {"price": _T}),
     ),
-    (
-        "sqlite-utils transform int->float",
-        lambda conn: sqlite_utils.Database(conn)
-        .table("t")
-        .transform(types={"late_float": float}),
-    ),
-    (
-        "sqlite-utils transform int->text",
-        lambda conn: sqlite_utils.Database(conn)
-        .table("t")
-        .transform(types={"late_text": str}),
-    ),
-    ("schema edit + UPDATE int->text (id)", lambda conn: schema_text(conn, "id")),
-    (
-        "own rebuild int->text (id)",
-        lambda conn: own_rebuild(conn, {"id": "TEXT"}, {"id"}),
-    ),
+    ("inserter rebuild float->text", inserter_method("rebuild", {"price": _T})),
+    ("sqlite-utils transform float->text", transform_method({"price": str})),
 )
 
 
 def part1(csv_path, row_counts, storages, work):
-    """
-    Each method runs on its own fresh copy of the same N row table (copied
-    with the SQLite backup API from a template), so earlier methods cannot
-    leave a fragmented table behind for later ones.
-    """
     print("## Part 1: cost of one widening on a table of N rows (incl. COMMIT)")
     print(
         "| rows | storage | load N rows | "
@@ -198,18 +190,32 @@ def part1(csv_path, row_counts, storages, work):
         template_path = os.path.join(work, f"template-{uuid.uuid4().hex[:8]}.db")
         template = sqlite3.connect(template_path, isolation_level="IMMEDIATE")
         template.execute("PRAGMA journal_mode=WAL")
-        load = build_table(template, csv_path, rows)
+        load, kept = build_table(template, csv_path, rows)
         for storage in storages:
             results = []
-            for label, method in METHODS:
+            for label, (setup, run) in METHODS:
                 conn, keepalive, path = open_db(storage, work)
                 template.backup(conn)
                 if storage == "disk":
                     conn.execute("PRAGMA journal_mode=WAL")
                     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                results.append(timed(conn, functools.partial(method, conn)))
+                state = setup(conn, kept)
+                start = time.perf_counter()
+                conn.execute("BEGIN IMMEDIATE")
+                methods = run(conn, state)
+                conn.execute("COMMIT")
+                results.append(time.perf_counter() - start)
+                if methods and "fallback" in methods[0]:
+                    print(f"<!-- {label}: {methods} -->")
                 check = conn.execute("PRAGMA quick_check").fetchone()[0]
                 assert check == "ok", (label, check)
+                if "inserter" in label and "float->text" in label and kept:
+                    # The kept text came back
+                    rowid, text = kept[0]
+                    got = conn.execute(
+                        "select price from t where rowid = ?", [rowid]
+                    ).fetchone()[0]
+                    assert got == text, (label, got, text)
                 conn.close()
                 if keepalive is not None:
                     keepalive.close()
@@ -226,6 +232,7 @@ def part1(csv_path, row_counts, storages, work):
                 ),
                 flush=True,
             )
+        print(f"<!-- {rows:,} rows: {len(kept):,} price texts kept -->")
         template.close()
         remove_db(template_path)
 
@@ -237,26 +244,35 @@ def remove_db(path):
 
 
 def late_rows(csv_path, rows):
-    """rows of big-1gb.csv; qty turns float at 90%, id turns text at 95%."""
+    """
+    rows of big-1gb.csv; qty turns float at 90%, id turns text at 95% and
+    price turns text at 97%.
+    """
     float_at = int(rows * 0.9)
     text_at = int(rows * 0.95)
+    price_at = int(rows * 0.97)
     with open(csv_path, newline="") as fp:
         for i, row in enumerate(itertools.islice(csv.DictReader(fp), rows)):
             if i == float_at:
                 row["qty"] = row["qty"] + ".5"
             if i == text_at:
                 row["id"] = "N/A"
+            if i == price_at:
+                row["price"] = "N/A"
             yield row
 
 
 def part2(csv_path, row_counts, storages, work, batch_size):
     print()
     print(
-        "## Part 2: whole import with late widenings "
-        f"(qty -> float at 90%, id -> text at 95%; batch_size={batch_size})"
+        "## Part 2: whole import with late widenings (qty -> float at 90%,"
+        f" id -> text at 95%, price -> text at 97%; batch_size={batch_size})"
     )
-    print("| rows | storage | strategy | total | time spent widening | widenings |")
-    print("|---|---|---|---|---|---|")
+    print(
+        "| rows | storage | strategy | total | time spent widening | widenings"
+        " | texts kept |"
+    )
+    print("|---|---|---|---|---|---|---|")
     for rows in row_counts:
         for storage in storages:
             outputs = {}
@@ -279,7 +295,7 @@ def part2(csv_path, row_counts, storages, work, batch_size):
                         {w.at_row: w.seconds for w in result.widenings}.values()
                     )
                 print(
-                    "| {:,} | {} | {} | {:.2f}s | {:.2f}s | {} |".format(
+                    "| {:,} | {} | {} | {:.2f}s | {:.2f}s | {} | {:,} |".format(
                         rows,
                         storage,
                         widen,
@@ -289,13 +305,20 @@ def part2(csv_path, row_counts, storages, work, batch_size):
                             f"{w.column} {w.from_type}->{w.to_type} @{w.at_row:,}"
                             for w in result.widenings
                         ),
+                        result.spellings_kept,
                     ),
                     flush=True,
                 )
                 outputs[widen] = conn.execute(
-                    "select id, qty, typeof(id), typeof(qty) from t "
-                    "where rowid in (1, ?, ?, ?) order by rowid",
-                    [int(rows * 0.9) + 1, int(rows * 0.95) + 1, rows],
+                    "select id, qty, price, typeof(id), typeof(qty), typeof(price)"
+                    " from t where rowid in (1, ?, ?, ?, ?) or price like '%.0'"
+                    " order by rowid limit 50",
+                    [
+                        int(rows * 0.9) + 1,
+                        int(rows * 0.95) + 1,
+                        int(rows * 0.97) + 1,
+                        rows,
+                    ],
                 ).fetchall()
                 conn.close()
                 if keepalive is not None:
@@ -306,18 +329,21 @@ def part2(csv_path, row_counts, storages, work, batch_size):
             print(f"<!-- strategies produced identical sample rows: {same} -->")
 
 
-def deferred_loss_demo():
+def deferred_demo():
     print()
-    print("## Why not defer: values that only fit the wider type")
+    print("## Values that only fit the wider type, per strategy")
     for widen in ("auto", "schema", "rebuild", "deferred"):
         conn = sqlite3.connect(":memory:")
         inserter = TypedInserter("t", widen=widen)
-        inserter.write(conn, [{"zip": "10001", "big": "1"}])
-        inserter.write(conn, [{"zip": "02134", "big": "9223372036854775809"}])
+        inserter.write(conn, [{"zip": "10001", "big": "1", "price": "1.5"}])
+        inserter.write(
+            conn, [{"zip": "02134", "big": "9223372036854775809", "price": "1.50"}]
+        )
+        inserter.write(conn, [{"zip": "x", "big": "x", "price": "x"}])
         inserter.finish(conn)
         print(
             f"- {widen}: ",
-            conn.execute("select zip, big from t where rowid = 2").fetchone(),
+            conn.execute("select zip, big, price from t where rowid = 2").fetchone(),
         )
 
 
@@ -344,7 +370,7 @@ def main():
             args.work,
             args.batch_size,
         )
-    deferred_loss_demo()
+    deferred_demo()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     print(f"\nPeak RSS: {peak:,.0f} MB")
 

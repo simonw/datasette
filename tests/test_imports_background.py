@@ -26,6 +26,7 @@ import pytest
 
 from datasette.app import Datasette
 from datasette.cli import serve
+from datasette.database import Database
 from datasette.imports.background import (
     TerminalReporter,
     import_registry,
@@ -470,12 +471,12 @@ async def test_shared_pages_list_the_newest_ten_finished_imports(tmp_path):
         assert {job.state for job in jobs} == {"failed"}
         for path in ("/", "/scratch"):
             page = (await ds.client.get(path)).text
-            listed = [job.table for job in jobs if f">{job.table}</a>:" in page]
+            listed = [job.table for job in jobs if f">{job.table}</a></span>:" in page]
             assert listed == [f"bad_{i}" for i in range(2, 12)], path
             assert "2 older finished imports not listed here" in page
             assert '<a href="/-/imports">all imports</a>' in page
         page = (await ds.client.get("/-/imports")).text
-        assert all(f">{job.table}</a>:" in page for job in jobs)
+        assert all(f">{job.table}</a></span>:" in page for job in jobs)
     finally:
         await ds.invoke_shutdown()
 
@@ -1007,6 +1008,16 @@ async def test_table_not_created_yet_says_so(data_dir):
             response.text
         )
         assert "queued, waiting for an import worker" in response.text
+        # The script reloads this page once the table exists, and rewrites
+        # the sentence before the list once the import has finished
+        notice = response.text.split('<div class="imports-notice', 1)[1]
+        notice = notice.split(">", 1)[0]
+        assert "data-pending-table" in notice
+        assert "data-link-tables" not in notice
+        assert '<p class="import-intro">This table is being imported' in (
+            response.text
+        )
+        assert "window.location.reload()" in response.text
         response = await ds.client.get("/scratch/dogs.json")
         assert response.status_code == 404
         data = response.json()
@@ -1021,6 +1032,62 @@ async def test_table_not_created_yet_says_so(data_dir):
         slots.release()
         assert await job.wait(10)
         assert (await ds.client.get("/scratch/dogs")).status_code == 200
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "on_error,outcome",
+    (
+        ("keep", "The rows imported so far will be kept, and the table marked"),
+        ("drop", "The rows imported so far will be removed."),
+    ),
+)
+async def test_cancel_button_asks_first(tmp_path, on_error, outcome):
+    ds, db = _scratch_ds()
+    try:
+        await _start_stalled(ds, db, tmp_path, table='a"<b>', on_error=on_error)
+        page = (await ds.client.get("/", actor=ROOT)).text
+        form = page.split('<form class="import-cancel"', 1)[1].split(">", 1)[0]
+        question = form.split('data-confirm="', 1)[1].split('"', 1)[0]
+        assert (
+            markupsafe.Markup(question)
+            .unescape()
+            .startswith('Stop importing a"<b>? ' + outcome)
+        )
+        # Asked by the script, not by inline JavaScript
+        assert "onsubmit" not in form
+        assert 'matches("form.import-cancel[data-confirm]")' in page
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_imports_into_two_databases_are_told_apart(tmp_path):
+    ds, db = _scratch_ds()
+    other = ds.add_database(
+        Database(ds, path=str(tmp_path / "data.db"), is_mutable=True), name="data"
+    )
+    sqlite3.connect(tmp_path / "data.db").execute("vacuum").connection.close()
+    try:
+        (tmp_path / "events.csv").write_text(CSV)
+        registry = import_registry(ds)
+        registry.start(db, _source(tmp_path / "events.csv"))
+        registry.start(
+            other, _source(tmp_path / "events.csv"), title="uploaded events.csv"
+        )
+        await ds.start_background_tasks()
+        assert await registry.wait(20)
+        page = (await ds.client.get("/-/imports")).text
+        assert '<a href="/scratch/events">scratch / events</a>' in page
+        assert '<a href="/data/events">data / events</a>' in page
+        # And where each came from
+        assert f"(from {tmp_path / 'events.csv'})" in page
+        assert "(from uploaded events.csv)" in page
+        # One database: just the table name, as before
+        page = (await ds.client.get("/-/imports?database=data")).text
+        assert '<a href="/data/events">events</a>' in page
     finally:
         await ds.invoke_shutdown()
 

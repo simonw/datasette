@@ -848,6 +848,64 @@ def test_create_table_upload_cannot_be_stopped_once_sent(page, datasette_server)
 
 
 @pytest.mark.playwright
+def test_import_notice_asks_before_cancelling_and_reloads_into_the_table(page):
+    # The page for a table still being read from standard input: its cancel
+    # button asks first, and once the table exists the page reloads itself
+    # into the table, rather than going on saying it will appear soon
+    from playwright.sync_api import expect
+
+    port = find_free_port()
+    url = f"http://127.0.0.1:{port}/"
+    process = subprocess.Popen(
+        [sys.executable, "-m", "datasette", "-", "--root"]
+        + ["--host", "127.0.0.1", "--port", str(port)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        process.stdin.write(b"id,name\n1,Cleo\n")
+        process.stdin.flush()
+        token_url = process.stdout.readline().decode().strip()
+        wait_for_server(process, url)
+        page.goto(token_url)
+        page.goto(f"{url}scratch/stdin")
+        intro = page.locator(".imports-notice .import-intro")
+        expect(intro).to_have_text(
+            "This table is being imported and will appear here soon."
+        )
+        questions = []
+
+        def answer(dialog):
+            questions.append(dialog.message)
+            dialog.dismiss()
+
+        page.on("dialog", answer)
+        page.locator("form.import-cancel button").click()
+        question = (
+            "Stop importing stdin? The rows imported so far will be kept, "
+            "and the table marked incomplete."
+        )
+        assert questions == [question]
+        # Not cancelled: still reading standard input
+        state = httpx2.get(f"{url}-/imports.json").json()["imports"][0]["state"]
+        assert state == "downloading"
+        process.stdin.write(b"2,Pancakes\n")
+        process.stdin.close()
+        expect(page.locator("table.rows-and-columns")).to_contain_text(
+            "Pancakes", timeout=20000
+        )
+        assert page.url == f"{url}scratch/stdin"
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+@pytest.mark.playwright
 def test_create_table_upload_rejected_file(page, datasette_server):
     from playwright.sync_api import expect
 

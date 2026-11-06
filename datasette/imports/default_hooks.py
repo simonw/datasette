@@ -212,19 +212,42 @@ def _notice_class(jobs):
 
 
 async def _render_notice(
-    datasette, request, jobs, *, intro=None, poll_url, link_tables=True, left_out=0
+    datasette,
+    request,
+    jobs,
+    *,
+    intro=None,
+    poll_url,
+    link_tables=True,
+    left_out=0,
+    pending_table=False,
+    show_source=False,
 ):
     """
     HTML for a list of imports, with cancel buttons for actors allowed to
     cancel, and the polling script if any import is still running.
-    ``left_out`` older finished imports are not listed: a link to
-    ``/-/imports`` says so.
+
+    - ``intro`` is a sentence before the list, which the script rewrites
+      when the imports have finished.
+    - ``link_tables`` links each name to its table once it exists (the
+      script adds the link if it appears while the page is open).
+    - ``left_out`` older finished imports are not listed: a link to
+      ``/-/imports`` says so.
+    - ``pending_table``: this is the page for a table that does not exist
+      yet, which the script reloads once it does.
+    - ``show_source`` adds where each import's data came from.
+
+    Imports into more than one database are labelled ``database / table``.
     """
     h = markupsafe.escape
     active = any(job.active for job in jobs)
+    several_databases = len({job.database for job in jobs}) > 1
     items = []
     for job in jobs:
-        name = h(job.table)
+        label = job.table
+        if several_databases:
+            label = f"{job.database} / {job.table}"
+        name = h(label)
         if link_tables and job.table_exists:
             href = datasette.urls.table(job.database, job.table)
             name = f'<a href="{h(href)}">{name}</a>'
@@ -240,19 +263,30 @@ async def _render_notice(
             cancel = (
                 f' <form class="import-cancel" method="post" '
                 f'action="{h(_cancel_path(datasette, job))}" '
+                f'data-confirm="{h(_cancel_question(job))}" '
                 'style="display: inline">'
                 f'<input type="hidden" name="next" value="{h(next_url)}">'
                 '<button type="submit">Cancel import</button></form>'
             )
+        source = ""
+        if show_source:
+            source = f' <span class="import-source">(from {h(job.title)})</span>'
         items.append(
             f'<li data-import-id="{h(job.id)}" data-state="{h(job.state)}">'
-            f'{name}: <span class="import-status">{h(job.status())}</span>'
-            f"{progress}{cancel}{_notes_html(job.notes)}</li>"
+            f'<span class="import-name">{name}</span>: '
+            f'<span class="import-status">{h(job.status())}</span>'
+            f"{source}{progress}{cancel}{_notes_html(job.notes)}</li>"
         )
-    poll = f' data-poll="{h(poll_url)}"' if active else ""
+    attributes = ""
+    if active:
+        attributes += f' data-poll="{h(poll_url)}"'
+    if link_tables:
+        attributes += " data-link-tables"
+    if pending_table:
+        attributes += " data-pending-table"
     parts = [
-        f'<div class="imports-notice {_notice_class(jobs)}"{poll}>',
-        f"<p>{intro}</p>" if intro else "",
+        f'<div class="imports-notice {_notice_class(jobs)}"{attributes}>',
+        f'<p class="import-intro">{intro}</p>' if intro else "",
         f'<ul class="import-list">{"".join(items)}</ul>',
     ]
     if left_out:
@@ -272,6 +306,17 @@ async def _render_notice(
     return markupsafe.Markup("".join(parts))
 
 
+def _cancel_question(job):
+    "What the cancel button asks before it cancels."
+    if job.on_error == "drop":
+        outcome = "The rows imported so far will be removed."
+    else:
+        outcome = (
+            "The rows imported so far will be kept, and the table marked " "incomplete."
+        )
+    return f"Stop importing {job.table}? {outcome}"
+
+
 def _notes_html(notes):
     "The loader's notes about an import, as a list inside its item."
     if not notes:
@@ -283,8 +328,11 @@ def _notes_html(notes):
 
 
 # Updates the notices in place: the status text, the progress bar, the
-# loader's notes and the notice's colour. Stops when nothing is running, or
-# after repeated errors
+# loader's notes, links to tables that have appeared and the notice's
+# colour, then the sentence before the list once nothing is running.
+# Reloads the page for a table that did not exist yet once it does. Asks
+# before a cancel button cancels. Stops when nothing is running, or after
+# repeated errors
 _POLL_SCRIPT = (
     """<script>
 (function () {
@@ -292,11 +340,29 @@ _POLL_SCRIPT = (
   window.datasetteImportPolling = true;
   var ACTIVE = ["queued", "downloading", "importing"];
   var failures = 0;
+  var reloading = false;
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!form.matches || !form.matches("form.import-cancel[data-confirm]")) return;
+    if (!window.confirm(form.getAttribute("data-confirm"))) {
+      event.preventDefault();
+    }
+  });
   function notices() {
     return document.querySelectorAll(".imports-notice[data-poll]");
   }
+  function linkName(item, job) {
+    var name = item.querySelector(".import-name");
+    if (!name || name.querySelector("a") || !job.table_url) return;
+    var link = document.createElement("a");
+    link.href = job.table_url;
+    link.textContent = name.textContent;
+    name.textContent = "";
+    name.appendChild(link);
+  }
   function update(notice, data) {
-    var running = false, failed = false, cancelled = false;
+    var running = false, failed = false, cancelled = false, ready = false;
+    var appeared = false;
     (data.imports || []).forEach(function (job) {
       var item = notice.querySelector('[data-import-id="' + job.id + '"]');
       if (!item) return;
@@ -305,6 +371,10 @@ _POLL_SCRIPT = (
         status.textContent = job.status;
       }
       item.setAttribute("data-state", job.state);
+      if (job.table_exists) {
+        appeared = true;
+        if (notice.hasAttribute("data-link-tables")) linkName(item, job);
+      }
       var notes = job.notes || [];
       var list = item.querySelector(".import-notes");
       if (notes.length && (!list || list.children.length !== notes.length)) {
@@ -331,19 +401,35 @@ _POLL_SCRIPT = (
         if (form) form.remove();
         failed = failed || job.state === "failed";
         cancelled = cancelled || job.state === "cancelled";
+        ready = ready || (job.state === "done" && job.table_exists);
       }
     });
+    if (appeared && notice.hasAttribute("data-pending-table") && !reloading) {
+      // The table this page is for exists now: show it, with its rows
+      reloading = true;
+      window.location.reload();
+      return;
+    }
     if (failed || cancelled) {
       notice.classList.remove("message-info", "message-warning");
       notice.classList.add(failed ? "message-error" : "message-warning");
     }
     if (!running) {
       notice.removeAttribute("data-poll");
+      var intro = notice.querySelector(".import-intro");
+      if (intro) {
+        intro.textContent = failed
+          ? "Import failed."
+          : cancelled
+          ? "Import cancelled."
+          : "Import finished.";
+      }
       var finished = notice.querySelector(".imports-finished");
-      if (finished) finished.hidden = false;
+      if (finished && ready) finished.hidden = false;
     }
   }
   function poll() {
+    if (reloading) return;
     var list = Array.prototype.slice.call(notices());
     if (!list.length) return;
     if (document.hidden) {
@@ -689,6 +775,7 @@ def handle_exception(datasette, request, exception):
             ),
             poll_url=_poll_url(datasette, job.database, job.table),
             link_tables=False,
+            pending_table=True,
         )
         html = await datasette.render_template(
             "imports.html",
@@ -755,6 +842,7 @@ async def imports_view(datasette, request):
             request,
             jobs,
             poll_url=_poll_url(datasette, database, table),
+            show_source=True,
         )
     return Response.html(
         await datasette.render_template(

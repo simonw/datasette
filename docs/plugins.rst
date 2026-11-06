@@ -345,6 +345,17 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.imports.default_hooks",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "permission_resources_sql",
+                "top_database",
+                "write_wrapper"
+            ]
+        },
+        {
             "name": "datasette.imports.loaders",
             "static": false,
             "templates": false,

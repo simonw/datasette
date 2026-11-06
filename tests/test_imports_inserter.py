@@ -1429,7 +1429,8 @@ def test_slices_are_sized_for_rewriting_every_row(monkeypatch):
     assert declared(conn) == {"a": "TEXT"}
 
 
-def test_rewrite_cost_learning():
+def test_rewrite_cost_learning(monkeypatch):
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 0.05)
     inserter = TypedInserter("t")
     inserter._insert_cost = 1e-6
     # 0.05s / 1us

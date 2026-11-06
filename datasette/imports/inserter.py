@@ -18,7 +18,7 @@ The algorithm:
 Widening changes the declared type in place, which takes well under a
 millisecond at any table size. Widening to text also means the numbers
 already stored have to become text: that is done a slice of rows at a time,
-by each following write (about 50ms of it each) and then by
+by each following write (about 30ms of it each) and then by
 :meth:`TypedInserter.convert` calls of their own, so no single transaction
 holds the write lock for long however big the table is. Until it is done,
 readers can see numbers in some rows of that column, which is declared
@@ -113,11 +113,14 @@ _NoneType = type(None)
 WIDEN_STRATEGIES = ("auto", "incremental", "schema", "rebuild", "deferred")
 # How long a write() (or convert()) spends converting stored numbers to text
 # after a column widened to text - its UPDATE, not counting the COMMIT, which
-# measured another 60-80% for dense slices on a WAL file (writing the dirty
+# measured another 50-150% for these slices on a WAL file (writing the dirty
 # pages and the automatic checkpoint) - and the slice size in rows before
 # any timing is known. A slice is sized as if every row in it had to be
-# rewritten, see TypedInserter._slice_rows()
-CONVERT_SECONDS = 0.05
+# rewritten, see TypedInserter._slice_rows(). With 0.05 the transactions
+# that converted took 81-85ms (p50) and up to 123-186ms, COMMIT included,
+# on big-1gb.csv; with 0.03, 50ms and up to 77-88ms, and the import was no
+# slower (bench_core_widening.py, 1M and 6M rows)
+CONVERT_SECONDS = 0.03
 _FIRST_CONVERT_ROWS = 5_000
 _MIN_CONVERT_ROWS = 500
 # A safety net in case a timing is wildly off: 200,000 rows are 160-270ms
@@ -473,7 +476,7 @@ class TypedInserter:
           blob) that is all: no stored value has to change. Widening to
           text also has to turn the numbers already stored into text,
           O(rows): this :meth:`write` converts the first slice of them and
-          each later one another slice, about ``CONVERT_SECONDS`` (50ms)
+          each later one another slice, about ``CONVERT_SECONDS`` (30ms)
           of work at a time whatever the row width. :attr:`backlog` says
           how many rows are left; :meth:`convert` converts a slice on its
           own (:func:`insert_rows` and :func:`import_rows` call it, one

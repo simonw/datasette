@@ -107,16 +107,22 @@ class Database:
         self.is_temp_disk = is_temp_disk
         if memory_name is not None:
             self.is_memory = True
+        # Serializes switching a temp disk database to WAL, see connect()
+        self._wal_lock = threading.Lock()
+        self._wal_enabled = False
         if is_temp_disk:
             fd, temp_path = tempfile.mkstemp(suffix=".db", prefix="datasette_temp_")
             os.close(fd)
             self.path = temp_path
             self.is_mutable = True
             self.mode = "rwc"
-            self._wal_enabled = False
             atexit.register(self._cleanup_temp_file)
-        else:
-            self._wal_enabled = False
+            # Switch the new file to WAL now, while nothing else can have it
+            # open: connections opened at the same moment would otherwise
+            # all try, and changing the journal mode needs an exclusive lock
+            # that SQLite refuses at once ("database is locked") rather
+            # than wait for when two connections want it together
+            self._enable_wal()
         self.cached_hash = None
         self.cached_size = None
         self._cached_table_counts = None
@@ -208,9 +214,40 @@ class Database:
         )
         self._all_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
-            conn.execute("PRAGMA journal_mode=WAL")
-            self._wal_enabled = True
+            # Only if __init__ could not: one connection at a time
+            self._enable_wal(conn)
         return conn
+
+    def _enable_wal(self, conn=None):
+        """
+        Put this database's file in WAL mode, which persists in the file, so
+        it only has to happen once. Holds a lock so that connections opening
+        at the same time never try it together. ``conn`` is a connection to
+        use; without one, a short-lived connection is opened, and if that
+        fails the next connect() tries again.
+        """
+        with self._wal_lock:
+            if self._wal_enabled:
+                return
+            if conn is not None:
+                conn.execute("PRAGMA journal_mode=WAL")
+            else:
+                try:
+                    own = sqlite3.connect(self.path)
+                    try:
+                        # No fsync: a temporary file is not kept across a
+                        # crash anyway, and fsync made this 1.2-1.7ms
+                        # (0.08ms without) - on every Datasette(), whose
+                        # internal database is a temp disk one
+                        own.execute("PRAGMA synchronous=OFF")
+                        own.execute("PRAGMA journal_mode=WAL")
+                    finally:
+                        own.close()
+                except sqlite3.Error:
+                    return
+            # Done, even if SQLite kept another journal mode (a VFS without
+            # shared memory support can't use WAL): don't ask again
+            self._wal_enabled = True
 
     def close(self):
         """Release all resources held by this database.

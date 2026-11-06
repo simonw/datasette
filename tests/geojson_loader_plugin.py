@@ -49,30 +49,59 @@ class GeoJSONLoader(Loader):
             first = features[0]
             if first.get("type") == "Feature":
                 return 0.9
-            geometry = first.get("geometry")
-            if isinstance(geometry, dict) and geometry.get("type") in GEOMETRY_TYPES:
+            if _is_geometry(first.get("geometry")):
                 return 0.8
+        if _is_geometry(doc.get("geometry")):
+            # A single Feature with its "type" key last
+            return 0.8
         return 0.0
 
     def load(self, path):
         with open(path, "rb") as fp:
             doc = json.load(fp)
-        features = [doc] if doc.get("type") == "Feature" else doc["features"]
+        if doc.get("type") == "Feature" or "features" not in doc:
+            features = [doc]
+        else:
+            features = doc["features"]
         rows = []
         types = {}
         for feature in features:
             row = {}
             if "id" in feature:
                 row["id"] = feature["id"]
-            row.update(feature.get("properties") or {})
             geometry = feature.get("geometry")
             row["geometry"] = None if geometry is None else json.dumps(geometry)
+            for key, value in (feature.get("properties") or {}).items():
+                # A property called "id" or "geometry" must not overwrite the
+                # feature's own id or geometry
+                if key in row:
+                    key = f"properties.{key}"
+                row[key] = value
             for key, value in row.items():
                 types[key] = _widen(types.get(key), value)
             rows.append(row)
         # GeoJSON values carry their own types, so declare them all
         yield Schema({key: type_ or "text" for key, type_ in types.items()})
         yield from rows
+
+
+def _is_geometry(value):
+    """
+    A GeoJSON geometry, judged by its keys as well as its "type": with
+    sorted keys "coordinates" comes before "type", and a big first polygon
+    can fill the whole window before "type" appears.
+    """
+    if not isinstance(value, dict) or not value:
+        return False
+    if value.get("type") in GEOMETRY_TYPES:
+        return True
+    keys = set(value)
+    return bool(keys & {"coordinates", "geometries"}) and keys <= {
+        "type",
+        "coordinates",
+        "geometries",
+        "bbox",
+    }
 
 
 def _widen(current, value):

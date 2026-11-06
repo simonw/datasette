@@ -1,7 +1,10 @@
 import codecs
+import csv
+import io
 import json
 import logging
 import math
+import random
 import subprocess
 import sys
 
@@ -384,13 +387,24 @@ def test_sniff_path_grows_window_when_undecided(tmp_path):
     first_bytes, scores = sniff_path(path)
     assert scores[0].name == "ndjson"
     assert len(first_bytes) == 256 * 1024
-    # Without growing, JSON wins and then fails to parse the file
+    # Without growing, JSON wins (it reads several values one after another,
+    # so it still loads the file, but it holds the whole file in memory)
     first_bytes, scores = sniff_path(path, max_sniff_bytes=64 * 1024)
     assert len(first_bytes) == 64 * 1024
     assert scores[0].name == "json"
     name, _, rows = rows_of(path)
     assert name == "ndjson"
     assert [row["id"] for row in rows] == [0, 1, 2]
+
+
+def test_ndjson_with_lines_longer_than_the_biggest_window(tmp_path):
+    # Verifier repro: lines over 1MB went to JSON, which failed with
+    # "Extra data". JSON now reads one value after another.
+    line = json.dumps({"id": 1, "blob": "x" * 1_200_000})
+    path = write(tmp_path, "huge-lines.ndjson", line + "\n" + line + "\n")
+    name, _, rows = rows_of(path)
+    assert name == "json"
+    assert [row["id"] for row in rows] == [1, 1]
 
 
 def test_sniff_path_stops_at_decisive_score(tmp_path):
@@ -491,7 +505,7 @@ def test_ndjson_loader_rejects_non_objects(tmp_path):
     path = write(tmp_path, "a.ndjson", '{"id": 1}\n[1, 2]\n')
     with pytest.raises(LoaderError) as ex:
         rows_of(path, format="ndjson")
-    assert str(ex.value) == "Row 2 is list, expected an object"
+    assert str(ex.value) == "Line 2 is list, expected an object"
 
 
 def test_load_path_with_explicit_format(tmp_path):
@@ -649,3 +663,380 @@ def test_loader_in_subprocess_writes_ndjson(tmp_path):
 def test_geojson_loader_class_has_example_hook():
     # The example plugin module registers its loader class through the hook
     assert geojson_loader_plugin.register_import_loaders() == [GeoJSONLoader]
+
+
+# Regressions from the adversarial review of this prototype
+
+
+def test_csv_sniff_does_not_depend_on_field_size_limit(tmp_path):
+    # A field over csv's default 128KB limit was UnrecognizedFormat in a fresh
+    # process, but csv once any other CSV had been loaded in that process
+    path = write(tmp_path, "big-field.csv", f'id,body,n\n1,"{"x" * 200_000}",3\n')
+    previous = csv.field_size_limit(131072)
+    try:
+        with open(path, "rb") as fp:
+            assert pick_loader(fp.read(L.SNIFF_BYTES * 4)).name == "csv"
+        _, scores = sniff_path(path)
+        assert (scores[0].name, scores[0].score) == ("csv", pytest.approx(0.8))
+        assert len(rows_of(path)[2][0]["body"]) == 200_000
+    finally:
+        csv.field_size_limit(previous)
+
+
+def ndjson_lines(count):
+    return [f'{{"id": {i}, "name": "n{i}", "v": {i * 2}}}' for i in range(count)]
+
+
+@pytest.mark.parametrize(
+    "lines,bad_line",
+    (
+        # One malformed line in the middle
+        (ndjson_lines(10) + ['{"id": 10, "name": "trunc'] + ndjson_lines(9), 11),
+        # The last line was cut off by a writer that was killed
+        (ndjson_lines(5) + ['{"id": 5, "na'], 6),
+        # Trailing junk
+        (ndjson_lines(2) + ["not json"], 3),
+    ),
+)
+def test_ndjson_with_a_bad_line_is_not_imported_as_csv(tmp_path, lines, bad_line):
+    # These split into a consistent number of comma fields, so CSV used to
+    # win and import columns called '{"id": 0' with no error
+    path = write(tmp_path, "bad.ndjson", "\n".join(lines) + "\n")
+    scores = {s.name: s.score for s in sniff_path(path)[1]}
+    assert scores["csv"] == 0
+    result = load_path(path)
+    assert result.loader.name == "ndjson"
+    with pytest.raises(LoaderError) as ex:
+        list(result.rows)
+    assert str(ex.value).startswith(f"Line {bad_line} is not valid JSON")
+
+
+def test_ndjson_loader_falls_back_to_cp1252(tmp_path):
+    content = '{"name": "café"}\n{"name": "naïve"}\n'.encode("cp1252")
+    path = write(tmp_path, "latin1.ndjson", content)
+    assert rows_of(path) == ("ndjson", None, [{"name": "café"}, {"name": "naïve"}])
+
+
+def test_csv_with_short_rows(tmp_path):
+    # Spreadsheets often leave out trailing empty fields. This was
+    # UnrecognizedFormat, although it loads fine with the format forced.
+    lines = ["a,b,c"] + [("1,2,3" if i % 3 else "1,2") for i in range(30)]
+    path = write(tmp_path, "ragged.csv", "\n".join(lines) + "\n")
+    name, _, rows = rows_of(path)
+    assert name == "csv"
+    assert len(rows) == 30
+    assert rows[0] == {"a": "1", "b": "2", "c": None}
+    assert rows[1] == {"a": "1", "b": "2", "c": "3"}
+
+
+def test_csv_with_long_rows_keeps_extra_values(tmp_path):
+    lines = ["a,b"] + ["1,2"] * 19 + ["3,4,5,6"]
+    path = write(tmp_path, "long-rows.csv", "\n".join(lines) + "\n")
+    name, _, rows = rows_of(path)
+    assert name == "csv"
+    assert rows[-1] == {"a": "3", "b": "4", "_extra": ["5", "6"]}
+
+
+def test_extras_key_does_not_overwrite_a_column(tmp_path):
+    path = write(tmp_path, "a.csv", "a,_extra\n1,2\n3,4,5\n")
+    rows = rows_of(path, format="csv")[2]
+    assert rows[1] == {"a": "3", "_extra": "4", "_extra_2": ["5"]}
+
+
+def test_ragged_tsv_is_still_tsv(tmp_path):
+    lines = ["a\tb\tc"] + [("1\t2\t3" if i % 3 else "1\t2") for i in range(30)]
+    path = write(tmp_path, "ragged.tsv", "\n".join(lines) + "\n")
+    name, _, rows = rows_of(path)
+    assert name == "tsv"
+    assert rows[0] == {"a": "1", "b": "2", "c": None}
+
+
+def test_tsv_with_literal_quotes(tmp_path):
+    # A field starting with an unclosed quote swallowed the rest of the file,
+    # so this became a one-column CSV
+    content = 'name\tsize\n"Big" TV\t55\nscreen 5" wide\t7\n"unbalanced\t1\nnext\t2\n'
+    path = write(tmp_path, "quotes.tsv", content)
+    name, _, rows = rows_of(path)
+    assert name == "tsv"
+    assert rows == [
+        {"name": '"Big" TV', "size": "55"},
+        {"name": 'screen 5" wide', "size": "7"},
+        {"name": '"unbalanced', "size": "1"},
+        {"name": "next", "size": "2"},
+    ]
+
+
+def test_csv_quoted_fields_still_use_quotes(tmp_path):
+    content = 'id,notes\n1,"line one\nline two"\n2,"a, ""b"""\n'
+    path = write(tmp_path, "quoted.csv", content)
+    assert rows_of(path)[2] == [
+        {"id": "1", "notes": "line one\nline two"},
+        {"id": "2", "notes": 'a, "b"'},
+    ]
+
+
+@pytest.mark.parametrize(
+    "content,error",
+    (
+        (b'[["id","name"],[1,"a"],[2,"b"]]', "JSON array item 0 is list"),
+        (b'[\n  ["id", "name"],\n  [1, "a"]\n]\n', "JSON array item 0 is list"),
+        (b"[1,2,3]", "JSON array item 0 is int"),
+        (b"[1,2]\n[3,4]\n[5,6]\n", "Line 1 is list"),
+    ),
+)
+def test_json_that_is_not_rows_raises_an_error(tmp_path, content, error):
+    # These used to import as a header-only CSV: zero rows and no error
+    path = write(tmp_path, "a.json", content)
+    assert sniff_path(path)[1][0].name in ("json", "ndjson")
+    with pytest.raises(LoaderError) as ex:
+        list(load_path(path).rows)
+    assert str(ex.value).startswith(error)
+
+
+def test_csv_never_wins_on_a_json_document():
+    for content in (b'{"a": 1}', b'[{"a": 1}', b'{"a": [1, 2', b'{"a": 1}\n{"b'):
+        assert L.CSVLoader().sniff(content) == 0, content
+        assert L.TSVLoader().sniff(content) == 0, content
+    # ...but a CSV whose first field looks like JSON is still CSV
+    assert L.CSVLoader().sniff(b'{"a": 1},first\n{"a": 2},second\n') == 0.8
+
+
+def test_concatenated_json_objects(tmp_path):
+    # jq prints objects like this
+    path = write(tmp_path, "jq.json", '{\n  "a": 1\n}\n{\n  "a": 2\n}\n')
+    assert rows_of(path) == ("json", None, [{"a": 1}, {"a": 2}])
+
+
+def test_concatenated_json_must_be_objects(tmp_path):
+    path = write(tmp_path, "a.json", '{"a": 1}\n[1, 2]\n')
+    with pytest.raises(LoaderError) as ex:
+        rows_of(path, format="json")
+    assert str(ex.value) == "JSON value 2 is list, expected an object"
+
+
+def test_invalid_json_raises_loader_error(tmp_path):
+    path = write(tmp_path, "a.json", '[{"a": 1}, {"a": ]')
+    with pytest.raises(LoaderError) as ex:
+        rows_of(path, format="json")
+    assert str(ex.value).startswith("Invalid JSON: Expecting value")
+
+
+@pytest.mark.parametrize(
+    "header,columns",
+    (
+        ("name,name,age", ["name", "name_2", "age"]),
+        ("name,Name,NAME", ["name", "Name_2", "NAME_3"]),
+        ("a,a,a_2", ["a", "a_2", "a_2_2"]),
+        (",a,", ["column_1", "a", "column_3"]),
+    ),
+)
+def test_duplicate_and_blank_headers_are_renamed(tmp_path, header, columns):
+    # DictReader kept only the last of two columns with the same name
+    values = [f"v{i}" for i in range(len(columns))]
+    path = write(tmp_path, "a.csv", f"{header}\n" + ",".join(values) + "\n")
+    rows = rows_of(path, format="csv")[2]
+    assert list(rows[0]) == columns
+    assert list(rows[0].values()) == values
+
+
+def test_header_only_csv_yields_schema(tmp_path):
+    path = write(tmp_path, "a.csv", "id,name,age\n")
+    assert rows_of(path) == (
+        "csv",
+        Schema({"id": "text", "name": "text", "age": "text"}),
+        [],
+    )
+
+
+def test_nul_byte_in_csv(tmp_path):
+    path = write(tmp_path, "a.csv", b"a,b\n1,x\x00y\n2,z\n")
+    assert rows_of(path) == (
+        "csv",
+        None,
+        [{"a": "1", "b": "x\x00y"}, {"a": "2", "b": "z"}],
+    )
+
+
+def test_load_uses_the_dialect_sniff_path_chose(tmp_path):
+    # The header is longer than the first window, and its first column name
+    # contains a comma. sniff_path() grows to 256KB and finds ";", but load()
+    # used to look at 64KB only and split on ","
+    columns = ["a,b"] + [f"column_{i:05d}" for i in range(8000)]
+    lines = [";".join(columns)] + [";".join("1" for _ in columns)] * 3
+    path = write(tmp_path, "wide.csv", "\n".join(lines) + "\n")
+    first_bytes, scores = sniff_path(path)
+    assert len(first_bytes) > L.SNIFF_BYTES
+    assert scores[0].name == "csv"
+    rows = rows_of(path)[2]
+    assert len(rows) == 3
+    assert list(rows[0])[:2] == ["a,b", "column_00000"]
+
+
+def test_sniff_windows():
+    fp = io.BytesIO(b"x" * 300_000)
+    assert [len(w) for w in L.sniff_windows(fp)] == [65536, 262144, 300_000]
+    fp = io.BytesIO(b"x" * 100)
+    assert [len(w) for w in L.sniff_windows(fp)] == [100]
+
+
+def test_json_unwrap_logs_the_keys_it_ignores(tmp_path, caplog):
+    path = write(
+        tmp_path, "a.json", '{"total": 2, "next": null, "results": [{"id": 1}]}'
+    )
+    with caplog.at_level(logging.WARNING, logger="datasette.imports.loaders"):
+        assert rows_of(path)[2] == [{"id": 1}]
+    assert "importing the 1 objects in 'results' and ignoring 'total', 'next'" in (
+        caplog.text
+    )
+
+
+def test_peek_json_limits_keys_in_cut_off_objects():
+    content = b"{" + b", ".join(b'"k%d": %d' % (i, i) for i in range(100))
+    assert len(peek_json(content).value) == 20
+    assert len(peek_json(content, max_items=5).value) == 5
+    # A complete object is parsed in full
+    assert len(peek_json(content + b"}").value) == 100
+
+
+def test_peek_json_long_string_inside_cut_off_document():
+    content = b'[{"a": "' + b"x" * 100_000 + b'", "b": 1}, {"c": '
+    peek = peek_json(content)
+    assert peek.value == [{"a": "x" * 100_000, "b": 1}, {}]
+
+
+@pytest.mark.parametrize("depth", (5, 31))
+def test_peek_json_deep_then_long(depth):
+    # Used to re-parse the rest of the window at every level of nesting
+    inner = "[" + ",".join(str(i) for i in range(50_000))
+    content = ('{"a":' * depth + inner).encode()
+    value = peek_json(content).value
+    for _ in range(depth):
+        value = value["a"]
+    assert value == list(range(20))
+
+
+def test_raising_plugin_hook_does_not_break_other_loaders(register, caplog):
+    class Raises:
+        @hookimpl
+        def register_import_loaders(self):
+            raise RuntimeError("hook impl raised")
+
+    register(Raises(), "test-raising-hook")
+    with caplog.at_level(logging.WARNING, logger="datasette.imports.loaders"):
+        assert pick_loader(b"a,b\n1,2\n").name == "csv"
+    assert "register_import_loaders() failed" in caplog.text
+
+
+def test_loader_whose_constructor_raises_is_skipped(register, caplog):
+    class Broken(Loader):
+        name = "broken"
+
+        def __init__(self):
+            raise RuntimeError("boom")
+
+    register(_Plugin(Broken, FixedLoader("fine", 0.95)), "test-broken-loader")
+    with caplog.at_level(logging.WARNING, logger="datasette.imports.loaders"):
+        names = {loader.name for loader in get_loaders()}
+    assert "broken" not in names
+    assert names >= CORE | {"fine"}
+    assert "could not create import loader" in caplog.text
+
+
+def _reference_decode(data):
+    # The simplest correct fallback: one error handler call per invalid byte
+    def per_byte(error):
+        invalid = error.object[error.start : error.end]
+        return "".join(L._FALLBACK_TABLE[byte] for byte in invalid), error.end
+
+    codecs.register_error("test-per-byte-fallback", per_byte)
+    return data.removeprefix(codecs.BOM_UTF8).decode("utf-8", "test-per-byte-fallback")
+
+
+@pytest.mark.parametrize("chunk_size", (1, 2, 3, 5, 64, 8192))
+def test_text_encoding_matches_per_byte_fallback(chunk_size):
+    # The fast fallback decodes runs of invalid bytes at once; check it gives
+    # the same text as decoding byte by byte, including UTF-8 characters split
+    # across chunks and cp1252 bytes that look like the start of UTF-8
+    rng = random.Random(chunk_size)
+    pieces = [
+        "café".encode(),
+        "caf\xe9".encode("cp1252"),
+        "“quoted” €".encode("cp1252"),
+        "“quoted” €".encode(),
+        "日本 😀".encode(),
+        b"\x81\x8d\x8f\x90\x9d",
+        b"\xc3",  # a lone UTF-8 lead byte
+        b"\xe9\xa9",  # looks like the start of a 3-byte sequence
+        b"\xc3\xa9\xa9",
+        b"plain ascii, ",
+        b"\n",
+    ]
+    data = codecs.BOM_UTF8 + b"".join(rng.choice(pieces) for _ in range(2000))
+    decoder = codecs.getincrementaldecoder(L.TEXT_ENCODING)()
+    text = "".join(
+        decoder.decode(data[i : i + chunk_size])
+        for i in range(0, len(data), chunk_size)
+    ) + decoder.decode(b"", final=True)
+    assert text == _reference_decode(data)
+    assert data.decode(L.TEXT_ENCODING) == _reference_decode(data)
+
+
+def test_text_encoding_encodes_without_bom():
+    assert "café".encode(L.TEXT_ENCODING) == "café".encode()
+
+
+def test_geojson_sorted_keys_with_big_first_geometry(with_geojson, tmp_path):
+    # With sort_keys every "type" comes last, and a big first polygon fills
+    # the window before any "type" appears, so JSON used to win
+    ring = [[i * 0.001, i * 0.002] for i in range(60_000)]
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"name": "big"},
+            "geometry": {"type": "Polygon", "coordinates": [ring]},
+        },
+        FEATURE,
+    ]
+    doc = {"type": "FeatureCollection", "features": features}
+    path = write(tmp_path, "sorted.json", json.dumps(doc, sort_keys=True))
+    first_bytes, scores = sniff_path(path)
+    assert b'"type"' not in first_bytes
+    assert scores[0].name == "geojson"
+    name, _, rows = rows_of(path)
+    assert name == "geojson"
+    assert [row["name"] for row in rows] == ["big", "London"]
+
+
+def test_geojson_sorted_single_feature(with_geojson):
+    feature = json.dumps(
+        {"geometry": {"coordinates": [[1.0, 2.0]] * 5000}, "type": "Feature"},
+        sort_keys=True,
+    )
+    assert pick_loader(feature.encode()[:4096]).name == "geojson"
+
+
+def test_geojson_properties_do_not_overwrite_id_or_geometry(with_geojson, tmp_path):
+    doc = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": 7,
+                "properties": {"id": "prop-id", "geometry": "prop", "name": "x"},
+                "geometry": None,
+            },
+            {"type": "Feature", "properties": {"id": "no-feature-id"}},
+        ],
+    }
+    path = write(tmp_path, "collide.geojson", json.dumps(doc))
+    rows = rows_of(path)[2]
+    assert rows == [
+        {
+            "id": 7,
+            "geometry": None,
+            "properties.id": "prop-id",
+            "properties.geometry": "prop",
+            "name": "x",
+        },
+        {"geometry": None, "id": "no-feature-id"},
+    ]

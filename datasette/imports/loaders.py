@@ -14,6 +14,7 @@ Nothing here needs a Datasette instance, so the same code can run in the
 import codecs
 import csv
 import dataclasses
+import functools
 import io
 import itertools
 import json
@@ -23,7 +24,7 @@ import re
 from collections.abc import Iterable, Iterator
 from typing import Any, ClassVar
 
-from sqlite_utils.utils import Format, maximize_csv_field_size_limit, rows_from_file
+from sqlite_utils.utils import maximize_csv_field_size_limit
 
 from datasette.hookspecs import hookimpl
 
@@ -40,6 +41,9 @@ MAX_SNIFF_BYTES = 1024 * 1024
 # Column types a Schema can declare - the same names that
 # sqlite_utils.utils.TypeTracker produces
 SCHEMA_TYPES = ("text", "integer", "float", "blob")
+# CSV and TSV rows with more fields than the header keep the extra values, as
+# a list, in this column
+EXTRAS_KEY = "_extra"
 
 
 class LoaderError(Exception):
@@ -154,15 +158,25 @@ def get_loaders() -> list[Loader]:
 
     A plugin loader with the same name as a core loader replaces it. If two
     plugin loaders share a name, the one whose class has the lowest
-    ``module.qualname`` wins and a warning is logged.
+    ``module.qualname`` wins and a warning is logged. A plugin whose hook
+    raises, or whose loader class cannot be instantiated, is skipped with a
+    logged warning, so it cannot break imports of other formats.
     """
-    from datasette.plugins import pm
-
     by_name: dict[str, Loader] = {}
-    for item in itertools.chain.from_iterable(
-        result for result in pm.hook.register_import_loaders() if result
-    ):
-        loader = item() if isinstance(item, type) else item
+    for plugin_name, item in _registered_items():
+        if isinstance(item, type):
+            try:
+                loader = item()
+            except Exception:
+                logger.warning(
+                    "Plugin %s: could not create import loader %r",
+                    plugin_name,
+                    item,
+                    exc_info=True,
+                )
+                continue
+        else:
+            loader = item
         name = getattr(loader, "name", None)
         if not isinstance(name, str) or not name:
             logger.warning("Ignoring import loader with no name: %r", loader)
@@ -186,6 +200,26 @@ def get_loaders() -> list[Loader]:
             )
             by_name[name] = winner
     return list(by_name.values())
+
+
+def _registered_items():
+    # Call each register_import_loaders() implementation separately, in the
+    # order pluggy would, so one that raises doesn't hide all the others
+    from datasette.plugins import pm
+
+    for impl in reversed(pm.hook.register_import_loaders.get_hookimpls()):
+        try:
+            result = impl.function()
+            items = list(result or [])
+        except Exception:
+            logger.warning(
+                "Plugin %s: register_import_loaders() failed",
+                impl.plugin_name,
+                exc_info=True,
+            )
+            continue
+        for item in items:
+            yield impl.plugin_name, item
 
 
 def get_loader(name: str, loaders: Iterable[Loader] | None = None) -> Loader:
@@ -243,6 +277,31 @@ def pick_loader(
     return _choose(score_loaders(first_bytes, loaders), first_bytes, min_confidence)
 
 
+def sniff_windows(
+    fp, sniff_bytes: int = SNIFF_BYTES, max_sniff_bytes: int = MAX_SNIFF_BYTES
+) -> Iterator[bytes]:
+    """
+    Yield ever longer windows from the start of the binary file ``fp``:
+    ``sniff_bytes``, then four times as many each time, up to
+    ``max_sniff_bytes`` or the end of the file. Stop iterating once a window
+    is decisive.
+
+    :func:`sniff_path` uses this. A loader whose ``load()`` needs to repeat a
+    decision it made in ``sniff()``, such as which delimiter a CSV file uses,
+    can use it too: stopping at the first window where its own score reaches
+    ``DECISIVE_CONFIDENCE`` sees the same bytes ``sniff_path()`` saw when it
+    picked that loader.
+    """
+    size = sniff_bytes
+    first_bytes = fp.read(size)
+    while True:
+        yield first_bytes
+        if len(first_bytes) < size or size >= max_sniff_bytes:
+            return
+        size = min(size * 4, max_sniff_bytes)
+        first_bytes += fp.read(size - len(first_bytes))
+
+
 def sniff_path(
     path: str,
     loaders: Iterable[Loader] | None = None,
@@ -256,16 +315,13 @@ def sniff_path(
     ``max_sniff_bytes``. Returns ``(first_bytes, scores)``.
     """
     loaders = get_loaders() if loaders is None else list(loaders)
-    size = sniff_bytes
     with open(path, "rb") as fp:
-        first_bytes = fp.read(size)
-        while True:
+        for first_bytes in sniff_windows(fp, sniff_bytes, max_sniff_bytes):
             scores = score_loaders(first_bytes, loaders)
-            decisive = scores and scores[0].score >= DECISIVE_CONFIDENCE
-            if decisive or len(first_bytes) < size or size >= max_sniff_bytes:
-                return first_bytes, scores
-            size = min(size * 4, max_sniff_bytes)
-            first_bytes += fp.read(size - len(first_bytes))
+            if scores and scores[0].score >= DECISIVE_CONFIDENCE:
+                break
+    _peek.cache_clear()
+    return first_bytes, scores
 
 
 def load_path(
@@ -348,10 +404,14 @@ def _class_path(loader) -> str:
 # Text decoding: UTF-8, falling back to cp1252 / latin-1 for invalid bytes
 #
 # Spreadsheet exports are often cp1252 (Windows "ANSI"). Rather than guess one
-# encoding for the whole file, decode as UTF-8 and decode each invalid byte as
+# encoding for the whole file, decode as UTF-8 and decode invalid bytes as
 # cp1252, or as latin-1 for the five bytes cp1252 leaves undefined. That works
-# no matter how far into the file the first non-UTF-8 byte appears, and costs
-# nothing for files that are valid UTF-8. A leading byte order mark is removed.
+# no matter how far into the file the first non-UTF-8 byte appears, and in
+# files that mix the two. A leading byte order mark is removed.
+#
+# Python calls the error handler for each invalid byte, which made files that
+# really are cp1252 four times slower to decode. So the handler decodes
+# everything up to the next valid UTF-8 multi-byte sequence in one go.
 
 _FALLBACK_ERRORS = "datasette-cp1252-fallback"
 #: Pass this as an ``encoding=`` to decode text with the fallback described above
@@ -365,16 +425,28 @@ def _byte_to_text(byte: int) -> str:
         return chr(byte)
 
 
-_FALLBACK_TABLE = [_byte_to_text(byte) for byte in range(256)]
+_FALLBACK_TABLE = "".join(_byte_to_text(byte) for byte in range(256))
+# Where a valid UTF-8 multi-byte sequence could start: a lead byte then a
+# continuation byte. Deliberately loose (a precise pattern is four times
+# slower to search): if a match is not valid UTF-8 after all, the decoder
+# calls the error handler again from there
+_UTF8_SEQUENCE_RE = re.compile(rb"[\xc2-\xf4][\x80-\xbf]")
 
 
 def _cp1252_fallback(error):
     if not isinstance(error, UnicodeDecodeError):
         raise error
-    invalid = error.object[error.start : error.end]
-    return "".join(_FALLBACK_TABLE[byte] for byte in invalid), error.end
+    data = error.object
+    match = _UTF8_SEQUENCE_RE.search(data, error.end)
+    end = match.start() if match else len(data)
+    # Leave the last three bytes to the UTF-8 decoder: they could be the start
+    # of a character that continues in the next chunk of the file
+    end = max(error.end, min(end, len(data) - 3))
+    text, _ = codecs.charmap_decode(data[error.start : end], "strict", _FALLBACK_TABLE)
+    return text, end
 
 
+_UTF8 = codecs.lookup("utf-8")
 _UTF8_SIG = codecs.lookup("utf-8-sig")
 
 
@@ -392,12 +464,12 @@ def _search_codec(name):
         return None
     return codecs.CodecInfo(
         name=TEXT_ENCODING,
-        encode=_UTF8_SIG.encode,
+        # Encodes as plain UTF-8, with no byte order mark
+        encode=_UTF8.encode,
         decode=_fallback_decode,
-        incrementalencoder=_UTF8_SIG.incrementalencoder,
+        incrementalencoder=_UTF8.incrementalencoder,
         incrementaldecoder=_FallbackIncrementalDecoder,
-        streamreader=_UTF8_SIG.streamreader,
-        streamwriter=_UTF8_SIG.streamwriter,
+        streamwriter=_UTF8.streamwriter,
     )
 
 
@@ -431,9 +503,13 @@ class JSONPeek:
 
 
 _WS_RE = re.compile(r"[ \t\n\r]*")
-_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"', re.DOTALL)
+_STRING_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"', re.DOTALL)
 _NUMBER_CHARS = set("0123456789+-.eE")
 _MAX_DEPTH = 32
+# Nested values are first parsed with the C decoder, but only from this many
+# characters, so that a value cut off by the end of the window costs at most
+# this much at each level of nesting rather than a scan of the whole window
+_FAST_PARSE_CHARS = 16 * 1024
 _decoder = json.JSONDecoder(strict=False)
 
 
@@ -450,52 +526,91 @@ def peek_json(first_bytes: bytes, max_items: int = 20) -> JSONPeek | None:
     """
     Parse as much as possible of a JSON array or object that may be cut off
     part way through. Returns ``None`` if this is not the start of a JSON
-    array or object. Arrays that were cut off keep at most ``max_items`` items.
+    array or object. Arrays and objects that were cut off keep at most
+    ``max_items`` items (keys, for an object): looking stops at the first
+    container with more.
 
     Use this in ``sniff()`` to look at structure rather than searching for
     strings: the start of a GeoJSON file is a dictionary with a ``features``
     key whether or not its ``"type": "FeatureCollection"`` key comes first.
+
+    Every loader sniffing the same bytes gets the same result object, so
+    treat it as read-only.
     """
+    return _peek(bytes(first_bytes), max_items)[0]
+
+
+# json, geojson, csv and tsv all peek at the same window: parse it once.
+# Small, and cleared by sniff_path(), so big windows are not kept around.
+@functools.lru_cache(maxsize=2)
+def _peek(first_bytes: bytes, max_items: int = 20) -> tuple[JSONPeek | None, str, int]:
+    """``(peek, text, end)``: ``end`` is where the first value ends in ``text``."""
     text = first_bytes.decode("utf-8-sig", errors="replace")
     start = _WS_RE.match(text).end()
     if start >= len(text) or text[start] not in "[{":
-        return None
+        return None, text, 0
+    # A complete document is parsed in one go by the C decoder
+    try:
+        value, end = _decoder.raw_decode(text, start)
+    except (json.JSONDecodeError, RecursionError):
+        pass
+    else:
+        after = _WS_RE.match(text, end).end()
+        return JSONPeek(value, complete=True, trailing=after < len(text)), text, end
     try:
         value, end = _peek_value(text, start, 0, max_items)
     except _Cut as cut:
-        return JSONPeek(cut.partial, complete=False, trailing=False)
+        return JSONPeek(cut.partial, complete=False, trailing=False), text, len(text)
     except (_Invalid, RecursionError):
-        return None
-    end = _WS_RE.match(text, end).end()
-    return JSONPeek(value, complete=True, trailing=end < len(text))
+        return None, text, 0
+    # Only reached if the C decoder rejected something _peek_value accepts
+    return None, text, 0
 
 
 def _peek_value(text, i, depth, max_items):
     i = _WS_RE.match(text, i).end()
-    if i >= len(text):
+    length = len(text)
+    if i >= length:
         raise _Cut()
     char = text[i]
-    try:
-        value, end = _decoder.raw_decode(text, i)
-    except (json.JSONDecodeError, RecursionError):
-        pass
-    else:
-        if end >= len(text) and isinstance(value, (int, float)):
-            # A number at the very end could have more digits
+    if char == '"':
+        match = _STRING_RE.match(text, i)
+        if match is None:
             raise _Cut()
-        return value, end
+        try:
+            return json.loads(match.group(0), strict=False), match.end()
+        except ValueError:
+            raise _Invalid()
     if char in "[{":
+        if length - i > _FAST_PARSE_CHARS:
+            try:
+                value, end = _decoder.raw_decode(text[i : i + _FAST_PARSE_CHARS])
+                return value, i + end
+            except (json.JSONDecodeError, RecursionError):
+                pass
+        else:
+            try:
+                return _decoder.raw_decode(text, i)
+            except (json.JSONDecodeError, RecursionError):
+                pass
         if depth >= _MAX_DEPTH:
             raise _Cut()
         if char == "{":
             return _peek_object(text, i + 1, depth, max_items)
         return _peek_array(text, i + 1, depth, max_items)
-    rest = text[i:]
-    if char == '"' and not _STRING_RE.match(text, i):
-        raise _Cut()
+    try:
+        value, end = _decoder.raw_decode(text, i)
+    except (json.JSONDecodeError, RecursionError):
+        pass
+    else:
+        if end >= length and isinstance(value, (int, float)):
+            # A number at the very end could have more digits
+            raise _Cut()
+        return value, end
+    rest = text[i : i + 6]
     if any(literal.startswith(rest) for literal in ("true", "false", "null")):
         raise _Cut()
-    if char in "-0123456789" and set(rest) <= _NUMBER_CHARS:
+    if char in "-0123456789" and set(text[i:]) <= _NUMBER_CHARS:
         raise _Cut()
     raise _Invalid()
 
@@ -509,6 +624,8 @@ def _peek_object(text, i, depth, max_items):
             raise _Cut(result)
         if text[i] == "}" and not result:
             return {}, i + 1
+        if len(result) >= max_items:
+            raise _Cut(result)
         if text[i] != '"':
             raise _Invalid()
         match = _STRING_RE.match(text, i)
@@ -568,35 +685,64 @@ def _peek_array(text, i, depth, max_items):
         i += 1
 
 
+_LINE_BREAK_RE = re.compile(r"[ \t]*\r?\n")
+
+
+def _json_shaped(first_bytes: bytes) -> bool:
+    """
+    True if these bytes are JSON rather than delimited text: a single JSON
+    array or object (complete or cut off), or a first line that is entirely
+    one JSON value (newline-delimited or concatenated JSON).
+    """
+    peek, text, end = _peek(first_bytes)
+    if peek is None:
+        return False
+    if not peek.trailing:
+        return True
+    return _LINE_BREAK_RE.match(text, end) is not None
+
+
 # Core loaders
 
 
-_CONTROL_RE = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f]")
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def _looks_like_text(text: str) -> bool:
-    if "\x00" in text:
-        return False
-    return len(_CONTROL_RE.findall(text)) <= len(text) / 100
+    # A stray NUL or control character is fine; binary files have lots
+    return len(_CONTROL_RE.findall(text)) <= len(text) / 100 + 1
 
 
 def _is_one_column(text: str) -> bool:
     reader = csv.reader(io.StringIO(text, newline=""))
     try:
-        return all(len(record) <= 1 for record in itertools.islice(reader, 100))
+        records = [record for record in itertools.islice(reader, 100) if record]
     except csv.Error:
         return False
+    # A header and at least one value
+    return len(records) >= 2 and all(len(record) == 1 for record in records)
 
 
-def _delimiter_score(text: str, delimiter: str) -> tuple[float, int]:
+def _delimiter_score(text: str, delimiter: str, quoting: int) -> tuple[float, int]:
     """
-    Score how well ``text`` reads as records separated by ``delimiter``:
-    1.0 if every record has the same number of fields (at least two) as the
-    first, 0.75 if at least 90% do, 0.5 if there is only a header (0.1 if
-    that "header" is a single line over 4KB), else 0.
+    Score how well ``text`` reads as records separated by ``delimiter``,
+    compared with the first record (the header, which needs two or more
+    fields):
+
+    - 1.0 if every record has the same number of fields as the header
+    - 0.75 if the rows are ragged but plausible: at most 10% have more fields
+      than the header (their extra values are kept), and at least half have
+      exactly as many or 80% have two or more (spreadsheets often leave out
+      trailing empty fields)
+    - 0.5 if there is only a header (0.1 if that "header" is a single line
+      over 4KB)
+    - 0.0 otherwise
+
     Returns ``(score, number_of_fields)``.
     """
-    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter)
+    reader = csv.reader(
+        io.StringIO(text, newline=""), delimiter=delimiter, quoting=quoting
+    )
     try:
         records = [record for record in itertools.islice(reader, 101) if record]
     except csv.Error:
@@ -618,56 +764,124 @@ def _delimiter_score(text: str, delimiter: str) -> tuple[float, int]:
             # A single line longer than 4KB is unlikely to be a CSV header
             return 0.1, width
         return 0.5, width
-    consistent = sum(1 for record in body if len(record) == width) / len(body)
-    if consistent == 1:
+    count = len(body)
+    exact = sum(1 for record in body if len(record) == width)
+    if exact == count:
         return 1.0, width
-    if consistent >= 0.9:
+    longer = sum(1 for record in body if len(record) > width)
+    several = sum(1 for record in body if len(record) >= 2)
+    if longer <= count * 0.1 and (exact >= count * 0.5 or several >= count * 0.8):
         return 0.75, width
     return 0.0, width
 
 
 class DelimitedLoader(Loader):
-    """Shared logic for CSV and TSV: sniff the delimiter, then use sqlite-utils."""
+    """Shared logic for CSV and TSV: sniff the dialect, then read with csv."""
 
     #: Delimiter -> confidence when every record has the same number of fields
     delimiters: ClassVar[dict[str, float]] = {}
     #: Confidence for text with none of the delimiters (a one-column file)
     one_column_score = 0.0
-    format = Format.CSV
 
-    def best_delimiter(self, first_bytes: bytes) -> tuple[str | None, float]:
+    def sniff_dialect(self, first_bytes: bytes) -> tuple[type[csv.Dialect], float]:
+        """``(dialect, confidence)`` for the start of a file."""
+        # The sniff must not depend on whether a CSV was loaded earlier in
+        # this process: load() raises the same process-wide limit
+        maximize_csv_field_size_limit()
+        default = self._dialect(next(iter(self.delimiters)), csv.QUOTE_MINIMAL)
+        if _json_shaped(first_bytes):
+            return default, 0.0
         text = first_bytes.decode(TEXT_ENCODING)
         if not text.strip() or not _looks_like_text(text):
-            return None, 0.0
+            return default, 0.0
         best = (None, 0.0, 0)
         for delimiter, confidence in self.delimiters.items():
-            score, width = _delimiter_score(text, delimiter)
+            quoting = csv.QUOTE_MINIMAL
+            score, width = _delimiter_score(text, delimiter, quoting)
+            if score < 1.0 and '"' in text:
+                # A field that starts with a literal quote swallows the rest
+                # of the file when quotes are special: try without quoting
+                unquoted, unquoted_width = _delimiter_score(
+                    text, delimiter, csv.QUOTE_NONE
+                )
+                if unquoted > score:
+                    score, width, quoting = unquoted, unquoted_width, csv.QUOTE_NONE
             score *= confidence
             if score > 0 and (score, width) > best[1:]:
-                best = (delimiter, score, width)
+                best = (self._dialect(delimiter, quoting), score, width)
         if best[0] is None:
             if self.one_column_score and _is_one_column(text):
-                return None, self.one_column_score
-            return None, 0.0
+                return default, self.one_column_score
+            return default, 0.0
         return best[0], best[1]
 
     def sniff(self, first_bytes: bytes) -> float:
-        return self.best_delimiter(first_bytes)[1]
+        return self.sniff_dialect(first_bytes)[1]
 
-    def load(self, path: str) -> Iterator[dict]:
+    def load(self, path: str) -> Iterator["dict | Schema"]:
         maximize_csv_field_size_limit()
+        # Look at the same bytes sniff_path() did, so the dialect matches the
+        # one that won
         with open(path, "rb") as fp:
-            delimiter, _ = self.best_delimiter(fp.read(SNIFF_BYTES))
-        delimiter = delimiter or next(iter(self.delimiters))
-        with open(path, "rb") as fp:
-            if self.format == Format.TSV:
-                rows, _ = rows_from_file(fp, format=Format.TSV, encoding=TEXT_ENCODING)
-            else:
-                dialect = type("dialect", (csv.excel,), {"delimiter": delimiter})
-                rows, _ = rows_from_file(
-                    fp, format=Format.CSV, dialect=dialect, encoding=TEXT_ENCODING
-                )
-            yield from rows
+            for first_bytes in sniff_windows(fp):
+                dialect, score = self.sniff_dialect(first_bytes)
+                if score >= DECISIVE_CONFIDENCE:
+                    break
+        _peek.cache_clear()
+        with open(path, encoding=TEXT_ENCODING, newline="") as fp:
+            reader = csv.reader(fp, dialect)
+            header = next((record for record in reader if record), None)
+            if header is None:
+                return
+            columns = _unique_column_names(header)
+            extras_key = _unique_column_names(columns + [EXTRAS_KEY])[-1]
+            width = len(columns)
+            empty = True
+            for record in reader:
+                if not record:
+                    continue
+                empty = False
+                row = dict(zip(columns, record))
+                if len(record) < width:
+                    for column in columns[len(record) :]:
+                        row[column] = None
+                elif len(record) > width:
+                    row[extras_key] = record[width:]
+                yield row
+            if empty:
+                # Only a header: keep the column names
+                yield Schema({column: "text" for column in columns})
+
+    @staticmethod
+    def _dialect(delimiter: str, quoting: int) -> type[csv.Dialect]:
+        return type(
+            "dialect", (csv.excel,), {"delimiter": delimiter, "quoting": quoting}
+        )
+
+
+def _unique_column_names(names: list[str]) -> list[str]:
+    """
+    Rename blank and duplicate column names, so no values are lost: blank
+    names become ``column_N`` (N is the position, from 1) and repeats get
+    ``_2``, ``_3`` and so on. SQLite compares ASCII column names case
+    insensitively, so this does too.
+    """
+    seen = set()
+    result = []
+    for index, name in enumerate(names):
+        base = name if name.strip() else f"column_{index + 1}"
+        candidate = base
+        suffix = 2
+        while _fold(candidate) in seen:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        seen.add(_fold(candidate))
+        result.append(candidate)
+    return result
+
+
+def _fold(name: str) -> str:
+    return "".join(c.lower() if c.isascii() else c for c in name)
 
 
 class CSVLoader(DelimitedLoader):
@@ -681,17 +895,32 @@ class TSVLoader(DelimitedLoader):
     name = "tsv"
     description = "Tab-separated values"
     delimiters: ClassVar[dict[str, float]] = {"\t": 0.9}
-    format = Format.TSV
 
 
-def _records_inside(value) -> list | None:
+def _records_inside(value) -> tuple[str, list] | None:
     """If exactly one value of this object is a list of objects, return it."""
     candidates = [
-        item
-        for item in value.values()
+        (key, item)
+        for key, item in value.items()
         if isinstance(item, list) and item and all(isinstance(i, dict) for i in item)
     ]
     return candidates[0] if len(candidates) == 1 else None
+
+
+_MISSING = object()
+
+
+def _json_values(text: str) -> Iterator[Any]:
+    """Each JSON value in ``text``, for one or more values one after another."""
+    decoder = json.JSONDecoder()
+    i = _WS_RE.match(text).end()
+    while i < len(text):
+        try:
+            value, i = decoder.raw_decode(text, i)
+        except json.JSONDecodeError as ex:
+            raise LoaderError(f"Invalid JSON: {ex}") from ex
+        yield value
+        i = _WS_RE.match(text, i).end()
 
 
 class JSONLoader(Loader):
@@ -699,14 +928,29 @@ class JSONLoader(Loader):
     description = "JSON array of objects"
 
     def sniff(self, first_bytes: bytes) -> float:
-        peek = peek_json(first_bytes)
-        if peek is None or peek.trailing:
+        peek, text, end = _peek(first_bytes)
+        if peek is None:
             return 0.0
         value = peek.value
+        if peek.trailing:
+            # Objects one after another (concatenated JSON, as printed by jq)
+            # - newline-delimited JSON outscores this when every line parses
+            after = _WS_RE.match(text, end).end()
+            if (
+                isinstance(value, dict)
+                and _LINE_BREAK_RE.match(text, end)
+                and text.startswith("{", after)
+            ):
+                return 0.4
+            return 0.0
         if isinstance(value, list):
             if not value:
                 return 0.5
-            return 0.9 if isinstance(value[0], dict) else 0.0
+            if isinstance(value[0], dict):
+                return 0.9
+            # JSON, but not rows: load() raises an error that says why, which
+            # beats this being read as a CSV file with no rows
+            return 0.15
         # An object is one row, or a wrapper around a list of rows
         if any(
             isinstance(item, list) and item and isinstance(item[0], dict)
@@ -718,10 +962,39 @@ class JSONLoader(Loader):
     def load(self, path: str) -> Iterator[dict]:
         # rows_from_file(format=Format.JSON) wraps a top-level object in a
         # list, which hides whether it was {"rows": [...]} or [{"rows": [...]}]
-        with open(path, "rb") as fp:
-            data = json.load(fp)
+        with open(path, encoding=TEXT_ENCODING, newline="") as fp:
+            values = _json_values(fp.read())
+        first = next(values, _MISSING)
+        second = next(values, _MISSING)
+        if second is _MISSING:
+            yield from self._rows(None if first is _MISSING else first)
+            return
+        # Several values: each one is a row
+        for index, value in enumerate(itertools.chain([first, second], values)):
+            if not isinstance(value, dict):
+                raise LoaderError(
+                    f"JSON value {index + 1} is {type(value).__name__}, "
+                    "expected an object"
+                )
+            yield value
+
+    def _rows(self, data):
         if isinstance(data, dict):
-            data = _records_inside(data) or [data]
+            inside = _records_inside(data)
+            if inside is None:
+                data = [data]
+            else:
+                key, records = inside
+                others = [other for other in data if other != key]
+                if others:
+                    # An API response: {"total": 2, "next": null, "results": [...]}
+                    logger.warning(
+                        "JSON: importing the %d objects in %r and ignoring %s",
+                        len(records),
+                        key,
+                        ", ".join(repr(other) for other in others),
+                    )
+                data = records
         if not isinstance(data, list):
             raise LoaderError("JSON must be an array of objects or an object")
         for index, row in enumerate(data):
@@ -738,43 +1011,88 @@ class NDJSONLoader(Loader):
 
     def sniff(self, first_bytes: bytes) -> float:
         text = first_bytes.decode("utf-8-sig", errors="replace")
-        lines = [line for line in text.split("\n") if line.strip()][:50]
-        if not lines or not lines[0].lstrip().startswith("{"):
+        pieces = text.split("\n")
+        # The last piece is empty if the window ends with a newline, else it
+        # may have been cut off by the end of the window
+        last = pieces.pop()
+        lines = [line for line in pieces if line.strip()][:50]
+        if last.strip() and len(lines) < 50:
+            lines.append(last)
+        else:
+            last = ""
+        if not lines or not lines[0].lstrip().startswith(("{", "[")):
             return 0.0
-        parsed = 0
+        objects = arrays = bad = 0
         cut_off = False
         for index, line in enumerate(lines):
+            if last and index == len(lines) - 1 and len(line) > SNIFF_BYTES:
+                # Parsing a long last line only tells a whole one-line file
+                # (the JSON loader's job) from one cut off by the window
+                cut_off = True
+                continue
             try:
                 value = json.loads(line)
             except ValueError:
-                if index == len(lines) - 1 and not text.endswith("\n"):
-                    # Cut off by the end of the window
+                if last and index == len(lines) - 1:
                     cut_off = True
-                    break
-                return 0.0
-            if not isinstance(value, dict):
-                return 0.0
-            parsed += 1
-        if parsed >= 2:
-            return 0.95
-        if parsed == 1:
+                else:
+                    bad += 1
+                continue
+            if isinstance(value, dict):
+                objects += 1
+            elif isinstance(value, list):
+                arrays += 1
+            else:
+                bad += 1
+        total = objects + arrays + bad
+        if total == 0:
+            # The first line is longer than the window: can't tell yet
+            return 0.25 if lines[0].lstrip().startswith("{") else 0.0
+        if objects == 0:
+            # JSON arrays, one per line: recognizable, but load() needs objects
+            # and raises an error that says so
+            return 0.15 if arrays >= 2 and arrays == total else 0.0
+        fraction = objects / total
+        if objects >= 2:
+            if fraction == 1:
+                return 0.95
+            # Some lines are broken: still newline-delimited JSON, and load()
+            # raises an error naming the first bad line
+            return 0.9 * fraction if fraction >= 0.5 else 0.0
+        if total == 1:
             if cut_off and lines[1].lstrip().startswith("{"):
                 # One object, then the start of another
                 return 0.9
             # A single object on one line: the JSON loader reads that too
             return 0.3
-        # The first line is longer than the window: can't tell yet
-        return 0.25
+        return 0.45 if fraction >= 0.5 else 0.0
 
     def load(self, path: str) -> Iterator[dict]:
-        with open(path, "rb") as fp:
-            rows, _ = rows_from_file(fp, format=Format.NL)
-            for index, row in enumerate(rows):
+        with open(path, encoding=TEXT_ENCODING, newline="\n") as fp:
+            for number, line in enumerate(fp, 1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as ex:
+                    raise LoaderError(
+                        f"Line {number} is not valid JSON: {_describe_json_error(line)}"
+                    ) from ex
                 if not isinstance(row, dict):
                     raise LoaderError(
-                        f"Row {index + 1} is {type(row).__name__}, expected an object"
+                        f"Line {number} is {type(row).__name__}, expected an object"
                     )
                 yield row
+
+
+def _describe_json_error(line: str) -> str:
+    # Without the newline, a cut-off line reports an unterminated string
+    # rather than an invalid control character
+    try:
+        json.loads(line.rstrip("\r\n"))
+    except json.JSONDecodeError as ex:
+        return f"{ex.msg.removesuffix(' at')} at column {ex.colno}"
+    return "invalid JSON"
 
 
 _CORE_LOADER_CLASSES = (CSVLoader, TSVLoader, JSONLoader, NDJSONLoader)

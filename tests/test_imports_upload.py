@@ -11,6 +11,7 @@ import pathlib
 import re
 import shutil
 import sqlite3
+import sys
 import tempfile
 import time
 import urllib.parse
@@ -203,6 +204,40 @@ async def queued(ds, response):
     job = import_registry(ds).get("data", data["table"])
     await wait_for(lambda: job.state == "queued" and job.waiting_for == "worker")
     return job
+
+
+@pytest.fixture
+def stalling_imports(ds, tmp_path, monkeypatch):
+    """
+    Uploads into ``ds`` are imported by a stand-in for the import worker
+    that sends four rows - committed two at a time, so the table is
+    created - and then waits to be killed: an import that stays
+    "importing", with its table, for as long as a test needs.
+    """
+    script = tmp_path / "stalling_worker.py"
+    script.write_text(
+        "import json, sys, time\n"
+        "def send(m): sys.stdout.write(json.dumps(m) + '\\n')\n"
+        "send({'type': 'header', 'protocol': 1, 'loader': 'csv', 'size': 1000})\n"
+        "send({'type': 'columns', 'add': ['n']})\n"
+        "for i in range(4): send([i])\n"
+        "send({'type': 'progress', 'rows': 4, 'bytes': 400, 'size': 1000})\n"
+        "sys.stdout.flush()\n"
+        "time.sleep(60)\n"
+    )
+    registry = import_registry(ds)
+    start = registry.start
+
+    def start_stalling(*args, **kwargs):
+        kwargs.update(
+            sample_size=2,
+            batch_size=2,
+            use_worker=True,
+            worker_options={"argv": [sys.executable, str(script)]},
+        )
+        return start(*args, **kwargs)
+
+    monkeypatch.setattr(registry, "start", start_stalling)
 
 
 # Importing -------------------------------------------------------------------------
@@ -419,7 +454,7 @@ async def test_plugin_loader(tmp_path, temp_dir):
 async def test_failed_import_drops_the_table(ds, temp_dir):
     # Fails at line 1,501, after the first chunk of rows has been committed
     content = b'{"a": 1}\n' * 1500 + b"{oops\n"
-    response = await upload(ds, content, "bad.ndjson")
+    response = await upload(ds, content, "bad.ndjson", actor=WRITER)
     job = await finished(ds, response)
     assert job.state == "failed"
     assert job.error.startswith("Line 1501 is not valid JSON"), job.error
@@ -429,9 +464,10 @@ async def test_failed_import_drops_the_table(ds, temp_dir):
     assert job.created_table is True
     assert upload_dirs(temp_dir) == []
     await wait_for(lambda: len(events(ds, "bad")) == 2)
-    assert [event.name for event in events(ds, "bad")] == [
-        "create-table",
-        "drop-table",
+    assert [(event.name, event.actor) for event in events(ds, "bad")] == [
+        ("create-table", WRITER),
+        # The uploader's upload failed: its table is dropped on their behalf
+        ("drop-table", WRITER),
     ]
 
 
@@ -844,6 +880,126 @@ async def test_cancel_removes_the_file(ds, temp_dir):
     assert not await ds.get_database("data").table_exists("dogs")
     # Nothing was created, so nothing to tell anyone
     assert events(ds, "dogs") == []
+
+
+@pytest.mark.asyncio
+async def test_cancelled_by_someone_else(ds, temp_dir, stalling_imports):
+    "The drop-table event is not put down to the uploader."
+    response = await upload(ds, actor=WRITER)
+    assert response.status_code == 202, response.text
+    job = import_registry(ds).get("data", "dogs")
+    await wait_for(lambda: job.state == "importing" and job.table_exists)
+    cancelled = await ds.client.post(path_of(response.json()["cancel_url"]), actor=ROOT)
+    assert cancelled.status_code == 200, cancelled.text
+    assert job.state == "cancelled"
+    assert not await ds.get_database("data").table_exists("dogs")
+    assert upload_dirs(temp_dir) == []
+    await wait_for(lambda: len(events(ds, "dogs")) == 2)
+    assert [(event.name, event.actor) for event in events(ds, "dogs")] == [
+        ("create-table", WRITER),
+        # Root cancelled it, or Datasette shut down: the registry does not
+        # say which, so the drop is no actor's
+        ("drop-table", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drops_a_partial_table(ds, tmp_path, temp_dir, stalling_imports):
+    response = await upload(ds, actor=WRITER)
+    assert response.status_code == 202, response.text
+    job = import_registry(ds).get("data", "dogs")
+    await wait_for(lambda: job.state == "importing" and job.table_exists)
+    await ds.invoke_shutdown()
+    assert await job.wait(10)
+    assert job.state == "cancelled"
+    # Datasette has closed its databases by now
+    conn = sqlite3.connect(tmp_path / "data.db")
+    try:
+        tables = [row[0] for row in conn.execute("select name from sqlite_master")]
+    finally:
+        conn.close()
+    assert "dogs" not in tables
+    assert "existing" in tables
+    assert upload_dirs(temp_dir) == []
+    await wait_for(lambda: len(events(ds, "dogs")) == 2)
+    assert [(event.name, event.actor) for event in events(ds, "dogs")] == [
+        ("create-table", WRITER),
+        ("drop-table", None),
+    ]
+
+
+async def raw_upload(ds, *, disconnect):
+    """
+    Send an upload straight to the ASGI app. Once the body has been read,
+    ``receive()`` answers ``http.disconnect`` at once if ``disconnect``,
+    as servers do for a client that closed the connection after sending
+    it, and otherwise waits for the response, as for a client that stays.
+    """
+    boundary = "datasetteuploadtest"
+    body = (
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="gone.csv"\r\n'
+            "Content-Type: text/csv\r\n\r\n"
+        ).encode()
+        + CSV
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/data/-/upload",
+        "raw_path": b"/data/-/upload",
+        "query_string": b"",
+        "root_path": "",
+        "server": ("localhost", 80),
+        "client": ("127.0.0.1", 12345),
+        "headers": [
+            (b"host", b"localhost"),
+            (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            (b"content-length", str(len(body)).encode()),
+            (b"cookie", f"ds_actor={ds.client.actor_cookie(ROOT)}".encode()),
+        ],
+    }
+    messages = [{"type": "http.request", "body": body, "more_body": False}]
+    responded = asyncio.Event()
+    sent = []
+
+    async def receive():
+        if messages:
+            return messages.pop(0)
+        if not disconnect:
+            await responded.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+        if message["type"] == "http.response.body" and not message.get("more_body"):
+            responded.set()
+
+    await ds.invoke_startup()
+    await ds.app()(scope, receive, send)
+    status = sent[0]["status"]
+    body = b"".join(m.get("body", b"") for m in sent[1:])
+    return status, json.loads(body)
+
+
+@pytest.mark.asyncio
+async def test_client_gone_before_the_import_started(ds, temp_dir):
+    "Nobody is told about it, so it is not started."
+    status, data = await raw_upload(ds, disconnect=True)
+    assert status == 400
+    assert data["errors"] == ["The client disconnected before the import started"]
+    assert import_registry(ds).imports() == []
+    assert upload_dirs(temp_dir) == []
+    # A client that stays gets its import
+    status, data = await raw_upload(ds, disconnect=False)
+    assert status == 202, data
+    job = import_registry(ds).get("data", "gone")
+    assert await job.wait(30)
+    assert (job.state, job.rows) == ("done", 3)
 
 
 @pytest.mark.asyncio

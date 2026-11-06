@@ -309,6 +309,12 @@ class UploadEvents:
     cancelled after creating the table, the table is dropped
     (``on_error="drop"``) and ``drop-table`` follows the ``create-table``.
     An import that never created a table fires nothing.
+
+    The ``drop-table`` after a failed import is the uploading actor's, as
+    the consequence of their upload. After a cancellation its actor is
+    ``None``: the import may have been cancelled by someone else with the
+    ``cancel-import`` permission, or by Datasette shutting down, and the
+    import registry does not record which.
     """
 
     def __init__(self, datasette, actor, job):
@@ -335,7 +341,8 @@ class UploadEvents:
         if job.table_exists:
             self._schedule(self._fire_finished, job.rows)
         elif self._created:
-            self._schedule(self._fire_drop)
+            actor = None if job.state == "cancelled" else self.actor
+            self._schedule(self._fire_drop, actor)
 
     def _schedule(self, fire, *args):
         previous = self._tail
@@ -391,11 +398,31 @@ class UploadEvents:
                 )
             )
 
-    async def _fire_drop(self):
+    async def _fire_drop(self, actor):
         job = self.job
         await self.datasette.track_event(
-            DropTableEvent(self.actor, database=job.database, table=job.table)
+            DropTableEvent(actor, database=job.database, table=job.table)
         )
+
+
+async def _client_disconnected(request) -> bool:
+    """
+    Has the client gone - closed the connection after sending all of the
+    file, while it was being saved and checked? Then nobody is waiting to
+    hear that its import started. Looks without waiting: once the body has
+    been read, ASGI servers answer ``receive()`` with ``http.disconnect``
+    at once if the client has gone, and otherwise not until it does.
+    """
+    receive = asyncio.ensure_future(request.receive())
+    await asyncio.sleep(0)
+    if not receive.done():
+        receive.cancel()
+        # Let it finish, without raising whatever it raised
+        await asyncio.wait([receive])
+    if receive.cancelled() or receive.exception() is not None:
+        return False
+    message = receive.result()
+    return isinstance(message, dict) and message.get("type") == "http.disconnect"
 
 
 def _error(message, status=400):
@@ -540,6 +567,11 @@ class DatabaseUploadView(BaseView):
             # has been sent
             await uploaded.close()
             loader = await asyncio.to_thread(sniff_upload, path, filename, format_name)
+            if await _client_disconnected(request):
+                # Gone while a large file was saved and checked - the page
+                # was closed, say. Nobody would know this import had
+                # started, and only root could cancel it
+                raise UploadRefused("The client disconnected before the import started")
             source = Source(
                 filename,
                 "file",

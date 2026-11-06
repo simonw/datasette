@@ -154,7 +154,7 @@ Use ``--save FILE`` to load the inputs into a SQLite database file instead of ``
 
     datasette events.csv venues.json --save events.db
 
-If the file does not exist Datasette creates it. If it is an existing SQLite database the new tables are added to it and its other tables are left alone. Unlike ``scratch``, the file is an ordinary writable database, subject to the usual :ref:`permissions <authentication_permissions>`. Next time you can serve it without loading anything::
+If the file does not exist Datasette creates it, in SQLite's `WAL mode <https://www.sqlite.org/wal.html>`__ so that pages can be read while rows are being written (unless you also use ``--get``). If it is an existing SQLite database the new tables are added to it and its other tables, and its journal mode, are left alone. Unlike ``scratch``, the file is an ordinary writable database, subject to the usual :ref:`permissions <authentication_permissions>`. Next time you can serve it without loading anything::
 
     datasette events.db
 

@@ -374,9 +374,9 @@ CSV, TSV and newline-delimited JSON files can be much bigger than your computer'
 Uploading files
 ---------------
 
-You can also create a table by uploading a file through Datasette's web interface. Choose a file in the "Create table" dialog in a database's actions menu, or drop one onto it, and it will be uploaded to Datasette, which imports it in the background in the same way as a file given on the command line.
+You can also create a table by uploading a file through Datasette's web interface. Choose a file in the "Create table" dialog in a database's actions menu, or drop one onto it, and it will be uploaded to Datasette, which imports it in the background in the same way as a file given on the command line. As with ``--save``, if the import fails or is cancelled the table is dropped again.
 
-Uploads need the :ref:`create-table <actions_create_table>` permission on the database. They are never accepted into ``scratch``, which is read-only. The largest file you can upload is set by :ref:`setting_max_upload_mb`, and the :ref:`upload API <json_api_upload>` lets you upload files from your own code.
+Uploads need the :ref:`create-table <actions_create_table>` and :ref:`insert-row <actions_insert_row>` permissions on the database. They are never accepted into ``scratch``, which is read-only. The largest file you can upload is set by :ref:`setting_max_upload_mb`, and the :ref:`upload API <json_api_upload>` lets you upload files from your own code.
 
 Uploads are not available in `Datasette Lite <https://lite.datasette.io/>`__, which runs Datasette in the browser using Pyodide, where Datasette can't start import worker processes.
 

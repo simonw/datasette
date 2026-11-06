@@ -39,6 +39,13 @@ Value rules (see :func:`classify`):
 - A column with no values at all stays ``integer`` (all NULL), as
   ``sqlite-utils`` does: the narrowest type, so later rows can still widen
   it. A table imported from zero rows gets ``text`` columns.
+
+Widening (see ``widen=`` on :class:`TypedInserter`) happens before the batch
+that needs it is inserted, so no value is ever stored under an affinity that
+would change it. By default integer -> float only rewrites the declared type
+(no stored value changes), while widening to text rebuilds the table and
+converts the stored numbers: integers and floats with no fractional part
+become ``"6"``, other floats SQLite's own text form (``"5005.5"``).
 """
 
 import asyncio

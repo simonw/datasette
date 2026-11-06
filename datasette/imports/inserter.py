@@ -1342,13 +1342,17 @@ class TypedInserter:
                 f"ELSE {name} END"
             )
             # Only rows with something to change: a number, a NULL that
-            # stands for a blank, or a kept spelling
-            needs = [f"typeof({name}) IN ('integer', 'real')"]
+            # stands for a blank, or a kept spelling. Not limited to the
+            # column's range here - the CASE above does that: with more
+            # rowid bounds in the WHERE than the slice's own, SQLite can
+            # pick one of those for its range scan and visit the rest of
+            # the backlog every slice (measured: 56ms for 500 rows with
+            # 550,000 left, against 1ms) - EXPLAIN QUERY PLAN looks the same
+            conditions.append(f"typeof({name}) IN ('integer', 'real')")
             if column.nulls == "blank":
-                needs.append(f"{name} IS NULL")
+                conditions.append(f"{name} IS NULL")
             if column.spellings:
-                needs.append(self._spelled(column, ":start AND :end"))
-            conditions.append(f"({in_range} AND ({' OR '.join(needs)}))")
+                conditions.append(self._spelled(column, ":start AND :end"))
         conn.create_function(_RENDER_FUNCTION, 1, _render_sql, deterministic=True)
         conn.execute(
             "UPDATE {} SET {} WHERE rowid BETWEEN :start AND :end AND ({})".format(
@@ -1462,8 +1466,12 @@ class TypedInserter:
             self._by_key[key].declared = changes[key]
         bounds = None
         if converting and incremental:
+            # Two subqueries: SQLite only finds a min() or max() of the
+            # rowid without a full scan if the query has just the one
+            table = _quote(self.table)
             low, high = conn.execute(
-                f"select min(rowid), max(rowid) from {_quote(self.table)}"
+                f"select (select min(rowid) from {table}), "
+                f"(select max(rowid) from {table})"
             ).fetchone()
             if high is not None:
                 bounds = [low, high]

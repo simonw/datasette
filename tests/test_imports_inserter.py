@@ -1351,6 +1351,57 @@ def test_incremental_backlog_and_later_widenings():
         assert conn.execute("PRAGMA integrity_check").fetchone() == ("ok",)
 
 
+class _Recording:
+    "A connection that records the statements run on it."
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.statements = []
+
+    def execute(self, sql, params=()):
+        self.statements.append((sql, params))
+        return self.conn.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+
+def test_widening_and_slices_never_scan_the_table():
+    # A slice must cost as much as its own rows. With the columns' own
+    # rowid ranges in the WHERE as well as the slice's, SQLite used one of
+    # those for its range scan and visited the whole remaining backlog
+    # every slice (70ms for 500 rows of a 1M row table) - which EXPLAIN
+    # QUERY PLAN does not show, so the SQL is checked too. And min(rowid)
+    # with max(rowid) in one query is a full scan
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    recording = _Recording(conn)
+    inserter = TypedInserter("t", convert_rows=10)
+    rows = [
+        {"a": str(i), "b": f"{i}.50", "c": "" if i % 3 else str(i)} for i in range(1000)
+    ]
+    inserter.write(recording, rows)
+    inserter.write(recording, [{"a": "x", "b": "1.5", "c": "4"}])
+    inserter.write(recording, [{"a": "5", "b": "y", "c": "z"}])
+    inserter.convert(recording)
+    assert len(inserter._backlog) == 3
+    plans = []
+    for sql, params in recording.statements:
+        if '"t"' not in sql or sql.startswith(("INSERT INTO", "CREATE", "PRAGMA")):
+            continue
+        plan = conn.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
+        plans.append((sql, [row[3] for row in plan]))
+    updates = [(sql, plan) for sql, plan in plans if sql.startswith("UPDATE")]
+    assert len(updates) == 3
+    marker = " WHERE rowid BETWEEN :start AND :end AND ("
+    for sql, plan in updates:
+        assert plan[0] == "SEARCH t USING INTEGER PRIMARY KEY (rowid>? AND rowid<?)"
+        where = sql[sql.index(marker) + len(marker) :]
+        assert "rowid BETWEEN" not in where.replace("rid BETWEEN :start AND :end", "")
+    for sql, plan in plans:
+        assert not any(step.startswith("SCAN t") for step in plan), (sql, plan)
+        assert not any("MULTI-INDEX OR" in step for step in plan), (sql, plan)
+
+
 def test_slices_are_sized_to_take_about_convert_seconds(monkeypatch):
     conn = sqlite3.connect(":memory:", isolation_level=None)
     inserter = TypedInserter("t")

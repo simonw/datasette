@@ -966,7 +966,7 @@ async def import_file_via_worker(
     delete_input=False,
     stop_timeout=2.0,
     slots=None,
-    argv=None,
+    _argv=None,
     env=None,
 ):
     """
@@ -1004,7 +1004,8 @@ async def import_file_via_worker(
         to hold while the worker runs; by default :func:`worker_slots` for
         ``db.ds``, so at most ``DEFAULT_MAX_WORKERS`` workers run at once.
         ``contextlib.nullcontext()`` for no limit
-    :param argv: run this command instead of the worker (for tests)
+    :param _argv: run this command instead of the worker - a test hook, for
+        stand-ins that misbehave in ways a real worker cannot be made to
     :param env: environment variables for the worker
 
     Returns a :class:`WorkerImportResult`. Raises :class:`WorkerImportError`
@@ -1021,6 +1022,7 @@ async def import_file_via_worker(
             plugins_dir = getattr(ds, "plugins_dir", None)
         if slots is None:
             slots = worker_slots(ds) if ds is not None else contextlib.nullcontext()
+        argv = _argv
         if argv is None:
             argv = worker_command(
                 path,

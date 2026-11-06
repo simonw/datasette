@@ -115,7 +115,7 @@ async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep"):
         sample_size=2,
         batch_size=2,
         use_worker=True,
-        worker_options={"argv": _stalling_worker(tmp_path)},
+        worker_options={"_argv": _stalling_worker(tmp_path)},
         on_error=on_error,
     )
     await ds.start_background_tasks()
@@ -1065,7 +1065,7 @@ def ds_from_cli(args, **kwargs):
 async def test_cli_registers_background_imports(data_dir, capsys):
     ds = ds_from_cli(
         [str(data_dir / "dogs.csv"), str(data_dir / "bad.ndjson")],
-        background_imports=True,
+        _background_imports=True,
     )
     try:
         registry = import_registry(ds)
@@ -1111,7 +1111,7 @@ def test_cli_still_checks_local_files_at_once(tmp_path):
     ):
         # These fail before the server would start
         with pytest.raises(click.ClickException) as ex:
-            ds_from_cli(args, background_imports=True)
+            ds_from_cli(args, _background_imports=True)
         assert message in ex.value.message
 
 
@@ -1120,7 +1120,7 @@ async def test_cli_save_drops_failed_tables_and_uses_wal(data_dir):
     save = data_dir / "data.db"
     ds = ds_from_cli(
         [str(data_dir / "dogs.csv"), str(data_dir / "bad.ndjson"), "--save", str(save)],
-        background_imports=True,
+        _background_imports=True,
     )
     try:
         registry = import_registry(ds)
@@ -1146,7 +1146,7 @@ async def test_cli_save_file_with_nothing_imported_is_removed_at_shutdown(
     # empty, as it was not when loading before serving failed
     save = data_dir / "fail.db"
     ds = ds_from_cli(
-        [str(data_dir / "bad.ndjson"), "--save", str(save)], background_imports=True
+        [str(data_dir / "bad.ndjson"), "--save", str(save)], _background_imports=True
     )
     try:
         await ds.client.get("/")
@@ -1174,7 +1174,7 @@ async def test_cli_reload_session_keeps_finished_tables(data_dir, monkeypatch):
     session = ReloadSession.start()
     args = [str(data_dir / "dogs.csv"), str(data_dir / "cities.json"), "--reload"]
     try:
-        ds = ds_from_cli(args, background_imports=True)
+        ds = ds_from_cli(args, _background_imports=True)
         try:
             await ds.client.get("/")
             assert await import_registry(ds).wait(20)
@@ -1187,7 +1187,7 @@ async def test_cli_reload_session_keeps_finished_tables(data_dir, monkeypatch):
             await ds.invoke_shutdown()
         # A reload after a code change: nothing to import again
         (data_dir / "cities.json").write_text(json.dumps([{"id": 9}]))
-        ds = ds_from_cli(args, background_imports=True)
+        ds = ds_from_cli(args, _background_imports=True)
         try:
             jobs = import_registry(ds).imports()
             assert [job.table for job in jobs] == ["cities"]

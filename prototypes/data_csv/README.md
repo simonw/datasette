@@ -24,7 +24,7 @@ at the top of each script, and the `bench_*` scripts also accept `--help`.
 | `loader_benchmark.py` | Loader throughput, peak RSS, cost of the cp1252 fallback codec |
 | `inserter_affinity_probe.py` | What SQLite type affinity does to CSV strings, compared with `classify()` and sqlite-utils' `TypeTracker` |
 | `bench_inserter.py` | Inserter throughput by batch size, memory vs WAL file, against sqlite-utils baselines |
-| `bench_inserter_widening.py` | Cost of each column-widening strategy on 100k to 6.4M rows |
+| `bench_inserter_widening.py` | Cost of widening a column in place and by the rebuild fallback, on 100k to 6.4M rows |
 | `bench_inserter_overhead.py` | Per-batch overhead of `import_rows()` through `execute_write_fn()` |
 | `bench_inserter_concurrency.py` | Readers querying during an import, by storage type |
 | `bench_inserter_fix_cost.py` | Cost of keeping original text for lossless widening |

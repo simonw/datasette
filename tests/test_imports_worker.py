@@ -813,7 +813,7 @@ async def test_malformed_output_kills_the_worker(db, tmp_path):
             db,
             "t",
             "unused",
-            argv=[sys.executable, script],
+            _argv=[sys.executable, script],
             progress=lambda p: pids.append(p.pid),
         )
     assert ex.value.kind == "protocol"
@@ -1226,7 +1226,7 @@ async def test_worker_without_the_resource_module(db, tmp_path):
         db,
         "t",
         path,
-        argv=NO_RESOURCE_WORKER + ["--memory-limit", str(10**9), "--", path],
+        _argv=NO_RESOURCE_WORKER + ["--memory-limit", str(10**9), "--", path],
     )
     assert result.complete
     assert result.rows == 100

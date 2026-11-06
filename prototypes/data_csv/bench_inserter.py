@@ -95,12 +95,12 @@ def run_parse_only(path):
     return count, elapsed
 
 
-def run_insert_rows(path, storage, work, batch_size, widen="auto"):
+def run_insert_rows(path, storage, work, batch_size):
     conn, cleanup = target(storage, work)
     conn.isolation_level = None
     rows, fp = read_rows(path)
     start = time.perf_counter()
-    result = insert_rows(conn, "t", rows, batch_size=batch_size, widen=widen)
+    result = insert_rows(conn, "t", rows, batch_size=batch_size)
     elapsed = time.perf_counter() - start
     fp.close()
     cleanup()

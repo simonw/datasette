@@ -255,7 +255,7 @@ def read_head(path, size):
 
 def choose(first, scores):
     try:
-        return L._choose(scores, first, L.MIN_CONFIDENCE).name
+        return L.choose_loader(scores, first, L.MIN_CONFIDENCE).name
     except L.EmptyFile:
         return "(empty file)"
     except L.UnrecognizedFormat:

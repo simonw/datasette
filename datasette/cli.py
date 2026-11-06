@@ -37,7 +37,6 @@ from .imports.scratch import (
     SCRATCH_NAME,
     CreatedSaveDatabase,
     LoadedTable,
-    MemoryScratchDatabase,
     ReloadSession,
     ScratchDatabase,
     check_save_file,
@@ -592,7 +591,7 @@ def serve(
     internal,
     save=None,
     return_instance=False,
-    background_imports=False,
+    _background_imports=False,
 ):
     """
     Serve up specified SQLite database files with a web UI
@@ -757,7 +756,7 @@ def serve(
     if source_args:
         # Without --get, inputs load in the background while Datasette
         # serves, so only what can fail at once is checked here
-        background = background_imports if return_instance else not get
+        background = _background_imports if return_instance else not get
         with _sigterm_interrupts():
             data_import = _prepare_import(
                 ds,
@@ -772,11 +771,11 @@ def serve(
 
     if return_instance:
         # Private utility mechanism for writing unit tests. Loads the inputs
-        # before returning, unless background_imports=True: then they are
+        # before returning, unless _background_imports=True: then they are
         # registered as background tasks, which start with the first request
         # or ds.start_background_tasks()
         if data_import:
-            if background_imports:
+            if _background_imports:
                 data_import.start_in_background(ds)
             else:
                 with _sigterm_interrupts():
@@ -1415,11 +1414,7 @@ def _prepare_import(
         elif db is None:
             db = ds.add_database(Database(ds, path=save, is_mutable=True))
     else:
-        if os.environ.get("DATASETTE_SCRATCH_STORAGE") == "memory":
-            # Prototype only: compare with shared-cache memory storage
-            db = MemoryScratchDatabase(ds)
-        else:
-            db = ScratchDatabase(ds, target_path, keep=bool(session))
+        db = ScratchDatabase(ds, target_path, keep=bool(session))
         ds.add_database(db, name=SCRATCH_NAME)
         if db.name != SCRATCH_NAME:
             click.echo(

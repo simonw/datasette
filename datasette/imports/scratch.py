@@ -176,26 +176,6 @@ def remove_if_empty(path: str) -> bool:
     return True
 
 
-class MemoryScratchDatabase(Database):
-    """
-    A shared-cache in-memory scratch database. Not used by default: it
-    breaks with "database table is locked" when queried during an import.
-    Kept so the two can be compared (``DATASETTE_SCRATCH_STORAGE=memory``).
-    """
-
-    is_scratch = True
-
-    def __init__(self, ds):
-        super().__init__(ds, memory_name=f"datasette_scratch_{os.getpid()}_{id(self)}")
-        self.loaded = []
-        self.save_command = None
-        self.from_stdin = False
-        self.keep = True
-
-    def suggest_name(self):
-        return SCRATCH_NAME
-
-
 def is_scratch(db) -> bool:
     return bool(getattr(db, "is_scratch", False))
 
@@ -388,10 +368,6 @@ def is_reserved(db, table: str) -> bool:
     return table.lower() in _loading.get(db, ())
 
 
-_reserve = reserve_table
-_release = release_table
-
-
 def _quote(name: str) -> str:
     return "[{}]".format(name.replace("]", "]]"))
 
@@ -454,7 +430,7 @@ async def load_source(
     if not source.table:
         raise ValueError("source.table is not set: see assign_table_names()")
     loop = asyncio.get_running_loop()
-    _reserve(db, source.table)
+    reserve_table(db, source.table)
     fetched_here = source.path is None
     private_dir = None
     try:
@@ -477,7 +453,7 @@ async def load_source(
             db, source, batch_size, sample_size, progress, exclusive
         )
     finally:
-        _release(db, source.table)
+        release_table(db, source.table)
         if fetched_here and source.temporary:
             # The rows are in SQLite now (or never will be)
             remove_temporary([source])

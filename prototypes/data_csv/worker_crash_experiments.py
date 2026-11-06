@@ -8,7 +8,7 @@ then reports what the parent saw, what is left in the database (row count,
     uv run python prototypes/data_csv/worker_crash_experiments.py \\
         --data /path/to/data --work /tmp/work [scenario ...]
 
-Scenarios: sigkill-50, direct-sigkill-50, ndjson-bad-line, plugin-raises,
+Scenarios: sigkill-50, ndjson-bad-line, plugin-raises,
 memory-plugin, memory-json, cancel-20, parent-killed.
 """
 
@@ -30,9 +30,7 @@ from datasette.app import Datasette
 from datasette.database import Database
 from datasette.imports.subprocess_import import (
     WorkerImportError,
-    WorkerProcess,
     import_file_via_worker,
-    worker_command,
 )
 
 PLUGIN = """
@@ -223,50 +221,6 @@ async def sigkill_50(args):
     return outcome
 
 
-async def direct_sigkill_50(args):
-    ds, db = await setup()
-    path = os.path.join(args.data, "big-1gb.csv")
-    worker = WorkerProcess(
-        worker_command(path, extra_args=["--direct-db", db.path, "--table", "t"])
-    )
-    lag = Lag()
-    lag_task = asyncio.ensure_future(lag.run())
-    await worker.start()
-    last_progress = None
-    killed_at = None
-    while True:
-        messages = await worker.read_messages()
-        if messages is None:
-            break
-        for kind, payload in messages:
-            if kind == "progress":
-                last_progress = payload
-                if (
-                    killed_at is None
-                    and payload["bytes"]
-                    and payload["bytes"] >= payload["size"] / 2
-                ):
-                    killed_at = time.perf_counter()
-                    os.kill(worker.pid, signal.SIGKILL)
-    await worker.stop()
-    lag.stop = True
-    await lag_task
-    wal = db.path + "-wal"
-    outcome = {
-        "returncode": worker.returncode,
-        "parent_knows_rows": last_progress["rows"] if last_progress else None,
-        "detected_after_ms": round((time.perf_counter() - killed_at) * 1000, 1),
-        "wal_mb": round(os.path.getsize(wal) / 1e6, 1) if os.path.exists(wal) else 0,
-        "lag_during": lag.summary(),
-    }
-    outcome.update(await state_of(ds, db))
-    # Can the parent write to the database after the worker died mid-write?
-    start = time.perf_counter()
-    await db.execute_write("create table after_crash (id integer)")
-    outcome["parent_write_after_ms"] = round((time.perf_counter() - start) * 1000, 1)
-    return outcome
-
-
 async def ndjson_bad_line(args):
     ds, db = await setup()
     source = os.path.join(args.data, "events-100k.ndjson")
@@ -442,7 +396,7 @@ async def main():
         del argv[i : i + 2]
     def progress(p):
         print(p.pid, flush=True)
-    await import_file_via_worker(db, "t", path, progress=progress, argv=argv)
+    await import_file_via_worker(db, "t", path, progress=progress, _argv=argv)
 
 asyncio.run(main())
 """
@@ -490,7 +444,6 @@ async def parent_killed(args):
 
 SCENARIOS = {
     "sigkill-50": sigkill_50,
-    "direct-sigkill-50": direct_sigkill_50,
     "ndjson-bad-line": ndjson_bad_line,
     "plugin-raises": plugin_raises,
     "memory-plugin": memory_plugin,

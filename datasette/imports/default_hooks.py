@@ -723,6 +723,7 @@ def handle_exception(datasette, request, exception):
         return None
 
     async def inner():
+        from datasette.utils import error_body
         from datasette.utils.asgi import Response
 
         if not (await _visible(datasette, request.actor, [job])):
@@ -754,12 +755,10 @@ def handle_exception(datasette, request, exception):
         else:
             message = f"Table {job.table} was not created: {job.status()}"
         if is_json:
+            # Datasette's standard error format, and the import
             return Response.json(
                 {
-                    "ok": False,
-                    "error": message,
-                    "status": 404,
-                    "title": None,
+                    **error_body(message, 404),
                     "import": await _import_data(datasette, request, job),
                 },
                 status=404,
@@ -867,8 +866,11 @@ async def cancel_import_view(datasette, request):
     else gets JSON: ``{"ok": true, "import": {...}}``, with ``import`` only
     for actors who may also view the table. Needs ``cancel-import``: 403
     without it, or 404 for an actor who cannot see the table either.
+    Errors use Datasette's standard JSON error format (``ok``, ``error``,
+    ``errors``, ``status``); a 409 for an import that is not running has
+    ``import`` too.
     """
-    from datasette.utils import tilde_decode
+    from datasette.utils import error_body, tilde_decode
     from datasette.utils.asgi import Response
 
     database = tilde_decode(request.url_vars["database"])
@@ -878,15 +880,14 @@ async def cancel_import_view(datasette, request):
         ("application/x-www-form-urlencoded", "multipart/form-data")
     )
 
-    def error(message, status):
-        return Response.json({"ok": False, "errors": [message]}, status=status)
+    def error(message, status, headers=None, **extra):
+        # Datasette's standard error format, see error_body()
+        return Response.json(
+            {**error_body(message, status), **extra}, status=status, headers=headers
+        )
 
     if request.method != "POST":
-        return Response.json(
-            {"ok": False, "errors": ["Use POST to cancel an import"]},
-            status=405,
-            headers={"allow": "POST"},
-        )
+        return error("Use POST to cancel an import", 405, headers={"allow": "POST"})
     registry = _registry(datasette)
     job = registry.get(database, table) if registry is not None else None
     if job is None:
@@ -937,13 +938,10 @@ async def cancel_import_view(datasette, request):
             )
         return Response.redirect(_safe_next(datasette, next_url, job))
     if not was_active:
-        return Response.json(
-            {
-                "ok": False,
-                "errors": [f"The import into {table} is not running ({job.state})"],
-                **(await details()),
-            },
-            status=409,
+        return error(
+            f"The import into {table} is not running ({job.state})",
+            409,
+            **(await details()),
         )
     return Response.json({"ok": True, **(await details())})
 

@@ -709,6 +709,10 @@ async def test_imports_json_respects_view_permissions(tmp_path):
 # Cancelling ------------------------------------------------------------------------
 
 
+def _error_body(message, status):
+    return {"ok": False, "error": message, "errors": [message], "status": status}
+
+
 @pytest.mark.asyncio
 async def test_cancel_with_json_post(tmp_path):
     ds, db = _scratch_ds()
@@ -717,13 +721,28 @@ async def test_cancel_with_json_post(tmp_path):
         pid = job.pid
         assert pid
         url = "/scratch/slow/-/cancel-import"
-        # Anonymous users may not cancel
+        # Anonymous users may not cancel. Errors use Datasette's standard
+        # error format
         response = await ds.client.post(url, json={})
         assert response.status_code == 403
+        assert response.json() == _error_body(
+            "Permission denied: you cannot cancel imports into this table", 403
+        )
         assert job.state == "importing"
         # GET does nothing
         response = await ds.client.get(url, actor=ROOT)
         assert response.status_code == 405
+        assert response.headers["allow"] == "POST"
+        assert response.json() == _error_body("Use POST to cancel an import", 405)
+        # Nor does a body that is not JSON
+        response = await ds.client.post(
+            url,
+            content=b"{nope",
+            headers={"content-type": "application/json"},
+            actor=ROOT,
+        )
+        assert response.json() == _error_body("Invalid JSON body", 400)
+        assert job.state == "importing"
         # Root may
         start = time.monotonic()
         response = await ds.client.post(url, json={}, actor=ROOT)
@@ -743,11 +762,17 @@ async def test_cancel_with_json_post(tmp_path):
         # Cancelling again says it is not running
         response = await ds.client.post(url, json={}, actor=ROOT)
         assert response.status_code == 409
+        data = response.json()
+        assert data.pop("import")["state"] == "cancelled"
+        assert data == _error_body(
+            "The import into slow is not running (cancelled)", 409
+        )
         # No import into that table at all
         response = await ds.client.post(
             "/scratch/nope/-/cancel-import", json={}, actor=ROOT
         )
         assert response.status_code == 404
+        assert response.json() == _error_body("No import into scratch.nope", 404)
     finally:
         await ds.invoke_shutdown()
 
@@ -1014,16 +1039,16 @@ async def test_table_not_created_yet_says_so(data_dir):
         notice = notice.split(">", 1)[0]
         assert "data-pending-table" in notice
         assert "data-link-tables" not in notice
-        assert '<p class="import-intro">This table is being imported' in (
-            response.text
-        )
+        assert '<p class="import-intro">This table is being imported' in (response.text)
         assert "window.location.reload()" in response.text
         response = await ds.client.get("/scratch/dogs.json")
         assert response.status_code == 404
         data = response.json()
-        assert data["ok"] is False
-        assert data["import"]["state"] == "queued"
-        assert "not ready yet" in data["error"]
+        assert data.pop("import")["state"] == "queued"
+        # Datasette's standard error format
+        assert data == _error_body(
+            "Table dogs is not ready yet: queued, waiting for an import worker", 404
+        )
         # An unrelated missing table is a plain 404
         response = await ds.client.get("/scratch/other")
         assert response.status_code == 404

@@ -22,7 +22,13 @@ through db.execute(); a writer inserting a row into another table every
 100ms through db.execute_write_fn(), the same queue as the import; the
 direct writer above; and an event loop lag probe (10ms sleeps). Latencies
 are reported for the whole import and for its last 6% (from 94% of the
-rows, where both widenings to text happen, to the end).
+rows, where both widenings to text happen, to the end). The import's
+transactions are timed on the write connection itself, from its BEGIN
+IMMEDIATE to the end of its COMMIT - which includes writing the WAL and
+any automatic checkpoint, all of it time the write thread is busy and
+the write lock (but for the checkpoint) is held. (An earlier version
+timed only the write function, which Datasette runs before committing:
+that left out 40-80% of the time of a conversion slice.)
 
 Each run imports with the inserter as it was on proto/data-csv (BEFORE, a
 copy of that inserter.py) and as it is now (AFTER), interleaved.
@@ -46,6 +52,60 @@ import threading
 import time
 
 from datasette.imports import inserter as after_module
+
+
+class TimedConnection(sqlite3.Connection):
+    """
+    Datasette's write connection, timing each transaction from its BEGIN
+    to the end of the COMMIT that Database._execute_writes() runs after
+    the write function, in ``with conn:``. ``label`` is set by the write
+    function to say whose transaction it is.
+    """
+
+    began = None
+    label = None
+    record = None
+
+    def execute(self, sql, *args):
+        if self.began is None and sql.lstrip().upper().startswith("BEGIN"):
+            self.began = time.perf_counter()
+        return super().execute(sql, *args)
+
+    def __exit__(self, *exc):
+        try:
+            return super().__exit__(*exc)
+        finally:
+            if self.began is not None and self.record is not None:
+                self.record(self.label, time.perf_counter() - self.began)
+            self.began = None
+            self.label = None
+
+
+def timed_write_connections(record):
+    """
+    Make Datasette open its write connections (isolation_level IMMEDIATE)
+    as TimedConnection, reporting to ``record(label, seconds)``. Returns a
+    function that undoes it.
+    """
+    import datasette.database as database_module
+
+    real = database_module.sqlite3
+
+    class Shim:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def connect(self, *args, **kwargs):
+            if kwargs.get("isolation_level") == "IMMEDIATE":
+                kwargs["factory"] = TimedConnection
+                conn = real.connect(*args, **kwargs)
+                conn.record = record
+                return conn
+            return real.connect(*args, **kwargs)
+
+    database_module.sqlite3 = Shim()
+    return lambda: setattr(database_module, "sqlite3", real)
+
 
 QTY_FLOAT_AT, ID_TEXT_AT, PRICE_TEXT_AT = 0.90, 0.95, 0.97
 
@@ -160,12 +220,32 @@ def run_direct(module, label, args):
     transactions = []
     start = time.perf_counter()
 
+    # Transactions that widened a column or converted stored values, and
+    # plain ones (insert a chunk, nothing else): their COMMITs show what the
+    # disk does anyway - an automatic checkpoint, an fsync on a busy box
+    widening = []
+    plain = []
+    # (seconds, of which before COMMIT, kind, number)
+    details = []
+
     def transaction(fn):
+        busy = bool(getattr(inserter, "backlog", 0))
+        count = len(inserter.widenings)
         began = time.perf_counter()
         conn.execute("BEGIN IMMEDIATE")
         fn()
+        committing = time.perf_counter()
         conn.execute("COMMIT")
-        transactions.append(time.perf_counter() - began)
+        elapsed = time.perf_counter() - began
+        transactions.append(elapsed)
+        kind = "widening" if len(inserter.widenings) != count else "plain"
+        if busy:
+            kind = "converting"
+        details.append((elapsed, committing - began, kind, len(details)))
+        if kind == "plain":
+            plain.append(elapsed)
+        else:
+            widening.append(elapsed)
 
     for chunk in chunks(rows_from(args.csv, args.rows), 1000, args.batch_size):
         transaction(lambda chunk=chunk: inserter.write(conn, chunk))
@@ -191,7 +271,15 @@ def run_direct(module, label, args):
         "transactions": len(transactions),
         "converts_after_last_row": converts,
         "longest_transactions_ms": [round(t * 1000, 1) for t in longest],
+        # (ms, of which before COMMIT, kind, number of the transaction)
+        "longest_transactions": [
+            (round(t * 1000, 1), round(f * 1000, 1), kind, n)
+            for t, f, kind, n in sorted(details, reverse=True)[:3]
+        ],
         "over_200ms": sum(1 for t in transactions if t > 0.2),
+        "over_100ms": sum(1 for t in transactions if t > 0.1),
+        "widening_or_converting": summary(widening),
+        "plain": summary(plain),
         "widenings": [
             (w.column, w.to_type, w.method, round(w.seconds, 3))
             for w in inserter.widenings
@@ -209,6 +297,13 @@ async def run_datasette(module, label, args):
     from datasette.database import Database
 
     path = new_db_path(args.work, label)
+    # (label, seconds from BEGIN to the end of COMMIT) of every write
+    # transaction on the write thread, and the write function's own time
+    transactions = []
+    write_fn_seconds = []
+    undo = timed_write_connections(
+        lambda who, seconds: transactions.append((who, seconds))
+    )
     ds = Datasette()
     db = ds.add_database(Database(ds, path=path, is_mutable=True), name="bench")
     await db.execute_write("create table queued_other (t real)")
@@ -217,21 +312,40 @@ async def run_datasette(module, label, args):
     late_at = int(args.rows * 0.94)
     stop = asyncio.Event()
     reads, queued, lags = [], [], []
-    write_fn_seconds = []
+
+    inserters = []
+    original_class = module.TypedInserter
+
+    class Spy(original_class):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            inserters.append(self)
+
+    module.TypedInserter = Spy
 
     class Timed:
-        "Times each write function on the write thread."
+        """
+        Marks the import's write functions, as widening/converting or plain
+        (see run_direct), and times them too.
+        """
 
         def __getattr__(self, name):
             return getattr(db, name)
 
         async def execute_write_fn(self, fn, *a, **kw):
             def timed(conn):
+                inserter = inserters[-1]
+                busy = bool(getattr(inserter, "backlog", 0))
+                count = len(inserter.widenings)
                 began = time.perf_counter()
                 try:
                     return fn(conn)
                 finally:
                     write_fn_seconds.append(time.perf_counter() - began)
+                    if busy or len(inserter.widenings) != count:
+                        conn.label = "import-widening"
+                    else:
+                        conn.label = "import-plain"
 
             return await db.execute_write_fn(timed, *a, **kw)
 
@@ -291,17 +405,29 @@ async def run_datasette(module, label, args):
 
     db.close()
     ds.close()
+    undo()
+    module.TypedInserter = original_class
     remove(path)
+    imports = sorted(
+        (seconds for who, seconds in transactions if who and who.startswith("import")),
+        reverse=True,
+    )
     return {
         "label": label,
         "rows": args.rows,
         "total_seconds": round(end - start, 2),
         "late_window_seconds": round(end - late, 2),
-        "write_fns": len(write_fn_seconds),
+        "transactions": len(imports),
+        "longest_transactions_ms": [round(t * 1000, 1) for t in imports[:3]],
+        "transactions_over_200ms": sum(1 for t in imports if t > 0.2),
+        "transactions_over_100ms": sum(1 for t in imports if t > 0.1),
+        "widening_or_converting": summary(
+            [t for who, t in transactions if who == "import-widening"]
+        ),
+        "plain": summary([t for who, t in transactions if who == "import-plain"]),
         "longest_write_fns_ms": [
             round(t * 1000, 1) for t in sorted(write_fn_seconds, reverse=True)[:3]
         ],
-        "write_fns_over_200ms": sum(1 for t in write_fn_seconds if t > 0.2),
         "widenings": [(w.column, w.to_type, w.method) for w in result.widenings],
         "reader_ms": split(reads),
         "queued_writer_ms": split(queued),

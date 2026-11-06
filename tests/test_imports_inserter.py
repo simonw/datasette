@@ -27,8 +27,21 @@ from datasette.imports.inserter import (
 )
 from datasette.plugins import pm
 
-STRATEGIES = ("auto", "schema", "rebuild", "deferred")
-IMMEDIATE = ("auto", "schema", "rebuild")
+# "sliced" is "incremental" converting one row per slice: the backlog of
+# stored numbers to turn into text lasts as long as possible
+STRATEGIES = ("auto", "incremental", "sliced", "schema", "rebuild", "deferred")
+IMMEDIATE = ("auto", "incremental", "sliced", "schema", "rebuild")
+
+
+def strategy(widen):
+    "widen= and convert_rows= for one of STRATEGIES."
+    if widen == "sliced":
+        return {"widen": "incremental", "convert_rows": 1}
+    return {"widen": widen}
+
+
+def new_inserter(table, widen, **kwargs):
+    return TypedInserter(table, **strategy(widen), **kwargs)
 
 
 def declared(conn, table="t"):
@@ -47,9 +60,9 @@ def load(rows, widen="schema", sample_size=3, batch_size=2, **kwargs):
         conn,
         "t",
         rows,
-        widen=widen,
         sample_size=sample_size,
         batch_size=batch_size,
+        **strategy(widen),
         **kwargs,
     )
     return conn, result
@@ -193,8 +206,11 @@ def test_widens_after_sample(widen):
         ("t", "integer", "text", 5),
         ("f", "float", "text", 7),
     ]
-    expected = {"rebuild"} if widen == "auto" else {widen}
-    assert {w.method for w in result.widenings} == expected
+    if widen in ("auto", "incremental", "sliced"):
+        expected = ["schema", "incremental", "incremental"]
+    else:
+        expected = [widen] * 3
+    assert [w.method for w in result.widenings] == expected
     assert column(conn, "n") == [(i, "integer") for i in range(8)]
     assert column(conn, "t") == [
         ("0", "text"),
@@ -521,8 +537,8 @@ def test_auto_strategy_edits_in_place_unless_values_must_change():
     inserter.finish(conn)
     assert [(w.column, w.to_type, w.method) for w in inserter.widenings] == [
         ("a", "float", "schema"),
-        ("b", "text", "rebuild"),
-        ("a", "text", "rebuild"),
+        ("b", "text", "incremental"),
+        ("a", "text", "incremental"),
     ]
     assert conn.execute("select a, typeof(a), b from t order by rowid").fetchall() == [
         ("1", "text", "1"),
@@ -564,7 +580,7 @@ def test_rebuild_keeps_indexes_added_by_others():
 @pytest.mark.parametrize("widen", STRATEGIES)
 def test_retry_after_rollback(widen):
     conn = sqlite3.connect(":memory:", isolation_level=None)
-    inserter = TypedInserter("t", widen=widen)
+    inserter = new_inserter("t", widen)
     conn.execute("BEGIN")
     inserter.write(conn, [{"a": "1"}, {"a": "2"}])
     conn.execute("COMMIT")
@@ -929,7 +945,7 @@ def test_rebuild_with_views(widen, setup):
     # Since SQLite 3.26 RENAME checks all views: a view on the table (or any
     # broken view) used to make the rebuild fail
     conn = sqlite3.connect(":memory:", isolation_level=None)
-    inserter = TypedInserter("t", widen=widen)
+    inserter = new_inserter("t", widen)
     inserter.write(conn, [{"a": "1"}, {"a": "2"}])
     conn.execute(setup)
     inserter.write(conn, [{"a": "x"}])
@@ -1116,7 +1132,7 @@ async def test_import_rows_into_datasette(widen):
             db,
             "events",
             events_rows(2500),
-            widen=widen,
+            **strategy(widen),
             batch_size=500,
             progress=on_progress,
         )
@@ -1124,7 +1140,12 @@ async def test_import_rows_into_datasette(widen):
         pm.unregister(name="test_import_rows_write_wrapper")
     # Sample of 1000, then batches of 500, then finish()
     assert progress == [(1000, 1000), (1500, 1500), (2000, 2000), (2500, 2500)]
-    assert writes == [True] * 5
+    if widen == "sliced":
+        # late_text widened in the last batch, which converted one of the
+        # 2,000 rows before it: one convert() call each for the others
+        assert writes == [True] * (5 + 1999)
+    else:
+        assert writes == [True] * 5
     assert result.rows == 2500
     assert result.types == {
         "id": "integer",
@@ -1225,3 +1246,1005 @@ async def test_import_rows_drops_kept_spellings():
         return conn.execute("select count(*) from sqlite_temp_master").fetchone()[0]
 
     assert await db.execute_write_fn(temp_tables) == 0
+
+
+# Incremental widening -------------------------------------------------------
+
+
+def _late_text_rows(count, at):
+    "Rows whose n turns text at row ``at`` - after odd spellings and blanks."
+    rows = []
+    for i in range(count):
+        if i == at:
+            n = "N/A"
+        elif i % 7 == 0:
+            n = ""
+        elif i % 11 == 0:
+            n = f"{i}.50"
+        else:
+            n = str(i)
+        rows.append({"id": str(i), "n": n, "f": f"{i}.25"})
+    return rows
+
+
+def test_incremental_widening_converts_a_slice_per_write(tmp_path):
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    reader = sqlite3.connect(path, isolation_level=None)
+    rows = _late_text_rows(1000, at=900)
+    inserter = TypedInserter("t", widen="incremental", convert_rows=100)
+    seen = []
+
+    def commit(fn):
+        conn.execute("BEGIN IMMEDIATE")
+        fn()
+        conn.execute("COMMIT")
+        # Another connection always sees a whole, valid table
+        assert reader.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        count = reader.execute("select count(*) from t").fetchone()[0]
+        assert count == inserter.rows_written
+        types = dict(reader.execute("select name, type from pragma_table_info('t')"))
+        numbers = reader.execute(
+            "select count(*) from t where typeof(n) in ('integer', 'real')"
+        ).fetchone()[0]
+        seen.append((inserter.backlog, types["n"], numbers))
+
+    for start in range(0, 1000, 100):
+        commit(lambda start=start: inserter.write(conn, rows[start : start + 100]))
+    assert [(w.column, w.from_type, w.method) for w in inserter.widenings] == [
+        ("n", "float", "incremental")
+    ]
+    while inserter.backlog:
+        commit(lambda: inserter.convert(conn))
+    commit(lambda: inserter.finish(conn))
+    # n widened in the write of rows 900-999: that write converted rowids
+    # 1-100, each convert() 100 more. Declared BLOB (no affinity) until the
+    # numbers are gone, so integrity_check never sees a number in a TEXT
+    # column; TEXT in the transaction that converts the last of them
+    widened = [s for s in seen if s[1] != "INTEGER" and s[1] != "REAL"]
+    assert [backlog for backlog, _, _ in widened] == [
+        800,
+        700,
+        600,
+        500,
+        400,
+        300,
+        200,
+        100,
+        0,
+        0,
+    ]
+    assert seen[-1] == (0, "TEXT", 0)
+    backlog_types = {sql_type for backlog, sql_type, _ in widened if backlog}
+    assert backlog_types == {"BLOB"}
+    numbers = [n for backlog, _, n in widened]
+    assert numbers == sorted(numbers, reverse=True)
+    assert numbers[-1] == 0
+    # Exactly the table the whole input as the sample gives
+    reference, _ = load(rows, widen="auto", sample_size=len(rows))
+    assert _snapshot(conn) == _snapshot(reference)
+    assert inserter.convert_seconds > 0
+    assert conn.execute("select count(*) from sqlite_temp_master").fetchone() == (0,)
+
+
+def test_incremental_backlog_and_later_widenings():
+    # A second column widens to text while the first one's backlog is still
+    # being converted, then a third goes to blob, and new keys add columns
+    rows = [{"a": str(i), "b": str(i), "c": str(i)} for i in range(40)]
+    rows[10]["a"] = "x"
+    rows[20]["b"] = "y"
+    rows[25]["c"] = b"\x00"
+    rows[30]["d"] = "7"
+    rows[35]["a"] = b"\x01"
+    for convert_rows in (1, 3, 7):
+        conn, _ = load(
+            rows,
+            widen="incremental",
+            sample_size=5,
+            batch_size=3,
+            convert_rows=convert_rows,
+        )
+        reference, _ = load(rows, widen="auto", sample_size=len(rows))
+        assert _snapshot(conn) == _snapshot(reference), convert_rows
+        assert declared(conn) == {"a": "BLOB", "b": "TEXT", "c": "BLOB", "d": "INTEGER"}
+        assert conn.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+
+
+class _Recording:
+    "A connection that records the statements run on it."
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.statements = []
+
+    def execute(self, sql, params=()):
+        self.statements.append((sql, params))
+        return self.conn.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+
+def test_widening_and_slices_never_scan_the_table():
+    # A slice must cost as much as its own rows. With the columns' own
+    # rowid ranges in the WHERE as well as the slice's, SQLite used one of
+    # those for its range scan and visited the whole remaining backlog
+    # every slice (70ms for 500 rows of a 1M row table) - which EXPLAIN
+    # QUERY PLAN does not show, so the SQL is checked too. And min(rowid)
+    # with max(rowid) in one query is a full scan
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    recording = _Recording(conn)
+    inserter = TypedInserter("t", convert_rows=10)
+    rows = [
+        {"a": str(i), "b": f"{i}.50", "c": "" if i % 3 else str(i)} for i in range(1000)
+    ]
+    inserter.write(recording, rows)
+    inserter.write(recording, [{"a": "x", "b": "1.5", "c": "4"}])
+    inserter.write(recording, [{"a": "5", "b": "y", "c": "z"}])
+    inserter.convert(recording)
+    assert len(inserter._backlog) == 3
+    plans = []
+    for sql, params in recording.statements:
+        if '"t"' not in sql or sql.startswith(("INSERT INTO", "CREATE", "PRAGMA")):
+            continue
+        plan = conn.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
+        plans.append((sql, [row[3] for row in plan]))
+    updates = [(sql, plan) for sql, plan in plans if sql.startswith("UPDATE")]
+    assert len(updates) == 3
+    marker = " WHERE rowid BETWEEN :start AND :end AND ("
+    for sql, plan in updates:
+        assert plan[0] == "SEARCH t USING INTEGER PRIMARY KEY (rowid>? AND rowid<?)"
+        where = sql[sql.index(marker) + len(marker) :]
+        assert "rowid BETWEEN" not in where.replace("rid BETWEEN :start AND :end", "")
+    for sql, plan in plans:
+        assert not any(step.startswith("SCAN t") for step in plan), (sql, plan)
+        assert not any("MULTI-INDEX OR" in step for step in plan), (sql, plan)
+
+
+def test_slices_are_sized_for_rewriting_every_row(monkeypatch):
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    inserter.write(conn, [{"a": str(i)} for i in range(20_000)])
+    # Until a slice has measured rewriting rows, slices are sized from the
+    # cost of inserting them
+    insert_cost = inserter._insert_cost
+    assert insert_cost > 0 and inserter._rewrite_cost is None
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 2_000 * insert_cost)
+    first = inserter._slice_rows()
+    assert 1_900 <= first <= 2_100
+    inserter.write(conn, [{"a": "x"}])
+    assert inserter.backlog == 20_000 - first
+    # That slice rewrote every row it covered: it measured the cost
+    assert inserter._rewrite_cost > 0
+    expected = int(inserter_module.CONVERT_SECONDS / inserter._rewrite_cost)
+    expected = min(max(expected, inserter_module._MIN_CONVERT_ROWS), 200_000)
+    assert inserter._slice_rows() == expected
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 0.0)
+    assert inserter._slice_rows() == inserter_module._MIN_CONVERT_ROWS
+    before = inserter.backlog
+    assert inserter.convert(conn) == before - inserter_module._MIN_CONVERT_ROWS
+    assert inserter.convert(conn, rows=10**9) == 0
+    assert inserter.convert(conn) == 0
+    assert declared(conn) == {"a": "TEXT"}
+
+
+def test_rewrite_cost_learning(monkeypatch):
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 0.05)
+    inserter = TypedInserter("t")
+    inserter._insert_cost = 1e-6
+    # 0.05s / 1us
+    assert inserter._slice_rows() == 50_000
+    # Slices that rewrote few of their rows say nothing about rewriting:
+    # skipping rows is cheap, which made the sizing overshoot before
+    for _ in range(20):
+        inserter._measure_slice(50_000, 10, 0.004)
+    assert inserter._rewrite_cost is None
+    assert inserter._slice_rows() == 50_000
+    # A slice that rewrote most of its rows sets the cost...
+    inserter._measure_slice(50_000, 40_000, 0.032)
+    assert inserter._rewrite_cost == pytest.approx(0.8e-6)
+    # ... a dearer one raises it at once, a cheaper one lowers it by half
+    inserter._measure_slice(10_000, 10_000, 0.02)
+    assert inserter._rewrite_cost == pytest.approx(2e-6)
+    inserter._measure_slice(10_000, 10_000, 0.01)
+    assert inserter._rewrite_cost == pytest.approx(1.5e-6)
+    # A slice over time with few rows rewritten: size the next one so that
+    # this one would have fit
+    inserter._measure_slice(20_000, 0, 0.1)
+    assert inserter._rewrite_cost == pytest.approx(5e-6)
+    assert inserter._slice_rows() == 10_000
+    # The limits
+    inserter._rewrite_cost = 1e-12
+    assert inserter._slice_rows() == inserter_module._MAX_CONVERT_ROWS
+    inserter._rewrite_cost = 1.0
+    assert inserter._slice_rows() == inserter_module._MIN_CONVERT_ROWS
+    assert TypedInserter("t", convert_rows=7)._slice_rows() == 7
+    # No timing at all yet
+    assert TypedInserter("t")._slice_rows() == inserter_module._FIRST_CONVERT_ROWS
+
+
+def test_slices_do_not_grow_over_rows_with_nothing_to_convert(monkeypatch):
+    # A key that turns up late: NULL for most of the backlog, then numbers.
+    # Skipping the NULLs is several times quicker than rewriting a row, so
+    # sizing slices from the speed of the first ones made them grow until
+    # one reached the numbers and rewrote far too many in one transaction
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    rows = [{"id": str(i)} for i in range(30_000)]
+    rows += [{"id": str(i), "x": str(i)} for i in range(30_000, 40_000)]
+    inserter.write(conn, rows)
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 0.002)
+    inserter._insert_cost = 1e-6
+    inserter.write(conn, [{"id": "1", "x": "late text"}])
+    sizes = []
+    rewritten = []
+    while inserter.backlog:
+        before = inserter.backlog
+        numbers = conn.execute(
+            "select count(*) from t where typeof(x) = 'integer'"
+        ).fetchone()[0]
+        inserter.convert(conn)
+        sizes.append(before - inserter.backlog)
+        rewritten.append(
+            numbers
+            - conn.execute(
+                "select count(*) from t where typeof(x) = 'integer'"
+            ).fetchone()[0]
+        )
+    # Every slice over the NULLs covers what rewriting would allow, 2,000
+    # rows (0.002s at 1us a row), however quickly it ran - and so the first
+    # slice to reach the numbers rewrites at most that many. Then the
+    # measured cost of rewriting decides
+    null_slices = [size for size, count in zip(sizes, rewritten) if count == 0]
+    assert len(null_slices) >= 13
+    # (Smaller only if one ran over time, on a busy machine)
+    assert null_slices[0] == 2_000 and max(null_slices) == 2_000
+    first_numbers = next(count for count in rewritten if count)
+    assert first_numbers <= 2_000
+    assert inserter._rewrite_cost is not None
+    assert conn.execute(
+        "select count(*) from t where typeof(x) not in ('text', 'null')"
+    ).fetchone() == (0,)
+    assert declared(conn) == {"id": "INTEGER", "x": "TEXT"}
+
+
+@pytest.mark.skipif(
+    not hasattr(sqlite3, "SQLITE_DBCONFIG_DEFENSIVE"), reason="Python 3.12+ only"
+)
+def test_auto_rebuilds_when_writable_schema_is_refused():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+    rows = [{"a": "1", "b": "1"}, {"a": "1.5", "b": "1.10"}, {"a": "2", "b": "x"}]
+    result = insert_rows(conn, "t", rows, sample_size=1, batch_size=1)
+    assert [w.method for w in result.widenings] == ["rebuild (fallback)"] * 3
+    assert declared(conn) == {"a": "REAL", "b": "TEXT"}
+    assert conn.execute("select a, b from t order by rowid").fetchall() == [
+        (1.0, "1"),
+        (1.5, "1.10"),
+        (2.0, "x"),
+    ]
+
+
+def test_backlog_finishes_by_rebuilding_if_someone_adds_a_trigger():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t", convert_rows=1)
+    inserter.write(conn, [{"a": str(i)} for i in range(5)])
+    inserter.write(conn, [{"a": "x"}])
+    assert inserter.backlog == 4
+    conn.execute("create table log (a)")
+    conn.execute(
+        "create trigger t_log after update on t begin "
+        "insert into log values (new.a); end"
+    )
+    inserter.convert(conn)
+    # The rest was converted by copying the table, which keeps the trigger
+    # but did not fire it for the converted rows
+    assert inserter.backlog == 0
+    assert conn.execute("select count(*) from log").fetchone() == (0,)
+    assert [r[1] for r in conn.execute("select * from sqlite_master")].count(
+        "t_log"
+    ) == 1
+    inserter.finish(conn)
+    assert [v for v, _ in column(conn, "a")] == ["0", "1", "2", "3", "4", "x"]
+    assert {kind for _, kind in column(conn, "a")} == {"text"}
+
+
+def test_backlog_column_declared_text_by_rebuild_if_schema_edit_fails():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t", convert_rows=2)
+    inserter.write(conn, [{"a": str(i)} for i in range(4)])
+    inserter.write(conn, [{"a": "x"}])
+    assert declared(conn) == {"a": "BLOB"}
+    # Someone adds an index: the last slice can't edit the schema
+    conn.execute("create index t_a on t(a)")
+    while inserter.backlog:
+        inserter.convert(conn)
+    assert declared(conn) == {"a": "TEXT"}
+    assert [r[1] for r in conn.execute("PRAGMA index_list(t)")] == ["t_a"]
+    assert {kind for _, kind in column(conn, "a")} == {"text"}
+
+
+def test_snapshot_restores_the_backlog():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t", convert_rows=1)
+    conn.execute("BEGIN")
+    inserter.write(conn, [{"a": str(i)} for i in range(5)])
+    inserter.write(conn, [{"a": "x"}])
+    conn.execute("COMMIT")
+    snapshot = inserter.snapshot()
+    conn.execute("BEGIN")
+    inserter.convert(conn)
+    inserter.convert(conn)
+    conn.execute("ROLLBACK")
+    inserter.restore(snapshot)
+    assert inserter.backlog == 4
+    conn.execute("BEGIN")
+    while inserter.backlog:
+        inserter.convert(conn)
+    inserter.finish(conn)
+    conn.execute("COMMIT")
+    assert [v for v, _ in column(conn, "a")] == ["0", "1", "2", "3", "4", "x"]
+
+
+@pytest.mark.parametrize("widen", ("auto", "schema", "rebuild"))
+def test_widening_methods_record(widen):
+    rows = [{"a": "1", "b": "1"}, {"a": "1.5", "b": "x"}]
+    _, result = load(rows, widen=widen, sample_size=1, batch_size=1)
+    methods = [(w.column, w.method) for w in result.widenings]
+    expected = {
+        "auto": [("a", "schema"), ("b", "incremental")],
+        "schema": [("a", "schema"), ("b", "schema")],
+        "rebuild": [("a", "rebuild"), ("b", "rebuild")],
+    }[widen]
+    assert methods == expected
+    assert result.convert_seconds >= 0
+
+
+# Positional rows -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_positional_rows_give_the_same_table_as_dicts(seed):
+    rng = random.Random(seed)
+    rows = _tricky_rows(rng, rng.randint(1, 40))
+    order = []
+    for row in rows:
+        order.extend(key for key in row if key not in order)
+    reference, _ = load(rows, widen="auto", sample_size=len(rows))
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = new_inserter("t", rng.choice(STRATEGIES))
+    position = 0
+    while position < len(rows):
+        chunk = rows[position : position + rng.randint(1, 6)]
+        position += len(chunk)
+        # The columns known so far, as the worker protocol announces them
+        known = {key for row in rows[:position] for key in row}
+        columns = [key for key in order if key in known]
+        values = []
+        for row in chunk:
+            row_values = [row.get(key) for key in columns]
+            while row_values and row_values[-1] is None:
+                row_values.pop()
+            values.append(tuple(row_values) if rng.random() < 0.5 else row_values)
+        inserter.write(conn, values, columns)
+    while inserter.backlog:
+        inserter.convert(conn)
+    inserter.finish(conn)
+    assert _snapshot(conn) == _snapshot(reference)
+
+
+def test_positional_rows_in_another_order_and_dicts_among_them():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t", schema={"b": None, "a": None})
+    inserter.write(conn, [[1, 2], (3,)], ["a", "b"])
+    inserter.write(conn, [{"c": "x", "a": 5}, ["6", "7", "y"]], ["a", "b", "c"])
+    inserter.write(conn, [[]], ["c"])
+    inserter.finish(conn)
+    assert list(declared(conn)) == ["b", "a", "c"]
+    assert conn.execute("select a, b, c from t order by rowid").fetchall() == [
+        (1, 2, None),
+        (3, None, None),
+        (5, None, "x"),
+        (6, 7, "y"),
+        (None, None, None),
+    ]
+
+
+def test_positional_rows_are_not_modified():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    rows = [["1", "", None], ["2", "x", [1]]]
+    inserter.write(conn, rows, ["a", "b", "c"])
+    assert rows == [["1", "", None], ["2", "x", [1]]]
+
+
+def test_positional_rows_errors():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    with pytest.raises(ValueError, match="duplicate"):
+        inserter.write(conn, [[1, 2]], ["a", "a"])
+    with pytest.raises(ValueError, match="more values than the 1 columns"):
+        inserter.write(conn, [[1, 2]], ["a"])
+    # A string is not a row of values (it used to become one per character)
+    for row in ("xy", b"xy", 5, {1, 2}, (v for v in "xy")):
+        with pytest.raises(TypeError, match="lists, tuples or dicts"):
+            inserter.write(conn, [row], ["a", "b"])
+        with pytest.raises(TypeError, match="lists, tuples or dicts"):
+            inserter.write(conn, [["1", "2"], row], ["a", "b"])
+    assert not inserter.created and inserter.columns == {}
+    assert inserter.write(conn, [[1]], ["a"]) == 1
+    # Other sequences are fine
+    assert inserter.write(conn, [range(2), {"a": 5}], ["a", "b"]) == 2
+    assert conn.execute("select a, b from t").fetchall() == [
+        (1, None),
+        (0, 1),
+        (5, None),
+    ]
+
+
+def test_positional_rows_with_no_values_yet():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    # No columns: like empty dicts, held until a key turns up
+    assert inserter.write(conn, [[], []], []) == 0
+    assert inserter.write(conn, [["1"]], ["a"]) == 3
+    inserter.finish(conn)
+    assert conn.execute("select a from t order by rowid").fetchall() == [
+        (None,),
+        (None,),
+        (1,),
+    ]
+
+
+def test_insert_rows_positional_with_growing_columns():
+    conn = sqlite3.connect(":memory:")
+    columns = ["a"]
+
+    def rows():
+        yield ["1"]
+        yield ["2"]
+        columns.append("b")
+        yield ["3", "x"]
+        yield ["4"]
+
+    result = insert_rows(
+        conn, "t", rows(), columns=columns, sample_size=2, batch_size=1
+    )
+    assert result.types == {"a": "integer", "b": "text"}
+    assert conn.execute("select a, b from t order by rowid").fetchall() == [
+        (1, None),
+        (2, None),
+        (3, "x"),
+        (4, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_import_rows_positional_from_an_async_source():
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    columns = []
+
+    async def rows():
+        columns.extend(["id", "name"])
+        for i in range(250):
+            if i == 200:
+                # A key that turns up later, as a worker announces it
+                columns.append("late")
+            yield [str(i), f"name {i}"] + (["1.5"] if i >= 200 else [])
+            if i % 50 == 0:
+                await asyncio.sleep(0)
+
+    result = await import_rows(
+        db, "t", rows(), columns=columns, sample_size=100, batch_size=60
+    )
+    assert result.rows == 250
+    assert result.types == {"id": "integer", "name": "text", "late": "float"}
+    values = await db.execute("select count(late), sum(id) from t")
+    assert tuple(values.first()) == (50, sum(range(250)))
+
+
+# Clean up after failures and cancellation ----------------------------------
+
+
+async def _temp_tables(db):
+    return await db.execute_write_fn(
+        lambda conn: [r[0] for r in conn.execute("select name from sqlite_temp_master")]
+    )
+
+
+class _SlowWrites:
+    "A write_wrapper plugin that holds each write for a moment."
+
+    __name__ = "_SlowWrites"
+
+    def __init__(self, seconds):
+        self.seconds = seconds
+        self.writes = 0
+
+    @hookimpl
+    def write_wrapper(self, datasette, database, request, transaction):
+        def wrapper(conn):
+            self.writes += 1
+            time.sleep(self.seconds)
+            yield
+
+        return wrapper
+
+
+@pytest.fixture
+def slow_writes():
+    plugin = _SlowWrites(0.15)
+    pm.register(plugin, name="test_inserter_slow_writes")
+    try:
+        yield plugin
+    finally:
+        pm.unregister(name="test_inserter_slow_writes")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ("keep", "drop"))
+async def test_cancel_during_the_first_write(slow_writes, on_error):
+    # Cancelled while the write that creates the table is running: the
+    # write thread finishes it anyway. The clean up waits for it, so the
+    # status says the table is this import's - and it is kept, completed,
+    # or dropped
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = [{"n": "1.50"}, {"n": "2"}] * 5
+    task = asyncio.ensure_future(
+        import_rows(
+            db, "t", rows, sample_size=4, batch_size=2, status=status, on_error=on_error
+        )
+    )
+    await asyncio.sleep(0.05)
+    assert slow_writes.writes == 1
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert status.done
+    assert status.created
+    assert status.rows == 4
+    assert isinstance(status.error, asyncio.CancelledError)
+    assert await _temp_tables(db) == []
+    exists = await db.table_exists("t")
+    if on_error == "keep":
+        assert exists and status.table_exists
+        values = await db.execute("select n, typeof(n) from t order by rowid")
+        assert [tuple(r) for r in values] == [(1.5, "real"), (2.0, "real")] * 2
+    else:
+        assert not exists and status.dropped and not status.table_exists
+
+
+@pytest.mark.asyncio
+async def test_cancel_while_reading_rows():
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    reading = []
+
+    def rows():
+        yield {"n": "1"}
+        yield {"n": "1.50"}
+        yield {"n": "x"}
+        yield {"n": "4"}
+        reading.append("slow")
+        time.sleep(0.3)
+        yield {"n": "5"}
+
+    task = asyncio.ensure_future(
+        import_rows(db, "t", rows(), sample_size=2, batch_size=2, status=status)
+    )
+    while not reading:
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # The thread reading rows was waited for, and the table completed
+    assert status.done and status.created and status.rows == 4
+    assert await _temp_tables(db) == []
+    values = await db.execute("select n, typeof(n) from t order by rowid")
+    assert [tuple(r) for r in values] == [
+        ("1", "text"),
+        ("1.50", "text"),
+        ("x", "text"),
+        ("4", "text"),
+    ]
+    assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "TEXT"}
+
+
+def _backlog_rows(count):
+    # Numbers with spellings to keep ("1.50", blanks next to real NULLs),
+    # then text: the stored numbers of every row before it become text
+    rows = []
+    for i in range(count):
+        if i % 3 == 0:
+            rows.append({"n": f"{i}.50", "b": ""})
+        elif i % 3 == 1:
+            rows.append({"n": str(i), "b": None})
+        else:
+            rows.append({"n": f"{i}.0", "b": str(i)})
+    rows.append({"n": "x", "b": "y"})
+    return rows
+
+
+def _expected_text(rows):
+    return [(row["n"], row.get("b")) for row in rows]
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_the_backlog():
+    # Cancelled while stored numbers are still being converted to text:
+    # with on_error="keep" the call raises at once and the conversion
+    # finishes in the background
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = _backlog_rows(300)
+    converting = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            converting.set()
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            rows,
+            sample_size=300,
+            batch_size=1,
+            convert_rows=1,
+            progress=progress,
+            status=status,
+        )
+    )
+    await converting.wait()
+    await asyncio.sleep(0.02)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert status.created and status.rows == 301
+    await status.wait()
+    assert status.done and status.backlog == 0
+    assert await _temp_tables(db) == []
+    types = await db.execute("select typeof(n), count(*) from t group by 1")
+    assert [tuple(r) for r in types] == [("text", 301)]
+    assert await db.execute_fn(lambda conn: declared(conn)) == {
+        "n": "TEXT",
+        "b": "TEXT",
+    }
+    values = await db.execute("select n, b from t order by rowid")
+    assert [tuple(r) for r in values] == _expected_text(rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ("keep", "drop"))
+async def test_cancel_during_a_long_backlog_returns_at_once(slow_writes, on_error):
+    # The rest of the backlog takes 150 writes of 20ms here (seconds, at
+    # 6M rows of big-1gb.csv): a cancelled call used to convert all of it
+    # before raising - and a worker feeding it stayed alive meanwhile
+    slow_writes.seconds = 0.02
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = _backlog_rows(300)
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            cancel.set()
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            rows,
+            sample_size=300,
+            batch_size=1,
+            convert_rows=2,
+            progress=progress,
+            status=status,
+            on_error=on_error,
+        )
+    )
+    await cancel.wait()
+    assert status.backlog > 250
+    cancelled_at = time.perf_counter()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # At most the write that was running, and a drop
+    assert time.perf_counter() - cancelled_at < 0.5
+    if on_error == "drop":
+        assert status.done and status.dropped
+        assert not await db.table_exists("t")
+        assert await _temp_tables(db) == []
+        return
+    assert not status.done and status.backlog > 200
+    # Readers see the table meanwhile, every row there
+    count = await db.execute("select count(*) from t")
+    assert count.single_value() == 301
+    await asyncio.wait_for(status.wait(), 30)
+    assert status.done and status.backlog == 0 and not status.dropped
+    assert await _temp_tables(db) == []
+    values = await db.execute("select n, b from t order by rowid")
+    assert [tuple(r) for r in values] == _expected_text(rows)
+    assert await db.execute_fn(lambda conn: declared(conn)) == {
+        "n": "TEXT",
+        "b": "TEXT",
+    }
+
+
+@pytest.mark.asyncio
+async def test_background_finish_waits_for_the_cancelled_caller(slow_writes):
+    # The cancelled task's own clean up goes first - here it drops the
+    # table, so nothing is converted at all
+    slow_writes.seconds = 0.005
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    seen = {}
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            cancel.set()
+
+    async def caller():
+        try:
+            await import_rows(
+                db,
+                "t",
+                _backlog_rows(300),
+                sample_size=300,
+                batch_size=1,
+                convert_rows=2,
+                progress=progress,
+                status=status,
+            )
+        except asyncio.CancelledError:
+            seen["backlog"] = status.backlog
+            await asyncio.sleep(0.05)
+            await db.execute_write("drop table t")
+            raise
+
+    task = asyncio.ensure_future(caller())
+    await cancel.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.wait_for(status.wait(), 10)
+    assert seen["backlog"] > 250
+    assert status.backlog == seen["backlog"]
+    assert not await db.table_exists("t")
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_background_finish_leaves_a_replaced_table_alone(slow_writes):
+    # After a cancelled import raised, its caller may drop the table - and
+    # another import may create one by the same name. The conversion that
+    # carries on in the background must not touch that one
+    slow_writes.seconds = 0.01
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            cancel.set()
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            _backlog_rows(300),
+            sample_size=300,
+            batch_size=1,
+            convert_rows=2,
+            progress=progress,
+            status=status,
+        )
+    )
+    await cancel.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not status.done
+
+    def replace(conn):
+        conn.execute("drop table t")
+        conn.execute('CREATE TABLE "t" ("n" BLOB, "b" BLOB)')
+        conn.executemany("insert into t values (?, ?)", [(i, i) for i in range(400)])
+
+    await db.execute_write_fn(replace)
+    await asyncio.wait_for(status.wait(), 30)
+    types = await db.execute("select typeof(n), typeof(b), count(*) from t group by 1")
+    assert [tuple(r) for r in types] == [("integer", "integer", 400)]
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_again_while_cleaning_up(slow_writes):
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = [{"n": "1.50"}, {"n": "2"}] * 5
+    task = asyncio.ensure_future(
+        import_rows(db, "t", rows, sample_size=4, batch_size=2, status=status)
+    )
+    await asyncio.sleep(0.05)
+    task.cancel()
+    await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # The clean up carries on in the background
+    await asyncio.wait_for(status.wait(), 10)
+    assert status.done and status.created
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_with_deferred_widening_finishes_in_the_background(
+    slow_writes,
+):
+    # "deferred" rebuilds the table in finish(): O(rows), so after a
+    # cancellation it happens in the background too
+    slow_writes.seconds = 0.01
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = [{"n": str(i)} for i in range(20)] + [{"n": "x"}, {"n": "21"}] * 20
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written >= 22:
+            cancel.set()
+            await asyncio.sleep(10)
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            rows,
+            sample_size=20,
+            batch_size=2,
+            widen="deferred",
+            progress=progress,
+            status=status,
+        )
+    )
+    await cancel.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert status.rows == 22 and not status.done
+    assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "INTEGER"}
+    await asyncio.wait_for(status.wait(), 10)
+    assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "TEXT"}
+    values = await db.execute("select n from t order by rowid")
+    assert [r[0] for r in values] == [str(i) for i in range(20)] + ["x", "21"]
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_import_status_wait():
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    waiter = asyncio.ensure_future(status.wait())
+    await asyncio.sleep(0)
+    assert not waiter.done()
+    await import_rows(db, "t", [{"a": "1"}], status=status)
+    await asyncio.wait_for(waiter, 5)
+    assert status.done and status.backlog == 0 and status.rows == 1
+    # Done already: returns at once, also for insert_rows() (in a thread)
+    await asyncio.wait_for(status.wait(), 1)
+    other = inserter_module.ImportStatus()
+    waiter = asyncio.ensure_future(other.wait())
+    await asyncio.sleep(0)
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    await asyncio.get_running_loop().run_in_executor(
+        None, lambda: insert_rows(conn, "t", [{"a": "1"}], status=other)
+    )
+    await asyncio.wait_for(waiter, 5)
+    assert other.done
+
+
+@pytest.mark.asyncio
+async def test_progress_callback_that_raises():
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+
+    def progress(written):
+        if written > 2:
+            raise ValueError("stop")
+
+    rows = [{"n": "1"}, {"n": "1.50"}, {"n": "x"}, {"n": "4"}]
+    with pytest.raises(ValueError):
+        await import_rows(
+            db,
+            "t",
+            rows,
+            sample_size=2,
+            batch_size=1,
+            progress=progress,
+            status=status,
+            on_error="drop",
+        )
+    assert status.done and status.created and status.dropped
+    assert isinstance(status.error, ValueError)
+    assert not await db.table_exists("t")
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_failure_never_drops_a_table_it_did_not_create():
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    await db.execute_write("create table t (a text)")
+    status = inserter_module.ImportStatus()
+    with pytest.raises(sqlite3.OperationalError, match="already exists"):
+        await import_rows(
+            db, "t", events_rows(50), sample_size=10, on_error="drop", status=status
+        )
+    assert status.done and not status.created and not status.dropped
+    assert await db.table_exists("t")
+
+
+def test_insert_rows_keyboard_interrupt_completes_the_table():
+    conn = sqlite3.connect(":memory:")
+    status = inserter_module.ImportStatus()
+
+    def rows():
+        yield from [{"n": str(i)} for i in range(10)]
+        yield {"n": "1.50"}
+        yield {"n": "x"}
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        insert_rows(
+            conn,
+            "t",
+            rows(),
+            sample_size=10,
+            batch_size=2,
+            convert_rows=1,
+            status=status,
+        )
+    assert status.done and status.created and status.rows == 12
+    assert conn.execute("select count(*) from sqlite_temp_master").fetchone() == (0,)
+    assert declared(conn) == {"n": "TEXT"}
+    values = [v for v, _ in column(conn, "n")]
+    assert values == [str(i) for i in range(10)] + ["1.50", "x"]
+
+
+def test_insert_rows_on_error_drop():
+    conn = sqlite3.connect(":memory:")
+    status = inserter_module.ImportStatus()
+
+    def rows():
+        yield {"n": "1"}
+        yield {"n": "2"}
+        raise RuntimeError("source failed")
+
+    with pytest.raises(RuntimeError):
+        insert_rows(
+            conn,
+            "t",
+            rows(),
+            sample_size=1,
+            batch_size=1,
+            on_error="drop",
+            status=status,
+        )
+    assert status.created and status.dropped
+    assert conn.execute("select count(*) from sqlite_master").fetchone() == (0,)
+    with pytest.raises(ValueError):
+        insert_rows(conn, "t", [], on_error="explode")

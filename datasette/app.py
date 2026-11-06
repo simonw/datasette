@@ -2380,7 +2380,13 @@ ORDER BY allowed.parent, allowed.child
         return {"databases": await self._connected_databases_for_actor(request.actor)}
 
     def _versions(self):
-        conn = sqlite3.connect(":memory:")
+        # uri=True as for every other connection: with --crossdb,
+        # _prepare_connection() ATTACHes each database as a "file:...?mode=ro"
+        # URI, which without it is a plain file name - one in a directory
+        # called "file:" that does not exist for an absolute path (a 500
+        # error), or a new empty file in the current directory for a
+        # relative one
+        conn = sqlite3.connect(":memory:", uri=True)
         self._prepare_connection(conn, "_memory")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {"json1": detect_json1(conn)}

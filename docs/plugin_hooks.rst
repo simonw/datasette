@@ -1185,7 +1185,7 @@ A loader has these attributes and methods:
     ``first_bytes`` is the start of the file, usually the first 64KB. Return your confidence, from ``0.0`` to ``1.0``, that this is a file your loader can read. The bytes can end part way through a record, or even part way through a UTF-8 character.
 
 ``load(self, path)`` - a generator
-    ``path`` is the path to a local file. Optionally yield a ``Schema`` first, then yield one dictionary per row. The values in each dictionary should be strings, integers, floats, booleans or ``None``. Lists and dictionaries are stored as JSON. Your loader can read the file more than once, for example to sniff it again, but must not change it. Raise ``datasette.imports.loaders.LoaderError`` with a message that says where the problem is, such as ``"Line 11 is not valid JSON"``, if the file turns out to be broken.
+    ``path`` is the path to a local file. Optionally yield a ``Schema`` first, then yield one dictionary per row. The values in each dictionary should be strings, integers, floats, booleans or ``None``. Lists and dictionaries are stored as JSON. Your loader can read the file more than once, for example to sniff it again, but must not change it. Raise ``datasette.imports.loaders.LoaderError`` with a message that says where the problem is, such as ``"Line 11 is not valid JSON"``, if the file turns out to be broken. Yield a ``Note`` at any point to tell the person importing the file something about how it was read (see :ref:`plugin_register_import_loaders_notes`).
 
 A loader that needs ``load()`` to repeat a decision it made in ``sniff()``, such as which delimiter a CSV file uses, can call ``sniff_windows(fp)`` on the open file. It yields the same growing windows Datasette sniffs (see below): stop at the first one where your own score reaches ``0.7`` and you have the bytes Datasette saw when it picked your loader.
 
@@ -1203,6 +1203,8 @@ Datasette never looks at the file extension or a ``Content-Type``. Every loader 
 3. The highest score wins. If two loaders tie, a plugin loader beats a built-in loader, then loaders are ordered by ``name``.
 4. If no loader scores at least ``0.1``, the import fails with a "Could not recognize the file format" error. An empty file fails with "File is empty".
 5. If ``sniff()`` raises an exception, that loader scores ``0.0`` and Datasette logs a warning. Scores outside the range ``0.0`` to ``1.0`` are clamped.
+
+To make the same choice in your own code, ``sniff_path(path)`` in ``datasette.imports.loaders`` returns ``(first_bytes, scores)`` after steps 1 and 2, with the scores ranked as in step 3, and ``choose_loader(scores, first_bytes)`` applies step 4: it returns the winning loader or raises ``EmptyFile`` or ``UnrecognizedFormat``, both subclasses of ``LoaderError`` with the scores in ``.scores``. ``load_path(path)`` does all of that and starts loading.
 
 Use these levels as a guide:
 
@@ -1246,6 +1248,25 @@ Formats that know their column types, such as GeoJSON, Parquet or SpatiaLite, ca
     )
 
 Column types can be ``"text"``, ``"integer"``, ``"float"`` or ``"blob"``. ``schema.to_dict()`` returns ``{"columns": {...}}``, which fits on one line of JSON, and ``Schema.from_dict()`` reads it back.
+
+.. _plugin_register_import_loaders_notes:
+
+Notes
+~~~~~
+
+A loader can yield a ``Note`` anywhere among its rows, before or after the ``Schema``, to tell the person importing the file something about how it was read that they would otherwise not find out:
+
+.. code-block:: python
+
+    from datasette.imports.loaders import Note
+
+    yield Note(
+        "Importing the 2 objects in 'results', ignoring 'total', 'next'"
+    )
+
+Datasette shows notes alongside the import and also logs each one as a warning. Notes are not errors: to reject a file, raise ``LoaderError``. Use them sparingly, for things like data that was skipped or put somewhere unexpected. A note about the whole file, such as a count of odd rows, can come after the last row. The built-in loaders add notes when a JSON object wraps the list of rows alongside other keys, when CSV rows have more fields than the header, and when quotes are read as ordinary characters.
+
+In Python code, ``load_path()`` returns a ``LoadResult`` whose ``notes`` list holds the message of each note yielded so far: it is complete once ``rows`` has been consumed.
 
 The built-in loaders decode text as UTF-8 and read any bytes that are not valid UTF-8 as Windows-1252, so files exported from older spreadsheet software import without errors. A byte order mark at the start of a file is ignored. Pass ``encoding=datasette.imports.loaders.TEXT_ENCODING`` to Python's ``open()`` to decode text the same way in your own loader.
 

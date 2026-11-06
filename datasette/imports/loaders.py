@@ -100,6 +100,31 @@ class Schema:
         return cls(columns=data["columns"])
 
 
+@dataclasses.dataclass(frozen=True)
+class Note:
+    """
+    Something the person importing a file should know about how it was
+    read, yielded by ``Loader.load()`` anywhere among its rows - for example
+    that only part of a JSON document held the rows. Datasette shows notes
+    with the import (they end up in :attr:`LoadResult.notes`) and logs each
+    one as a warning.
+    """
+
+    message: str
+
+    def __post_init__(self):
+        if not isinstance(self.message, str) or not self.message:
+            raise ValueError(f"A Note needs a message: {self.message!r}")
+
+    def __str__(self):
+        return self.message
+
+
+#: The log record of a :class:`Note` has this attribute, set to the loader's
+#: name: the import worker sends those to the parent marked as notes
+NOTE_LOG_ATTRIBUTE = "datasette_import_note"
+
+
 class Loader:
     """
     Base class for file format loaders. Subclass this and implement
@@ -119,9 +144,11 @@ class Loader:
         """
         return 0.0
 
-    def load(self, path: str) -> Iterable["dict | Schema"]:
+    def load(self, path: str) -> Iterable["dict | Schema | Note"]:
         """
-        Yield an optional :class:`Schema`, then one dictionary per row.
+        Yield an optional :class:`Schema`, then one dictionary per row - and,
+        at any point, a :class:`Note` for something the person importing the
+        file should know.
         """
         raise NotImplementedError
 
@@ -150,6 +177,9 @@ class LoadResult:
     schema: Schema | None
     rows: Iterator[dict]
     scores: list[LoaderScore]
+    #: The messages of the :class:`Note` items the loader has yielded: the
+    #: list grows while ``rows`` is consumed, and is complete once it is
+    notes: list[str] = dataclasses.field(default_factory=list)
 
 
 def get_loaders() -> list[Loader]:
@@ -274,7 +304,9 @@ def pick_loader(
     ``first_bytes``. Raises :class:`EmptyFile` for an empty file and
     :class:`UnrecognizedFormat` if no loader scores ``min_confidence`` or more.
     """
-    return _choose(score_loaders(first_bytes, loaders), first_bytes, min_confidence)
+    return choose_loader(
+        score_loaders(first_bytes, loaders), first_bytes, min_confidence
+    )
 
 
 def sniff_windows(
@@ -340,25 +372,49 @@ def load_path(
         scores = []
     else:
         first_bytes, scores = sniff_path(path, loaders)
-        loader = _choose(scores, first_bytes, MIN_CONFIDENCE)
-    schema, rows = split_schema(loader.load(path), loader.name)
-    return LoadResult(loader=loader, schema=schema, rows=rows, scores=scores)
+        loader = choose_loader(scores, first_bytes)
+    notes = []
+    schema, rows = split_schema(loader.load(path), loader.name, notes=notes)
+    return LoadResult(
+        loader=loader, schema=schema, rows=rows, scores=scores, notes=notes
+    )
 
 
 def split_schema(
-    items: Iterable["dict | Schema"], loader_name: str = "loader"
+    items: Iterable["dict | Schema | Note"],
+    loader_name: str = "loader",
+    notes: list | None = None,
 ) -> tuple[Schema | None, Iterator[dict]]:
     """
     Split what ``Loader.load()`` yields into ``(schema_or_None, rows)``.
     Raises :class:`LoaderError` while iterating if a loader yields a schema
-    after the first item, or anything other than a dictionary.
+    after the first row, or anything other than a dictionary or a
+    :class:`Note`.
+
+    Each :class:`Note` is logged as a warning on this module's logger, with
+    the loader's name in the record's ``datasette_import_note`` attribute,
+    and if ``notes`` is a list its message is appended to it - as the rows
+    are consumed (notes before the schema or the first row straight away).
     """
     iterator = iter(items)
-    schema = None
-    try:
-        first = next(iterator)
-    except StopIteration:
+
+    def note(item):
+        if notes is not None:
+            notes.append(item.message)
+        logger.warning(
+            "%s", item.message, extra={NOTE_LOG_ATTRIBUTE: loader_name or "loader"}
+        )
+
+    first = _MISSING
+    for item in iterator:
+        if isinstance(item, Note):
+            note(item)
+            continue
+        first = item
+        break
+    if first is _MISSING:
         return None, iter(())
+    schema = None
     if isinstance(first, Schema):
         schema = first
     else:
@@ -367,6 +423,9 @@ def split_schema(
     def rows():
         for row in iterator:
             if not isinstance(row, dict):
+                if isinstance(row, Note):
+                    note(row)
+                    continue
                 if isinstance(row, Schema):
                     raise LoaderError(
                         f"{loader_name} yielded a Schema after the first item"
@@ -379,7 +438,20 @@ def split_schema(
     return schema, rows()
 
 
-def _choose(scores, first_bytes, min_confidence):
+def choose_loader(
+    scores: list[LoaderScore],
+    first_bytes: bytes,
+    min_confidence: float = MIN_CONFIDENCE,
+) -> Loader:
+    """
+    The loader to use for a file that starts with ``first_bytes``, given the
+    ``scores`` that :func:`score_loaders` or :func:`sniff_path` returned for
+    it (ranked best first): the best one, if it scored ``min_confidence`` or
+    more. Raises :class:`EmptyFile` if ``first_bytes`` holds nothing but
+    whitespace (after any UTF-8 byte order mark), otherwise
+    :class:`UnrecognizedFormat` if no loader is confident enough. Both
+    errors carry the scores in ``.scores``.
+    """
     if not first_bytes.removeprefix(codecs.BOM_UTF8).strip():
         raise EmptyFile("File is empty", scores)
     if scores and scores[0].score >= min_confidence:
@@ -390,6 +462,10 @@ def _choose(scores, first_bytes, min_confidence):
         f"a loader needs at least {min_confidence})",
         scores,
     )
+
+
+# The private name it had before it was public
+_choose = choose_loader
 
 
 def _is_core(loader) -> bool:
@@ -818,7 +894,7 @@ class DelimitedLoader(Loader):
     def sniff(self, first_bytes: bytes) -> float:
         return self.sniff_dialect(first_bytes)[1]
 
-    def load(self, path: str) -> Iterator["dict | Schema"]:
+    def load(self, path: str) -> Iterator["dict | Schema | Note"]:
         maximize_csv_field_size_limit()
         # Look at the same bytes sniff_path() did, so the dialect matches the
         # one that won
@@ -833,10 +909,18 @@ class DelimitedLoader(Loader):
             header = next((record for record in reader if record), None)
             if header is None:
                 return
+            if dialect.quoting == csv.QUOTE_NONE:
+                yield Note(
+                    'Reading quotes (") as ordinary characters: a field starts '
+                    "with a quote that would otherwise swallow the rest of the file"
+                )
             columns = _unique_column_names(header)
             extras_key = _unique_column_names(columns + [EXTRAS_KEY])[-1]
             width = len(columns)
             empty = True
+            # Rows with more fields than the header, and the first one's line
+            longer = 0
+            first_longer = None
             for record in reader:
                 if not record:
                     continue
@@ -847,10 +931,19 @@ class DelimitedLoader(Loader):
                         row[column] = None
                 elif len(record) > width:
                     row[extras_key] = record[width:]
+                    if not longer:
+                        first_longer = reader.line_num
+                    longer += 1
                 yield row
             if empty:
                 # Only a header: keep the column names
                 yield Schema({column: "text" for column in columns})
+            if longer:
+                yield Note(
+                    f"{longer} row{' has' if longer == 1 else 's have'} more "
+                    f"fields than the header (the first on line {first_longer}):"
+                    f" the extra values are in the {extras_key!r} column"
+                )
 
     @staticmethod
     def _dialect(delimiter: str, quoting: int) -> type[csv.Dialect]:
@@ -959,7 +1052,7 @@ class JSONLoader(Loader):
             return 0.6
         return 0.5
 
-    def load(self, path: str) -> Iterator[dict]:
+    def load(self, path: str) -> Iterator["dict | Note"]:
         # rows_from_file(format=Format.JSON) wraps a top-level object in a
         # list, which hides whether it was {"rows": [...]} or [{"rows": [...]}]
         with open(path, encoding=TEXT_ENCODING, newline="") as fp:
@@ -988,11 +1081,11 @@ class JSONLoader(Loader):
                 others = [other for other in data if other != key]
                 if others:
                     # An API response: {"total": 2, "next": null, "results": [...]}
-                    logger.warning(
-                        "JSON: importing the %d objects in %r and ignoring %s",
-                        len(records),
-                        key,
-                        ", ".join(repr(other) for other in others),
+                    count = len(records)
+                    yield Note(
+                        f"Importing the {count} object{'' if count == 1 else 's'}"
+                        f" in {key!r}, ignoring "
+                        + ", ".join(repr(other) for other in others)
                     )
                 data = records
         if not isinstance(data, list):

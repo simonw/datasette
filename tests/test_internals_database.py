@@ -1404,3 +1404,80 @@ async def test_write_thread_context_is_detached_between_tasks(
         f"write thread context stack grew across tasks: {seen_depths} - "
         "a token was attached without being detached"
     )
+
+
+def _first_connections_at_once(db, threads):
+    "Open ``threads`` connections to ``db`` at the same moment and use them."
+    barrier = threading.Barrier(threads)
+    errors = []
+
+    def connect(write):
+        barrier.wait()
+        try:
+            conn = db.connect(write=write)
+            if write:
+                conn.execute("create table if not exists t (a)")
+                conn.commit()
+            else:
+                conn.execute("select count(*) from sqlite_master").fetchall()
+        except sqlite3.Error as ex:
+            errors.append(f"{type(ex).__name__}: {ex}")
+
+    workers = [threading.Thread(target=connect, args=(i == 0,)) for i in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    return errors
+
+
+@pytest.mark.parametrize("lazily", (False, True))
+def test_temp_disk_first_connections_at_once(lazily):
+    # A fresh is_temp_disk database used to switch to WAL on whichever
+    # connection came first, unlocked: connections opened at the same time
+    # all ran PRAGMA journal_mode=WAL and the losers failed with "database
+    # is locked" (2-7 in 100 fresh databases with 4 reads and a write at
+    # once; 5-15 in 100 for 2 to 8 connections released by a barrier).
+    # Now the file is switched when it is created - or, should that fail,
+    # by the first connect() while the others wait (lazily=True)
+    ds = Datasette()
+    errors = []
+    try:
+        # 200 fresh databases reproduced it every time
+        for _ in range(200):
+            db = Database(ds, is_temp_disk=True)
+            try:
+                if lazily:
+                    conn = sqlite3.connect(db.path)
+                    conn.execute("PRAGMA journal_mode=DELETE")
+                    conn.close()
+                    db._wal_enabled = False
+                errors.extend(_first_connections_at_once(db, 2))
+                conn = db.connect()
+                assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+            finally:
+                db.close()
+    finally:
+        ds.close()
+    assert errors == []
+
+
+@pytest.mark.asyncio
+async def test_temp_disk_concurrent_first_queries():
+    # The same race through Datasette's own read threads and write thread
+    ds = Datasette()
+    try:
+        for _ in range(30):
+            db = ds.add_database(Database(ds, is_temp_disk=True), name="scratch")
+            try:
+                results = await asyncio.gather(
+                    *[db.execute("select 1") for _ in range(4)],
+                    db.execute_write("create table if not exists x (a)"),
+                    return_exceptions=True,
+                )
+                assert not [r for r in results if isinstance(r, BaseException)]
+            finally:
+                db.close()
+                ds.remove_database("scratch")
+    finally:
+        ds.close()

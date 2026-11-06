@@ -186,16 +186,19 @@ def run_detection_only(path, batch_size):
     for chunk in chunks[1:]:
         inserter._row_values(chunk)
     to_lists = time.perf_counter() - start
-    # (b) dict -> list + scan (type checks and value conversion)
+    # (b) dict -> list + scan and convert (type checks, value conversion and
+    # finding the values whose text has to be kept)
     inserter = TypedInserter("b")
     inserter.write(conn, chunks[0])
     start = time.perf_counter()
     for chunk in chunks[1:]:
         values = inserter._row_values(chunk)
-        changes = inserter._scan(values)
+        changes, plans = inserter._scan(values)
         if changes:
             # widen the (tiny) table so later chunks are checked correctly
             inserter._widen(conn, changes)
+        for plan in plans:
+            inserter._convert(values, *plan)
     with_scan = time.perf_counter() - start
     count = sum(len(c) for c in chunks[1:])
     return count, to_lists, with_scan
@@ -230,6 +233,7 @@ def main():
             f" ({result.batches:,} committed batches)"
         )
         print("types:", result.types)
+        print(f"spellings kept until the end: {result.spellings_kept:,}")
         for widening in result.widenings:
             print("  ", widening)
         peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
@@ -249,6 +253,13 @@ def main():
             f" {count / best:,.0f} |",
             flush=True,
         )
+
+    result, _ = run_insert_rows(args.file, "memory", args.work, 1000)
+    print(
+        f"insert_rows types: {result.types}; spellings kept until the end:"
+        f" {result.spellings_kept:,}; widenings:"
+        f" {[(w.column, w.to_type, w.at_row, w.method) for w in result.widenings]}"
+    )
 
     for storage in args.storage:
         for batch_size in args.batch_sizes:

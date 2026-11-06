@@ -530,6 +530,44 @@ h2 em {
     background-color: rgba(208,2,27,0.3);
 }
 
+/* Import progress notices and the scratch database's --save command
+   (datasette/imports/default_hooks.py). Table names, URLs and commands can
+   be longer than the page is wide */
+.imports-notice,
+.scratch-save {
+    overflow-wrap: anywhere;
+}
+/* A darker link blue that keeps 4.5:1 contrast on the info, warning and
+   error backgrounds, visited or not: "reload this page" links to the page
+   itself, so it is always visited */
+.imports-notice a:link,
+.imports-notice a:visited {
+    color: #1e5070;
+}
+.imports-notice a:hover,
+.imports-notice a:focus {
+    text-decoration-thickness: 2px;
+}
+.imports-notice .import-list > li + li {
+    margin-top: 0.25rem;
+}
+.imports-notice progress {
+    max-width: 100%;
+}
+.import-notes {
+    list-style: disc;
+    padding-left: 1.25rem;
+    margin: 0.25rem 0;
+}
+.import-notes li + li {
+    margin-top: 0.15rem;
+}
+.scratch-save-command {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0 0 0.75rem 0;
+}
+
 .pattern-heading {
   padding: 1rem;
   margin-top: 2rem;

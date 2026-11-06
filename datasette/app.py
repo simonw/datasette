@@ -169,6 +169,7 @@ from .views.table_create_alter import (
     TableCreateView,
     TableForeignKeySuggestionsView,
 )
+from .views.upload import DatabaseUploadView
 
 app_root = Path(__file__).parent.parent
 
@@ -224,6 +225,11 @@ SETTINGS = (
         "max_post_body_bytes",
         2 * 1024 * 1024,
         "Maximum size in bytes for a POST body read into memory, e.g. JSON API requests - set 0 to disable this limit",
+    ),
+    Setting(
+        "max_upload_mb",
+        100,
+        "Maximum size in MB of a file uploaded to create a table - set 0 to disable this limit",
     ),
     Setting(
         "num_sql_threads",
@@ -2910,6 +2916,9 @@ ORDER BY allowed.parent, allowed.child
             r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
+        add_route(
+            DatabaseUploadView.as_view(self), r"/(?P<database>[^\/\.]+)/-/upload$"
+        )
         add_route(
             DatabaseForeignKeyTargetsView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/foreign-key-targets$",

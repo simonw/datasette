@@ -50,6 +50,7 @@ from .table_extras import (
     resolve_query_extras,
     table_extra_registry,
 )
+from .upload import upload_ui_context
 
 
 @dataclass
@@ -160,6 +161,14 @@ class DatabaseView(View):
         create_table_ui = await _create_table_ui_context(
             datasette, request, db, database, database_action_permissions
         )
+        if create_table_ui is not None:
+            # Files chosen or dropped in the dialog are imported on the
+            # server, with the import loaders, where that is possible
+            upload = upload_ui_context(
+                datasette, db, create_table_ui.get("canInsertRows")
+            )
+            if upload is not None:
+                create_table_ui["upload"] = upload
 
         async def database_actions():
             links = []
@@ -330,7 +339,7 @@ class DatabaseContext(Context):
     database_color: str = field(metadata={"help": "The color assigned to the database"})
     database_page_data: dict = field(
         metadata={
-            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions``, ``canInsertRows`` and optional ``customColumnTypes``.'
+            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions``, ``canInsertRows``, optional ``customColumnTypes`` and optional ``upload`` - present when files chosen or dropped in the dialog can be imported on the server, with the ``path`` to upload them to, ``maxBytes`` (``null`` for no limit) and the loader ``formats``.'
         }
     )
     database_actions: callable = field(

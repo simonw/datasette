@@ -1435,6 +1435,47 @@ async def test_cli_registers_background_imports(data_dir, capsys):
         await ds.invoke_shutdown()
 
 
+@pytest.mark.asyncio
+async def test_cli_reporter_leaves_out_uploads(data_dir, capsys):
+    # The command line reports on its own inputs: an upload into another
+    # database used to be printed as going "in save.db", and counted in the
+    # command line's summary
+    other = data_dir / "other.db"
+    sqlite3.connect(other).execute("vacuum").connection.close()
+    (data_dir / "one.csv").write_text("id\n1\n")
+    ds = ds_from_cli(
+        [
+            str(other),
+            str(data_dir / "dogs.csv"),
+            str(data_dir / "one.csv"),
+            "--save",
+            str(data_dir / "s.db"),
+        ],
+        _background_imports=True,
+    )
+    ds.root_enabled = True
+    try:
+        registry = import_registry(ds)
+        await ds.client.get("/-/imports.json")
+        assert await registry.wait(20)
+        response = await ds.client.post(
+            "/other/-/upload",
+            files={"file": ("events.csv", CSV.encode(), "text/csv")},
+            actor=ROOT,
+        )
+        assert response.status_code == 202, response.text
+        assert await registry.wait(20)
+        assert [job.state for job in registry.imports()] == ["done"] * 3
+        stderr = capsys.readouterr().err
+        assert "Imported 2 of 2 inputs (4 rows)" in stderr
+        assert "events" not in stderr
+        assert "3 of 3" not in stderr
+        # One row, not "1 rows"
+        assert f"Loaded 1 row from {data_dir / 'one.csv'}" in stderr
+    finally:
+        await ds.invoke_shutdown()
+
+
 def test_terminal_reporter_summary_says_row_for_one_row():
     class Registry:
         datasette = None

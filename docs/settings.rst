@@ -193,6 +193,31 @@ Set it to 0 to disable the limit entirely::
 
     datasette mydatabase.db --setting max_post_body_bytes 0
 
+.. _setting_max_upload_mb:
+
+max_upload_mb
+~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "max_upload_mb")
+.. ]]]
+
+Default: ``100``
+
+.. [[[end]]]
+
+The largest file, in megabytes, that can be uploaded to :ref:`create a table from a file <json_api_upload>` - using the API or by choosing or dropping a file in the create table dialog. Larger uploads are rejected with an HTTP 413 error, before the file is imported.
+
+The file is saved to a temporary directory on the server until its import has finished, so allow for that much free space for each upload in progress, including uploads that are waiting for an import worker. If that directory is a ``tmpfs`` file system the space is memory: set the ``TMPDIR`` environment variable to use a directory on disk instead. A JSON array also has to be read into the import worker's memory all at once, which can take 25 times the size of the file or more: see :ref:`importing_large`.
+
+::
+
+    datasette mydatabase.db --setting max_upload_mb 500
+
+Set it to 0 to disable the limit entirely::
+
+    datasette mydatabase.db --setting max_upload_mb 0
+
 .. _setting_num_sql_threads:
 
 num_sql_threads

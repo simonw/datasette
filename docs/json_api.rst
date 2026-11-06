@@ -56,6 +56,14 @@ Some JSON endpoints are **exempt** from this promise:
 - Response keys explicitly labeled as unstable in this documentation, such
   as the ``"analysis"`` block returned by :ref:`execute-write <ExecuteWriteView>`
   and the ``debug`` and ``request`` extras.
+- The endpoints for :ref:`loading files <importing>` are new, and their design
+  may change in future releases: :ref:`/-/imports and /-/imports.json
+  <JsonDataView_imports>`, the :ref:`upload endpoint <json_api_upload>`
+  ``/<database>/-/upload`` and the :ref:`cancel-import endpoint
+  <importing_cancel>` ``/<database>/<table>/-/cancel-import``, along with
+  the ``import`` key in their responses and in the ``404`` for a table that
+  an import has not created yet. Their errors use the
+  :ref:`standard error format <json_api_errors>`.
 
 .. _json_api_default:
 
@@ -2299,6 +2307,79 @@ You can avoid this error by passing the same ``"ignore": true`` or ``"replace": 
 To use the ``"replace": true`` option you will also need the :ref:`actions_update_row` permission.
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
+
+.. _json_api_upload:
+
+.. _DatabaseUploadView:
+
+Creating a table from a file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To create a table from a file - CSV, TSV, a JSON array of objects, newline-delimited JSON, or a format added by a plugin using the :ref:`register_import_loaders() <plugin_register_import_loaders>` hook - make a ``POST`` to ``/<database>/-/upload`` with the file as ``multipart/form-data``. This requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions, as creating a table from example rows does. This endpoint is new, and is not yet covered by the :ref:`API stability promise <json_api_stability>`.
+
+::
+
+    POST /<database>/-/upload
+    Content-Type: multipart/form-data; boundary=...
+    Authorization: Bearer dstok_<rest-of-token>
+
+For example, using ``curl``::
+
+    curl http://127.0.0.1:8001/data/-/upload \
+      -H "Authorization: Bearer $TOKEN" \
+      -F file=@events.csv
+
+The form fields are:
+
+* ``file`` is the file to import. This field is required. Datasette only accepts uploaded files here: it never fetches a URL.
+* ``table`` is the name of the table to create. This is optional: it defaults to the name of the file without its extension, with each run of characters other than letters, digits and underscores replaced by ``_`` - the same name ``datasette events.csv`` gives the table. ``My Events (2024).csv`` becomes ``My_Events_2024``. The table must not exist already. A name you choose may not contain control or formatting characters, such as terminal escape sequences, newlines, bidirectional text overrides or zero-width characters.
+* ``format`` is the name of the format to read the file as - ``csv``, ``tsv``, ``json``, ``ndjson`` (or ``jsonl``) or the name of a format from a plugin. This is optional: by default Datasette detects the format from the start of the file. It does not look at the file's name.
+
+Datasette saves the file to a temporary directory, checks that it can read it and responds straight away with a ``202`` status. The rows are imported in the background, in a separate worker process, a chunk at a time. Datasette picks each column's type by looking at the first rows, and changes it if a later value does not fit - an ``integer`` column becomes ``float`` or ``text``, for example. The response looks like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "events",
+        "table_url": "http://127.0.0.1:8001/data/events",
+        "import": {
+            "id": "1",
+            "database": "data",
+            "table": "events",
+            "source": "events.csv",
+            "state": "queued",
+            "loader": "csv",
+            "rows": 0,
+            "on_error": "drop",
+            "error": null,
+            "status": "queued",
+            "description": "queued events"
+        },
+        "imports_url": "http://127.0.0.1:8001/-/imports.json?database=data&table=events",
+        "cancel_url": "http://127.0.0.1:8001/data/events/-/cancel-import"
+    }
+
+``import`` (shown here with some of its keys) describes the import, as ``/-/imports.json`` does: fetch ``imports_url`` to follow its progress. Its ``state`` is ``queued``, then ``importing``, then one of ``done``, ``failed`` or ``cancelled``; ``rows`` counts the rows imported so far and ``error`` says why an import failed. Uploads share a small number of import workers with any files Datasette is loading from the command line, so an upload can stay ``queued``, waiting for a worker, for a while.
+
+The table appears as soon as the first rows have been imported, and its rows can be queried while the rest arrive. Until then ``table_url`` shows a page with the import's progress. If the import fails, is cancelled, or is still running when Datasette shuts down, the table is dropped. An actor with the ``cancel-import`` permission - only root by default - can cancel the import with a ``POST`` to ``cancel_url``.
+
+A ``202`` means the import has started, not that it will create a table: follow ``imports_url`` to see how it ends. An import can fail part way through the file, and one that finds no rows - in a file that only has JSON objects with no keys, say - finishes as ``done`` with ``rows`` of ``0`` and creates no table. A JSON array with no rows in it, such as ``[]``, is refused with a ``400`` straight away.
+
+The file is kept in a ``datasette-upload-*`` directory in the system's temporary directory until then, including while the import is ``queued``, so files waiting for a worker add up there. On some systems that directory is a ``tmpfs`` file system, which uses memory: set the ``TMPDIR`` environment variable to a directory on disk to avoid that (see :ref:`importing_scratch`). The file is deleted once the import has finished, however it finished, and when Datasette shuts down. If the Datasette process is killed outright part way through an import - with ``SIGKILL``, by the operating system running out of memory, or by a crash - neither clean-up can happen: the partial table stays in the database, with nothing to say that it is incomplete, and the uploaded file stays in a ``datasette-upload-*`` directory in the system's temporary directory.
+
+Any errors will use the :ref:`standard error format <json_api_errors>`, with these status codes:
+
+* ``400`` for a request without a file, an empty file, a JSON array with no rows in it, a SQLite database file, a file in a format Datasette cannot read, an unknown ``format`` or an invalid table name. Uploads are not available in Pyodide or `Datasette Lite <https://lite.datasette.io/>`__, which cannot run the worker process that imports use, and those requests receive a ``400`` too. An upload whose client disconnects after sending the file, before Datasette has checked it and started the import, is not imported.
+* ``403`` if the actor does not have the necessary permissions, or the database is immutable or is the read-only ``scratch`` database that ``datasette data.csv`` creates.
+* ``404`` if the database does not exist.
+* ``409`` if a table, view or index of that name exists already - SQLite compares these names without regard to case - or a file is being imported into that table already.
+* ``413`` if the file is larger than the :ref:`setting_max_upload_mb` setting allows - 100 MB by default.
+
+An upload records a ``create-table`` :ref:`event <plugin_event_tracking>` when the import creates the table, an ``alter-table`` event if a column's type had to change after that, and an ``insert-rows`` event with the number of rows once the import is done, all with the uploading actor. If an import that created its table then fails or is cancelled, a ``drop-table`` event records that the table was dropped again: with the uploading actor if the import failed, and with the actor who cancelled it - which might not be the actor who uploaded the file - if it was cancelled. If Datasette cancelled the import because it was shutting down, the event has no actor (``None``).
+
+The create table dialog on the database page uses this endpoint for files that are chosen or dropped onto it, where uploads are available. Pasted text is still parsed in the browser.
 
 .. _DatabaseForeignKeyTargetsView:
 

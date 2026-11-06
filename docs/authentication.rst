@@ -58,7 +58,7 @@ The ``--root`` flag is designed for local development and testing. When you star
 If you add explicit deny rules in ``datasette.yaml`` those can still block the
 root actor from specific databases or tables.
 
-Datasette itself denies the write permissions in the temporary ``scratch`` database that ``datasette data.csv`` creates, for every actor including root: see :ref:`importing_scratch`.
+In the temporary ``scratch`` database that ``datasette data.csv`` creates, Datasette itself denies ``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``create-view``, ``alter-table``, ``drop-table``, ``drop-view`` and ``execute-write-sql`` to every actor, including root: see :ref:`importing_scratch`.
 
 The ``--root`` flag sets an internal ``root_enabled`` switch—without it, a signed-in user with ``{"id": "root"}`` is treated like any other actor.
 
@@ -1577,7 +1577,7 @@ cancel-import
 
 Actor is allowed to cancel a background import that is loading data into a table, using the "Cancel import" button on its progress notice or ``POST /<database>/<table>/-/cancel-import``. See :ref:`importing_cancel`.
 
-Only the root user has this permission by default. It does not need any other permission, so a token for an actor who has it can be :ref:`restricted <authentication_cli_create_token_restrict>` to just ``--all cancel-import``. The details of the import are only included in the response for actors who can also ``view-table``.
+Only the root user has this permission by default. A ``permissions`` block that grants it to other actors replaces that default, so list ``root`` in the block too if root should keep it. It does not need any other permission, so a token for an actor who has it can be :ref:`restricted <authentication_cli_create_token_restrict>` to just ``--all cancel-import``. The details of the import are only included in the response for actors who can also ``view-table``.
 
 ``resource`` - ``datasette.resources.TableResource(database, table)``
     ``database`` is the name of the database (string)

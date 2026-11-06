@@ -212,14 +212,16 @@ Only the root user can cancel imports by default. Start Datasette with ``--root`
 
     datasette big.csv --root
 
-To let other actors cancel imports, grant them ``cancel-import`` in your :ref:`configuration <authentication_permissions_config>`:
+To let other actors cancel imports, grant them ``cancel-import`` with a ``permissions`` block in your :ref:`configuration <authentication_permissions_other>`. A block like this replaces the default rule, so list ``root`` in it too if you still want to cancel imports as root:
 
 .. [[[cog
     from metadata_doc import config_example
     config_example(cog, """
         permissions:
           cancel-import:
-            id: alice
+            id:
+            - root
+            - alice
     """)
 .. ]]]
 
@@ -230,7 +232,9 @@ To let other actors cancel imports, grant them ``cancel-import`` in your :ref:`c
 
             permissions:
               cancel-import:
-                id: alice
+                id:
+                - root
+                - alice
 
 
 .. tab:: datasette.json
@@ -240,13 +244,16 @@ To let other actors cancel imports, grant them ``cancel-import`` in your :ref:`c
         {
           "permissions": {
             "cancel-import": {
-              "id": "alice"
+              "id": [
+                "root",
+                "alice"
+              ]
             }
           }
         }
 .. [[[end]]]
 
-It can also be granted for a single database or table, in the same way as :ref:`insert-row <authentication_permissions_table>`.
+To grant it for just one database or table, put the ``permissions`` block in that database's or table's section of the configuration, as for :ref:`insert-row <authentication_permissions_other>`. It then replaces the default for that database or table only.
 
 To cancel an import from a script, send a ``POST`` to ``/DATABASE/TABLE/-/cancel-import`` with an :ref:`API token <CreateTokenView>` for an actor who has that permission::
 
@@ -268,7 +275,12 @@ Datasette waits up to five seconds for the import to stop, then responds with th
       }
     }
 
-The ``import`` key is only included if the actor is allowed to view the table. The response is a ``403`` error if the actor cannot cancel imports into that table, ``404`` if there is no import into that table (or the actor can neither cancel it nor see the table), and ``409`` if the import had already finished.
+The ``import`` key is only included if the actor is allowed to view the table. Errors are returned as ``{"ok": false, "errors": [...]}`` with one of these status codes:
+
+- ``403`` if the actor cannot cancel imports into that table.
+- ``404`` if there is no import into that table, or the actor can neither cancel it nor see the table.
+- ``409`` if the import had already finished. The ``import`` key is included here too.
+- ``400`` if the request has a body that is not valid JSON, and ``405`` for any method other than ``POST``.
 
 Stopping Datasette, for example with ``Ctrl+C``, stops any imports that are still running. ``scratch`` is deleted. Tables that had not finished loading into a ``--save`` file are removed, and a ``--save`` file created by this run is deleted if nothing was imported into it.
 

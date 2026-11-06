@@ -16,6 +16,11 @@ import sys
 import time
 
 
+def restore_sigint():
+    # Behave like a foreground process: Ctrl+C (SIGINT) interrupts it
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("file")
@@ -50,9 +55,7 @@ def main():
         stderr=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         env=env,
-        preexec_fn=lambda: signal.signal(
-            signal.SIGINT, signal.SIG_DFL
-        ),  # noqa: PLW1509
+        preexec_fn=restore_sigint,  # noqa: PLW1509
     )
     time.sleep(options.after)
     sent = time.monotonic()

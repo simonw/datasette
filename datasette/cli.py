@@ -94,11 +94,29 @@ from .version import __version__
 
 
 def run_sync(coro_func):
-    """Run an async callable to completion on a fresh event loop."""
+    """
+    Run an async callable to completion on a fresh event loop.
+
+    Ctrl+C (or SIGTERM, see :func:`_sigterm_interrupts`) usually arrives
+    while the loop waits for something, and ``run_until_complete()`` then
+    raises ``KeyboardInterrupt`` with the coroutine still suspended, so
+    its ``except`` and ``finally`` blocks would never run - those that drop
+    a partly loaded table or delete a ``--save`` file this run created.
+    The coroutine is cancelled and given the chance to clean up before
+    ``KeyboardInterrupt`` is raised again. A second Ctrl+C stops that.
+    """
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro_func())
+        task = loop.create_task(coro_func())
+        try:
+            return loop.run_until_complete(task)
+        except KeyboardInterrupt:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(BaseException):
+                    loop.run_until_complete(task)
+            raise
     finally:
         asyncio.set_event_loop(None)
         loop.close()

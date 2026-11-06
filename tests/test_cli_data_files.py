@@ -10,8 +10,12 @@ import http.server
 import json
 import logging
 import os
+import signal
 import sqlite3
+import subprocess
+import sys
 import threading
+import time
 import typing
 import urllib.parse
 
@@ -791,6 +795,60 @@ async def test_drop_table_whatever_the_name(table):
     finally:
         db.close()
         ds.close()
+
+
+@pytest.fixture(scope="module")
+def big_csv(tmp_path_factory):
+    "A CSV file that takes some seconds to load."
+    path = tmp_path_factory.mktemp("big") / "big.csv"
+    with open(path, "w") as fp:
+        fp.write("id,name\n")
+        fp.writelines(f"{i},name {i}\n" for i in range(3_000_000))
+    return path
+
+
+@pytest.mark.parametrize(
+    "sig", (signal.SIGINT, signal.SIGTERM), ids=("SIGINT", "SIGTERM")
+)
+@pytest.mark.parametrize("existing", (False, True), ids=("new", "existing"))
+def test_get_save_interrupted_part_way_cleans_up(tmp_path, big_csv, sig, existing):
+    # Ctrl+C or SIGTERM while --get loads: run_until_complete() raised
+    # KeyboardInterrupt with the load still suspended, so nothing cleaned
+    # up - a new --save file was left behind with a hot journal, and an
+    # existing one with the rows committed so far
+    save = tmp_path / "save.db"
+    if existing:
+        sqlite3.connect(save).execute("create table keep (id)").connection.close()
+    temp = tmp_path / "tmp"
+    temp.mkdir()
+    process = subprocess.Popen(
+        [sys.executable, "-m", "datasette", str(big_csv), "--save", str(save)]
+        + ["--get", "/-/versions.json"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        env=dict(os.environ, TMPDIR=str(temp)),
+    )
+    try:
+        # Rows are being committed
+        deadline = time.monotonic() + 60
+        while not (save.exists() and save.stat().st_size > 2 * 1024 * 1024):
+            assert process.poll() is None, process.stderr.read()
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+        process.send_signal(sig)
+        _, stderr = process.communicate(timeout=30)
+    finally:
+        if process.poll() is None:
+            process.kill()
+    assert process.returncode == 1, stderr
+    assert b"Aborted!" in stderr
+    leftovers = sorted(p.name for p in tmp_path.iterdir() if p.name != "tmp")
+    if existing:
+        assert leftovers == ["save.db"]
+        assert scratch_module.existing_tables(str(save)) == ["keep"]
+    else:
+        assert leftovers == []
+    assert list(temp.iterdir()) == []
 
 
 def test_save_failing_before_load_creates_nothing(data_dir):

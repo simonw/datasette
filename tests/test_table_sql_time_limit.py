@@ -4,6 +4,7 @@ with the same "SQL query took too long" error as the query page, not 500.
 """
 
 import time
+import uuid
 
 import pytest
 import pytest_asyncio
@@ -32,7 +33,9 @@ async def ds():
     pm.register(SleepFunction(), name="test_table_sql_time_limit_sleep")
     try:
         ds = Datasette(settings={"sql_time_limit_ms": 50})
-        db = ds.add_memory_database("table_time_limit")
+        # A fresh in-memory database each time: one with a fixed name lives
+        # on while a connection to it from an earlier test is still open
+        db = ds.add_memory_database(uuid.uuid4().hex, name="table_time_limit")
         await db.execute_write_script("""
             create table big (id integer primary key, value real, label text);
             with recursive n(i) as (

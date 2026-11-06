@@ -59,7 +59,7 @@ A file that starts with SQLite's header is served as a database, as usual. So is
 
 Datasette picks a table name for each input:
 
-- For a file, the file name without its extension. Anything other than letters, numbers and underscores becomes ``_``, so ``Sales Report (2024).csv`` loads into ``Sales_Report_2024``.
+- For a file, the file name without its extension. Each run of characters other than letters, numbers and underscores becomes a single ``_``, and leading and trailing underscores are removed, so ``Sales Report (2024).csv`` loads into ``Sales_Report_2024``.
 - For a URL, the last part of the path if it looks like a file name (``https://example.com/data/events.csv`` loads into ``events``), otherwise the host name (``https://example.com/api/`` loads into ``example_com``).
 - For standard input, ``stdin``. For process substitution, ``pipe``.
 - If two inputs would get the same name, the second gets ``_2`` added to it, the third ``_3`` and so on: ``datasette 2023/events.csv 2024/events.csv`` loads ``events`` and ``events_2``.
@@ -298,6 +298,8 @@ The ``import`` key is only included if the actor is allowed to view the table. E
 - ``409`` if the import had already finished. The ``import`` key is included here too.
 - ``400`` if the request has a body that is not valid JSON, and ``405`` for any method other than ``POST``.
 
+This endpoint and ``/-/imports.json`` are new, and are not yet covered by the :ref:`API stability promise <json_api_stability>`.
+
 Stopping Datasette, for example with ``Ctrl+C``, stops any imports that are still running. ``scratch`` is deleted. Tables that had not finished loading into a ``--save`` file are removed, and a ``--save`` file created by this run is deleted if nothing was imported into it.
 
 .. _importing_get_reload:
@@ -331,6 +333,8 @@ Datasette creates each table with ``INTEGER``, ``REAL`` (float) and ``TEXT`` col
       column ticket_price changed from integer to float at row 5,001
 
   Rows are inserted in batches, so the row number is the first row of the batch that needed the change, not necessarily the row with the new value in it.
+
+- A float column stores numbers as 64-bit floating point, which holds integers exactly only up to 2\ :sup:`53` (9,007,199,254,740,992). If a column that also holds decimals has bigger integers in it, such as long IDs, they are rounded to the nearest number a float can hold: ``9007199254740993`` is stored as ``9007199254740992.0``. That happens whether the column was a float column from the start or changed from integer to float part way through. A column with only integers in it keeps them exactly.
 
 - Numbers with leading zeros, such as ``02134`` or ``007``, are text, so ZIP codes and other codes keep their zeros. So are numbers written with a decimal comma (``1,5``), thousands separators or currency symbols.
 - Empty values become ``NULL`` in integer and float columns. In text columns they stay as empty strings.
@@ -380,7 +384,7 @@ Large files
 CSV, TSV and newline-delimited JSON files can be much bigger than your computer's memory. Some things to bear in mind when loading large files:
 
 - You can start exploring straight away: rows can be queried as soon as they are loaded, a batch at a time, but counts, facets and sorted pages will change until the import has finished.
-- A JSON array has to be read into memory all at once, which takes several times the size of the file: about three to four times for a file of simple objects. CSV, TSV and newline-delimited JSON are read a line at a time and need very little memory, so for large files prefer newline-delimited JSON. You can convert a JSON array using ``jq -c '.[]' data.json > data.ndjson``.
+- A JSON array has to be read into memory all at once, which takes several times the size of the file: two to four times for objects with long values, and 25 times or more for many small objects such as ``{"id": 1}``. Each import worker holds its own copy, and two of them can run at once. CSV, TSV and newline-delimited JSON are read a line at a time and need very little memory, so for large files - and large uploads - prefer newline-delimited JSON. You can convert a JSON array using ``jq -c '.[]' data.json > data.ndjson``.
 - The progress percentage is how far into the file Datasette has read. For JSON arrays that isn't known, so the progress shows the number of rows loaded so far instead.
 - ``scratch`` needs free space in the temporary directory, see :ref:`importing_scratch`. Datasette suggests ``--save`` when a download is over 100MB, so that you don't lose the data when Datasette stops.
 - If you started the wrong import, :ref:`cancel it <importing_cancel>`.
@@ -390,9 +394,11 @@ CSV, TSV and newline-delimited JSON files can be much bigger than your computer'
 Uploading files
 ---------------
 
-You can also create a table by uploading a file through Datasette's web interface. Choose a file in the "Create table" dialog in a database's actions menu, or drop one onto it, and it will be uploaded to Datasette, which imports it in the background in the same way as a file given on the command line. As with ``--save``, if the import fails or is cancelled the table is dropped again.
+You can also create a table by uploading a file through Datasette's web interface. Open the "Create table" dialog from a database's actions menu and click "Create table from data", then open a file or drop one onto the text area. It will be uploaded to Datasette, which imports it in the background in the same way as a file given on the command line, and can read any format Datasette can load - including newline-delimited JSON and formats from plugins. As with ``--save``, if the import fails or is cancelled the table is dropped again.
 
 Uploads need the :ref:`create-table <actions_create_table>` and :ref:`insert-row <actions_insert_row>` permissions on the database. They are never accepted into ``scratch``, which is read-only. The largest file you can upload is set by :ref:`setting_max_upload_mb`, and the :ref:`upload API <json_api_upload>` lets you upload files from your own code.
+
+Each uploaded file is kept in the system's temporary directory until its import has finished, including while it waits for an import worker behind other imports. As with ``scratch``, that directory can be a ``tmpfs`` file system that uses memory: set ``TMPDIR`` to a directory on disk if that is a problem (see :ref:`importing_scratch`).
 
 Uploads are not available in `Datasette Lite <https://lite.datasette.io/>`__, which runs Datasette in the browser using Pyodide, where Datasette can't start import worker processes.
 

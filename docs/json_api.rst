@@ -56,6 +56,14 @@ Some JSON endpoints are **exempt** from this promise:
 - Response keys explicitly labeled as unstable in this documentation, such
   as the ``"analysis"`` block returned by :ref:`execute-write <ExecuteWriteView>`
   and the ``debug`` and ``request`` extras.
+- The endpoints for :ref:`loading files <importing>` are new, and their design
+  may change in future releases: :ref:`/-/imports and /-/imports.json
+  <JsonDataView_imports>`, the :ref:`upload endpoint <json_api_upload>`
+  ``/<database>/-/upload`` and the :ref:`cancel-import endpoint
+  <importing_cancel>` ``/<database>/<table>/-/cancel-import``, along with
+  the ``import`` key in their responses and in the ``404`` for a table that
+  an import has not created yet. Their errors use the
+  :ref:`standard error format <json_api_errors>`.
 
 .. _json_api_default:
 
@@ -2307,7 +2315,7 @@ Pass ``"alter": true`` to automatically add any missing columns to the existing 
 Creating a table from a file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To create a table from a file - CSV, TSV, a JSON array of objects, newline-delimited JSON, or a format added by a plugin using the :ref:`register_import_loaders() <plugin_register_import_loaders>` hook - make a ``POST`` to ``/<database>/-/upload`` with the file as ``multipart/form-data``. This requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions, as creating a table from example rows does.
+To create a table from a file - CSV, TSV, a JSON array of objects, newline-delimited JSON, or a format added by a plugin using the :ref:`register_import_loaders() <plugin_register_import_loaders>` hook - make a ``POST`` to ``/<database>/-/upload`` with the file as ``multipart/form-data``. This requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions, as creating a table from example rows does. This endpoint is new, and is not yet covered by the :ref:`API stability promise <json_api_stability>`.
 
 ::
 
@@ -2359,7 +2367,7 @@ The table appears as soon as the first rows have been imported, and its rows can
 
 A ``202`` means the import has started, not that it will create a table: follow ``imports_url`` to see how it ends. An import can fail part way through the file, and one that finds no rows - in a file that only has JSON objects with no keys, say - finishes as ``done`` with ``rows`` of ``0`` and creates no table. A JSON array with no rows in it, such as ``[]``, is refused with a ``400`` straight away.
 
-The file is deleted once the import has finished, however it finished, and when Datasette shuts down. If the Datasette process is killed outright part way through an import - with ``SIGKILL``, by the operating system running out of memory, or by a crash - neither clean-up can happen: the partial table stays in the database, with nothing to say that it is incomplete, and the uploaded file stays in a ``datasette-upload-*`` directory in the system's temporary directory.
+The file is kept in a ``datasette-upload-*`` directory in the system's temporary directory until then, including while the import is ``queued``, so files waiting for a worker add up there. On some systems that directory is a ``tmpfs`` file system, which uses memory: set the ``TMPDIR`` environment variable to a directory on disk to avoid that (see :ref:`importing_scratch`). The file is deleted once the import has finished, however it finished, and when Datasette shuts down. If the Datasette process is killed outright part way through an import - with ``SIGKILL``, by the operating system running out of memory, or by a crash - neither clean-up can happen: the partial table stays in the database, with nothing to say that it is incomplete, and the uploaded file stays in a ``datasette-upload-*`` directory in the system's temporary directory.
 
 Any errors will use the :ref:`standard error format <json_api_errors>`, with these status codes:
 

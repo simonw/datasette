@@ -375,9 +375,12 @@ async def load_source(
     happen in between: this is the unit of work a background import task
     runs. ``exclusive=True`` instead parses and writes on the write thread
     in one ``execute_write_fn()`` call (still committing every chunk).
-    That is about 30% faster - the two threads contending for the GIL cost
-    more than they overlap - but holds up every other write to ``db`` until
-    it finishes, so it is only for loading before the server starts.
+    That is about 30% faster - the parsing and writing threads never
+    actually run in parallel (CPU time equals wall time) and splitting the
+    work across them costs extra CPU in every thread (see
+    prototypes/data_csv/bench_cli_pipeline.py) - but holds up every other
+    write to ``db`` until it finishes, so it is only for loading before the
+    server starts.
     ``write_wrapper`` plugins then see one call for the whole load.
     """
     from datasette.imports.sources import fetch, remove_temporary

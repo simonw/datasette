@@ -513,6 +513,7 @@ def remove_temporary(sources: Iterable[Source]) -> None:
         if source.temporary and source.path:
             _unlink(source.path)
             source.path = None
+            source.temporary = False
 
 
 # Progress reporting ----------------------------------------------------------

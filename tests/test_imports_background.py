@@ -7,6 +7,7 @@ the progress notices and cancelling. See datasette/imports/background.py.
 import asyncio
 import contextlib
 import http.server
+import io
 import json
 import os
 import signal
@@ -26,6 +27,7 @@ from datasette.imports.background import (
     TerminalReporter,
     import_registry,
 )
+from datasette.imports.inserter import TypedInserter
 from datasette.imports.scratch import (
     ReloadSession,
     ScratchDatabase,
@@ -393,6 +395,76 @@ async def test_imports_start_in_the_order_given(tmp_path):
         await ds.start_background_tasks()
         assert await registry.wait(20)
         assert started == names
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_worker", (True, False))
+async def test_finishing_progress(tmp_path, monkeypatch, use_worker):
+    # A column changes to text in the last chunk: once every row is in,
+    # the import says how many rows it still has to convert - in its
+    # status, /-/imports.json, its task's status and on the terminal
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 100)
+    path = tmp_path / "late.csv"
+    path.write_text("n\n" + "".join(f"{i}\n" for i in range(2999)) + "x\n")
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    seen = []
+
+    def listener(job, event):
+        if job.converting:
+            seen.append((job.status(), job.describe(), job.task.status))
+
+    registry.add_listener(listener)
+    stream = io.StringIO()
+    registry.add_listener(TerminalReporter(stream, interval=3600))
+    try:
+        job = registry.start(db, _source(path), use_worker=use_worker)
+        await ds.start_background_tasks()
+        assert await job.wait(30)
+        assert (job.state, job.rows) == ("done", 3000)
+        # The chunk of rows 2,001-3,000 widened n, converting 100 of the
+        # 2,000 rows before it; then each write converts 100 more
+        assert seen[0] == (
+            "finishing: 1,800 rows to convert",
+            "finishing late: 1,800 rows to convert",
+            "finishing late: 1,800 rows to convert",
+        )
+        assert [status for status, _, _ in seen][-1] == (
+            "finishing: 100 rows to convert"
+        )
+        assert len(seen) == 18
+        lines = stream.getvalue().splitlines()
+        assert (
+            "  finishing late: 1,800 rows to convert (a column changed to text "
+            "after the first rows)"
+        ) in lines
+        # Once done, nothing is left to convert
+        data = job.to_dict()
+        assert (data["finishing"], data["backlog"]) == (False, 0)
+        assert data["status"] == "imported 3,000 rows"
+        values = await db.execute("select typeof(n), count(*) from late group by 1")
+        assert [tuple(row) for row in values] == [("text", 3000)]
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_finishing_shows_in_imports_json_and_notices(tmp_path):
+    ds, db = _scratch_ds()
+    try:
+        job = await _start_stalled(ds, db, tmp_path)
+        # As the progress from an import that is converting its backlog
+        job.finishing, job.backlog = True, 1_234_567
+        assert job.converting
+        data = (await ds.client.get("/-/imports.json")).json()["imports"][0]
+        assert (data["finishing"], data["backlog"]) == (True, 1_234_567)
+        assert data["status"] == "finishing: 1,234,567 rows to convert"
+        assert data["description"] == "finishing slow: 1,234,567 rows to convert"
+        for path in ("/", "/scratch", "/scratch/slow"):
+            html = (await ds.client.get(path)).text
+            assert "finishing: 1,234,567 rows to convert" in html, path
     finally:
         await ds.invoke_shutdown()
 
@@ -1155,8 +1227,6 @@ def test_get_loads_before_answering(data_dir):
 
 
 def test_terminal_reporter_prints_periodic_progress():
-    import io
-
     class Job:
         id = "1"
         table = "big"
@@ -1165,6 +1235,7 @@ def test_terminal_reporter_prints_periodic_progress():
         state = "importing"
         seconds = 12.0
         download_size = downloaded = None
+        converting = False
 
         def describe(self):
             return "importing big: 40% (2,560,000 rows)"

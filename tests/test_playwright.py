@@ -750,6 +750,54 @@ def test_create_table_upload_flow(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_create_table_upload_progress_and_stop(page, browser_name, datasette_server):
+    from playwright.sync_api import expect
+
+    if browser_name != "chromium":
+        pytest.skip("Throttles the upload with the Chrome DevTools Protocol")
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    # 2MB at 100KB a second: long enough to watch, and to stop
+    content = b"n\n" + b"12345\n" * (2 * 1024 * 1024 // 6)
+    dialog.locator(".table-create-data-file-input").set_input_files(
+        files=[{"name": "slow.csv", "mimeType": "text/csv", "buffer": content}]
+    )
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Network.enable")
+    cdp.send(
+        "Network.emulateNetworkConditions",
+        {
+            "offline": False,
+            "latency": 0,
+            "downloadThroughput": -1,
+            "uploadThroughput": 100 * 1024,
+        },
+    )
+    dialog.locator(".table-create-save").click()
+    status = dialog.locator(".table-create-upload-status")
+    expect(status).to_contain_text("Uploading")
+    expect(status).to_contain_text(" of 2.0 MB)")
+    assert dialog.locator(".table-create-save").inner_text() == "Uploading..."
+    assert dialog.locator(".table-create-save").is_disabled()
+    stop = dialog.locator(".table-create-cancel")
+    assert stop.inner_text() == "Stop upload"
+    # Escape does not close the dialog while uploading
+    page.keyboard.press("Escape")
+    assert dialog.evaluate("node => node.open")
+    stop.click()
+    expect(dialog.locator(".table-create-error")).to_have_text("Upload stopped.")
+    assert dialog.locator(".table-create-save").inner_text() == "Import file"
+    assert dialog.locator(".table-create-cancel").inner_text() == "Back"
+    assert dialog.locator(".table-create-upload-progress").is_hidden()
+    response = httpx2.get(f"{datasette_server}data/slow.json")
+    assert response.status_code == 404
+
+
+@pytest.mark.playwright
 def test_create_table_upload_rejected_file(page, datasette_server):
     from playwright.sync_api import expect
 

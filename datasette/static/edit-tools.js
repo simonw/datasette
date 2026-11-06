@@ -1366,6 +1366,8 @@ function resetTableCreateDialog(state) {
   state.tableName.value = "";
   state.dataTextarea.value = "";
   state.uploadFile = null;
+  state.uploadRequest = null;
+  hideTableCreateUploadProgress(state);
   resetTableCreateDataPreview(state);
   state.columnList.textContent = "";
   addTableCreateColumn(state, {
@@ -2130,6 +2132,7 @@ function startTableCreateUpload(state) {
     }
     if (request.status >= 200 && request.status < 300 && data && data.ok) {
       // The table page shows how the import is getting on
+      state.uploadRequest = null;
       state.uploadStatus.textContent = "Uploaded. Opening the table...";
       var tableUrl =
         data.table_url || fallbackTableUrl(data.table || tableName);

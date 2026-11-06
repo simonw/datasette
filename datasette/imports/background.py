@@ -118,7 +118,6 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_STATES = ("queued", "downloading", "importing")
 FINISHED_STATES = ("done", "failed", "cancelled")
-STATES = ACTIVE_STATES + FINISHED_STATES
 # Finished imports kept in the registry, beyond which the oldest are
 # forgotten (an upload endpoint could otherwise grow it without bound)
 MAX_FINISHED = 200
@@ -815,8 +814,6 @@ class ImportRegistry:
         self._jobs: dict[str, TableImport] = {}
         self._listeners: list[Callable] = []
         self._ids = itertools.count(1)
-        #: Goes up by one on every change, for cheap "has anything changed"
-        self.version = 0
 
     @property
     def datasette(self):
@@ -928,7 +925,6 @@ class ImportRegistry:
             self._listeners.remove(listener)
 
     def _notify(self, job, event):
-        self.version += 1
         if job.task is not None:
             job.task.status = job.describe()
         for listener in list(self._listeners):
@@ -1045,22 +1041,6 @@ class ImportRegistry:
         ]
         for job in order[:excess]:
             self._jobs.pop(job.id, None)
-
-    def forget(self, database: str, table: str) -> bool:
-        "Remove the finished imports into a table from the registry."
-        jobs = [job for job in self._for(database, table) if not job.active]
-        for job in jobs:
-            self._jobs.pop(job.id, None)
-        if jobs:
-            self.version += 1
-        return bool(jobs)
-
-    def cancel(self, database: str, table: str) -> TableImport | None:
-        "Cancel the import into that table, if one is running."
-        job = self.get(database, table)
-        if job is not None:
-            job.cancel()
-        return job
 
     def cancel_all(self) -> list[TableImport]:
         jobs = self.active()

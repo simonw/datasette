@@ -929,9 +929,8 @@ async def test_cancelled_by_someone_else(ds, temp_dir, stalling_imports):
     await wait_for(lambda: len(events(ds, "dogs")) == 2)
     assert [(event.name, event.actor) for event in events(ds, "dogs")] == [
         ("create-table", WRITER),
-        # Root cancelled it, or Datasette shut down: the registry does not
-        # say which, so the drop is no actor's
-        ("drop-table", None),
+        # Root cancelled it, so root dropped the table
+        ("drop-table", ROOT),
     ]
 
 

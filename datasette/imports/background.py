@@ -232,6 +232,9 @@ class TableImport:
         #: The :class:`~datasette.background_tasks.BackgroundTask`
         self.task = None
         self.cancel_requested = False
+        #: The actor who cancelled the import with :meth:`cancel`, if one did
+        #: (not when Datasette shut down, or the caller passed none)
+        self.cancelled_by = None
         self._workdir = workdir
         self._sample_size = sample_size
         self._batch_size = batch_size
@@ -451,17 +454,19 @@ class TableImport:
 
     # Control ----------------------------------------------------------------
 
-    def cancel(self) -> bool:
+    def cancel(self, actor=None) -> bool:
         """
         Cancel the import if it is still running: its worker is killed and,
         with ``on_error="keep"``, the rows already imported stay. Returns
         False if it had already finished. Use :meth:`wait` to wait for the
-        cancellation to finish.
+        cancellation to finish. ``actor`` is who asked, recorded as
+        :attr:`cancelled_by`.
         """
         self._reconcile()
         if not self.active:
             return False
         self.cancel_requested = True
+        self.cancelled_by = actor
         handle = self.task
         if handle is not None:
             # Cancels the asyncio task, or - if background tasks have not

@@ -310,10 +310,10 @@ class UploadEvents:
     An import that never created a table fires nothing.
 
     The ``drop-table`` after a failed import is the uploading actor's, as
-    the consequence of their upload. After a cancellation its actor is
-    ``None``: the import may have been cancelled by someone else with the
-    ``cancel-import`` permission, or by Datasette shutting down, and the
-    import registry does not record which.
+    the consequence of their upload. After a cancellation it is the actor
+    who cancelled it (``TableImport.cancelled_by``) - perhaps someone else
+    with the ``cancel-import`` permission - or ``None`` if Datasette
+    shutting down cancelled it.
     """
 
     def __init__(self, datasette, actor, job):
@@ -340,7 +340,7 @@ class UploadEvents:
         if job.table_exists:
             self._schedule(self._fire_finished, job.rows)
         elif self._created:
-            actor = None if job.state == "cancelled" else self.actor
+            actor = job.cancelled_by if job.state == "cancelled" else self.actor
             self._schedule(self._fire_drop, actor)
 
     def _schedule(self, fire, *args):

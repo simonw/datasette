@@ -920,7 +920,7 @@ async def cancel_import_view(datasette, request):
                 json.loads(body)
             except ValueError:
                 return error("Invalid JSON body", 400)
-    was_active = job.cancel()
+    was_active = job.cancel(actor=request.actor)
     if was_active:
         await job.wait(timeout=5)
     if is_form:

@@ -862,8 +862,19 @@ class QueryView(View):
 
             async def fetch_data_for_csv(request, _next=None):
                 # Reuse the trusted magic parameter values prepared above.
-                results = await db.execute(sql, params_for_query, truncate=True)
-                data = {"rows": results.rows, "columns": results.columns}
+                # CSV queries do not paginate, so the page-size sentinel must not
+                # increase the configured maximum by one.
+                results = await db.execute(
+                    sql,
+                    params_for_query,
+                    truncate=True,
+                    page_size=datasette.max_returned_rows + 1,
+                )
+                data = {
+                    "rows": results.rows,
+                    "columns": results.columns,
+                    "truncated": results.truncated,
+                }
                 return data, None, None
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)

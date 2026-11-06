@@ -5,9 +5,8 @@ file).
 ``scratch`` is a SQLite file in WAL mode in the temporary directory, deleted
 when Datasette exits. WAL rather than a shared-cache in-memory database
 because shared-cache memory fails with "database table is locked" as soon
-as anything reads while an import writes (see prototypes/data_csv). It is
-read-only for everyone except the import itself: see
-``datasette/imports/default_hooks.py``.
+as anything reads while an import writes. It is read-only for everyone
+except the import itself: see ``datasette/imports/default_hooks.py``.
 
 :func:`load_source` loads one source into one new table through
 ``db.execute_write_fn()`` (so ``write_wrapper`` plugins see every chunk) and
@@ -31,7 +30,12 @@ import weakref
 
 from datasette.database import Database
 from datasette.imports import loaders as _loaders
-from datasette.imports.inserter import import_rows, insert_rows
+from datasette.imports.inserter import (
+    SQLITE_ERRORS,
+    ImportStatus,
+    import_rows,
+    insert_rows,
+)
 from datasette.imports.sources import (
     SQLITE_HEADER,
     Source,
@@ -176,26 +180,6 @@ def remove_if_empty(path: str) -> bool:
     return True
 
 
-class MemoryScratchDatabase(Database):
-    """
-    A shared-cache in-memory scratch database. Not used by default: it
-    breaks with "database table is locked" when queried during an import.
-    Kept so the two can be compared (``DATASETTE_SCRATCH_STORAGE=memory``).
-    """
-
-    is_scratch = True
-
-    def __init__(self, ds):
-        super().__init__(ds, memory_name=f"datasette_scratch_{os.getpid()}_{id(self)}")
-        self.loaded = []
-        self.save_command = None
-        self.from_stdin = False
-        self.keep = True
-
-    def suggest_name(self):
-        return SCRATCH_NAME
-
-
 def is_scratch(db) -> bool:
     return bool(getattr(db, "is_scratch", False))
 
@@ -304,6 +288,8 @@ class LoadedTable:
     widenings: list = dataclasses.field(default_factory=list)
     #: Kept from an earlier load in this --reload session, not loaded again
     reused: bool = False
+    #: The loader's notes about how it read the file (``LoadResult.notes``)
+    notes: list = dataclasses.field(default_factory=list)
 
 
 def sniff(source: Source, loaders=None):
@@ -388,10 +374,6 @@ def is_reserved(db, table: str) -> bool:
     return table.lower() in _loading.get(db, ())
 
 
-_reserve = reserve_table
-_release = release_table
-
-
 def _quote(name: str) -> str:
     return "[{}]".format(name.replace("]", "]]"))
 
@@ -416,6 +398,7 @@ async def load_source(
     progress=None,
     loaders=None,
     exclusive: bool = False,
+    status: ImportStatus | None = None,
 ) -> LoadedTable:
     """
     Load one source into a new table ``source.table`` in ``db``.
@@ -432,7 +415,12 @@ async def load_source(
     anything is fetched. If loading fails or is cancelled, the partly
     loaded table is dropped - only if this call created it - and
     :class:`ImportFailed` (or the cancellation) is raised.
-    ``progress(rows_written)`` is called after every chunk.
+    ``progress(rows_written)`` is called after every chunk (and after each
+    slice of converting stored numbers to text after the last one, see
+    :func:`~datasette.imports.inserter.import_rows`). Pass an
+    :class:`~datasette.imports.inserter.ImportStatus` as ``status`` to see
+    when that conversion is under way (``status.finishing``) and how much
+    of it is left (``status.backlog``).
 
     By default every chunk is its own ``db.execute_write_fn()`` call while
     the loader runs in an executor thread, so other writes and reads can
@@ -441,10 +429,9 @@ async def load_source(
     in one ``execute_write_fn()`` call (still committing every chunk).
     That is about 30% faster - the parsing and writing threads never
     actually run in parallel (CPU time equals wall time) and splitting the
-    work across them costs extra CPU in every thread (see
-    prototypes/data_csv/bench_cli_pipeline.py) - but holds up every other
-    write to ``db`` until it finishes, so it is only for loading before the
-    server starts.
+    work across them costs extra CPU in every thread - but holds up every
+    other write to ``db`` until it finishes, so it is only for loading
+    before the server starts.
     ``write_wrapper`` plugins then see one call for the whole load.
     """
     from datasette.imports.sources import fetch, remove_temporary
@@ -452,7 +439,7 @@ async def load_source(
     if not source.table:
         raise ValueError("source.table is not set: see assign_table_names()")
     loop = asyncio.get_running_loop()
-    _reserve(db, source.table)
+    reserve_table(db, source.table)
     fetched_here = source.path is None
     private_dir = None
     try:
@@ -472,10 +459,10 @@ async def load_source(
         if taken.first():
             raise TableExists(f"Table {source.table!r} already exists in {db.name}")
         return await _load_new_table(
-            db, source, batch_size, sample_size, progress, exclusive
+            db, source, batch_size, sample_size, progress, exclusive, status
         )
     finally:
-        _release(db, source.table)
+        release_table(db, source.table)
         if fetched_here and source.temporary:
             # The rows are in SQLite now (or never will be)
             remove_temporary([source])
@@ -483,22 +470,13 @@ async def load_source(
             remove_tree(private_dir)
 
 
-async def _load_new_table(db, source, batch_size, sample_size, progress, exclusive):
+async def _load_new_table(
+    db, source, batch_size, sample_size, progress, exclusive, status
+):
     loop = asyncio.get_running_loop()
     loader = source.loader
     table = source.table
     start = time.perf_counter()
-    # Set once a chunk has been committed. The inserter creates the table
-    # with a plain CREATE TABLE in the same transaction as the first chunk,
-    # so from then on the table is certainly this import's own
-    committed = False
-
-    def on_chunk(rows_written):
-        nonlocal committed
-        committed = True
-        if progress is not None:
-            return progress(rows_written)
-
     try:
         result = await loop.run_in_executor(
             None,
@@ -508,9 +486,19 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
         with import_writes():
             if exclusive:
                 imported = await _load_exclusive(
-                    db, table, result.rows, schema, sample_size, batch_size, progress
+                    db,
+                    table,
+                    result.rows,
+                    schema,
+                    sample_size,
+                    batch_size,
+                    progress,
+                    status,
                 )
             else:
+                # on_error="drop": if loading fails or is cancelled, the table
+                # is dropped - if this import created it - without first
+                # converting what a late widening left to convert
                 imported = await import_rows(
                     db,
                     table,
@@ -518,27 +506,16 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
                     schema=schema,
                     sample_size=sample_size,
                     batch_size=batch_size,
-                    progress=on_chunk,
+                    progress=progress,
+                    on_error="drop",
+                    status=status,
                 )
-    except BaseException as ex:
-        # exclusive=True cleans up on the write thread. Otherwise drop the
-        # table if this import created it. A cancellation can arrive while
-        # the first chunk is still being written: the drop queues behind
-        # it, and in scratch - where nothing but imports writes, and this
-        # name is reserved - a table that exists by then is this one's
-        own_table = committed or (
-            isinstance(ex, asyncio.CancelledError) and is_scratch(db)
-        )
-        if not exclusive and own_table:
-            with contextlib.suppress(Exception):
-                await drop_table(db, table)
-        if isinstance(ex, _loaders.LoaderError):
-            raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
-        if isinstance(ex, sqlite3.Error):
-            raise ImportFailed(
-                f"Error loading {source.label} into table {table!r}: {ex}"
-            ) from ex
-        raise
+    except _loaders.LoaderError as ex:
+        raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
+    except SQLITE_ERRORS as ex:
+        raise ImportFailed(
+            f"Error loading {source.label} into table {table!r}: {ex}"
+        ) from ex
     return LoadedTable(
         source=source,
         table=table,
@@ -548,6 +525,7 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
         created=imported.created,
         types=imported.types,
         widenings=list(imported.widenings),
+        notes=list(result.notes),
     )
 
 
@@ -555,29 +533,27 @@ class _Cancelled(Exception):
     pass
 
 
-async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, progress):
+async def _load_exclusive(
+    db, table, rows, schema, sample_size, batch_size, progress, status
+):
     # insert_rows() on the write thread, committing every chunk. The write
     # thread cannot be interrupted, so cancellation sets a flag that the
-    # per-chunk progress callback checks.
+    # progress callback checks after every chunk (and every slice of the
+    # conversion after the last one).
     #
-    # load() drops the table itself if anything goes wrong, but only once a
-    # chunk has been committed: the inserter creates the table with a plain
-    # CREATE TABLE in the first chunk's transaction, so before that there is
-    # no table of this import's to drop (a failed first chunk rolls back),
-    # and after it the table is certainly this import's. load() returns
-    # errors rather than raising them, because the write thread prints
-    # every exception it sees to stderr and the command line would show
-    # each error twice
+    # The table is dropped if anything goes wrong: insert_rows() drops it
+    # itself (on_error="drop") if it created it, without completing it
+    # first; load() drops it if the cancellation arrives once it is
+    # complete. load() returns errors rather than raising them, because
+    # the write thread prints every exception it sees to stderr and the
+    # command line would show each error twice
     cancelled = threading.Event()
 
     def load(conn):
         if _table_exists(conn, table):
             return None, TableExists(f"Table {table!r} already exists in {db.name}")
-        ours = False
 
         def on_chunk(rows_written):
-            nonlocal ours
-            ours = True
             if cancelled.is_set():
                 raise _Cancelled
             if progress is not None:
@@ -592,18 +568,17 @@ async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, prog
                 sample_size=sample_size,
                 batch_size=batch_size,
                 progress=on_chunk,
+                on_error="drop",
+                status=status,
             )
-            ours = imported.created
-            if cancelled.is_set():
-                raise _Cancelled
-            return imported, None
         except Exception as ex:  # noqa: BLE001 - returned, re-raised below
-            if ours:
-                with contextlib.suppress(Exception):
-                    if conn.in_transaction:
-                        conn.rollback()
-                    conn.execute(f"drop table if exists {_quote(table)}")
             return None, ex
+        if cancelled.is_set():
+            if imported.created:
+                with contextlib.suppress(Exception):
+                    conn.execute(f"drop table if exists {_quote(table)}")
+            return None, _Cancelled()
+        return imported, None
 
     try:
         imported, error = await db.execute_write_fn(load, transaction=False)
@@ -696,10 +671,13 @@ async def load_sources(
     :func:`free_bytes`.) Returns a :class:`LoadedTable` per source, in
     order.
 
-    ``on_start(source)``, ``on_progress(source, rows)`` and
-    ``on_loaded(loaded_table)`` report progress. ``exclusive`` is passed to
-    :func:`load_source` (``on_progress`` is then called from the write
-    thread).
+    ``on_start(source)``, ``on_progress(source, rows, status)`` and
+    ``on_loaded(loaded_table)`` report progress: ``status`` is the
+    source's :class:`~datasette.imports.inserter.ImportStatus`, which says
+    when the rows are all in and stored numbers are being converted to
+    text (``status.finishing``, ``status.backlog``). ``exclusive`` is
+    passed to :func:`load_source` (``on_progress`` is then called from the
+    write thread).
     """
     for table in plan.drop:
         await drop_table(db, table)
@@ -728,10 +706,11 @@ async def load_sources(
             if session:
                 session.remember(target_path, source, complete=False)
             progress = None
+            status = ImportStatus()
             if on_progress:
 
-                def progress(rows, source=source):
-                    on_progress(source, rows)
+                def progress(rows, source=source, status=status):
+                    on_progress(source, rows, status)
 
             result = await load_source(
                 db,
@@ -740,6 +719,7 @@ async def load_sources(
                 batch_size=batch_size,
                 progress=progress,
                 exclusive=exclusive,
+                status=status,
             )
             created.append(source.table)
             if session:

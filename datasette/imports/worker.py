@@ -28,7 +28,7 @@ the parent can tell them apart from the first byte without parsing.
 
 In order:
 
-``header`` (mandatory, first)
+``header`` (mandatory, first but for ``log`` messages)
     ``{"type": "header", "protocol": 1, "loader": "csv", "path": ...,
     "size": 15185971, "scores": {"csv": 1.0, "tsv": 0.0, ...}}`` - sent as
     soon as the loader is chosen, before ``load()`` starts. ``size`` is the
@@ -90,9 +90,11 @@ row
     parent should not treat a quiet worker as a dead one. Rows never wait
     in the worker's buffer for longer than the interval.
 
-``log`` (any time after the header)
+``log`` (any time, even before the header)
     ``{"type": "log", "level": "WARNING", "logger": "...", "message":
-    "..."}`` - a warning (or worse) the loader or a plugin logged. With
+    "..."}`` - a warning (or worse) the loader or a plugin logged, for
+    example while the loader is chosen, before the header, when a plugin's
+    ``register_import_loaders()`` fails. With
     ``"note": true`` it is a :class:`~datasette.imports.loaders.Note` the
     loader yielded, something to show the person importing the file, such
     as the JSON loader's "Importing the 2 objects in 'results', ignoring
@@ -137,12 +139,6 @@ out-of-memory killer's first choice (``oom_score_adj`` 1000) and, given
 ``--parent-pid``, asks to be killed when the parent dies
 (``PR_SET_PDEATHSIG``) - otherwise it notices when its next write to the
 closed pipe fails.
-
-``--direct-db`` is an experiment, not part of the protocol: the worker
-inserts the rows into that SQLite file itself with
-:func:`~datasette.imports.inserter.insert_rows` and sends only ``header``,
-``schema``, ``progress`` and ``end`` (with the import's ``widenings``) or
-``error``.
 """
 
 import argparse
@@ -167,7 +163,6 @@ SPARSE_RATIO = 3
 # Exit statuses
 EXIT_OK = 0
 EXIT_ERROR = 1
-EXIT_USAGE = 2
 
 _BYTES_TYPES = (bytes, bytearray, memoryview)
 _NESTED_TYPES = (list, dict, tuple)
@@ -685,25 +680,9 @@ def run(args, writer, warnings=()):
             schema, rows = loaders_module.split_schema(loader.load(path), loader.name)
             if schema is not None:
                 writer.message({"type": "schema", **schema.to_dict()})
-            extra = {}
-            if args.direct_db:
-                result = _insert_directly(args, writer, schema, rows, position)
-                count = result.rows
-                extra["widenings"] = [
-                    {
-                        "column": widening.column,
-                        "to_type": widening.to_type,
-                        "at_row": widening.at_row,
-                        "method": widening.method,
-                        "seconds": round(widening.seconds, 3),
-                    }
-                    for widening in result.widenings
-                ]
-            else:
-                count = streamer.send(rows)
+            streamer.send(rows)
         finally:
-            if not args.direct_db:
-                count = streamer.count
+            count = streamer.count
             flusher.stop()
         cpu, max_rss = _usage()
         writer.message(
@@ -715,7 +694,6 @@ def run(args, writer, warnings=()):
                 "cpu": round(cpu, 6),
                 "max_rss": max_rss,
                 "write_seconds": round(writer.write_seconds, 6),
-                **extra,
             }
         )
         writer.flush()
@@ -751,45 +729,6 @@ def run(args, writer, warnings=()):
         logging.getLogger().removeHandler(handler)
 
 
-def _insert_directly(args, writer, schema, rows, position):
-    "EXPERIMENT: insert into ``args.direct_db`` from this process."
-    import sqlite3
-
-    from datasette.imports.inserter import insert_rows
-
-    conn = sqlite3.connect(args.direct_db, isolation_level=None)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    last = [time.monotonic()]
-
-    def progress(written):
-        now = time.monotonic()
-        if now - last[0] >= args.progress_interval:
-            last[0] = now
-            writer.message(
-                {
-                    "type": "progress",
-                    "rows": written,
-                    "bytes": position.get(),
-                    "size": position.size,
-                }
-            )
-            writer.flush()
-
-    try:
-        result = insert_rows(
-            conn,
-            args.table,
-            rows,
-            schema=schema.columns if schema else None,
-            batch_size=args.batch_size,
-            progress=progress,
-        )
-    finally:
-        conn.close()
-    return result
-
-
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="python -m datasette.imports.worker",
@@ -813,21 +752,11 @@ def build_parser():
     parser.add_argument(
         "--parent-pid", type=int, help="Exit if this process (the parent) dies"
     )
-    parser.add_argument(
-        "--direct-db", help="EXPERIMENT: insert into this SQLite file directly"
-    )
-    parser.add_argument("--table", help="Table for --direct-db")
-    parser.add_argument(
-        "--batch-size", type=int, default=1000, help="Batch size for --direct-db"
-    )
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    if args.direct_db and not args.table:
-        print("--direct-db needs --table", file=sys.stderr)
-        return EXIT_USAGE
     out = _protect_stdout()
     # A loader that segfaults leaves a Python traceback on stderr, which
     # the parent keeps for its error message

@@ -37,29 +37,26 @@ Then :class:`WorkerImportError` is raised. With ``on_error="keep"`` (the
 default) that table stays; ``on_error="drop"`` drops it instead. A failed
 *insert* in the parent (a ``write_wrapper`` plugin raising, a full disk)
 kills the worker and re-raises that exception; cancellation kills the
-worker and re-raises ``CancelledError``. In both cases the table keeps the
-chunks already committed (or is dropped, with ``on_error="drop"``), and the
-inserter's ``TEMP`` spellings table is dropped from the write connection.
+worker and re-raises ``CancelledError``. In both cases
+:func:`~datasette.imports.inserter.import_rows` keeps the chunks already
+committed, completing the table (or drops it, with ``on_error="drop"``).
 
 Why the parent does the writes
 ------------------------------
 
-Prototype 3 measured the alternative, the worker inserting into the
-database file itself (``--direct-db``, see
-``prototypes/data_csv/bench_worker.py``). It was 1.1-1.4 times faster on a
-1GB CSV across three sets of runs (120,000 rows/s against 97,000-99,000 in
-the latest) and left the server's event loop alone, but it bypasses
-``write_wrapper`` plugins, events and the write queue, and makes the worker
-a second process writing to the file: a widening that rebuilds a 6M-row
-table held SQLite's write lock for 12s, and the server's own writes to that
-file failed with "database is locked" after their 5s busy timeout
-(``prototypes/data_csv/worker_direct_contention.py``; through the parent
-the same writes queued instead). It is also a second write path next to
-the in-process one that Pyodide (no subprocesses) needs anyway. Writing in
-the parent is still faster than loading in-process (82,000-84,000 rows/s),
-and keeps loaders that hold the GIL for a long time out of the server:
-``json.load()`` of a whole 27MB file stalled the event loop for 150-200ms
-in-process.
+The alternative, the worker inserting into the database file itself, was
+1.1-1.4 times faster on a 1GB CSV across three sets of runs (120,000 rows/s
+against 97,000-99,000) and left the server's event loop alone, but it
+bypasses ``write_wrapper`` plugins, events and the write queue, and makes
+the worker a second process writing to the file: a widening that rebuilt a
+6M-row table held SQLite's write lock for 12s, and the server's own writes
+to that file failed with "database is locked" after their 5s busy timeout
+(through the parent the same writes queued instead). It would also be a
+second write path next to the in-process one that Pyodide (no subprocesses)
+needs anyway. Writing in the parent is still faster than loading
+in-process (82,000-84,000 rows/s), and keeps loaders that hold the GIL for
+a long time out of the server: ``json.load()`` of a whole 27MB file stalled
+the event loop for 150-200ms in-process.
 """
 
 import asyncio
@@ -77,7 +74,13 @@ import sys
 import time
 import weakref
 
-from datasette.imports.inserter import ImportResult, import_rows
+from datasette.imports.inserter import (
+    ON_ERROR,
+    ImportResult,
+    ImportStatus,
+    import_rows,
+)
+from datasette.imports.loaders import NOTE_LOG_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +91,6 @@ PROTOCOL_VERSION = 1
 READ_SIZE = 256 * 1024
 # How much of the end of the worker's stderr to keep for error messages
 STDERR_TAIL = 8 * 1024
-ON_ERROR = ("keep", "drop")
 # Size of the pipe the worker writes rows to, where the system allows it
 # (Linux: up to /proc/sys/fs/pipe-max-size, 1MB by default). See _grow_pipe()
 PIPE_SIZE = 1024 * 1024
@@ -100,7 +102,7 @@ _SCAN = json.scanner.make_scanner(json.decoder.JSONDecoder())
 _SIGKILL = getattr(signal, "SIGKILL", None)
 _PROCESS_GROUPS = hasattr(os, "killpg") and os.name == "posix"
 # Default number of workers that may run at once for one Datasette instance.
-# Measured on 4 CPUs (bench_worker_concurrency.py): 32 files of 1,000 rows
+# Measured on 4 CPUs: 32 files of 1,000 rows
 # took 8.1-8.6s with 1, 4.1-4.2s with 2, 2.4-2.5s with 4; 8 files of 100,000
 # rows went 81,000 -> 84,000-89,000 -> 91,000 rows/s (the parent's loop is
 # the limit) while loop lag p99 went 4.5-4.9 -> 5.6-5.7 -> 8.7-9.2ms
@@ -172,6 +174,17 @@ class ImportProgress:
     size: int | None
     #: The worker's process ID
     pid: int | None = None
+    #: Rows (by rowid range) whose stored numbers still have to become text
+    #: after a column widened to text, see
+    #: :attr:`~datasette.imports.inserter.ImportStatus.backlog`
+    backlog: int = 0
+    #: True once every row is in the table: what is left is converting the
+    #: :attr:`backlog` and finishing the table
+    finishing: bool = False
+    #: The messages of the :class:`~datasette.imports.loaders.Note` items
+    #: the loader has yielded so far: things the person importing the file
+    #: should know about how it was read
+    notes: list = dataclasses.field(default_factory=list)
 
     @property
     def fraction(self):
@@ -191,6 +204,9 @@ class WorkerImportResult:
     rows: int
     #: Rows received from the worker
     rows_read: int
+    #: Rows committed to the table - the same as ``rows`` unless the table
+    #: was dropped after a failure
+    rows_written: int
     #: True if the worker finished cleanly and every row was inserted
     complete: bool
     #: False if no table was created, or it was dropped after an error
@@ -202,6 +218,9 @@ class WorkerImportResult:
     #: The worker's ``end`` message: its rows, seconds, cpu, max_rss
     worker: dict | None
     returncode: int | None
+    #: The loader's notes, see :attr:`ImportProgress.notes`
+    notes: list
+    #: Other warnings that the loader, a plugin or the worker logged
     warnings: list
     #: Parent-side timings: decode_seconds (json.loads and building
     #: dicts), write_seconds (inside execute_write_fn), bytes_read
@@ -214,9 +233,13 @@ class ProtocolDecoder:
     Holds the protocol state: the header, schema and column list.
 
     :meth:`feed` returns a list of ``(kind, payload)`` pairs, where ``kind``
-    is ``"rows"`` (payload: a list of row dictionaries) or a control
-    message type (payload: the message). Consecutive rows come as one
-    ``"rows"`` pair.
+    is ``"rows"`` or a control message type (payload: the message).
+    Consecutive rows come as one ``"rows"`` pair, whose payload is a list of
+    rows: each a list of values in the order of :attr:`columns` - shorter
+    than :attr:`columns` if its last values are missing, or if columns were
+    added after it - or, for a sparse row, a dictionary. That is what
+    :func:`~datasette.imports.inserter.import_rows` takes with
+    ``columns=decoder.columns``, without a dictionary built per row.
 
     Each line is parsed on its own with the C JSON scanner, which must end
     exactly at the line's newline: a line is one JSON value or the stream
@@ -347,7 +370,7 @@ class ProtocolDecoder:
                         f"Line {self.lines}: a row has more values than the "
                         f"{len(columns)} columns announced"
                     )
-                rows.append(dict(zip(columns, value)))
+                rows.append(value)
                 continue
             if value.get("type") == "row":
                 # A row with bytes, or a sparse row: part of the same run
@@ -387,6 +410,10 @@ class ProtocolDecoder:
             if kind == "error":
                 self.finished = message
                 return ("error", message)
+            if kind == "log":
+                # Logged while choosing the loader, such as a plugin whose
+                # register_import_loaders() failed
+                return ("log", message)
             raise ProtocolError(f"Line {self.lines}: expected the header, got {kind!r}")
         if self.finished is not None:
             raise ProtocolError(f"Line {self.lines}: {kind!r} after the end")
@@ -426,7 +453,7 @@ class ProtocolDecoder:
         except (TypeError, ValueError, IndexError) as ex:
             raise ProtocolError(f"Line {self.lines}: bad base64 value: {ex}") from None
         if at is None:
-            return dict(zip(columns, values))
+            return values
         # Sparse: values[i] is the value of column at[i]
         try:
             if (
@@ -477,14 +504,13 @@ def _grow_pipe(process, size):
     answering requests an iteration can take tens of milliseconds, so the
     import could take only 64KB per iteration. With 1MB it takes up to
     asyncio's 256KB. With the event loop blocked for 10ms per iteration
-    (GIL free), 100,000 rows went from 16,500 to 37,000 rows/s
-    (prototypes/data_csv/bench_background_pipe.py). On a real server under
-    four clients requesting without pause it made no measurable
-    difference: a 1M row import took 40.3, 41.6 and 44.4s with 64KB against
-    42.1, 43.5 and 45.6s with 1MB, runs interleaved (bench_background_load.py
-    --small-pipe). There the import is held up by the GIL - the write
-    thread and the pages being rendered take turns - not by the pipe. It
-    costs 1MB of kernel memory per worker.
+    (GIL free), 100,000 rows went from 16,500 to 37,000 rows/s. On a real
+    server under four clients requesting without pause it made no
+    measurable difference: a 1M row import took 40.3, 41.6 and 44.4s with
+    64KB against 42.1, 43.5 and 45.6s with 1MB, runs interleaved. There the
+    import is held up by the GIL - the write thread and the pages being
+    rendered take turns - not by the pipe. It costs 1MB of kernel memory
+    per worker.
     """
     if not size:
         return
@@ -655,46 +681,18 @@ class WorkerProcess:
         await self.stop(timeout)
 
 
-_SPELLINGS_LIKE = r"\_import\_spellings\_%"
-
-
-def _temp_spellings(conn):
-    "The inserter's TEMP spellings tables on this connection."
-    return {
-        row[0]
-        for row in conn.execute(
-            "select name from temp.sqlite_master where type = 'table' "
-            "and name like ? escape '\\'",
-            [_SPELLINGS_LIKE],
-        )
-    }
-
-
 class _WatchedDatabase:
     """
     Passes everything through to a Database, but calls ``on_failure`` when
-    a write fails or is cancelled, and times the writes. import_rows() waits
-    for its next chunk of rows before re-raising a failed write; killing
-    the worker first means that never waits on a worker that has stalled.
-
-    It also notes the ``TEMP`` spellings table the inserter may create on
-    the write connection: a table that appears during one of this import's
-    write functions is this import's, because nothing else runs on the write
-    thread meanwhile. import_rows() drops it on an exception but not on
-    cancellation (an inserter.py bug); :meth:`drop_temp_tables` does that.
+    a write fails or is cancelled - so the worker is stopped at once, not
+    after import_rows() has cleaned up - and times the writes.
     """
 
     def __init__(self, db, on_failure):
         self._db = db
         self._on_failure = on_failure
-        self.attempts = 0
         self.writes = 0
-        # Writes that inserted rows: TypedInserter.write() returns how many.
-        # Once one succeeded, the table is ours - it did not exist when the
-        # import started, and the first write created it
-        self.row_writes = 0
         self.write_seconds = 0.0
-        self.temp_tables = set()
 
     def __getattr__(self, name):
         return getattr(self._db, name)
@@ -702,47 +700,38 @@ class _WatchedDatabase:
     async def execute_write_fn(self, fn, *args, **kwargs):
         @functools.wraps(fn)
         def timed(conn):
-            before = _temp_spellings(conn)
             start = time.perf_counter()
             try:
                 return fn(conn)
             finally:
                 self.write_seconds += time.perf_counter() - start
-                self.temp_tables |= _temp_spellings(conn) - before
 
-        self.attempts += 1
         try:
             result = await self._db.execute_write_fn(timed, *args, **kwargs)
         except BaseException:
             self._on_failure()
             raise
         self.writes += 1
-        if type(result) is int and result > 0:
-            self.row_writes += 1
         return result
 
-    async def drop_temp_tables(self):
-        "Drop the TEMP spellings table this import left behind, if any."
-        if not self.attempts:
-            return
 
-        def drop(conn):
-            # The write queue runs this after any write of ours that was
-            # still going when we were cancelled: read the set now
-            for name in sorted(self.temp_tables):
-                conn.execute(f'DROP TABLE IF EXISTS temp."{name}"')
-            self.temp_tables.clear()
-
-        await self._db.execute_write_fn(drop)
+class _WorkerFailed(Exception):
+    """
+    Raised by :meth:`_Import.rows` after the last row of a worker that
+    failed, so that import_rows() drops the table (``on_error="drop"``).
+    """
 
 
 class _Import:
     "The state of one import_file_via_worker() call."
 
-    def __init__(self, worker, table, progress):
+    def __init__(self, worker, table, progress, status, raise_on_failure):
         self.worker = worker
         self.table = table
         self.progress = progress
+        #: The ImportStatus of the import_rows() call
+        self.status = status
+        self.raise_on_failure = raise_on_failure
         self.loader = None
         self.schema = None
         self.size = None
@@ -752,6 +741,7 @@ class _Import:
         self.trailer = None
         self.error_message = None
         self.protocol_error = None
+        self.notes = []
         self.warnings = []
         self.done = False
         self._ready = []
@@ -768,6 +758,9 @@ class _Import:
                 bytes=self.bytes,
                 size=self.size,
                 pid=self.worker.pid,
+                backlog=self.status.backlog,
+                finishing=self.status.finishing,
+                notes=list(self.notes),
             )
         )
         if inspect.isawaitable(outcome):
@@ -793,8 +786,15 @@ class _Import:
                 self.schema = payload["columns"]
             elif kind == "log":
                 text = payload.get("message", "")
-                self.warnings.append(text)
-                logger.warning("Import worker: %s", text)
+                extra = None
+                if payload.get("note"):
+                    self.notes.append(text)
+                    report = True
+                    # Marked as the loader marks it, see split_schema()
+                    extra = {NOTE_LOG_ATTRIBUTE: self.loader or "loader"}
+                else:
+                    self.warnings.append(text)
+                logger.warning("Import worker: %s", text, extra=extra)
             elif kind == "end":
                 self.trailer = payload
                 self.bytes = payload.get("bytes", self.bytes)
@@ -806,22 +806,28 @@ class _Import:
         if report:
             await self._report()
 
+    async def _read(self):
+        "Read the next messages; False at the end of the stream."
+        try:
+            messages = await self.worker.read_messages()
+        except ProtocolError as ex:
+            # Rows before the bad line are good: insert those
+            self.worker.kill_now()
+            self.protocol_error = ex
+            self.done = True
+            await self._handle(ex.messages)
+            return False
+        if messages is None:
+            self.done = True
+            return False
+        await self._handle(messages)
+        return True
+
     async def fill(self):
         "Read until rows are ready or the stream is over."
         while not self._ready and not self.done:
-            try:
-                messages = await self.worker.read_messages()
-            except ProtocolError as ex:
-                # Rows before the bad line are good: insert those
-                self.worker.kill_now()
-                self.protocol_error = ex
-                self.done = True
-                await self._handle(ex.messages)
+            if not await self._read():
                 return
-            if messages is None:
-                self.done = True
-                return
-            await self._handle(messages)
 
     async def start(self):
         """
@@ -829,21 +835,15 @@ class _Import:
         comes before any row - are known.
         """
         while not self.done and not self._ready and self.schema is None:
-            try:
-                messages = await self.worker.read_messages()
-            except ProtocolError as ex:
-                # Rows before the bad line are good: insert those
-                self.worker.kill_now()
-                self.protocol_error = ex
-                self.done = True
-                await self._handle(ex.messages)
+            if not await self._read():
                 return
-            if messages is None:
-                self.done = True
-                return
-            await self._handle(messages)
 
     async def rows(self):
+        """
+        The rows as they arrive, positional (see :class:`ProtocolDecoder`).
+        With ``raise_on_failure``, raises :class:`_WorkerFailed` after the
+        last one if the worker failed.
+        """
         worker = self.worker
         while True:
             if self._ready:
@@ -852,7 +852,11 @@ class _Import:
                     if worker.aborted:
                         return
                     yield row
-            elif self.done or worker.aborted:
+            elif worker.aborted:
+                return
+            elif self.done:
+                if self.raise_on_failure and self.failed():
+                    raise _WorkerFailed()
                 return
             else:
                 await self.fill()
@@ -862,10 +866,22 @@ class _Import:
         try:
             await self._report()
         except BaseException:
-            # import_rows() reads the next chunk before re-raising: don't
-            # let it wait for a worker that is still going
+            # Stop the worker now rather than once import_rows() has
+            # finished cleaning up
             self.worker.abort()
             raise
+
+    def failed(self):
+        """
+        Whether the stream ended without a clean finish - known before the
+        worker's exit status is: :meth:`failure` says how it failed.
+        """
+        return (
+            self.protocol_error is not None
+            or self.error_message is not None
+            or self.trailer is None
+            or self.trailer.get("rows") != self.rows_read
+        )
 
     def failure(self, returncode, memory_limit):
         """
@@ -915,17 +931,6 @@ class _Import:
         return "truncated", message, None
 
 
-async def _table_exists(db, table):
-    return await db.table_exists(table)
-
-
-async def _drop_table(db, table):
-    def drop(conn):
-        conn.execute('DROP TABLE IF EXISTS "{}"'.format(table.replace('"', '""')))
-
-    await db.execute_write_fn(drop)
-
-
 _WORKER_SLOTS = weakref.WeakKeyDictionary()
 
 
@@ -964,7 +969,6 @@ async def import_file_via_worker(
     plugins_dir=None,
     sample_size=1000,
     batch_size=1000,
-    widen="auto",
     progress=None,
     on_error="keep",
     memory_limit=None,
@@ -972,7 +976,7 @@ async def import_file_via_worker(
     delete_input=False,
     stop_timeout=2.0,
     slots=None,
-    argv=None,
+    _argv=None,
     env=None,
 ):
     """
@@ -988,16 +992,17 @@ async def import_file_via_worker(
         the same loaders as the server; ``False`` for none
     :param sample_size: rows used to detect column types
     :param batch_size: rows per ``execute_write_fn()`` call after the sample
-    :param widen: passed to :func:`~datasette.imports.inserter.import_rows`
     :param progress: called (and awaited, if it returns an awaitable) with an
-        :class:`ImportProgress` after each committed chunk and each
-        progress message from the worker
+        :class:`ImportProgress` after each committed chunk, each slice of
+        converting stored numbers to text once every row is in (see
+        :func:`~datasette.imports.inserter.import_rows`), each progress
+        message from the worker and each note from the loader
     :param on_error: ``"keep"`` the rows imported before a failure, or
         ``"drop"`` the table
     :param memory_limit: address space limit (``RLIMIT_AS``) for the worker,
-        in bytes. It counts reserved address space, not memory used: see
-        ``prototypes/data_csv/worker_crash_experiments.py memory-json`` for
-        what the JSON loader needs. With a limit, the worker runs with
+        in bytes. It counts reserved address space, not memory used: the
+        JSON loader, which parses a whole file at once, needs several times
+        the file's size. With a limit, the worker runs with
         ``MALLOC_ARENA_MAX=1`` (unless ``env`` is given), because glibc's
         per-thread malloc arena reserves 64MB that the limit counts
     :param progress_interval: seconds between the worker's progress messages
@@ -1009,7 +1014,8 @@ async def import_file_via_worker(
         to hold while the worker runs; by default :func:`worker_slots` for
         ``db.ds``, so at most ``DEFAULT_MAX_WORKERS`` workers run at once.
         ``contextlib.nullcontext()`` for no limit
-    :param argv: run this command instead of the worker (for tests)
+    :param _argv: run this command instead of the worker - a test hook, for
+        stand-ins that misbehave in ways a real worker cannot be made to
     :param env: environment variables for the worker
 
     Returns a :class:`WorkerImportResult`. Raises :class:`WorkerImportError`
@@ -1019,13 +1025,14 @@ async def import_file_via_worker(
     if on_error not in ON_ERROR:
         raise ValueError(f"on_error must be one of {ON_ERROR}")
     try:
-        if await _table_exists(db, table):
+        if await db.table_exists(table):
             raise ValueError(f"Table {table!r} already exists")
         ds = getattr(db, "ds", None)
         if plugins_dir is None:
             plugins_dir = getattr(ds, "plugins_dir", None)
         if slots is None:
             slots = worker_slots(ds) if ds is not None else contextlib.nullcontext()
+        argv = _argv
         if argv is None:
             argv = worker_command(
                 path,
@@ -1047,7 +1054,6 @@ async def import_file_via_worker(
                 env=env,
                 sample_size=sample_size,
                 batch_size=batch_size,
-                widen=widen,
                 progress=progress,
                 on_error=on_error,
                 memory_limit=memory_limit,
@@ -1066,7 +1072,6 @@ async def _import_via_worker(
     env,
     sample_size,
     batch_size,
-    widen,
     progress,
     on_error,
     memory_limit,
@@ -1074,12 +1079,16 @@ async def _import_via_worker(
 ):
     start = time.perf_counter()
     worker = None
-    watched = None
-    state = None
     try:
         worker = WorkerProcess(argv, env=env)
         await worker.start()
-        state = _Import(worker, table, progress)
+        status = ImportStatus()
+        # With on_error="drop", rows() raises after the last row if the
+        # worker failed, so that import_rows() drops the table. With "keep"
+        # the import finishes normally: the table has every row received
+        state = _Import(
+            worker, table, progress, status, raise_on_failure=on_error == "drop"
+        )
         await state.start()
         watched = _WatchedDatabase(db, on_failure=worker.abort)
         import_result = None
@@ -1090,12 +1099,19 @@ async def _import_via_worker(
                     watched,
                     table,
                     rows,
+                    # The decoder's own list, which grows as columns are
+                    # announced: rows are lists of values in this order
+                    columns=worker.decoder.columns,
                     schema=state.schema,
                     sample_size=sample_size,
                     batch_size=batch_size,
-                    widen=widen,
                     progress=state.written,
+                    on_error=on_error,
+                    status=status,
                 )
+            except _WorkerFailed:
+                # import_rows() dropped the table, if there was one
+                pass
             finally:
                 try:
                     await rows.aclose()
@@ -1108,23 +1124,21 @@ async def _import_via_worker(
         # Wait for the worker to exit (it should, right after its last message)
         await worker.stop(stop_timeout)
         failure = state.failure(worker.returncode, memory_limit)
-        table_exists = bool(import_result and import_result.created)
-        if failure is not None and on_error == "drop" and table_exists:
-            await _drop_table(db, table)
-            table_exists = False
         result = WorkerImportResult(
             table=table,
             loader=state.loader,
-            rows=import_result.rows if (import_result and table_exists) else 0,
+            rows=status.rows if status.table_exists else 0,
             rows_read=state.rows_read,
+            rows_written=status.rows,
             complete=failure is None,
-            table_exists=table_exists,
+            table_exists=status.table_exists,
             schema=state.schema,
             import_result=import_result,
             size=state.size,
             seconds=time.perf_counter() - start,
             worker=state.trailer,
             returncode=worker.returncode,
+            notes=state.notes,
             warnings=state.warnings,
             stats={
                 "decode_seconds": worker.decode_seconds,
@@ -1148,26 +1162,26 @@ async def _import_via_worker(
         raise
     except BaseException:
         # A failed insert, a progress callback that raised, cancellation:
-        # kill the worker, and drop what was written if asked to
+        # import_rows() has kept or dropped the table, as on_error says.
+        # Make sure the worker is gone
         if worker is not None:
             worker.abort()
             await asyncio.shield(worker.stop(stop_timeout))
-        if watched is not None:
-            await asyncio.shield(watched.drop_temp_tables())
-        if on_error == "drop" and watched is not None and watched.row_writes:
-            await asyncio.shield(_drop_table(db, table))
         raise
 
 
 class _GuardedRows:
     """
-    Iterates over a loader's rows, but ends cleanly - remembering the
-    exception - if the loader raises part way through, so import_rows()
-    still inserts every row before it (as the worker path does).
+    Iterates over a loader's rows, remembering the exception if the loader
+    raises part way through. With ``stop=True`` the rows then end cleanly,
+    so import_rows() still inserts every row before it (as the worker path
+    does); otherwise the exception is raised on, and import_rows() cleans
+    up as for any other failure.
     """
 
-    def __init__(self, rows):
+    def __init__(self, rows, stop):
         self._rows = iter(rows)
+        self.stop = stop
         self.error = None
         self.count = 0
 
@@ -1181,20 +1195,25 @@ class _GuardedRows:
             row = next(self._rows)
         except StopIteration:
             raise
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             self.error = ex
+            if not self.stop:
+                raise
             raise StopIteration from None
         self.count += 1
         return row
 
 
 class _CollectWarnings(logging.Handler):
+    "Collects warnings, but not the loader notes logged as warnings."
+
     def __init__(self):
         super().__init__(level=logging.WARNING)
         self.messages = []
 
     def emit(self, record):
-        self.messages.append(record.getMessage())
+        if not getattr(record, NOTE_LOG_ATTRIBUTE, None):
+            self.messages.append(record.getMessage())
 
 
 async def import_file_in_process(
@@ -1205,7 +1224,6 @@ async def import_file_in_process(
     format=None,
     sample_size=1000,
     batch_size=1000,
-    widen="auto",
     progress=None,
     on_error="keep",
     delete_input=False,
@@ -1236,24 +1254,27 @@ async def import_file_in_process(
     watched = None
     loaded = None
     size = None
+    status = ImportStatus()
     try:
-        if await _table_exists(db, table):
+        if await db.table_exists(table):
             raise ValueError(f"Table {table!r} already exists")
 
-        def result(import_result, rows_read, complete, table_exists):
+        def result(import_result, rows_read, complete):
             return WorkerImportResult(
                 table=table,
                 loader=loaded.loader.name if loaded else None,
-                rows=import_result.rows if (import_result and table_exists) else 0,
+                rows=status.rows if status.table_exists else 0,
                 rows_read=rows_read,
+                rows_written=status.rows,
                 complete=complete,
-                table_exists=table_exists,
+                table_exists=status.table_exists,
                 schema=loaded.schema.columns if (loaded and loaded.schema) else None,
                 import_result=import_result,
                 size=size,
                 seconds=time.perf_counter() - start,
                 worker=None,
                 returncode=None,
+                notes=list(loaded.notes) if loaded else [],
                 warnings=warnings.messages,
                 stats={
                     "write_seconds": watched.write_seconds if watched else 0.0,
@@ -1273,10 +1294,12 @@ async def import_file_in_process(
             raise WorkerImportError(
                 str(ex),
                 kind="error",
-                result=result(None, 0, False, False),
+                result=result(None, 0, False),
                 error_type=type(ex).__name__,
             ) from ex
-        rows = _GuardedRows(loaded.rows)
+        # With on_error="drop" a loader error goes through import_rows(),
+        # which drops the table
+        rows = _GuardedRows(loaded.rows, stop=on_error == "keep")
         watched = _WatchedDatabase(db, on_failure=lambda: None)
 
         async def written(rows_written):
@@ -1290,11 +1313,15 @@ async def import_file_in_process(
                     rows_written=rows_written,
                     bytes=position.get(),
                     size=size,
+                    backlog=status.backlog,
+                    finishing=status.finishing,
+                    notes=list(loaded.notes),
                 )
             )
             if inspect.isawaitable(outcome):
                 await outcome
 
+        import_result = None
         try:
             import_result = await import_rows(
                 watched,
@@ -1303,20 +1330,15 @@ async def import_file_in_process(
                 schema=loaded.schema.columns if loaded.schema else None,
                 sample_size=sample_size,
                 batch_size=batch_size,
-                widen=widen,
                 progress=written,
+                on_error=on_error,
+                status=status,
             )
-        except BaseException:
-            await asyncio.shield(watched.drop_temp_tables())
-            if on_error == "drop" and watched.row_writes:
-                await asyncio.shield(_drop_table(db, table))
-            raise
+        except Exception as ex:
+            if ex is not rows.error:
+                raise
         error = rows.error
-        table_exists = import_result.created
-        if error is not None and on_error == "drop" and table_exists:
-            await _drop_table(db, table)
-            table_exists = False
-        outcome = result(import_result, rows.count, error is None, table_exists)
+        outcome = result(import_result, rows.count, error is None)
         if error is not None:
             raise WorkerImportError(
                 str(error),
@@ -1340,7 +1362,6 @@ async def import_file(
     format=None,
     sample_size=1000,
     batch_size=1000,
-    widen="auto",
     progress=None,
     on_error="keep",
     delete_input=False,
@@ -1359,7 +1380,6 @@ async def import_file(
         "format": format,
         "sample_size": sample_size,
         "batch_size": batch_size,
-        "widen": widen,
         "progress": progress,
         "on_error": on_error,
         "delete_input": delete_input,

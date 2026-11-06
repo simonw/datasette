@@ -7,7 +7,9 @@ the progress notices and cancelling. See datasette/imports/background.py.
 import asyncio
 import contextlib
 import http.server
+import io
 import json
+import logging
 import os
 import signal
 import socket
@@ -18,6 +20,7 @@ import threading
 import time
 import urllib.request
 
+import markupsafe
 import pytest
 
 from datasette.app import Datasette
@@ -26,6 +29,7 @@ from datasette.imports.background import (
     TerminalReporter,
     import_registry,
 )
+from datasette.imports.inserter import TypedInserter
 from datasette.imports.scratch import (
     ReloadSession,
     ScratchDatabase,
@@ -67,20 +71,25 @@ def _scratch_ds():
     return ds, db
 
 
-def _stalling_worker(tmp_path, rows=4):
+def _stalling_worker(tmp_path, rows=4, note=None):
     """
-    A stand-in for the import worker: sends a header, ``rows`` rows and a
-    progress message saying it has read 40% of the file, then waits to be
-    killed. Gives an import that stays "importing" for as long as a test
-    needs.
+    A stand-in for the import worker: sends a header, ``rows`` rows (and a
+    loader's ``note``) and a progress message saying it has read 40% of the
+    file, then waits to be killed. Gives an import that stays "importing"
+    for as long as a test needs.
     """
     script = tmp_path / "stalling_worker.py"
+    note_line = ""
+    if note:
+        message = {"type": "log", "level": "WARNING", "message": note, "note": True}
+        note_line = f"send({message!r})\n"
     script.write_text(
         "import json, sys, time\n"
         "def send(m): sys.stdout.write(json.dumps(m) + '\\n')\n"
         "send({'type': 'header', 'protocol': 1, 'loader': 'csv', 'size': 1000})\n"
         "send({'type': 'columns', 'add': ['n']})\n"
         f"for i in range({rows}): send([i])\n"
+        f"{note_line}"
         "send({'type': 'progress', 'rows': 4, 'bytes': 400, 'size': 1000})\n"
         "sys.stdout.flush()\n"
         "time.sleep(60)\n"
@@ -103,7 +112,7 @@ async def _settled(job):
     await asyncio.sleep(0)
 
 
-async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep"):
+async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep", note=None):
     "An import that reaches 40% (four rows) and then waits."
     path = tmp_path / "slow.csv"
     path.write_text("n\n1\n")
@@ -113,7 +122,7 @@ async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep"):
         sample_size=2,
         batch_size=2,
         use_worker=True,
-        worker_options={"argv": _stalling_worker(tmp_path)},
+        worker_options={"_argv": _stalling_worker(tmp_path, note=note)},
         on_error=on_error,
     )
     await ds.start_background_tasks()
@@ -154,6 +163,9 @@ async def test_registry_state_transitions(data_dir):
         await _settled(job)
         assert job.task.state == "completed"
         assert job.task.status == "imported dogs: 3 rows"
+        tasks = (await ds.client.get("/-/tasks.json", actor={"id": "root"})).json()
+        [task] = [t for t in tasks["tasks"] if t["name"] == "import scratch.dogs"]
+        assert (task["state"], task["status"]) == ("completed", "imported dogs: 3 rows")
         rows = (await db.execute("select name from dogs")).rows
         assert [row[0] for row in rows] == ["Cleo", "Pancakes", "Fido"]
         data = job.to_dict()
@@ -313,6 +325,69 @@ async def test_failure_does_not_affect_other_imports(data_dir):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_worker", (True, False))
+async def test_loader_notes_reach_people(tmp_path, use_worker):
+    # A JSON loader's note about which part of the document held the rows:
+    # on the import, in /-/imports.json, on the terminal and on the page of
+    # the table, once it is complete
+    note = "Importing the 2 objects in 'results', ignoring 'next', 'total'"
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps({"next": None, "total": 2, "results": [{"a": 1}] * 2}))
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    stream = io.StringIO()
+    registry.add_listener(TerminalReporter(stream))
+    try:
+        job = registry.start(db, _source(path), use_worker=use_worker)
+        await ds.start_background_tasks()
+        assert await job.wait(20)
+        assert (job.state, job.rows, job.notes) == ("done", 2, [note])
+        data = (await ds.client.get("/-/imports.json")).json()["imports"][0]
+        assert data["notes"] == [note]
+        lines = stream.getvalue().splitlines()
+        loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded"))
+        assert lines[loaded + 1] == f"  note: {note}"
+        page = (await ds.client.get("/scratch/api")).text
+        assert "Notes from importing this table:" in page
+        assert markupsafe.escape(note) in page
+        # A complete table without notes has no notice at all
+        assert "imports-notice" not in (await ds.client.get("/scratch")).text
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_loader_notes_in_progress_and_incomplete_notices(tmp_path):
+    note = "Reading quotes as ordinary characters & <friends>"
+    ds, db = _scratch_ds()
+    stream = io.StringIO()
+    import_registry(ds).add_listener(TerminalReporter(stream))
+    try:
+        job = await _start_stalled(ds, db, tmp_path, note=note)
+        await _wait_for(lambda: job.notes == [note])
+        assert (await ds.client.get("/-/imports.json")).json()["imports"][0][
+            "notes"
+        ] == [note]
+        expected = f'<ul class="import-notes"><li>{markupsafe.escape(note)}</li></ul>'
+        for path in ("/", "/scratch", "/scratch/slow"):
+            page = (await ds.client.get(path)).text
+            assert expected in page, path
+            # The polling script keeps them up to date
+            assert "import-notes" in page.split("<script>", 1)[1], path
+        job.cancel()
+        assert await job.wait(10)
+        # Still there once the import is incomplete
+        assert expected in (await ds.client.get("/scratch/slow")).text
+        lines = stream.getvalue().splitlines()
+        cancelled = next(
+            i for i, line in enumerate(lines) if line.startswith("Cancelled")
+        )
+        assert lines[cancelled + 1] == f"  note: {note}"
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_drop_on_error(data_dir):
     ds, db = _scratch_ds()
     try:
@@ -395,6 +470,76 @@ async def test_imports_start_in_the_order_given(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_worker", (True, False))
+async def test_finishing_progress(tmp_path, monkeypatch, use_worker):
+    # A column changes to text in the last chunk: once every row is in,
+    # the import says how many rows it still has to convert - in its
+    # status, /-/imports.json, its task's status and on the terminal
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 100)
+    path = tmp_path / "late.csv"
+    path.write_text("n\n" + "".join(f"{i}\n" for i in range(2999)) + "x\n")
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    seen = []
+
+    def listener(job, event):
+        if job.converting:
+            seen.append((job.status(), job.describe(), job.task.status))
+
+    registry.add_listener(listener)
+    stream = io.StringIO()
+    registry.add_listener(TerminalReporter(stream, interval=3600))
+    try:
+        job = registry.start(db, _source(path), use_worker=use_worker)
+        await ds.start_background_tasks()
+        assert await job.wait(30)
+        assert (job.state, job.rows) == ("done", 3000)
+        # The chunk of rows 2,001-3,000 widened n, converting 100 of the
+        # 2,000 rows before it; then each write converts 100 more
+        assert seen[0] == (
+            "finishing: 1,800 rows to convert",
+            "finishing late: 1,800 rows to convert",
+            "finishing late: 1,800 rows to convert",
+        )
+        assert [status for status, _, _ in seen][-1] == (
+            "finishing: 100 rows to convert"
+        )
+        assert len(seen) == 18
+        lines = stream.getvalue().splitlines()
+        assert (
+            "  finishing late: 1,800 rows to convert (a column changed to text "
+            "after the first rows)"
+        ) in lines
+        # Once done, nothing is left to convert
+        data = job.to_dict()
+        assert (data["finishing"], data["backlog"]) == (False, 0)
+        assert data["status"] == "imported 3,000 rows"
+        values = await db.execute("select typeof(n), count(*) from late group by 1")
+        assert [tuple(row) for row in values] == [("text", 3000)]
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_finishing_shows_in_imports_json_and_notices(tmp_path):
+    ds, db = _scratch_ds()
+    try:
+        job = await _start_stalled(ds, db, tmp_path)
+        # As the progress from an import that is converting its backlog
+        job.finishing, job.backlog = True, 1_234_567
+        assert job.converting
+        data = (await ds.client.get("/-/imports.json")).json()["imports"][0]
+        assert (data["finishing"], data["backlog"]) == (True, 1_234_567)
+        assert data["status"] == "finishing: 1,234,567 rows to convert"
+        assert data["description"] == "finishing slow: 1,234,567 rows to convert"
+        for path in ("/", "/scratch", "/scratch/slow"):
+            html = (await ds.client.get(path)).text
+            assert "finishing: 1,234,567 rows to convert" in html, path
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_progress_notices_and_endpoint(tmp_path):
     ds, db = _scratch_ds()
     try:
@@ -402,6 +547,11 @@ async def test_progress_notices_and_endpoint(tmp_path):
         assert job.percent == 40
         assert job.describe() == "importing slow: 40% (4 rows)"
         assert job.task.status == "importing slow: 40% (4 rows)"
+        # So does /-/tasks, for the import's background task
+        tasks = (await ds.client.get("/-/tasks.json", actor={"id": "root"})).json()
+        [task] = [t for t in tasks["tasks"] if t["name"] == "import scratch.slow"]
+        assert task["state"] == "running"
+        assert task["status"] == "importing slow: 40% (4 rows)"
         # The rows so far can be queried
         response = await ds.client.get("/scratch/slow.json?_shape=array")
         assert [row["n"] for row in response.json()] == [0, 1, 2, 3]
@@ -622,11 +772,17 @@ async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
     # cancel, as an insert-row token may insert, but it is not shown what
     # the import is - that takes view-table too
     ds, db = _scratch_ds()
+
+    async def _signed_token(restrictions):
+        # Datasette's own tokens, which carry the restrictions - not those of
+        # a token handler plugin another test may have left registered
+        return await ds.create_token(
+            "root", restrictions=restrictions, handler="signed"
+        )
+
     try:
         job = await _start_stalled(ds, db, tmp_path)
-        token = await ds.create_token(
-            "root", restrictions=TokenRestrictions().allow_all("cancel-import")
-        )
+        token = await _signed_token(TokenRestrictions().allow_all("cancel-import"))
         headers = {"Authorization": f"Bearer {token}"}
         # It cannot list imports: that takes view-instance and view-table
         response = await ds.client.get("/-/imports.json", headers=headers)
@@ -643,7 +799,7 @@ async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
         restrictions = TokenRestrictions()
         for action in ("cancel-import", "view-table", "view-instance"):
             restrictions = restrictions.allow_all(action)
-        token = await ds.create_token("root", restrictions=restrictions)
+        token = await _signed_token(restrictions)
         headers = {"Authorization": f"Bearer {token}"}
         listed = (await ds.client.get("/-/imports.json", headers=headers)).json()
         assert [i["table"] for i in listed["imports"]] == ["slow", "slow2"]
@@ -654,9 +810,7 @@ async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
         assert response.json()["import"]["state"] == "cancelled"
         assert job2.state == "cancelled"
         # Without cancel-import: 403 if it can see the import, 404 if not
-        token = await ds.create_token(
-            "root", restrictions=TokenRestrictions().allow_all("view-table")
-        )
+        token = await _signed_token(TokenRestrictions().allow_all("view-table"))
         job3 = await _start_stalled(ds, db, tmp_path, table="slow3")
         response = await ds.client.post(
             "/scratch/slow3/-/cancel-import",
@@ -985,7 +1139,7 @@ def ds_from_cli(args, **kwargs):
 async def test_cli_registers_background_imports(data_dir, capsys):
     ds = ds_from_cli(
         [str(data_dir / "dogs.csv"), str(data_dir / "bad.ndjson")],
-        background_imports=True,
+        _background_imports=True,
     )
     try:
         registry = import_registry(ds)
@@ -1020,6 +1174,42 @@ async def test_cli_registers_background_imports(data_dir, capsys):
         await ds.invoke_shutdown()
 
 
+@contextlib.contextmanager
+def no_logging_configured():
+    """
+    No handler on the root logger, as in ``datasette serve``, so warnings
+    go to Python's last-resort handler. Use it inside the test: pytest's
+    logging plugin adds its handlers after the fixtures are set up.
+    """
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers.clear()
+    try:
+        yield
+    finally:
+        root.handlers[:] = saved
+
+
+@pytest.mark.asyncio
+async def test_cli_prints_each_note_once(tmp_path, capsys):
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
+    ds = ds_from_cli([str(path)], _background_imports=True)
+    try:
+        with no_logging_configured():
+            await ds.client.get("/-/imports.json")
+            assert await import_registry(ds).wait(20)
+        stderr = capsys.readouterr().err
+        lines = stderr.splitlines()
+        loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded"))
+        note = "Importing the 2 objects in 'results', ignoring 'total'"
+        assert lines[loaded + 1] == f"  note: {note}"
+        # Not also as "Import worker: ..." from the worker's log message
+        assert stderr.count(note) == 1
+    finally:
+        await ds.invoke_shutdown()
+
+
 def test_cli_still_checks_local_files_at_once(tmp_path):
     import click
 
@@ -1031,7 +1221,7 @@ def test_cli_still_checks_local_files_at_once(tmp_path):
     ):
         # These fail before the server would start
         with pytest.raises(click.ClickException) as ex:
-            ds_from_cli(args, background_imports=True)
+            ds_from_cli(args, _background_imports=True)
         assert message in ex.value.message
 
 
@@ -1040,7 +1230,7 @@ async def test_cli_save_drops_failed_tables_and_uses_wal(data_dir):
     save = data_dir / "data.db"
     ds = ds_from_cli(
         [str(data_dir / "dogs.csv"), str(data_dir / "bad.ndjson"), "--save", str(save)],
-        background_imports=True,
+        _background_imports=True,
     )
     try:
         registry = import_registry(ds)
@@ -1066,7 +1256,7 @@ async def test_cli_save_file_with_nothing_imported_is_removed_at_shutdown(
     # empty, as it was not when loading before serving failed
     save = data_dir / "fail.db"
     ds = ds_from_cli(
-        [str(data_dir / "bad.ndjson"), "--save", str(save)], background_imports=True
+        [str(data_dir / "bad.ndjson"), "--save", str(save)], _background_imports=True
     )
     try:
         await ds.client.get("/")
@@ -1094,7 +1284,7 @@ async def test_cli_reload_session_keeps_finished_tables(data_dir, monkeypatch):
     session = ReloadSession.start()
     args = [str(data_dir / "dogs.csv"), str(data_dir / "cities.json"), "--reload"]
     try:
-        ds = ds_from_cli(args, background_imports=True)
+        ds = ds_from_cli(args, _background_imports=True)
         try:
             await ds.client.get("/")
             assert await import_registry(ds).wait(20)
@@ -1107,7 +1297,7 @@ async def test_cli_reload_session_keeps_finished_tables(data_dir, monkeypatch):
             await ds.invoke_shutdown()
         # A reload after a code change: nothing to import again
         (data_dir / "cities.json").write_text(json.dumps([{"id": 9}]))
-        ds = ds_from_cli(args, background_imports=True)
+        ds = ds_from_cli(args, _background_imports=True)
         try:
             jobs = import_registry(ds).imports()
             assert [job.table for job in jobs] == ["cities"]
@@ -1147,8 +1337,6 @@ def test_get_loads_before_answering(data_dir):
 
 
 def test_terminal_reporter_prints_periodic_progress():
-    import io
-
     class Job:
         id = "1"
         table = "big"
@@ -1157,6 +1345,7 @@ def test_terminal_reporter_prints_periodic_progress():
         state = "importing"
         seconds = 12.0
         download_size = downloaded = None
+        converting = False
 
         def describe(self):
             return "importing big: 40% (2,560,000 rows)"

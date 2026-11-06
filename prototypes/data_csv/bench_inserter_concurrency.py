@@ -95,7 +95,7 @@ def make_database(ds, storage, work):
     return ds.add_database(Database(ds, path=db_path, is_mutable=True)), db_path
 
 
-async def one_run(path, storage, work, batch_size, widen, readers):
+async def one_run(path, storage, work, batch_size, readers):
     ds = Datasette()
     db, db_path = make_database(ds, storage, work)
     outcomes = collections.Counter()
@@ -123,7 +123,7 @@ async def one_run(path, storage, work, batch_size, widen, readers):
     start = time.perf_counter()
     import_error = None
     try:
-        result = await import_rows(db, "t", rows, batch_size=batch_size, widen=widen)
+        result = await import_rows(db, "t", rows, batch_size=batch_size)
         rows_done = result.rows
     except Exception as ex:  # noqa: BLE001
         import_error = f"{type(ex).__name__}: {ex}"
@@ -152,43 +152,33 @@ def main():
         nargs="+",
         default=["memory", "memory-ru", "memdb", "tempdisk", "disk"],
     )
-    parser.add_argument("--widen", nargs="+", default=["auto"])
     parser.add_argument("--readers", type=int, default=3)
     args = parser.parse_args()
     os.makedirs(args.work, exist_ok=True)
     print(f"SQLite {sqlite3.sqlite_version}, Python {sys.version.split()[0]}")
     print(f"{args.readers} reader coroutines looping over: {QUERIES}")
     print()
-    print("| storage | batch | widen | import | rows | reads ok | read errors |")
-    print("|---|---|---|---|---|---|---|")
+    print("| storage | batch | import | rows | reads ok | read errors |")
+    print("|---|---|---|---|---|---|")
     for storage in args.storage:
         for batch_size in args.batch_sizes:
-            for widen in args.widen:
-                elapsed, rows, import_error, outcomes = asyncio.run(
-                    one_run(
-                        args.file,
-                        storage,
-                        args.work,
-                        batch_size,
-                        widen,
-                        args.readers,
-                    )
-                )
-                ok = outcomes.pop("ok", 0)
-                outcomes.pop("no such table (before create)", None)
-                errors = "; ".join(f"{n} x {m}" for m, n in outcomes.most_common())
-                print(
-                    "| {} | {} | {} | {} | {} | {:,} | {} |".format(
-                        storage,
-                        batch_size,
-                        widen,
-                        f"FAILED {import_error}" if import_error else f"{elapsed:.1f}s",
-                        f"{rows:,}" if rows is not None else "-",
-                        ok,
-                        errors or "none",
-                    ),
-                    flush=True,
-                )
+            elapsed, rows, import_error, outcomes = asyncio.run(
+                one_run(args.file, storage, args.work, batch_size, args.readers)
+            )
+            ok = outcomes.pop("ok", 0)
+            outcomes.pop("no such table (before create)", None)
+            errors = "; ".join(f"{n} x {m}" for m, n in outcomes.most_common())
+            print(
+                "| {} | {} | {} | {} | {:,} | {} |".format(
+                    storage,
+                    batch_size,
+                    f"FAILED {import_error}" if import_error else f"{elapsed:.1f}s",
+                    f"{rows:,}" if rows is not None else "-",
+                    ok,
+                    errors or "none",
+                ),
+                flush=True,
+            )
 
 
 if __name__ == "__main__":

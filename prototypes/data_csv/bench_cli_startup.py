@@ -2,7 +2,7 @@
 How long ``datasette FILE`` takes to answer its first request, and how much
 memory it uses, for each way of storing the data.
 
-    uv run python prototypes/data_csv/bench_cli_startup.py FILE [--modes wal,memory,save] [--repeat 2] [--work DIR]
+    uv run python prototypes/data_csv/bench_cli_startup.py FILE [--modes wal,save] [--repeat 2] [--work DIR]
 
 Modes:
 
@@ -13,8 +13,6 @@ Modes:
   RAM that does not show up in the process's RSS: ``tmpfs_mb`` is the size
   of the files in that directory and ``shmem_delta_mb`` the growth of
   ``Shmem`` in ``/proc/meminfo``, both while the server is answering
-- ``memory``: the same with ``DATASETTE_SCRATCH_STORAGE=memory`` -
-  shared-cache in-memory storage
 - ``save``: ``datasette FILE --save WORK/save.db`` (the file is deleted
   before each run)
 - ``sqlite-utils``: ``sqlite-utils memory FILE "select count(*) ..."``
@@ -139,8 +137,6 @@ def run_datasette(label, path, table, work, cold=False):
         shmem_before = shmem_mb()
     if mode == "empty":
         args = [sys.executable, "-m", "datasette", "-p", str(PORT)]
-    elif mode == "memory":
-        env["DATASETTE_SCRATCH_STORAGE"] = "memory"
     elif mode == "save":
         save = os.path.join(work, "save.db")
         for suffix in ("", "-journal", "-wal", "-shm"):
@@ -229,7 +225,7 @@ def run_sqlite_utils(mode, path, table):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("file")
-    parser.add_argument("--modes", default="empty,wal,memory,save")
+    parser.add_argument("--modes", default="empty,wal,save")
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--table", default=None)
     parser.add_argument("--work", default=tempfile.gettempdir())

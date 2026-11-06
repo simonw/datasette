@@ -2,7 +2,7 @@
 Probe how SQLite type affinity treats CSV-style strings, compared with
 sqlite_utils' TypeTracker, and check that changing a column's declared
 type by editing sqlite_schema (PRAGMA writable_schema) behaves as the
-inserter's "schema" widening strategy assumes.
+inserter's in-place widening assumes.
 
     uv run python prototypes/data_csv/inserter_affinity_probe.py
 """

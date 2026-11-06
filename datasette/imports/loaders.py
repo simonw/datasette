@@ -464,10 +464,6 @@ def choose_loader(
     )
 
 
-# The private name it had before it was public
-_choose = choose_loader
-
-
 def _is_core(loader) -> bool:
     return type(loader) in _CORE_LOADER_CLASSES
 

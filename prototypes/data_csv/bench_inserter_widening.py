@@ -2,13 +2,16 @@
 How expensive is widening a column, depending on how it is done?
 
 Part 1 - cost of one widening on a table that already holds N rows of
-big-1gb.csv. The inserter's methods are timed by calling its own _widen()
-on the table, so the SQL is exactly what an import runs:
+big-1gb.csv. The inserter's own methods are timed on the table, so the SQL
+is exactly what an import runs:
 
-- "schema": edit the declared type in place (PRAGMA writable_schema);
-  integer -> float is a metadata change only, widening to text also runs an
-  UPDATE converting the stored numbers back to their text
-- "rebuild": CREATE new / INSERT SELECT / DROP / RENAME
+- "schema": edit the declared type in place (PRAGMA writable_schema),
+  which is what the inserter does; integer -> float is a metadata change
+  only, widening to text also converts the stored numbers back to their
+  text - here in one convert() call covering the whole backlog, which an
+  import spreads over ~30ms slices
+- "rebuild": CREATE new / INSERT SELECT / DROP / RENAME, the inserter's
+  fallback when the schema cannot be edited
 - sqlite-utils ``table.transform(types=...)`` (a full rebuild) for comparison
 
 for integer -> float (late_float), integer -> text (late_text) and float ->
@@ -21,7 +24,9 @@ include the COMMIT.
 
 Part 2 - end to end: insert_rows() over N rows of big-1gb.csv in which qty
 turns float at 90% of the rows, id turns text at 95% and price turns text
-at 97%, once per widening strategy.
+at 97%: "auto" as an import runs, and "fallback" on a connection that
+refuses writable_schema (SQLITE_DBCONFIG_DEFENSIVE), so every widening
+rebuilds the table.
 
     uv run python prototypes/data_csv/bench_inserter_widening.py \\
         --csv /path/to/big-1gb.csv --rows 100000 1000000 --work /tmp/work
@@ -38,6 +43,11 @@ import time
 import uuid
 
 import sqlite_utils
+
+# "fallback" needs Connection.setconfig(), Python 3.12+
+WIDENINGS = (
+    ("auto", "fallback") if hasattr(sqlite3.Connection, "setconfig") else ("auto",)
+)
 
 from datasette.imports.inserter import (
     _F,
@@ -115,12 +125,12 @@ def build_table(conn, csv_path, rows):
     return time.perf_counter() - start, kept
 
 
-def adopting_inserter(conn, widen, kept):
+def adopting_inserter(conn, kept):
     """
     A TypedInserter that believes it created table t (as build_table() made
     it), with the kept price texts in its spellings table.
     """
-    inserter = TypedInserter("t", widen=widen)
+    inserter = TypedInserter("t")
     for name, sql_type in COLUMNS:
         column = inserter._new_column(name)
         column.rank = column.declared = RANKS[sql_type]
@@ -138,12 +148,19 @@ def adopting_inserter(conn, widen, kept):
     return inserter
 
 
-def inserter_method(widen, changes):
+def inserter_method(method, changes):
     def setup(conn, kept):
-        return adopting_inserter(conn, widen, kept)
+        return adopting_inserter(conn, kept)
 
     def run(conn, inserter):
+        if method == "rebuild":
+            for key, rank in changes.items():
+                inserter._by_key[key].rank = rank
+            inserter._rebuild(conn, changes)
+            return ["rebuild"]
         inserter._widen(conn, changes)
+        if inserter.backlog:
+            inserter.convert(conn, inserter.backlog)
         return [w.method for w in inserter.widenings]
 
     return setup, run
@@ -269,31 +286,28 @@ def part2(csv_path, row_counts, storages, work, batch_size):
         f" id -> text at 95%, price -> text at 97%; batch_size={batch_size})"
     )
     print(
-        "| rows | storage | strategy | total | time spent widening | widenings"
+        "| rows | storage | widening | total | time spent widening | widenings"
         " | texts kept |"
     )
     print("|---|---|---|---|---|---|---|")
     for rows in row_counts:
         for storage in storages:
             outputs = {}
-            for widen in ("auto", "schema", "rebuild", "deferred"):
+            for widen in WIDENINGS:
                 conn, keepalive, path = open_db(storage, work)
                 conn.isolation_level = None
+                if widen == "fallback":
+                    conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
                 result = insert_rows(
-                    conn,
-                    "t",
-                    late_rows(csv_path, rows),
-                    widen=widen,
-                    batch_size=batch_size,
+                    conn, "t", late_rows(csv_path, rows), batch_size=batch_size
                 )
-                if widen == "deferred":
-                    # One rebuild in finish() covers every widening
-                    widen_seconds = result.widenings[0].seconds
-                else:
-                    # Columns widened in the same batch share one timing
-                    widen_seconds = sum(
-                        {w.at_row: w.seconds for w in result.widenings}.values()
-                    )
+                # Columns widened in the same batch share one timing; the
+                # conversion to text that follows an in-place widening is
+                # in convert_seconds
+                widen_seconds = (
+                    sum({w.at_row: w.seconds for w in result.widenings}.values())
+                    + result.convert_seconds
+                )
                 print(
                     "| {:,} | {} | {} | {:.2f}s | {:.2f}s | {} | {:,} |".format(
                         rows,
@@ -326,25 +340,7 @@ def part2(csv_path, row_counts, storages, work, batch_size):
                 if path:
                     remove_db(path)
             same = len({repr(v) for v in outputs.values()}) == 1
-            print(f"<!-- strategies produced identical sample rows: {same} -->")
-
-
-def deferred_demo():
-    print()
-    print("## Values that only fit the wider type, per strategy")
-    for widen in ("auto", "schema", "rebuild", "deferred"):
-        conn = sqlite3.connect(":memory:")
-        inserter = TypedInserter("t", widen=widen)
-        inserter.write(conn, [{"zip": "10001", "big": "1", "price": "1.5"}])
-        inserter.write(
-            conn, [{"zip": "02134", "big": "9223372036854775809", "price": "1.50"}]
-        )
-        inserter.write(conn, [{"zip": "x", "big": "x", "price": "x"}])
-        inserter.finish(conn)
-        print(
-            f"- {widen}: ",
-            conn.execute("select zip, big, price from t where rowid = 2").fetchone(),
-        )
+            print(f"<!-- both produced identical sample rows: {same} -->")
 
 
 def main():
@@ -370,7 +366,6 @@ def main():
             args.work,
             args.batch_size,
         )
-    deferred_demo()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     print(f"\nPeak RSS: {peak:,.0f} MB")
 

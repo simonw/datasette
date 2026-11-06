@@ -374,12 +374,6 @@ def spool(stream, directory: str, prefix: str = "stdin-", progress=None) -> str:
     return path
 
 
-def spool_path(path: str, directory: str, progress=None) -> str:
-    "Copy a pipe or other non-regular file to a temporary file."
-    with open(path, "rb") as stream:
-        return spool(stream, directory, "pipe-", progress)
-
-
 async def spool_in_thread(
     open_stream: Callable,
     directory: str,
@@ -515,7 +509,8 @@ async def download(
         raise
     except httpx2.HTTPError as ex:
         _unlink(path)
-        raise DownloadError(f"Could not download {url}: {_describe(ex)}") from ex
+        message = str(ex) or type(ex).__name__
+        raise DownloadError(f"Could not download {url}: {message}") from ex
     except BaseException:
         _unlink(path)
         raise
@@ -528,11 +523,6 @@ def _content_length(headers):
     except ValueError:
         return None
     return value if value >= 0 else None
-
-
-def _describe(ex):
-    message = str(ex) or type(ex).__name__
-    return message
 
 
 def _unlink(path):
@@ -815,12 +805,23 @@ def suggest_save_path(avoid: Iterable[str] = (), base: str = "data") -> str:
     Suggesting a file that exists would add tables to someone's database,
     or fail because it already has one of them.
     """
-    avoid = {os.path.realpath(path) for path in avoid}
+    avoid = set(map(_realpath, avoid)) - {None}
     candidate, i = f"{base}.db", 2
-    while os.path.lexists(candidate) or os.path.realpath(candidate) in avoid:
+    while os.path.lexists(candidate) or _realpath(candidate) in avoid:
         candidate = f"{base}_{i}.db"
         i += 1
     return candidate
+
+
+def _realpath(path: str) -> str | None:
+    """
+    ``os.path.realpath()``, or None for a relative path if the current
+    directory has been deleted (then nothing exists relative to it).
+    """
+    try:
+        return os.path.realpath(path)
+    except OSError:
+        return None
 
 
 def remove_tree(path: str) -> None:

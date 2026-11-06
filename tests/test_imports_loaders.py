@@ -665,7 +665,7 @@ def test_geojson_loader_class_has_example_hook():
     assert geojson_loader_plugin.register_import_loaders() == [GeoJSONLoader]
 
 
-# Regressions from the adversarial review of this prototype
+# Regressions -----------------------------------------------------------------
 
 
 def test_csv_sniff_does_not_depend_on_field_size_limit(tmp_path):
@@ -1003,8 +1003,6 @@ def test_choose_loader():
     for empty in (b"", b"  \n", codecs.BOM_UTF8 + b"\n"):
         with pytest.raises(EmptyFile):
             L.choose_loader(scores, empty)
-    # The old private name still works
-    assert L._choose(scores, b"[{}]", 0.1) is json_loader
 
 
 def test_peek_json_limits_keys_in_cut_off_objects():

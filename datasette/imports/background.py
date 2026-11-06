@@ -42,7 +42,10 @@ Life of an import::
   (:func:`~datasette.imports.subprocess_import.import_file`) and the rows are
   inserted here a chunk per ``execute_write_fn()`` call, so they can be
   queried as they arrive. ``fraction`` is how far the worker has read into
-  the file
+  the file. Once every row is in, ``finishing`` is True: if a column
+  changed to text late in the file, the numbers already stored in it are
+  still being turned into text, a slice per write, and ``backlog`` says how
+  many rows are left ("finishing events: 1,200,000 rows to convert")
 - ``done``, ``failed``, ``cancelled``: finished.
 
 When an import fails or is cancelled, ``on_error`` decides what happens to
@@ -73,7 +76,6 @@ import datetime
 import itertools
 import logging
 import os
-import sqlite3
 import sys
 import tempfile
 import time
@@ -81,6 +83,7 @@ import weakref
 from collections.abc import Callable
 
 from datasette.imports import loaders as _loaders
+from datasette.imports.inserter import ON_ERROR, SQLITE_ERRORS
 from datasette.imports.scratch import (
     DEFAULT_BATCH_SIZE,
     ImportFailed,
@@ -113,7 +116,6 @@ logger = logging.getLogger(__name__)
 ACTIVE_STATES = ("queued", "downloading", "importing")
 FINISHED_STATES = ("done", "failed", "cancelled")
 STATES = ACTIVE_STATES + FINISHED_STATES
-ON_ERROR = ("keep", "drop")
 # Finished imports kept in the registry, beyond which the oldest are
 # forgotten (an upload endpoint could otherwise grow it without bound)
 MAX_FINISHED = 200
@@ -173,6 +175,12 @@ class TableImport:
         self.loader = source.loader.name if source.loader is not None else None
         #: Rows committed to the table so far (on success: rows in the table)
         self.rows = 0
+        #: True once every row is in the table and the import is finishing:
+        #: converting the :attr:`backlog`, if any, then completing the table
+        self.finishing = False
+        #: Rows (by rowid range) whose stored numbers are still to be turned
+        #: into text after a column changed to text
+        self.backlog = 0
         #: How far the worker has read into the file, and the file's size
         self.bytes = None
         self.size = None
@@ -208,6 +216,11 @@ class TableImport:
         #: True once every row of the input is in the table
         self.complete = False
         self.widenings = []
+        #: Things the person importing the file should know about how it
+        #: was read, from the loader (``Note`` messages): "Importing the 2
+        #: objects in 'results', ignoring 'total'". Shown with the import
+        self.notes = []
+        #: Other warnings logged while loading it
         self.warnings = []
         #: The worker's process ID while it runs
         self.pid = None
@@ -314,11 +327,17 @@ class TableImport:
             return f"the table has the first {_plural(kept, 'row')}"
         return "no rows were imported"
 
+    @property
+    def converting(self) -> bool:
+        "Whether every row is in and stored numbers are being turned into text."
+        return self.state == "importing" and self.finishing and self.backlog > 0
+
     def status(self) -> str:
         """
         What is happening, without the table name: ``importing 40%
-        (2,560,000 rows)``, ``queued, waiting for an import worker``,
-        ``import failed: ... (the table has the first 3,000 rows)``.
+        (2,560,000 rows)``, ``finishing: 1,200,000 rows to convert``,
+        ``queued, waiting for an import worker``, ``import failed: ... (the
+        table has the first 3,000 rows)``.
         """
         if self.state == "queued":
             if self.waiting_for == "worker":
@@ -331,6 +350,8 @@ class TableImport:
                 total = human_size(self.download_size)
                 return f"{verb} {self.percent}% ({done} of {total})"
             return f"{verb}: {done}"
+        if self.converting:
+            return f"finishing: {_plural(self.backlog, 'row')} to convert"
         if self.state == "importing":
             rows = _plural(self.rows, "row")
             if self.percent is None:
@@ -347,7 +368,8 @@ class TableImport:
     def describe(self) -> str:
         """
         One line of text for people, with the table name: ``importing
-        events: 40% (2,560,000 rows)``, ``import of events failed: ...``.
+        events: 40% (2,560,000 rows)``, ``finishing events: 1,200,000 rows to
+        convert``, ``import of events failed: ...``.
         """
         name = self.table
         if self.state == "queued":
@@ -363,6 +385,8 @@ class TableImport:
                 total = human_size(self.download_size)
                 return f"{verb} {name}: {self.percent}% ({done} of {total})"
             return f"{verb} {name}: {done}"
+        if self.converting:
+            return f"finishing {name}: {_plural(self.backlog, 'row')} to convert"
         if self.state == "importing":
             rows = _plural(self.rows, "row")
             if self.percent is None:
@@ -393,6 +417,8 @@ class TableImport:
             "download_size": self.download_size,
             "fraction": self.fraction,
             "percent": self.percent,
+            "finishing": self.finishing,
+            "backlog": self.backlog,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -405,6 +431,7 @@ class TableImport:
             "created_table": self.created_table,
             "existing_table": self.existing_table,
             "rows_kept": self.rows_kept,
+            "notes": list(self.notes),
             "widenings": [
                 {
                     "column": w.column,
@@ -494,6 +521,10 @@ class TableImport:
         self.bytes = progress.bytes
         self.size = progress.size
         self.pid = progress.pid
+        self.finishing = progress.finishing
+        self.backlog = progress.backlog
+        if progress.notes:
+            self.notes = list(progress.notes)
         if progress.loader:
             self.loader = progress.loader
         created = bool(progress.rows_written) and not self.table_exists
@@ -549,6 +580,7 @@ class TableImport:
         self.finished_at = _now_iso()
         self._finished = time.monotonic()
         self.pid = None
+        self.finishing = False
         self._done.set()
         if self._on_finish is not None:
             try:
@@ -648,12 +680,12 @@ class TableImport:
         except (SourceError, _loaders.LoaderError) as ex:
             self._finish("failed", str(ex))
         except Exception as ex:
-            # sqlite3.Error or OSError from inserting (a full disk, a
+            # An SQLite error or OSError from inserting (a full disk, a
             # write_wrapper plugin refusing), or a bug. The rows committed
             # before it stay, as for a worker failure. Anything but an
-            # sqlite3.Error or OSError is re-raised, so the background task
+            # SQLite error or OSError is re-raised, so the background task
             # supervisor logs its traceback
-            expected = isinstance(ex, (sqlite3.Error, OSError))
+            expected = isinstance(ex, (*SQLITE_ERRORS, OSError))
             try:
                 await asyncio.shield(self._count_kept_rows())
             finally:
@@ -672,12 +704,14 @@ class TableImport:
         if result.table_exists:
             self.rows = result.rows
             self.created_table = True
-        elif result.import_result is not None:
+        else:
             # Dropped (on_error="drop"): say how many rows went with it
-            self.rows = result.import_result.rows
+            self.rows = result.rows_written
             if self.rows:
                 self.created_table = True
         self.warnings = list(result.warnings)
+        if result.notes:
+            self.notes = list(result.notes)
         if result.import_result is not None:
             self.widenings = list(result.import_result.widenings)
         if result.size is not None:
@@ -1080,6 +1114,7 @@ class TerminalReporter:
         self.warn_large = warn_large
         self._last = {}
         self._warned = set()
+        self._converting = set()
         self._started = None
         self._seen = set()
 
@@ -1131,11 +1166,22 @@ class TerminalReporter:
                     "database is deleted when Datasette stops: add --save "
                     "data.db to keep the data."
                 )
-            if now - self._last.get(job.id, now) >= self.interval:
+            if job.converting and job.id not in self._converting:
+                # Every row is in, but the numbers stored in a column that
+                # changed to text late on are still being converted: seconds
+                # per million rows, so say why the import is not done yet
+                self._converting.add(job.id)
+                self._last[job.id] = now
+                self._write(
+                    f"  {job.describe()} (a column changed to text after "
+                    "the first rows)"
+                )
+            elif now - self._last.get(job.id, now) >= self.interval:
                 self._last[job.id] = now
                 self._write(f"  {job.describe()} after {job.seconds:.0f}s")
         elif event in FINISHED_STATES:
             self._last.pop(job.id, None)
+            self._converting.discard(job.id)
             self._write(self.finished_line(job))
             registry = job.registry
             if not registry.active() and len(self._seen) > 1:
@@ -1156,7 +1202,9 @@ class TerminalReporter:
         where = f"table {job.table}{self.where}"
         if job.state == "done":
             if not job.table_exists:
-                return f"{job.title} has no rows, so no table was created"
+                return f"{job.title} has no rows, so no table was created" + (
+                    _note_lines(job.notes)
+                )
             line = (
                 f"Loaded {_plural(job.rows, 'row')} from {job.title} "
                 f"({job.loader}) into {where} in {job.seconds:.2f}s"
@@ -1171,7 +1219,10 @@ class TerminalReporter:
                     f"{widening.from_type} to {widening.to_type} at row "
                     f"{widening.at_row + 1:,}"
                 )
-            return line
+            return line + _note_lines(job.notes)
+        return self._unfinished_line(job, where) + _note_lines(job.notes)
+
+    def _unfinished_line(self, job, where) -> str:
         kept = job.rows_kept or 0
         if job.on_error == "keep" and kept:
             outcome = f"; {where} has the first {_plural(kept, 'row')}"
@@ -1188,6 +1239,11 @@ class TerminalReporter:
                 f"is shutting down{outcome}"
             )
         return f"Cancelled import of {job.title} into {where}{outcome}"
+
+
+def _note_lines(notes) -> str:
+    "The loader's notes, one indented line each, to follow a summary line."
+    return "".join(f"\n  note: {note}" for note in notes)
 
 
 __all__ = [

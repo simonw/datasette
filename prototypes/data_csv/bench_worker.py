@@ -7,9 +7,11 @@ server? Compares, for one input file:
 - ``worker``: ``import_file_via_worker()``: the worker parses the file and
   streams NDJSON, the parent decodes it and inserts with ``import_rows()``
   through the write queue (the design's lean)
-- ``direct``: the worker inserts into the database file itself with
-  ``insert_rows()`` on its own connection (``--direct-db``); the parent only
-  supervises
+
+(A third mode, the worker inserting into the database file itself, was
+measured with the worker's experimental ``--direct-db`` option, since
+removed: 1.1-1.4 times faster, but it bypasses write_wrapper plugins and
+the write queue - see datasette/imports/subprocess_import.py.)
 
 into ``Database(ds, is_temp_disk=True)`` (a WAL file in the temp directory,
 the planned scratch storage). While each import runs the Datasette process
@@ -41,7 +43,7 @@ import subprocess
 import sys
 import time
 
-MODES = ("inprocess", "worker", "direct", "oldworker")
+MODES = ("inprocess", "worker", "oldworker")
 
 
 def percentile(values, fraction):
@@ -189,7 +191,7 @@ async def run_worker(db, path, batch_size, old=False):
             str(os.getpid()),
         ]
     result = await import_file_via_worker(
-        db, "t", path, batch_size=batch_size, argv=argv
+        db, "t", path, batch_size=batch_size, _argv=argv
     )
     return {
         "rows": result.rows,
@@ -201,44 +203,6 @@ async def run_worker(db, path, batch_size, old=False):
         "decode_seconds": round(result.stats["decode_seconds"], 3),
         "write_seconds": round(result.stats["write_seconds"], 3),
         "pipe_mb": round(result.stats["bytes_read"] / 1e6, 1),
-    }
-
-
-async def run_direct(db, path, batch_size):
-    from datasette.imports.subprocess_import import WorkerProcess, worker_command
-
-    worker = WorkerProcess(
-        worker_command(
-            path,
-            extra_args=[
-                "--direct-db",
-                db.path,
-                "--table",
-                "t",
-                "--batch-size",
-                str(batch_size),
-            ],
-        )
-    )
-    await worker.start()
-    trailer = error = None
-    while True:
-        messages = await worker.read_messages()
-        if messages is None:
-            break
-        for kind, payload in messages:
-            if kind == "end":
-                trailer = payload
-            elif kind == "error":
-                error = payload
-    await worker.stop()
-    if error or worker.returncode:
-        raise RuntimeError(f"direct worker failed: {error} {worker.stderr[-2000:]}")
-    return {
-        "rows": trailer["rows"],
-        "worker_cpu": trailer["cpu"],
-        "worker_seconds": trailer["seconds"],
-        "worker_max_rss_mb": round(trailer["max_rss"] / 1e6, 1),
     }
 
 
@@ -259,7 +223,6 @@ async def one_run(mode, path, batch_size, probe_interval, idle, queries):
     runner = {
         "inprocess": run_inprocess,
         "worker": run_worker,
-        "direct": run_direct,
         "oldworker": functools.partial(run_worker, old=True),
     }
     details = await runner[mode](db, path, batch_size)
@@ -365,7 +328,7 @@ def main():
     parser.add_argument("command", choices=("run", "all"))
     parser.add_argument("--file", required=True)
     parser.add_argument("--mode", choices=MODES)
-    parser.add_argument("--modes", nargs="+", default=list(MODES[:3]))
+    parser.add_argument("--modes", nargs="+", default=list(MODES[:2]))
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=1000)
     parser.add_argument(

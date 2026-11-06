@@ -5,7 +5,7 @@ fuzz_inserter_boundaries.py does.
 For random rows full of awkward values (tests/test_imports_inserter.py's
 _tricky_rows), each seed imports the rows with TypedInserter, committing
 every write() and convert() call, with random sample, batch and
-conversion-slice sizes (convert_rows 1-5, so the backlog of stored numbers
+conversion-slice sizes (1-5 rows, so the backlog of stored numbers
 still to become text lasts across many writes and later widenings), as
 dicts or as positional rows whose column list grows the way the worker
 protocol's does, and with SQLITE_DBCONFIG_DEFENSIVE on or off (on, every
@@ -96,8 +96,7 @@ def check(conn, inserter, reference_rows, reference_types):
         )
         for column in inserter._columns
     }
-    if inserter.widen != "deferred":
-        assert types == expected, (types, expected)
+    assert types == expected, (types, expected)
     conn.create_function(_RENDER_FUNCTION, 1, _render_sql, deterministic=True)
     spellings = {}
     if inserter._spellings_created:
@@ -106,7 +105,7 @@ def check(conn, inserter, reference_rows, reference_types):
         ):
             spellings[(col, rid)] = val
     for column in inserter._columns:
-        if column.type not in ("text", "blob") or inserter.widen == "deferred":
+        if column.type not in ("text", "blob"):
             continue
         name = _quote(column.name)
         backlog = inserter._backlog.get(column.index)
@@ -132,7 +131,7 @@ def check(conn, inserter, reference_rows, reference_types):
 def run(seed):
     rng = random.Random(seed)
     rows = _tricky_rows(rng, rng.randint(1, 60))
-    reference_conn, _ = load(rows, widen="auto", sample_size=len(rows))
+    reference_conn, _ = load(rows, sample_size=len(rows))
     reference = _snapshot(reference_conn)
     reference_types = reference[0]
     reference_rows = [
@@ -140,14 +139,14 @@ def run(seed):
     ]
     defensive = DEFENSIVE is not None and rng.random() < 0.25
     as_positional = rng.random() < 0.5
-    widen = rng.choice(["incremental", "incremental", "auto", "schema", "rebuild"])
     convert_rows = rng.randint(1, 5)
     sample_size = rng.randint(1, 8)
     batch_size = rng.randint(1, 6)
     conn = sqlite3.connect(":memory:", isolation_level=None)
     if defensive:
         conn.setconfig(DEFENSIVE, True)
-    inserter = TypedInserter("t", widen=widen, convert_rows=convert_rows)
+    inserter = TypedInserter("t")
+    inserter._convert_rows = convert_rows
     order, known = positional(rows, rng)
 
     def committed(fn):
@@ -179,7 +178,7 @@ def run(seed):
         committed(lambda: inserter.convert(conn))
     committed(lambda: inserter.finish(conn))
     result = _snapshot(conn)
-    details = (widen, defensive, as_positional, convert_rows, sample_size, batch_size)
+    details = (defensive, as_positional, convert_rows, sample_size, batch_size)
     if result != reference:
         return details
     STATS["runs"] += 1
@@ -187,10 +186,9 @@ def run(seed):
     STATS["defensive runs"] += defensive
     methods = [w.method for w in inserter.widenings]
     STATS["incremental widenings"] += methods.count("incremental")
-    STATS["fallback rebuilds"] += methods.count("rebuild (fallback)")
+    STATS["fallback rebuilds"] += methods.count("rebuild")
     if defensive and inserter.widenings:
-        methods = {w.method for w in inserter.widenings}
-        assert methods <= {"rebuild", "rebuild (fallback)"}, methods
+        assert set(methods) == {"rebuild"}, methods
     return None
 
 

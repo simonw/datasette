@@ -3,10 +3,12 @@ Tests for loading CSV, TSV, JSON, URLs and stdin from the command line:
 ``datasette data.csv``, see datasette/imports/sources.py and scratch.py.
 """
 
+import contextlib
 import gzip
 import html
 import http.server
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -33,12 +35,28 @@ from datasette.imports.sources import (
     parse_source,
     sanitize_table_name,
     save_command,
+    suggest_save_path,
     suggested_table_name,
     table_name_for_url,
 )
 from datasette.utils.asgi import Forbidden
 
 FORMATS = ["csv", "tsv", "json", "ndjson"]
+
+
+@pytest.fixture(autouse=True)
+def _existing_working_directory(tmp_path_factory):
+    """
+    make_app_client() in tests/fixtures.py leaves the working directory in a
+    temporary directory that is then deleted, and monkeypatch.chdir() (like
+    anything else that calls os.getcwd()) fails in a later test on the same
+    xdist worker. Start each test from a directory that exists.
+    """
+    try:
+        os.getcwd()
+    except FileNotFoundError:
+        os.chdir(tmp_path_factory.getbasetemp())
+
 
 CSV = "id,name,score\n1,Cleo,4.5\n2,Pancakes,3\n3,Fido,\n"
 NDJSON = '{"id": 1, "owner": "Ann"}\n{"id": 2, "owner": "Bob"}\n'
@@ -307,6 +325,53 @@ def test_stderr_summary(data_dir):
     assert result.exit_code == 0
     assert "Loaded 3 rows from" in result.stderr
     assert "dogs.csv (csv) into table dogs in " in result.stderr
+
+
+@contextlib.contextmanager
+def no_logging_configured():
+    """
+    No handler on the root logger, as in ``datasette serve``, so warnings
+    go to Python's last-resort handler. Use it inside the test: pytest's
+    logging plugin adds its handlers after the fixtures are set up.
+    """
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers.clear()
+    try:
+        yield
+    finally:
+        root.handlers[:] = saved
+
+
+def test_stderr_summary_has_the_loaders_notes(data_dir):
+    path = data_dir / "api.json"
+    path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
+    with no_logging_configured():
+        result = run([str(path), "--get", "/-/versions.json"])
+    assert result.exit_code == 0
+    lines = result.stderr.splitlines()
+    loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded 2 rows"))
+    assert lines[loaded + 1] == (
+        "  note: Importing the 2 objects in 'results', ignoring 'total'"
+    )
+    # Only there: not also as the warning the loader logs it as
+    assert result.stderr.count("Importing the 2 objects") == 1
+
+
+def test_get_table_page_shows_the_loaders_notes(data_dir):
+    path = data_dir / "api.json"
+    path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
+    result = run([str(path), "--get", "/scratch/api"])
+    assert result.exit_code == 0
+    assert "Notes from importing this table:" in result.stdout
+    assert (
+        "<li>Importing the 2 objects in &#39;results&#39;, ignoring &#39;total&#39;"
+        in result.stdout
+    )
+    # No notes, no notice
+    result = run([str(data_dir / "dogs.csv"), "--get", "/scratch/dogs"])
+    assert result.exit_code == 0
+    assert "imports-notice" not in result.stdout
 
 
 def test_only_scratch_database(data_dir):
@@ -910,6 +975,48 @@ async def test_reload_session_keeps_unchanged_tables(data_dir, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (True, False))
+async def test_load_sources_reports_the_conversion_backlog(
+    tmp_path, monkeypatch, exclusive
+):
+    # --get's status line says when a load is converting stored numbers to
+    # text after a column widened in the last chunk
+    from datasette.app import Datasette
+    from datasette.cli import _loading_text
+    from datasette.imports.inserter import TypedInserter
+    from datasette.imports.scratch import load_sources
+
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 1_000)
+    path = tmp_path / "late.csv"
+    lines = ["id,code"] + [f"{i},{i}" for i in range(30_000)] + ["30000,n/a"]
+    path.write_text("\n".join(lines) + "\n")
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        seen = []
+
+        def on_progress(source, rows, status):
+            text = _loading_text(source, rows, status)
+            seen.append((rows, status.finishing, status.backlog, text))
+
+        sources = _sources(path)
+        for source in sources:
+            source.path = source.location
+        [loaded] = await load_sources(
+            db, plan_loads(None, sources), on_progress=on_progress, exclusive=exclusive
+        )
+        assert loaded.types == {"id": "integer", "code": "text"}
+        assert seen[0][3] == f"Loading {path}: 1,000 rows"
+        finishing = [entry for entry in seen if entry[1] and entry[2]]
+        assert len(finishing) > 10
+        assert all(rows == 30_001 for rows, *_ in finishing)
+        backlog = finishing[0][2]
+        assert finishing[0][3] == f"Finishing late: {backlog:,} rows to convert"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_load_source_never_drops_a_table_it_did_not_create(data_dir):
     from datasette.app import Datasette
     from datasette.imports.scratch import load_source
@@ -932,6 +1039,53 @@ async def test_load_source_never_drops_a_table_it_did_not_create(data_dir):
         with pytest.raises(scratch_module.ImportFailed):
             await load_source(db, source, workdir=str(data_dir))
         assert await db.table_names() == ["dogs"]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (True, False))
+async def test_failed_load_drops_the_table_without_converting(
+    data_dir, monkeypatch, exclusive
+):
+    # A column widens to text late, leaving stored numbers to convert, then
+    # the loader fails. The table is dropped anyway, so it is dropped as it
+    # is (on_error="drop") rather than first completed - which would be
+    # seconds of converting for millions of rows
+    from datasette.app import Datasette
+    from datasette.imports.inserter import TypedInserter
+    from datasette.imports.scratch import load_source
+
+    converted = []
+    original = TypedInserter._convert_slice
+
+    def convert_slice(self, conn, rows):
+        converted.append(rows)
+        return original(self, conn, rows)
+
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 10)
+    monkeypatch.setattr(TypedInserter, "_convert_slice", convert_slice)
+    lines = [json.dumps({"a": i}) for i in range(1999)] + ['{"a": "x"}', "{oops"]
+    bad = data_dir / "late.ndjson"
+    bad.write_text("\n".join(lines) + "\n")
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        source = _sources(bad)[0]
+        source.path = source.location
+        with pytest.raises(scratch_module.ImportFailed, match="Line 2001"):
+            await load_source(db, source, exclusive=exclusive)
+        assert await db.table_names() == []
+        # The chunk that widened converted one slice; nothing after that
+        assert len(converted) == 1
+        # The kept spellings went with it, from the write connection
+        with scratch_module.import_writes():
+            temp = await db.execute_write_fn(
+                lambda conn: conn.execute(
+                    "select count(*) from temp.sqlite_master"
+                ).fetchone()[0]
+            )
+        assert temp == 0
     finally:
         ds.close()
 
@@ -1030,7 +1184,7 @@ async def test_cancelling_a_load_drops_the_table(data_dir, exclusive):
         ds.close()
 
 
-# Regression tests for the review of prototype 1 --------------------------------
+# Regressions -------------------------------------------------------------------
 
 
 def _many_rows(path, count=20_000):
@@ -1253,6 +1407,26 @@ def test_pipe_table_name():
     for path in ("/dev/fd/63", "/proc/self/fd/12", "/proc/1234/fd/3"):
         assert suggested_table_name(Source(path, "file", path)) == "pipe"
     assert suggested_table_name(Source("/dev/stdin", "file", "/dev/stdin")) == "stdin"
+
+
+def test_suggest_save_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert suggest_save_path() == "data.db"
+    (tmp_path / "data.db").write_bytes(b"")
+    assert suggest_save_path() == "data_2.db"
+    assert suggest_save_path([str(tmp_path / "data_2.db")]) == "data_3.db"
+
+
+def test_serving_from_a_deleted_directory(data_dir, tmp_path, monkeypatch):
+    # The working directory can be gone - another test suite's temporary
+    # directory, say: nothing exists relative to it, so data.db is free
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    monkeypatch.chdir(gone)
+    gone.rmdir()
+    assert suggest_save_path(["relative.db", str(tmp_path / "x.db")]) == "data.db"
+    rows = get_json([str(data_dir / "dogs.csv")], "/scratch/dogs.json?_shape=array")
+    assert len(rows) == 3
 
 
 def test_save_path_errors_are_clean(data_dir):

@@ -23,7 +23,7 @@ from datasette.app import Datasette
 from datasette.database import Database
 from datasette.hookspecs import hookimpl
 from datasette.imports import worker as worker_module
-from datasette.imports.inserter import import_rows
+from datasette.imports.inserter import TypedInserter, import_rows
 from datasette.imports.loaders import load_path
 from datasette.imports.subprocess_import import (
     DEFAULT_MAX_WORKERS,
@@ -39,6 +39,20 @@ from datasette.plugins import pm
 from datasette.utils import module_from_path
 
 WORKER = [sys.executable, "-P", "-m", "datasette.imports.worker"]
+
+
+@pytest.fixture(autouse=True)
+def _existing_working_directory(tmp_path_factory):
+    """
+    make_app_client() in tests/fixtures.py leaves the working directory in a
+    temporary directory that is then deleted, and monkeypatch.chdir() (like
+    anything else that calls os.getcwd()) fails in a later test on the same
+    xdist worker. Start each test from a directory that exists.
+    """
+    try:
+        os.getcwd()
+    except FileNotFoundError:
+        os.chdir(tmp_path_factory.getbasetemp())
 
 
 @pytest.fixture
@@ -163,8 +177,14 @@ def decode_all(data, chunk_sizes=None):
     return decoder, messages
 
 
-def rows_of(messages):
-    return [row for kind, payload in messages if kind == "rows" for row in payload]
+def rows_of(messages, decoder):
+    "The rows in ``messages`` as dictionaries: the decoder hands over lists."
+    return [
+        row if isinstance(row, dict) else dict(zip(decoder.columns, row))
+        for kind, payload in messages
+        if kind == "rows"
+        for row in payload
+    ]
 
 
 # Protocol ------------------------------------------------------------------
@@ -205,7 +225,11 @@ def test_protocol_round_trip():
         assert line[:1] in (b"[", b"{")
     for chunk_sizes in (None, [1, 2, 3, 7, 50]):
         decoder, messages = decode_all(data, chunk_sizes)
-        rows = rows_of(messages)
+        # Positional: lists of values in decoder.columns order, as
+        # import_rows(columns=...) takes them - the row with bytes too
+        raw = [row for kind, payload in messages if kind == "rows" for row in payload]
+        assert {type(row) for row in raw} == {list}
+        rows = rows_of(messages, decoder)
         assert len(rows) == len(ROUND_TRIP_ROWS)
         for sent, received in zip(ROUND_TRIP_ROWS, rows):
             # Missing keys come back as None, which the inserter treats the
@@ -347,7 +371,7 @@ def test_protocol_error_keeps_messages_before_the_bad_line():
             b'[1]\n[2]\n{"type":"progress","rows":2}\nnonsense\n[3]\n'
         )
     assert [kind for kind, _ in ex.value.messages] == ["header", "rows", "progress"]
-    assert rows_of(ex.value.messages) == [{"a": 1}, {"a": 2}]
+    assert rows_of(ex.value.messages, decoder) == [{"a": 1}, {"a": 2}]
 
 
 def test_unknown_message_types_are_passed_through():
@@ -486,6 +510,13 @@ async def table_rows(db, table):
     return [tuple(row) for row in (await db.execute(f"select * from [{table}]")).rows]
 
 
+def widenings(import_result):
+    return [
+        (w.column, w.from_type, w.to_type, w.at_row, w.method)
+        for w in import_result.widenings
+    ]
+
+
 @pytest.mark.asyncio
 async def test_import_matches_in_process_import(db, tmp_path):
 
@@ -504,6 +535,7 @@ async def test_import_matches_in_process_import(db, tmp_path):
     assert result.worker["rows"] == 3000
     assert result.import_result.types == expected.types
     assert result.import_result.types["late"] == "text"
+    assert widenings(result.import_result) == widenings(expected)
     assert await table_rows(db, "via_worker") == await table_rows(db, "in_process")
     # Progress: rows written after each chunk, bytes from the worker
     written = [p.rows_written for p in progress]
@@ -619,7 +651,12 @@ async def test_warnings_from_the_worker(db, tmp_path):
     )
     result = await import_file_via_worker(db, "t", path)
     assert result.rows == 2
-    assert any("ignoring 'total'" in warning for warning in result.warnings)
+    # A loader's note is a note, not just a warning
+    assert result.notes == ["Importing the 2 objects in 'results', ignoring 'total'"]
+    assert result.warnings == []
+    # The same in-process
+    in_process = await import_file_in_process(db, "t2", path)
+    assert (in_process.notes, in_process.warnings) == (result.notes, [])
 
 
 @pytest.mark.asyncio
@@ -650,6 +687,53 @@ async def test_worker_error_keeps_rows_sent_before_it(db, tmp_path, on_error):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("in_process", (False, True))
+async def test_loader_error_with_drop_removes_committed_rows(db, tmp_path, in_process):
+    # A full sample is committed before the loader fails: on_error="drop"
+    # has import_rows() drop the table it created, and says how many rows
+    # went with it
+    lines = [json.dumps({"id": i}) for i in range(1500)] + ["{not json"]
+    path = write(tmp_path / "bad.ndjson", "\n".join(lines) + "\n")
+    importer = import_file_in_process if in_process else import_file_via_worker
+    with pytest.raises(WorkerImportError) as ex:
+        await importer(db, "t", path, batch_size=1000, on_error="drop")
+    result = ex.value.result
+    assert ex.value.kind == "error" and ex.value.error_type == "LoaderError"
+    assert (result.rows, result.table_exists) == (0, False)
+    assert result.rows_written == 1000
+    assert not await db.table_exists("t")
+    assert await temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_process", (False, True))
+async def test_progress_while_finishing(db, tmp_path, in_process, monkeypatch):
+    # A column that widens to text in the last chunk leaves stored numbers
+    # to convert once every row is in: progress goes on reporting that
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 500)
+    path = events_csv(tmp_path / "events.csv", rows=3000)
+    seen = []
+    importer = import_file_in_process if in_process else import_file_via_worker
+    result = await importer(
+        db,
+        "t",
+        path,
+        batch_size=1000,
+        progress=lambda p: seen.append((p.rows_written, p.finishing, p.backlog)),
+    )
+    assert result.rows == 3000
+    assert result.import_result.types["late"] == "text"
+    finishing = [(rows, backlog) for rows, done, backlog in seen if done]
+    backlogs = [backlog for _, backlog in finishing]
+    assert backlogs[0] > 0 and backlogs[-1] == 0
+    assert backlogs == sorted(set(backlogs), reverse=True)
+    assert {rows for rows, _ in finishing} == {3000}
+    # Not finishing until every row was in
+    assert all(rows == 3000 for rows, done, _ in seen if done)
+    assert any(not done for _, done, _ in seen)
+
+
+@pytest.mark.asyncio
 async def test_unrecognized_format(db, tmp_path):
 
     path = write(tmp_path / "binary.bin", bytes(range(256)) * 10)
@@ -660,6 +744,40 @@ async def test_unrecognized_format(db, tmp_path):
     assert ex.value.result.loader is None
     assert not ex.value.result.table_exists
     assert not await db.table_exists("t")
+
+
+FAILING_PLUGIN = """
+    from datasette import hookimpl
+
+    @hookimpl
+    def register_import_loaders():
+        raise RuntimeError("this plugin is broken")
+"""
+
+
+@pytest.mark.asyncio
+async def test_plugin_that_fails_to_register_loaders(db, tmp_path):
+    # The worker logs the failure while choosing a loader, before its
+    # header: a warning, not a protocol error that hides what happened
+    plugins = plugin_dir(tmp_path, FAILING_PLUGIN)
+    path = write(tmp_path / "binary.bin", bytes(range(256)) * 10)
+    with pytest.raises(WorkerImportError) as ex:
+        await import_file_via_worker(db, "t", path, plugins_dir=plugins)
+    assert ex.value.kind == "error"
+    assert ex.value.error_type == "UnrecognizedFormat"
+    assert "register_import_loaders() failed" in " ".join(ex.value.result.warnings)
+    # The core loaders still work
+    csv_path = write(tmp_path / "ok.csv", "a,b\n1,2\n")
+    result = await import_file_via_worker(db, "t", csv_path, plugins_dir=plugins)
+    assert result.rows == 1
+    assert any("register_import_loaders() failed" in w for w in result.warnings)
+
+
+def test_log_before_the_header():
+    decoder = ProtocolDecoder()
+    log = {"type": "log", "level": "WARNING", "message": "Plugin x failed"}
+    events = decoder.feed(json.dumps(log).encode() + b"\n" + HEADER_A + b"[1]\n")
+    assert [kind for kind, _ in events] == ["log", "header", "rows"]
 
 
 @pytest.mark.asyncio
@@ -754,7 +872,7 @@ async def test_malformed_output_kills_the_worker(db, tmp_path):
             db,
             "t",
             "unused",
-            argv=[sys.executable, script],
+            _argv=[sys.executable, script],
             progress=lambda p: pids.append(p.pid),
         )
     assert ex.value.kind == "protocol"
@@ -972,7 +1090,7 @@ def test_worker_dies_with_its_parent(tmp_path):
         raise AssertionError("The worker outlived its parent")
 
 
-# Regression tests from the review -------------------------------------------
+# Regressions ---------------------------------------------------------------
 
 
 def test_long_line_decodes_in_linear_time():
@@ -984,7 +1102,7 @@ def test_long_line_decodes_in_linear_time():
     rows = []
     start = time.perf_counter()
     for i in range(0, len(data), 65536):
-        rows.extend(rows_of(decoder.feed(data[i : i + 65536])))
+        rows.extend(rows_of(decoder.feed(data[i : i + 65536]), decoder))
     elapsed = time.perf_counter() - start
     assert decoder.close() == b""
     assert [len(row["a"]) for row in rows] == [len(value), 1]
@@ -1034,8 +1152,11 @@ def test_sparse_rows_are_sent_as_positions():
     # Most rows have 5 of ~200 keys: positions, not 200 nulls each
     assert len(sparse) > len(rows) * 0.8
     assert len(data) / len(rows) < 120
-    _, messages = decode_all(data, [1, 7, 4096])
-    received = rows_of(messages)
+    decoder, messages = decode_all(data, [1, 7, 4096])
+    raw = [row for kind, payload in messages if kind == "rows" for row in payload]
+    # Sparse rows are dictionaries, the others lists
+    assert {type(row) for row in raw} == {dict, list}
+    received = rows_of(messages, decoder)
     assert len(received) == len(rows)
     for sent, got in zip(rows, received):
         # Same values; keys come in the row's own order
@@ -1082,11 +1203,43 @@ async def test_sparse_ndjson_matches_in_process_import(db, tmp_path):
     path = write(tmp_path / "sparse.ndjson", "\n".join(map(json.dumps, rows)) + "\n")
     result = await import_file_via_worker(db, "worker", path)
     loaded = load_path(path)
-    await import_rows(db, "in_process", loaded.rows, batch_size=1000)
+    expected = await import_rows(db, "in_process", loaded.rows, batch_size=1000)
     assert result.rows == len(rows)
     assert await table_shape(db, "worker") == await table_shape(db, "in_process")
+    assert widenings(result.import_result) == widenings(expected)
     # Far fewer bytes than one null per known column per row
     assert result.stats["bytes_read"] < os.path.getsize(path) * 2
+
+
+@pytest.mark.asyncio
+async def test_keys_that_turn_up_late_match_in_process_import(db, tmp_path):
+    # The parent decodes a whole read of the pipe before it writes a chunk,
+    # so it knows of keys that only later rows have. Those must not become
+    # columns early: all NULL, INTEGER, then widened to text, converting
+    # every row before them
+    rows = []
+    for i in range(20_000):
+        row = {"id": i, "pad": "x" * 100}
+        for name, start in (("late_a", 5_500), ("late_b", 10_700), ("late_c", 15_900)):
+            if i >= start:
+                row[name] = f"s{i}"
+        rows.append(row)
+    path = write(tmp_path / "late.ndjson", "\n".join(map(json.dumps, rows)) + "\n")
+    via_worker = await import_file_via_worker(db, "worker", path)
+    in_process = await import_file_in_process(db, "in_process", path)
+    assert via_worker.rows == in_process.rows == 20_000
+    assert widenings(via_worker.import_result) == []
+    assert widenings(in_process.import_result) == []
+    assert via_worker.import_result.convert_seconds == 0
+    assert await table_shape(db, "worker") == await table_shape(db, "in_process")
+    types = await db.execute("select name, type from pragma_table_info('worker')")
+    assert [tuple(row) for row in types] == [
+        ("id", "INTEGER"),
+        ("pad", "TEXT"),
+        ("late_a", "TEXT"),
+        ("late_b", "TEXT"),
+        ("late_c", "TEXT"),
+    ]
 
 
 def test_int_digit_limit_is_the_same_with_or_without_bytes():
@@ -1099,11 +1252,11 @@ def test_int_digit_limit_is_the_same_with_or_without_bytes():
         line = worker_module.encode_row(values)
         [(_, [row])] = decoder.feed(line.encode() + b"\n")
         # Within the limit: a number either way
-        assert row["a"] == at_limit
+        assert row[0] == at_limit
     for values in ([too_long, None], [too_long, b"x"]):
         line = worker_module.encode_row(values)
         [(_, [row])] = decoder.feed(line.encode() + b"\n")
-        assert row["a"] == "1" + "0" * limit
+        assert row[0] == "1" + "0" * limit
 
 
 @pytest.mark.asyncio
@@ -1164,7 +1317,7 @@ async def test_worker_without_the_resource_module(db, tmp_path):
         db,
         "t",
         path,
-        argv=NO_RESOURCE_WORKER + ["--memory-limit", str(10**9), "--", path],
+        _argv=NO_RESOURCE_WORKER + ["--memory-limit", str(10**9), "--", path],
     )
     assert result.complete
     assert result.rows == 100
@@ -1360,8 +1513,8 @@ async def temp_tables(db):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("in_process", (False, True))
 async def test_cancelling_drops_the_temp_spellings_table(db, tmp_path, in_process):
-    # import_rows() leaves its TEMP spellings table on the write connection
-    # when it is cancelled; the parent drops it
+    # The TEMP table of kept spellings on the write connection goes when
+    # the import is cancelled
     plugins = plugin_dir(tmp_path, BEHAVIOUR_PLUGIN)
     started = asyncio.Event()
 
@@ -1417,6 +1570,6 @@ async def test_nested_values_arrive_as_the_text_the_inserter_stores(db, tmp_path
         *WORKER, "--", path, stdout=asyncio.subprocess.PIPE
     )
     stdout, _ = await process.communicate()
-    _, messages = decode_all(stdout)
-    first = rows_of(messages)[0]
+    decoder, messages = decode_all(stdout)
+    first = rows_of(messages, decoder)[0]
     assert first["geometry"] == '{"type": "Point", "coordinates": [1.5, -2]}'

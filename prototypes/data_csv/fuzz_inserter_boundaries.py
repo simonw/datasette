@@ -1,7 +1,9 @@
 """
 Fuzz the claim that an import does not depend on where the sample and batch
-boundaries fall: for random rows full of awkward values, every widening
-strategy with a random sample size and batch size must produce exactly the
+boundaries fall: for random rows full of awkward values, every way of
+widening (tests/test_imports_inserter.py's WIDENINGS: in place, in one-row
+conversion slices, by rebuilding) with a random sample size and batch size
+must produce exactly the
 table you get when the whole input is the sample. A bigger run of
 test_result_does_not_depend_on_chunk_boundaries.
 
@@ -20,7 +22,7 @@ import time
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "tests")
 )
-from test_imports_inserter import _snapshot, _tricky_rows, load
+from test_imports_inserter import AVAILABLE, _snapshot, _tricky_rows, load
 
 from datasette.imports import inserter as inserter_module
 
@@ -39,9 +41,9 @@ def main():
     for seed in range(args.start, args.start + args.seeds):
         rng = random.Random(seed)
         rows = _tricky_rows(rng, rng.randint(1, args.max_rows))
-        reference_conn, _ = load(rows, widen="auto", sample_size=len(rows))
+        reference_conn, _ = load(rows, sample_size=len(rows))
         reference = _snapshot(reference_conn)
-        for widen in inserter_module.WIDEN_STRATEGIES:
+        for widen in AVAILABLE:
             sample_size = rng.randint(1, 12)
             batch_size = rng.randint(1, 9)
             try:
@@ -59,7 +61,7 @@ def main():
                     f" batch={batch_size}"
                 )
     print(
-        f"{args.seeds} seeds x {len(inserter_module.WIDEN_STRATEGIES)} strategies"
+        f"{args.seeds} seeds x {len(AVAILABLE)} ways of widening"
         f" (floats: {args.floats}): {failures} mismatches,"
         f" {time.perf_counter() - start:.1f}s"
     )

@@ -3,6 +3,7 @@ import atexit
 import contextlib
 import functools
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -30,14 +31,14 @@ from .app import (
 )
 from .database import Database
 from .imports.background import TerminalReporter, import_registry
-from .imports.loaders import get_loaders
+from .imports.inserter import SQLITE_ERRORS
+from .imports.loaders import NOTE_LOG_ATTRIBUTE, get_loaders
 from .imports.scratch import (
     DEFAULT_BATCH_SIZE,
     SAVE_BATCH_SIZE,
     SCRATCH_NAME,
     CreatedSaveDatabase,
     LoadedTable,
-    MemoryScratchDatabase,
     ReloadSession,
     ScratchDatabase,
     check_save_file,
@@ -592,7 +593,7 @@ def serve(
     internal,
     save=None,
     return_instance=False,
-    background_imports=False,
+    _background_imports=False,
 ):
     """
     Serve up specified SQLite database files with a web UI
@@ -757,7 +758,7 @@ def serve(
     if source_args:
         # Without --get, inputs load in the background while Datasette
         # serves, so only what can fail at once is checked here
-        background = background_imports if return_instance else not get
+        background = _background_imports if return_instance else not get
         with _sigterm_interrupts():
             data_import = _prepare_import(
                 ds,
@@ -772,11 +773,11 @@ def serve(
 
     if return_instance:
         # Private utility mechanism for writing unit tests. Loads the inputs
-        # before returning, unless background_imports=True: then they are
+        # before returning, unless _background_imports=True: then they are
         # registered as background tasks, which start with the first request
         # or ds.start_background_tasks()
         if data_import:
-            if background_imports:
+            if _background_imports:
                 data_import.start_in_background(ds)
             else:
                 with _sigterm_interrupts():
@@ -1052,6 +1053,7 @@ class _DataImport:
         registry.add_listener(
             TerminalReporter(sys.stderr, where=self.where, warn_large=is_scratch(db))
         )
+        _print_notes_once()
         for source in self.plan.reuse:
             loaded = LoadedTable(
                 source=source,
@@ -1122,6 +1124,7 @@ class _DataImport:
                     rows=job.rows,
                     seconds=job.seconds or 0.0,
                     widenings=list(job.widenings),
+                    notes=list(job.notes),
                 )
             )
 
@@ -1129,12 +1132,13 @@ class _DataImport:
         status = StatusLine(sys.stderr)
         start = time.perf_counter()
         where = self.where
+        _print_notes_once()
 
         def on_start(source):
             status.start(f"Loading {source.label}...")
 
-        def on_progress(source, rows):
-            status.update(f"Loading {source.label}: {rows:,} rows")
+        def on_progress(source, rows, import_status):
+            status.update(_loading_text(source, rows, import_status))
 
         def on_loaded(loaded):
             status.done(_describe_loaded(loaded, where))
@@ -1232,8 +1236,9 @@ def _describe_loaded(loaded, where=""):
             f"Kept table {loaded.table}{where} from the previous load: "
             f"{loaded.source.label} has not changed"
         )
+    notes = "".join(f"\n  note: {note}" for note in loaded.notes)
     if not loaded.created:
-        return f"{loaded.source.label} has no rows, so no table was created"
+        return f"{loaded.source.label} has no rows, so no table was created{notes}"
     line = (
         f"Loaded {loaded.rows:,} row{'' if loaded.rows == 1 else 's'} from "
         f"{loaded.source.label} ({loaded.loader}) "
@@ -1244,7 +1249,7 @@ def _describe_loaded(loaded, where=""):
             f"\n  column {widening.column} changed from {widening.from_type} to "
             f"{widening.to_type} at row {widening.at_row + 1:,}"
         )
-    return line
+    return line + notes
 
 
 def _prepare_import(
@@ -1384,7 +1389,7 @@ def _prepare_import(
                     _enable_wal(save)
             else:
                 free_before = free_bytes(save)
-        except (OSError, sqlite3.Error, SourceError) as ex:
+        except (OSError, *SQLITE_ERRORS, SourceError) as ex:
             if not session:
                 remove_temporary(sources)
             if isinstance(ex, SourceError):
@@ -1415,11 +1420,7 @@ def _prepare_import(
         elif db is None:
             db = ds.add_database(Database(ds, path=save, is_mutable=True))
     else:
-        if os.environ.get("DATASETTE_SCRATCH_STORAGE") == "memory":
-            # Prototype only: compare with shared-cache memory storage
-            db = MemoryScratchDatabase(ds)
-        else:
-            db = ScratchDatabase(ds, target_path, keep=bool(session))
+        db = ScratchDatabase(ds, target_path, keep=bool(session))
         ds.add_database(db, name=SCRATCH_NAME)
         if db.name != SCRATCH_NAME:
             click.echo(
@@ -1452,6 +1453,30 @@ def _prepare_import(
     elif db.name != SCRATCH_NAME:
         data_import.where = f" in {db.name}"
     return data_import
+
+
+def _loading_text(source, rows, import_status):
+    "The --get status line while ``source`` loads."
+    if import_status.finishing and import_status.backlog:
+        # A column changed to text after the first rows: its stored numbers
+        # are being turned back into the text they came from
+        return f"Finishing {source.table}: {import_status.backlog:,} rows to convert"
+    return f"Loading {source.label}: {rows:,} rows"
+
+
+def _is_not_an_import_note(record):
+    return not getattr(record, NOTE_LOG_ATTRIBUTE, None)
+
+
+def _print_notes_once():
+    """
+    The summary lines on stderr show the loaders' notes. A loader logs each
+    one as a warning too, and with no logging configured Python's
+    last-resort handler would print it again: leave notes out of that
+    fallback. Handlers that are configured still get them.
+    """
+    if logging.lastResort is not None:
+        logging.lastResort.addFilter(_is_not_an_import_note)
 
 
 def _enable_wal(path):

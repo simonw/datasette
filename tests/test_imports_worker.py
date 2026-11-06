@@ -1090,7 +1090,7 @@ def test_worker_dies_with_its_parent(tmp_path):
         raise AssertionError("The worker outlived its parent")
 
 
-# Regression tests from the review -------------------------------------------
+# Regressions ---------------------------------------------------------------
 
 
 def test_long_line_decodes_in_linear_time():

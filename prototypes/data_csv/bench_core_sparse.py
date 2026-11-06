@@ -107,7 +107,6 @@ def run(name, module, args):
         "over_100ms": sum(1 for t in times if t > 0.1),
         "over_200ms": sum(1 for t in times if t > 0.2),
         "convert_seconds": round(inserter.convert_seconds, 2),
-        "longest_slice_ms": round(inserter.convert_max_seconds * 1000, 1),
         "slices": len(slices),
         "largest_slice_rows": max(slices) if slices else 0,
         "types": sorted(types, key=str),

@@ -665,7 +665,7 @@ def test_geojson_loader_class_has_example_hook():
     assert geojson_loader_plugin.register_import_loaders() == [GeoJSONLoader]
 
 
-# Regressions from the adversarial review of this prototype
+# Regressions -----------------------------------------------------------------
 
 
 def test_csv_sniff_does_not_depend_on_field_size_limit(tmp_path):

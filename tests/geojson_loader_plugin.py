@@ -1,6 +1,5 @@
 """
-An example import loader plugin for GeoJSON, used by tests/test_imports_loaders.py
-and prototypes/data_csv/sniff_experiment.py.
+An example import loader plugin for GeoJSON, used by tests/test_imports_loaders.py.
 
 It is not in tests/plugins/ because everything there is loaded into the
 ds_client fixtures, whose plugin lists other tests check exactly. Register it

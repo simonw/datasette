@@ -546,10 +546,8 @@ class TypedInserter:
         # The rowid of the last row this inserter wrote, to tell that the
         # table is still the one it wrote (see _table_is_ours())
         self._last_rowid = 0
-        #: Time spent converting stored numbers to text after widenings,
-        #: and the longest single slice of that
+        #: Time spent converting stored numbers to text after widenings
         self.convert_seconds = 0.0
-        self.convert_max_seconds = 0.0
         self._columns = []
         self._by_key = {}
         self._used_names = set()
@@ -1492,7 +1490,6 @@ class TypedInserter:
             self._rebuild(conn, {})
         elapsed = time.perf_counter() - began
         self.convert_seconds += elapsed
-        self.convert_max_seconds = max(self.convert_max_seconds, elapsed)
         covered = max(high for _, _, high in done) - start + 1
         self._measure_slice(covered, rewritten, elapsed)
 
@@ -1710,9 +1707,8 @@ class ImportResult:
     # Values whose original text had to be kept until the import finished
     spellings_kept: int = 0
     # Time spent turning stored numbers into text after columns widened to
-    # text, in all slices together, and the longest slice
+    # text, in all slices together
     convert_seconds: float = 0.0
-    convert_max_seconds: float = 0.0
 
 
 @dataclasses.dataclass
@@ -1795,7 +1791,6 @@ def _result(inserter, start, batches):
         seconds=time.perf_counter() - start,
         spellings_kept=inserter.spellings_kept,
         convert_seconds=inserter.convert_seconds,
-        convert_max_seconds=inserter.convert_max_seconds,
     )
 
 

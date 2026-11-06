@@ -1126,7 +1126,7 @@ async def test_cancelling_a_load_drops_the_table(data_dir, exclusive):
         ds.close()
 
 
-# Regression tests for the review of prototype 1 --------------------------------
+# Regressions -------------------------------------------------------------------
 
 
 def _many_rows(path, count=20_000):

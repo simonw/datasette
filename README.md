@@ -46,6 +46,10 @@ This will start a web server on port 8001 - visit http://localhost:8001/ to acce
 
 `serve` is the default subcommand, you can omit it if you like.
 
+Datasette can also load CSV, TSV and JSON files, or URLs, into a temporary database for you to explore - see [Loading CSV, TSV and JSON files](https://docs.datasette.io/en/latest/importing.html):
+
+    datasette data.csv
+
 Use Chrome on OS X? You can run datasette against your browser history like so:
 
      datasette ~/Library/Application\ Support/Google/Chrome/Default/History --nolock

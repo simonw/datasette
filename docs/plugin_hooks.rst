@@ -1107,9 +1107,9 @@ register_import_loaders()
 Return a list of loaders that can import a file format, such as GeoJSON, KML or Parquet. Each item can be a subclass of ``datasette.imports.loaders.Loader`` or an instance of one.
 
 .. warning::
-    This plugin hook is a prototype and its design may change.
+    This plugin hook is new and its design may change.
 
-Datasette uses loaders to turn files into tables. It ships with loaders for CSV (``csv``, which also reads semicolon and pipe separated files), TSV (``tsv``), JSON arrays of objects (``json``) and newline-delimited JSON (``ndjson``), and registers them using this same hook.
+Datasette uses loaders to turn files into tables. It ships with loaders for CSV (``csv``, which also reads semicolon and pipe separated files), TSV (``tsv``), JSON arrays of objects (``json``) and newline-delimited JSON (``ndjson``), and registers them using this same hook. See :ref:`importing` for how people use them.
 
 The hook takes no arguments. Loaders may run in a separate worker process that has no Datasette instance.
 
@@ -1189,14 +1189,14 @@ A loader has these attributes and methods:
 
 A loader that needs ``load()`` to repeat a decision it made in ``sniff()``, such as which delimiter a CSV file uses, can call ``sniff_windows(fp)`` on the open file. It yields the same growing windows Datasette sniffs (see below): stop at the first one where your own score reaches ``0.7`` and you have the bytes Datasette saw when it picked your loader.
 
-If your ``register_import_loaders()`` hook raises an exception, or Datasette cannot create one of your loader classes with no arguments, that plugin's loaders are skipped and Datasette logs a warning. Imports of other formats keep working.
+If your ``register_import_loaders()`` hook raises an exception, all of that plugin's loaders are skipped. A loader class that Datasette cannot create with no arguments, or a loader without a ``name``, ``sniff()`` or ``load()``, is skipped on its own. Either way Datasette logs a warning, and imports of other formats keep working.
 
 .. _plugin_register_import_loaders_choosing:
 
 How Datasette picks a loader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Datasette never looks at the file extension or a ``Content-Type``. Every loader sniffs the same bytes and the highest score wins, so loaders don't need to know about each other. A GeoJSON file is also valid JSON, so the GeoJSON loader has to score higher than the ``json`` loader's ``0.6`` for an object that contains a list of objects.
+Datasette never looks at the file extension or a ``Content-Type``. Every loader sniffs the same bytes and the highest score wins, so loaders don't need to know about each other. A GeoJSON file is also valid JSON, so the GeoJSON loader has to score higher than the ``json`` loader's ``0.6`` for an object that contains a list of objects. The only exception is when someone names the format, as in ``datasette places.json:geojson`` (see :ref:`importing_format_suffix`): Datasette then uses that loader without sniffing.
 
 1. Every loader sniffs the first 64KB of the file.
 2. If no loader scores ``0.7`` or more and the file is longer than that, Datasette reads four times as much (256KB, then 1MB) and asks every loader again. Return a low score when you can't tell yet.
@@ -1232,7 +1232,7 @@ Check the structure of the data rather than searching for a string. A ``FeatureC
 Schemas
 ~~~~~~~
 
-Formats that know their column types, such as GeoJSON, Parquet or SpatiaLite, can yield a ``Schema`` before the first row. Datasette creates those columns with those types and skips type detection for them. Datasette still detects types for any keys that are not in the schema.
+Formats that know their column types, such as GeoJSON, Parquet or SpatiaLite, can yield a ``Schema`` before the first row. Datasette creates those columns with those types and skips type detection for them: they never change type, so make sure every value fits. Datasette still detects types for any keys that are not in the schema.
 
 .. code-block:: python
 
@@ -1264,11 +1264,11 @@ A loader can yield a ``Note`` anywhere among its rows, before or after the ``Sch
         "Importing the 2 objects in 'results', ignoring 'total', 'next'"
     )
 
-Datasette shows notes alongside the import and also logs each one as a warning. Notes are not errors: to reject a file, raise ``LoaderError``. Use them sparingly, for things like data that was skipped or put somewhere unexpected. A note about the whole file, such as a count of odd rows, can come after the last row. The built-in loaders add notes when a JSON object wraps the list of rows alongside other keys, when CSV rows have more fields than the header, and when quotes are read as ordinary characters.
+Datasette shows notes to the person importing the file: they are printed in the terminal after the line that reports the import, and shown in the import's progress notice, on the table's page and in :ref:`/-/imports.json <JsonDataView_imports>`. Each note is also logged as a warning. Notes are not errors: to reject a file, raise ``LoaderError``. Use them sparingly, for things like data that was skipped or put somewhere unexpected. A note about the whole file, such as a count of odd rows, can come after the last row. The built-in loaders add notes when a JSON object wraps the list of rows alongside other keys, when CSV rows have more fields than the header, and when quotes are read as ordinary characters.
 
 In Python code, ``load_path()`` returns a ``LoadResult`` whose ``notes`` list holds the message of each note yielded so far: it is complete once ``rows`` has been consumed.
 
-The built-in loaders decode text as UTF-8 and read any bytes that are not valid UTF-8 as Windows-1252, so files exported from older spreadsheet software import without errors. A byte order mark at the start of a file is ignored. Pass ``encoding=datasette.imports.loaders.TEXT_ENCODING`` to Python's ``open()`` to decode text the same way in your own loader.
+The built-in loaders decode text as UTF-8 and read any bytes that are not valid UTF-8 as Windows-1252, so files exported from older spreadsheet software import without errors. A UTF-8 byte order mark at the start of a file is ignored. Pass ``encoding=datasette.imports.loaders.TEXT_ENCODING`` to Python's ``open()`` to decode text the same way in your own loader.
 
 The built-in CSV and TSV loaders don't drop data from untidy files. Blank column names become ``column_1``, ``column_2`` and so on, by position, and repeated names get a suffix: ``name, name`` becomes ``name, name_2``. A row with fewer fields than the header gets ``None`` for the rest. A row with more fields keeps the extra values as a list in an ``_extra`` column. A file with only a header yields a ``Schema`` of text columns, so the empty table still has its columns. If a field starts with a literal ``"`` that would otherwise swallow the rest of the file, such as ``"unbalanced`` in a TSV file, the file is read without treating quotes as special.
 

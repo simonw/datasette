@@ -221,7 +221,8 @@ class TypedInserter:
     used to detect column types and create the table. Call :meth:`finish`
     once at the end. Neither method commits - run each call in its own
     transaction (``db.execute_write_fn()`` does that for you). If a call
-    raises, discard the inserter.
+    raises, the inserter is left as it was before the call, matching the
+    rolled back transaction, so the same chunk can be written again.
 
     :param table: name of the table to create - it must not exist yet
     :param schema: optional ``{key: type}`` from a loader that knows its
@@ -297,6 +298,52 @@ class TypedInserter:
             rows = list(rows)
         if not rows:
             return 0
+        snapshot = self.snapshot()
+        try:
+            return self._write(conn, rows)
+        except BaseException:
+            # The caller rolls the transaction back; match it
+            self.restore(snapshot)
+            raise
+
+    def snapshot(self):
+        """
+        Capture the inserter's state. If a transaction that ran
+        :meth:`write` is rolled back for a reason the inserter cannot see
+        (a ``write_wrapper`` plugin raising after the write, say), pass this
+        to :meth:`restore` and the same chunk can be written again.
+        :meth:`write` does this itself when it raises.
+        """
+        return (
+            [dataclasses.replace(column) for column in self._columns],
+            set(self._used_names),
+            self._known_sql,
+            self._insert_sql,
+            self.rows_written,
+            len(self.widenings),
+            self.created,
+            self.finished,
+        )
+
+    def restore(self, snapshot):
+        "Return to a state captured by :meth:`snapshot`."
+        (
+            columns,
+            used_names,
+            self._known_sql,
+            self._insert_sql,
+            self.rows_written,
+            widening_count,
+            self.created,
+            self.finished,
+        ) = snapshot
+        self._columns = [dataclasses.replace(column) for column in columns]
+        self._by_key = {column.key: column for column in self._columns}
+        self._keys = tuple(column.key for column in self._columns)
+        self._used_names = set(used_names)
+        del self.widenings[widening_count:]
+
+    def _write(self, conn, rows):
         values = self._row_values(rows)
         changes = self._scan(values)
         if not self.created:
@@ -320,6 +367,14 @@ class TypedInserter:
         """
         if self.finished:
             return self
+        snapshot = self.snapshot()
+        try:
+            return self._finish(conn)
+        except BaseException:
+            self.restore(snapshot)
+            raise
+
+    def _finish(self, conn):
         if not self.created and not self._columns:
             # Zero rows and no schema: there is nothing to create a table from
             self.finished = True
@@ -638,8 +693,19 @@ class TypedInserter:
                 _quote(self.table),
             )
         )
+        # Indexes or triggers someone else added go when the table is dropped
+        dependents = [
+            row[0]
+            for row in conn.execute(
+                "select sql from sqlite_master where tbl_name = ? "
+                "and type in ('index', 'trigger') and sql is not null",
+                [self.table],
+            )
+        ]
         conn.execute(f"DROP TABLE {_quote(self.table)}")
         conn.execute(f"ALTER TABLE {_quote(temp)} RENAME TO {_quote(self.table)}")
+        for sql in dependents:
+            conn.execute(sql)
         self._refresh(conn)
 
 
@@ -825,9 +891,17 @@ async def import_rows(
             if not chunk:
                 break
             pending = asyncio.ensure_future(pull(batch_size))
-            await db.execute_write_fn(
-                lambda conn, chunk=chunk: inserter.write(conn, chunk)
-            )
+            snapshot = inserter.snapshot()
+            try:
+                await db.execute_write_fn(
+                    lambda conn, chunk=chunk: inserter.write(conn, chunk)
+                )
+            except Exception:
+                # The transaction may have been rolled back after write()
+                # returned, by a write_wrapper or a failed COMMIT. (Not on
+                # cancellation: the write thread may still be running it.)
+                inserter.restore(snapshot)
+                raise
             batches += 1
             if progress is not None:
                 outcome = progress(inserter.rows_written)

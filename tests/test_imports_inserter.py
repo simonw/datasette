@@ -533,6 +533,73 @@ def test_schema_edit_visible_to_other_shared_cache_connections():
     ]
 
 
+def test_rebuild_keeps_indexes_added_by_others():
+    conn = sqlite3.connect(":memory:")
+    inserter = TypedInserter("t", widen="rebuild")
+    inserter.write(conn, [{"a": "1", "b": "1"}])
+    conn.execute("create index t_b on t(b)")
+    inserter.write(conn, [{"a": "x", "b": "2"}])
+    assert [w.method for w in inserter.widenings] == ["rebuild"]
+    assert [r[1] for r in conn.execute("PRAGMA index_list(t)")] == ["t_b"]
+    assert declared(conn) == {"a": "TEXT", "b": "INTEGER"}
+
+
+@pytest.mark.parametrize("widen", STRATEGIES)
+def test_retry_after_rollback(widen):
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t", widen=widen)
+    conn.execute("BEGIN")
+    inserter.write(conn, [{"a": "1"}, {"a": "2"}])
+    conn.execute("COMMIT")
+    chunk = [{"a": "2.5", "b": "x"}, {"a": "N/A", "b": "y"}]
+    # The transaction is rolled back after write() returned
+    snapshot = inserter.snapshot()
+    conn.execute("BEGIN")
+    inserter.write(conn, chunk)
+    conn.execute("ROLLBACK")
+    inserter.restore(snapshot)
+    assert declared(conn) == {"a": "INTEGER"}
+    assert inserter.rows_written == 2
+    assert inserter.widenings == []
+    # Now it can simply be written again
+    conn.execute("BEGIN")
+    inserter.write(conn, chunk)
+    inserter.finish(conn)
+    conn.execute("COMMIT")
+    assert declared(conn) == {"a": "TEXT", "b": "TEXT"}
+    assert conn.execute("select a, b from t order by rowid").fetchall() == [
+        ("1", None),
+        ("2", None),
+        ("2.5", "x"),
+        ("N/A", "y"),
+    ]
+    assert len(inserter.widenings) == 1
+
+
+def test_write_that_raises_leaves_state_unchanged():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t2")
+    conn.execute("BEGIN")
+    inserter.write(conn, [{"a": "1"}])
+    conn.execute("COMMIT")
+    conn.execute(
+        "create trigger no_boom before insert on t2 when new.a = 'boom' "
+        "begin select raise(abort, 'no boom'); end"
+    )
+    conn.execute("BEGIN")
+    with pytest.raises(sqlite3.IntegrityError, match="no boom"):
+        inserter.write(conn, [{"a": "boom", "c": "1"}])
+    conn.execute("ROLLBACK")
+    assert inserter.rows_written == 1
+    assert inserter.types == {"a": "integer"}
+    assert inserter.widenings == []
+    conn.execute("BEGIN")
+    inserter.write(conn, [{"a": "2", "c": "1.5"}])
+    conn.execute("COMMIT")
+    assert declared(conn, "t2") == {"a": "INTEGER", "c": "REAL"}
+    assert conn.execute("select a, c from t2").fetchall() == [(1, None), (2, 1.5)]
+
+
 def test_writer_does_not_commit():
     conn = sqlite3.connect(":memory:", isolation_level=None)
     inserter = TypedInserter("t")

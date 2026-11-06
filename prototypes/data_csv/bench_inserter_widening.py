@@ -173,6 +173,11 @@ METHODS = (
         .table("t")
         .transform(types={"late_text": str}),
     ),
+    ("schema edit + UPDATE int->text (id)", lambda conn: schema_text(conn, "id")),
+    (
+        "own rebuild int->text (id)",
+        lambda conn: own_rebuild(conn, {"id": "TEXT"}, {"id"}),
+    ),
 )
 
 
@@ -255,7 +260,7 @@ def part2(csv_path, row_counts, storages, work, batch_size):
     for rows in row_counts:
         for storage in storages:
             outputs = {}
-            for widen in ("schema", "rebuild", "deferred"):
+            for widen in ("auto", "schema", "rebuild", "deferred"):
                 conn, keepalive, path = open_db(storage, work)
                 conn.isolation_level = None
                 result = insert_rows(
@@ -304,7 +309,7 @@ def part2(csv_path, row_counts, storages, work, batch_size):
 def deferred_loss_demo():
     print()
     print("## Why not defer: values that only fit the wider type")
-    for widen in ("schema", "rebuild", "deferred"):
+    for widen in ("auto", "schema", "rebuild", "deferred"):
         conn = sqlite3.connect(":memory:")
         inserter = TypedInserter("t", widen=widen)
         inserter.write(conn, [{"zip": "10001", "big": "1"}])

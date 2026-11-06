@@ -4,12 +4,20 @@ What happens to people querying a table while import_rows() fills it?
 Runs import_rows() into a Datasette database while reader coroutines run
 queries against the table in a loop through db.execute() (Datasette's
 read thread pool). Counts successful reads and errors by message, and
-whether the import itself failed, for each batch size and widening
-strategy, for a named shared-cache in-memory database (how ``scratch``
-would be opened) and an on-disk WAL database.
+whether the import itself failed, for each batch size and storage:
+
+- ``memory``: named shared-cache in-memory database, opened exactly as
+  Datasette opens ``memory_name`` databases (how ``scratch`` would be)
+- ``memory-ru``: the same with ``PRAGMA read_uncommitted=1`` on the read
+  connections
+- ``memdb``: SQLite's memdb VFS (``file:/name?vfs=memdb``), an in-memory
+  database shared between connections with ordinary file locking
+- ``tempdisk``: ``Database(ds, is_temp_disk=True)``, the temporary WAL file
+  Datasette already uses for its internal database
+- ``disk``: an on-disk WAL database file
 
     uv run python prototypes/data_csv/bench_inserter_concurrency.py \\
-        --file /path/to/events-100k.csv --work /tmp/work
+        --file /path/to/events-100k.csv --work /tmp/work 2>/dev/null
 """
 
 import argparse
@@ -34,15 +42,62 @@ QUERIES = (
 )
 
 
+class ReadUncommittedDatabase(Database):
+    "Shared-cache memory database whose readers don't take table locks."
+
+    def connect(self, write=False):
+        conn = super().connect(write=write)
+        if not write:
+            conn.execute("PRAGMA read_uncommitted=1")
+        return conn
+
+
+class MemdbDatabase(Database):
+    "In-memory database on the memdb VFS, shared by name within the process."
+
+    def __init__(self, ds, memdb_name):
+        super().__init__(ds, is_mutable=True)
+        self.memdb_name = memdb_name
+        self.is_memory = True
+        self._keepalive = sqlite3.connect(
+            f"file:/{memdb_name}?vfs=memdb", uri=True, check_same_thread=False
+        )
+
+    def connect(self, write=False):
+        extra = {"isolation_level": "IMMEDIATE"} if write else {}
+        conn = sqlite3.connect(
+            f"file:/{self.memdb_name}?vfs=memdb",
+            uri=True,
+            check_same_thread=False,
+            **extra,
+        )
+        if not write:
+            conn.execute("PRAGMA query_only=1")
+        self._all_connections.append(conn)
+        return conn
+
+
+def make_database(ds, storage, work):
+    "Returns (db, path to delete afterwards or None)."
+    if storage == "memory":
+        return ds.add_memory_database(uuid.uuid4().hex, name="scratch"), None
+    if storage == "memory-ru":
+        db = ReadUncommittedDatabase(ds, memory_name=uuid.uuid4().hex)
+        return ds.add_database(db, name="scratch"), None
+    if storage == "memdb":
+        db = MemdbDatabase(ds, uuid.uuid4().hex)
+        return ds.add_database(db, name="scratch"), None
+    if storage == "tempdisk":
+        db = Database(ds, is_temp_disk=True)
+        return ds.add_database(db, name="scratch"), None
+    db_path = os.path.join(work, f"conc-{uuid.uuid4().hex[:8]}.db")
+    sqlite3.connect(db_path).execute("PRAGMA journal_mode=WAL").close()
+    return ds.add_database(Database(ds, path=db_path, is_mutable=True)), db_path
+
+
 async def one_run(path, storage, work, batch_size, widen, readers):
     ds = Datasette()
-    db_path = None
-    if storage == "memory":
-        db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
-    else:
-        db_path = os.path.join(work, f"conc-{uuid.uuid4().hex[:8]}.db")
-        sqlite3.connect(db_path).execute("PRAGMA journal_mode=WAL").close()
-        db = ds.add_database(Database(ds, path=db_path, is_mutable=True))
+    db, db_path = make_database(ds, storage, work)
     outcomes = collections.Counter()
     done = asyncio.Event()
 
@@ -92,8 +147,12 @@ def main():
     parser.add_argument(
         "--batch-sizes", type=int, nargs="+", default=[100, 1000, 10000]
     )
-    parser.add_argument("--storage", nargs="+", default=["memory", "disk"])
-    parser.add_argument("--widen", nargs="+", default=["schema", "rebuild"])
+    parser.add_argument(
+        "--storage",
+        nargs="+",
+        default=["memory", "memory-ru", "memdb", "tempdisk", "disk"],
+    )
+    parser.add_argument("--widen", nargs="+", default=["auto"])
     parser.add_argument("--readers", type=int, default=3)
     args = parser.parse_args()
     os.makedirs(args.work, exist_ok=True)

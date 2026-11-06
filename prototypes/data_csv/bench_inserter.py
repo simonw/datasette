@@ -15,9 +15,9 @@ Throughput of the incremental typed inserter.
     uv run python prototypes/data_csv/bench_inserter.py \\
         --file /path/to/events-100k.csv --work /tmp/work
 
-    # one big run with peak RSS:
-    /usr/bin/time -v uv run python prototypes/data_csv/bench_inserter.py \\
-        --file /path/to/big-1gb.csv --work /tmp/work --single disk:1000
+    # one big run through import_rows() + Datasette, printing peak RSS:
+    uv run python prototypes/data_csv/bench_inserter.py \\
+        --file /path/to/big-1gb.csv --work /tmp/work --single disk:1000:async
 """
 
 import argparse
@@ -95,7 +95,7 @@ def run_parse_only(path):
     return count, elapsed
 
 
-def run_insert_rows(path, storage, work, batch_size, widen="schema"):
+def run_insert_rows(path, storage, work, batch_size, widen="auto"):
     conn, cleanup = target(storage, work)
     conn.isolation_level = None
     rows, fp = read_rows(path)
@@ -212,7 +212,8 @@ def main():
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument(
         "--single",
-        help="storage:batch_size - run insert_rows once, print the result",
+        help="storage:batch_size[:async] - run insert_rows (or import_rows"
+        " through Datasette with :async) once and print the result",
     )
     args = parser.parse_args()
     os.makedirs(args.work, exist_ok=True)
@@ -220,13 +221,13 @@ def main():
     print(f"File: {args.file} ({os.path.getsize(args.file) / 1e6:.1f} MB)")
 
     if args.single:
-        storage, batch_size = args.single.split(":")
-        result, elapsed = run_insert_rows(
-            args.file, storage, args.work, int(batch_size)
-        )
+        storage, batch_size, *mode = args.single.split(":")
+        fn = run_import_rows if mode == ["async"] else run_insert_rows
+        result, elapsed = fn(args.file, storage, args.work, int(batch_size))
         print(
-            f"insert_rows {storage} batch_size={batch_size}: {result.rows:,} rows"
+            f"{fn.__name__} {storage} batch_size={batch_size}: {result.rows:,} rows"
             f" in {elapsed:.1f}s = {result.rows / elapsed:,.0f} rows/s"
+            f" ({result.batches:,} committed batches)"
         )
         print("types:", result.types)
         for widening in result.widenings:

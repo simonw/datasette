@@ -113,10 +113,12 @@ inserts the rows into that SQLite file itself with
 
 import argparse
 import base64
+import collections
 import json
 import logging
 import os
 import sys
+import threading
 import time
 
 PROTOCOL_VERSION = 1
@@ -199,12 +201,21 @@ def encode_message(message: dict) -> str:
 
 
 class _Writer:
-    """Buffers protocol lines and writes them to the protocol file."""
+    """
+    Buffers protocol lines and writes them to the protocol file.
+
+    Lines go into a deque, which the loading thread appends to without a
+    lock; :meth:`flush` takes the lines that are there under a lock, so the
+    :class:`_Flusher` thread can flush too without lines being lost,
+    repeated or reordered.
+    """
 
     def __init__(self, out):
         self.out = out
-        self.pending = []
+        self.pending = collections.deque()
         self.pending_bytes = 0
+        self.last_flush = time.monotonic()
+        self._lock = threading.Lock()
 
     def line(self, line):
         self.pending.append(line)
@@ -216,12 +227,44 @@ class _Writer:
         self.line(encode_message(message))
 
     def flush(self):
-        if self.pending:
-            data = ("\n".join(self.pending) + "\n").encode("utf-8", "surrogatepass")
-            self.pending = []
+        with self._lock:
+            pending = self.pending
+            lines = [pending.popleft() for _ in range(len(pending))]
             self.pending_bytes = 0
-            self.out.write(data)
-        self.out.flush()
+            self.last_flush = time.monotonic()
+            if lines:
+                data = ("\n".join(lines) + "\n").encode("utf-8", "surrogatepass")
+                self.out.write(data)
+            self.out.flush()
+
+
+class _Flusher(threading.Thread):
+    """
+    While a loader is slow to produce its next row (or stuck), send the rows
+    it has produced so far, and progress: nothing waits in the buffer for
+    longer than ``interval`` seconds.
+    """
+
+    def __init__(self, writer, streamer, interval):
+        super().__init__(daemon=True, name="import-worker-flusher")
+        self.writer = writer
+        self.streamer = streamer
+        self.interval = max(interval, 0.05)
+        self.stopped = threading.Event()
+
+    def run(self):
+        try:
+            while not self.stopped.wait(self.interval):
+                if time.monotonic() - self.writer.last_flush >= self.interval:
+                    if self.streamer is not None:
+                        self.streamer.progress()
+                    self.writer.flush()
+        except BrokenPipeError:
+            os._exit(EXIT_ERROR)
+
+    def stop(self):
+        self.stopped.set()
+        self.join()
 
 
 class _LogHandler(logging.Handler):
@@ -392,7 +435,7 @@ class RowStreamer:
         encode = _ENCODER.encode
         pending = writer.pending
         interval = self.progress_interval
-        last_progress = last_flush = time.monotonic()
+        last_progress = time.monotonic()
         try:
             for row in rows:
                 if tuple(row) == keys:
@@ -403,7 +446,6 @@ class RowStreamer:
                         columns.extend(new)
                         known.update(new)
                         writer.message({"type": "columns", "add": new})
-                        pending = writer.pending
                     keys = tuple(columns)
                     if tuple(row) == keys:
                         values = list(row.values())
@@ -424,12 +466,9 @@ class RowStreamer:
                         self.progress()
                     if (
                         writer.pending_bytes >= FLUSH_BYTES
-                        or now - last_flush >= interval
+                        or now - writer.last_flush >= interval
                     ):
-                        last_flush = now
                         writer.flush()
-                    # message() may have flushed too, replacing the list
-                    pending = writer.pending
         finally:
             self.count = count
         return count
@@ -483,10 +522,13 @@ def run(args, writer):
             count = _insert_directly(args, writer, schema, rows, position)
         else:
             streamer = RowStreamer(writer, position, args.progress_interval)
+            flusher = _Flusher(writer, streamer, args.progress_interval)
+            flusher.start()
             try:
                 count = streamer.send(rows)
             finally:
                 count = streamer.count
+                flusher.stop()
         cpu, max_rss = _usage()
         writer.message(
             {

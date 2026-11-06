@@ -118,6 +118,8 @@ class ImportProgress:
     #: How far the worker's loader has read into the file, and its size
     bytes: int | None
     size: int | None
+    #: The worker's process ID
+    pid: int | None = None
 
     @property
     def fraction(self):
@@ -448,8 +450,15 @@ class WorkerProcess:
                 pass
 
     def abort(self):
-        "Stop reading and kill the worker now. Safe to call more than once."
+        """
+        Stop reading - rows not yet taken are dropped - and kill the worker
+        now. Safe to call more than once.
+        """
         self.aborted = True
+        self._signal(signal.SIGKILL)
+
+    def kill_now(self):
+        "Kill the worker now, but let the rows already decoded be used."
         self._signal(signal.SIGKILL)
 
     async def stop(self, timeout=2.0):
@@ -554,6 +563,7 @@ class _Import:
                 rows_written=self.rows_written,
                 bytes=self.bytes,
                 size=self.size,
+                pid=self.worker.pid,
             )
         )
         if inspect.isawaitable(outcome):
@@ -598,10 +608,11 @@ class _Import:
             try:
                 messages = await self.worker.read_messages()
             except ProtocolError as ex:
-                await self._handle(ex.messages)
+                # Rows before the bad line are good: insert those
+                self.worker.kill_now()
                 self.protocol_error = ex
                 self.done = True
-                self.worker.abort()
+                await self._handle(ex.messages)
                 return
             if messages is None:
                 self.done = True
@@ -617,10 +628,11 @@ class _Import:
             try:
                 messages = await self.worker.read_messages()
             except ProtocolError as ex:
-                await self._handle(ex.messages)
+                # Rows before the bad line are good: insert those
+                self.worker.kill_now()
                 self.protocol_error = ex
                 self.done = True
-                self.worker.abort()
+                await self._handle(ex.messages)
                 return
             if messages is None:
                 self.done = True

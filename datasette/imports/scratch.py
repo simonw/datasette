@@ -127,6 +127,55 @@ class ScratchDatabase(Database):
                 os.unlink(self.path + suffix)
 
 
+class CreatedSaveDatabase(Database):
+    """
+    A ``--save`` file that this run created, loaded in the background while
+    Datasette serves. If nothing ended up in it - every input failed or was
+    cancelled - it is deleted again when it is closed (when Datasette shuts
+    down, after the imports have been cancelled), as it is when loading
+    before serving fails, instead of leaving an empty database behind.
+    ``on_removed(path)`` is called if it was.
+    """
+
+    def __init__(self, ds, path, *, on_removed=None):
+        super().__init__(ds, path=path, is_mutable=True)
+        self.on_removed = on_removed
+        self.removed = False
+
+    def close(self):
+        already_closed = self._closed
+        super().close()
+        if already_closed or self.removed:
+            return
+        if remove_if_empty(self.path):
+            self.removed = True
+            if self.on_removed is not None:
+                self.on_removed(self.path)
+
+
+def remove_if_empty(path: str) -> bool:
+    """
+    Delete the SQLite database ``path`` (and its -wal, -shm and -journal
+    files) if it has no tables, views, indexes or triggers. Returns True if
+    it did.
+    """
+    uri = pathlib.Path(os.path.abspath(path)).as_uri() + "?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        try:
+            count = conn.execute("select count(*) from sqlite_master").fetchone()[0]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    if count:
+        return False
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        with contextlib.suppress(OSError):
+            os.unlink(path + suffix)
+    return True
+
+
 class MemoryScratchDatabase(Database):
     """
     A shared-cache in-memory scratch database. Not used by default: it

@@ -26,9 +26,15 @@ from datasette.imports.background import (
     TerminalReporter,
     import_registry,
 )
-from datasette.imports.scratch import ReloadSession, ScratchDatabase, TableExists
+from datasette.imports.scratch import (
+    ReloadSession,
+    ScratchDatabase,
+    TableExists,
+    import_writes,
+)
 from datasette.imports.sources import Source, assign_table_names, spool_in_thread
 from datasette.imports.subprocess_import import worker_slots
+from datasette.tokens import TokenRestrictions
 
 CSV = "id,name,score\n1,Cleo,4.5\n2,Pancakes,3\n3,Fido,\n"
 ROOT = {"id": "root"}
@@ -168,6 +174,112 @@ async def test_registry_state_transitions(data_dir):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ["keep", "drop"])
+async def test_cancelling_a_queued_reimport_leaves_the_existing_table_alone(
+    data_dir, on_error
+):
+    # A second import into a table that is there already, cancelled while
+    # it waits for a worker - before it has checked for the table. The
+    # complete table must not be dropped (drop) or called incomplete (keep)
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    slots = worker_slots(ds)
+    try:
+        first = registry.start(db, _source(data_dir / "dogs.csv"))
+        await ds.start_background_tasks()
+        assert await first.wait(10) and first.state == "done"
+        await slots.acquire()
+        await slots.acquire()
+        again = registry.start(db, _source(data_dir / "dogs.csv"), on_error=on_error)
+        await _wait_for(lambda: again.waiting_for == "worker")
+        assert again.cancel()
+        assert await again.wait(5)
+        assert again.state == "cancelled"
+        assert again.existing_table is True
+        assert (again.table_exists, again.created_table, again.rows_kept) == (
+            False,
+            False,
+            0,
+        )
+        assert (await db.execute("select count(*) from dogs")).first()[0] == 3
+        # The table's state is still the first import's
+        assert registry.get("scratch", "dogs") is first
+        assert registry.tables() == [first]
+        assert [job.id for job in registry.imports()] == [first.id, again.id]
+        for path in ("/scratch/dogs", "/", "/scratch"):
+            html = (await ds.client.get(path)).text
+            assert "imports-notice" not in html, path
+            assert "incomplete" not in html, path
+        slots.release()
+        slots.release()
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reimport_does_not_replace_the_tables_import(data_dir):
+    # Uploading the same file twice: the second import fails because the
+    # table exists, and must not make the complete table look incomplete
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    try:
+        first = registry.start(db, _source(data_dir / "dogs.csv"))
+        await ds.start_background_tasks()
+        assert await first.wait(10)
+        again = registry.start(db, _source(data_dir / "cities.json", "dogs"))
+        assert await again.wait(10)
+        assert again.state == "failed" and "already exists" in again.error
+        assert again.existing_table is True and again.rows_kept == 0
+        assert registry.get("scratch", "dogs") is first
+        assert (await db.execute("select count(*) from dogs")).first()[0] == 3
+        assert "the table that was there already was left alone" in again.status()
+        # Nor does one that failed before it got to the table: a download
+        url = "http://127.0.0.1:9/dogs.csv"
+        source = Source(url, "url", url)
+        source.table = "dogs"
+        unreachable = registry.start(db, source)
+        assert await unreachable.wait(10)
+        assert unreachable.state == "failed" and not unreachable.existing_table
+        assert registry.get("scratch", "dogs") is first
+        for path in ("/scratch/dogs", "/", "/scratch"):
+            html = (await ds.client.get(path)).text
+            assert "imports-notice" not in html, path
+        # /-/imports.json is the history: every import, saying what happened
+        data = (await ds.client.get("/-/imports.json")).json()
+        assert [(i["state"], i["existing_table"]) for i in data["imports"]] == [
+            ("done", False),
+            ("failed", True),
+            ("failed", False),
+        ]
+        # The record that says what state the table is in survives pruning
+        # that removes the failed attempts first
+        from datasette.imports import background
+
+        original = background.MAX_FINISHED
+        background.MAX_FINISHED = 1
+        try:
+            registry._prune()
+        finally:
+            background.MAX_FINISHED = original
+        assert registry.imports() == [first]
+
+        # A table that is there without any import having created it: the
+        # failed import is all the registry knows, and still no notice says
+        # the table is incomplete
+        with import_writes():
+            await db.execute_write("create table other (id integer)")
+        other = registry.start(db, _source(data_dir / "dogs.csv", "other"))
+        assert await other.wait(10)
+        assert other.state == "failed" and other.existing_table
+        assert registry.get("scratch", "other") is other
+        for path in ("/scratch/other", "/"):
+            html = (await ds.client.get(path)).text
+            assert "imports-notice" not in html, path
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
 async def test_failure_does_not_affect_other_imports(data_dir):
     ds, db = _scratch_ds()
     registry = import_registry(ds)
@@ -241,10 +353,21 @@ async def test_queued_for_a_worker_slot(data_dir):
         home = (await ds.client.get("/")).text
         assert "queued, waiting for an import worker" in home
         assert "data-poll=" in home
+        await asyncio.sleep(0.6)
         slots.release()
         slots.release()
         assert await registry.wait(20)
         assert [job.state for job in jobs] == ["done", "done"]
+        # Time queued for a worker is not import time
+        for job in jobs:
+            assert job.waited_seconds >= 0.5
+            assert job.seconds < job.waited_seconds
+            assert job.to_dict()["waited_seconds"] >= 0.5
+            line = TerminalReporter().finished_line(job)
+            assert line.endswith(
+                f"in {job.seconds:.2f}s, after waiting "
+                f"{job.waited_seconds:.1f}s for an import worker"
+            )
     finally:
         await ds.invoke_shutdown()
 
@@ -446,6 +569,37 @@ async def test_cancel_redirect_stays_on_this_site(tmp_path):
         await ds.invoke_shutdown()
 
 
+@pytest.mark.parametrize(
+    "next_url,expected",
+    [
+        ("/scratch?_sort=id", "/scratch?_sort=id"),
+        ("/", "/"),
+        ("//evil.example/", "/scratch/slow"),
+        ("/\\evil.example/", "/scratch/slow"),
+        # Browsers drop tabs and newlines before parsing a URL
+        ("/\t/evil.example/x", "/scratch/slow"),
+        ("/\n/evil.example/x", "/scratch/slow"),
+        ("/\r\n/evil.example", "/scratch/slow"),
+        ("/ /evil.example", "/scratch/slow"),
+        ("/\x00/evil.example", "/scratch/slow"),
+        ("https://evil.example/", "/scratch/slow"),
+        ("evil.example", "/scratch/slow"),
+        ("", "/scratch/slow"),
+        (None, "/scratch/slow"),
+    ],
+)
+def test_cancel_redirect_rejects_other_sites(next_url, expected):
+    from datasette.imports.default_hooks import _safe_next
+
+    class Job:
+        database = "scratch"
+        table = "slow"
+
+    ds = Datasette()
+    ds.add_memory_database("scratch")
+    assert _safe_next(ds, next_url, Job()) == expected
+
+
 @pytest.mark.asyncio
 async def test_cancel_action_can_be_granted(tmp_path):
     ds = Datasette(config={"permissions": {"cancel-import": {"id": "alice"}}})
@@ -458,6 +612,59 @@ async def test_cancel_action_can_be_granted(tmp_path):
         alice = await ds.client.post(url, json={}, actor={"id": "alice"})
         assert alice.status_code == 200
         assert job.state == "cancelled"
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
+    # What `datasette create-token root --all cancel-import` makes: it may
+    # cancel, as an insert-row token may insert, but it is not shown what
+    # the import is - that takes view-table too
+    ds, db = _scratch_ds()
+    try:
+        job = await _start_stalled(ds, db, tmp_path)
+        token = await ds.create_token(
+            "root", restrictions=TokenRestrictions().allow_all("cancel-import")
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+        # It cannot list imports: that takes view-instance and view-table
+        response = await ds.client.get("/-/imports.json", headers=headers)
+        assert response.status_code == 403
+        response = await ds.client.post(
+            "/scratch/slow/-/cancel-import", json={}, headers=headers
+        )
+        assert response.status_code == 200, response.text
+        assert response.json() == {"ok": True}
+        assert job.state == "cancelled"
+
+        # With view-table (and view-instance, to list imports) it sees them
+        job2 = await _start_stalled(ds, db, tmp_path, table="slow2")
+        restrictions = TokenRestrictions()
+        for action in ("cancel-import", "view-table", "view-instance"):
+            restrictions = restrictions.allow_all(action)
+        token = await ds.create_token("root", restrictions=restrictions)
+        headers = {"Authorization": f"Bearer {token}"}
+        listed = (await ds.client.get("/-/imports.json", headers=headers)).json()
+        assert [i["table"] for i in listed["imports"]] == ["slow", "slow2"]
+        response = await ds.client.post(
+            "/scratch/slow2/-/cancel-import", json={}, headers=headers
+        )
+        assert response.status_code == 200
+        assert response.json()["import"]["state"] == "cancelled"
+        assert job2.state == "cancelled"
+        # Without cancel-import: 403 if it can see the import, 404 if not
+        token = await ds.create_token(
+            "root", restrictions=TokenRestrictions().allow_all("view-table")
+        )
+        job3 = await _start_stalled(ds, db, tmp_path, table="slow3")
+        response = await ds.client.post(
+            "/scratch/slow3/-/cancel-import",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+        assert job3.active
     finally:
         await ds.invoke_shutdown()
 
@@ -564,6 +771,80 @@ async def test_table_not_created_yet_says_so(data_dir):
         slots.release()
         assert await job.wait(10)
         assert (await ds.client.get("/scratch/dogs")).status_code == 200
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_request_that_lost_the_race_with_the_first_rows(tmp_path):
+    """
+    resolve_table() looks for the table in sqlite_master. A request that
+    looked just before the first chunk was committed gets TableNotFound;
+    by the time the 404 is made the table is there. A page is redirected to
+    itself, so the browser shows the table; JSON says to try again.
+    """
+    from datasette.imports.default_hooks import handle_exception
+    from datasette.utils.asgi import Request, TableNotFound
+
+    ds, db = _scratch_ds()
+    try:
+        await _start_stalled(ds, db, tmp_path)
+
+        async def not_found(path):
+            inner = handle_exception(
+                datasette=ds,
+                request=Request.fake(path),
+                exception=TableNotFound("scratch", "slow"),
+            )
+            return await inner()
+
+        response = await not_found("/scratch/slow?_sort=n")
+        assert response.status == 307
+        assert response.headers["Location"] == "/scratch/slow?_sort=n"
+        response = await not_found("/scratch/slow.json")
+        assert response.status == 404
+        data = json.loads(response.body)
+        assert data["error"] == (
+            "Table slow was created while this request was being answered: " "try again"
+        )
+        assert data["import"]["state"] == "importing"
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_lists_a_new_table_without_a_request(tmp_path):
+    """
+    The homepage and database page list tables from Datasette's catalog.
+    The import refreshes it when its first rows land - and tries again if
+    another refresh was running then, because that one may have read the
+    schema before the table existed.
+    """
+    ds, db = _scratch_ds()
+    internal = ds.get_internal_database()
+
+    async def listed():
+        sql = (
+            "select 1 from catalog_tables where database_name = 'scratch' "
+            "and table_name = 'slow'"
+        )
+        return (await internal.execute(sql)).first() is not None
+
+    try:
+        await ds.invoke_startup()
+        await ds.refresh_schemas(force=True)
+        # Another refresh is running
+        await ds._refresh_schemas_lock.acquire()
+        try:
+            await _start_stalled(ds, db, tmp_path)
+            await asyncio.sleep(0.2)
+            assert not await listed()
+        finally:
+            ds._refresh_schemas_lock.release()
+        deadline = time.monotonic() + 2
+        while not await listed():
+            assert time.monotonic() < deadline, "the catalog never listed it"
+            await asyncio.sleep(0.02)
     finally:
         await ds.invoke_shutdown()
 
@@ -768,6 +1049,28 @@ async def test_cli_save_drops_failed_tables_and_uses_wal(data_dir):
 
 
 @pytest.mark.asyncio
+async def test_cli_save_file_with_nothing_imported_is_removed_at_shutdown(
+    data_dir, capsys
+):
+    # Every input failed: the file this run created is not left behind
+    # empty, as it was not when loading before serving failed
+    save = data_dir / "fail.db"
+    ds = ds_from_cli(
+        [str(data_dir / "bad.ndjson"), "--save", str(save)], background_imports=True
+    )
+    try:
+        await ds.client.get("/")
+        assert await import_registry(ds).wait(20)
+        assert import_registry(ds).get("fail", "bad").state == "failed"
+        # Still there while Datasette serves it
+        assert save.exists()
+    finally:
+        await ds.invoke_shutdown()
+    assert sorted(p.name for p in data_dir.iterdir() if p.name.startswith("fail")) == []
+    assert f"Removed {save}: nothing was imported into it" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
 async def test_cli_reload_session_keeps_finished_tables(data_dir, monkeypatch):
     import hupper
 
@@ -930,8 +1233,13 @@ def test_server_answers_while_stdin_is_still_arriving(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_ctrl_c_while_reading_stdin(tmp_path):
-    "Standard input that never ends does not stop Ctrl+C."
+@pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
+def test_ctrl_c_while_reading_stdin(tmp_path, sig):
+    """
+    Standard input that never ends does not stop Ctrl+C - or SIGTERM,
+    after which the process ends without running atexit functions, so the
+    shutdown itself must leave nothing in TMPDIR.
+    """
     port = _free_port()
     env = dict(os.environ, TMPDIR=str(tmp_path), DATASETTE_SECRET="not_a_secret")
     process = subprocess.Popen(
@@ -947,11 +1255,17 @@ def test_ctrl_c_while_reading_stdin(tmp_path):
         start = time.monotonic()
         while True:
             with contextlib.suppress(OSError):
-                _get(f"http://127.0.0.1:{port}/-/imports.json", timeout=1)
-                break
+                _, body = _get(f"http://127.0.0.1:{port}/-/imports.json", timeout=1)
+                if json.loads(body)["imports"][0]["downloaded"]:
+                    break
             assert time.monotonic() - start < 20
             time.sleep(0.05)
-        process.send_signal(signal.SIGINT)
+        # The scratch database, and the directory with the import's copy of
+        # standard input
+        names = [p.name for p in tmp_path.iterdir()]
+        assert any(name.startswith("datasette-scratch-") for name in names)
+        assert any(name.startswith("datasette-import-") for name in names)
+        process.send_signal(sig)
         _, stderr = process.communicate(timeout=15)
     finally:
         if process.poll() is None:

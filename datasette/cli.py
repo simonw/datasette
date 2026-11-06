@@ -35,6 +35,7 @@ from .imports.scratch import (
     DEFAULT_BATCH_SIZE,
     SAVE_BATCH_SIZE,
     SCRATCH_NAME,
+    CreatedSaveDatabase,
     LoadedTable,
     MemoryScratchDatabase,
     ReloadSession,
@@ -1305,6 +1306,12 @@ def _prepare_import(
 
     if session:
         workdir = session.directory
+    elif background:
+        # Nothing is fetched here: each background import that downloads or
+        # copies its input does so into a directory of its own, removed when
+        # the import ends - also when Datasette is stopped with SIGTERM,
+        # which ends the process without running atexit functions
+        workdir = None
     else:
         workdir = tempfile.mkdtemp(prefix="datasette-import-")
         atexit.register(remove_tree, workdir)
@@ -1393,7 +1400,19 @@ def _prepare_import(
             ),
             None,
         )
-        if db is None:
+        if db is None and created_file and background:
+            # Deleted again at shutdown if every input failed or was
+            # cancelled, as it is when loading before serving fails
+            db = ds.add_database(
+                CreatedSaveDatabase(
+                    ds,
+                    save,
+                    on_removed=lambda path: click.echo(
+                        f"Removed {path}: nothing was imported into it", err=True
+                    ),
+                )
+            )
+        elif db is None:
             db = ds.add_database(Database(ds, path=save, is_mutable=True))
     else:
         if os.environ.get("DATASETTE_SCRATCH_STORAGE") == "memory":

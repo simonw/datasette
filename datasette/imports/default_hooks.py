@@ -29,10 +29,14 @@ Background imports (:mod:`datasette.imports.background`):
 - ``POST /DATABASE/TABLE/-/cancel-import`` cancels one, for actors with the
   ``cancel-import`` action - nobody but root by default. It changes what
   ends up in a table, so like other actions that change data it has to be
-  granted. CSRF protection is Datasette's usual ``Sec-Fetch-Site`` /
-  ``Origin`` check on every POST.
+  granted, and like ``insert-row`` it is enough on its own (a token made
+  with ``create-token --all cancel-import`` can cancel); the details of
+  the import in the response need ``view-table`` too. CSRF protection is
+  Datasette's usual ``Sec-Fetch-Site`` / ``Origin`` check on every POST.
 - A request for a table that an import has not created yet (or never
-  will, because it failed) gets a 404 that says so, with the progress.
+  will, because it failed) gets a 404 that says so, with the progress. A
+  request that looked for the table just before the import's first rows
+  were committed is told to try again: a page is redirected to itself.
 """
 
 import json
@@ -337,12 +341,20 @@ _POLL_SCRIPT = (
 )
 
 
+def _incomplete(job):
+    "A failed or cancelled import whose partial table is still there."
+    return job.state in ("failed", "cancelled") and job.table_exists
+
+
 def _shown(jobs):
     """
-    Running imports, and failed or cancelled ones (their tables are
-    incomplete). Finished ones too while others run, so the list does not
-    jump about.
+    Of the imports that say what state each table is in
+    (``registry.tables()``): running imports, and failed or cancelled ones
+    - their tables are incomplete, or were never created. Finished ones too
+    while others run, so the list does not jump about. Never an import that
+    failed because its table was there already: it did nothing to it.
     """
+    jobs = [job for job in jobs if not job.existing_table]
     if any(job.active for job in jobs):
         return [job for job in jobs if job.table_exists or job.state != "done"]
     return [job for job in jobs if job.state in ("failed", "cancelled")]
@@ -355,7 +367,7 @@ def top_homepage(datasette, request):
         return None
 
     async def inner():
-        jobs = _shown(await _visible(datasette, request.actor, registry.imports()))
+        jobs = _shown(await _visible(datasette, request.actor, registry.tables()))
         if not jobs:
             return None
         return await _render_notice(
@@ -369,7 +381,10 @@ def top_homepage(datasette, request):
 def top_table(datasette, request, database, table):
     registry = _registry(datasette)
     job = registry.get(database, table) if registry is not None else None
-    if job is None or job.state == "done":
+    # Only an import whose rows these are: one still running, or one that
+    # failed or was cancelled and left its partial table. Not one that
+    # failed because this table was there already, or created no table
+    if job is None or not (job.active or _incomplete(job)):
         return None
 
     async def inner():
@@ -401,7 +416,7 @@ def top_database(datasette, request, database):
     if db is None:
         return None
     registry = _registry(datasette)
-    jobs = registry.imports(database) if registry is not None else []
+    jobs = registry.tables(database) if registry is not None else []
     if not jobs and not (is_scratch(db) and db.save_command):
         return None
 
@@ -479,7 +494,7 @@ def handle_exception(datasette, request, exception):
     if registry is None:
         return None
     job = registry.get(exception.database_name, exception.table)
-    if job is None or (job.table_exists and not job.active):
+    if job is None or job.existing_table or (job.table_exists and not job.active):
         return None
 
     async def inner():
@@ -487,11 +502,28 @@ def handle_exception(datasette, request, exception):
 
         if not (await _visible(datasette, request.actor, [job])):
             return None
-        if job.active:
+        is_json = request.path.endswith(".json")
+        db = datasette.databases.get(job.database)
+        if job.table_exists and db is not None and await db.table_exists(job.table):
+            # A race, not a stale read: resolve_table() looked in
+            # sqlite_master just before the import's first chunk was
+            # committed, and the table is there now. A page asks the
+            # browser to try again; JSON says what happened
+            if not is_json and request.method in ("GET", "HEAD"):
+                return Response.redirect(
+                    request.full_path,
+                    status=307,
+                    headers={"cache-control": "no-store"},
+                )
+            message = (
+                f"Table {job.table} was created while this request was being "
+                "answered: try again"
+            )
+        elif job.active:
             message = f"Table {job.table} is not ready yet: {job.status()}"
         else:
             message = f"Table {job.table} was not created: {job.status()}"
-        if request.path.endswith(".json"):
+        if is_json:
             return Response.json(
                 {
                     "ok": False,
@@ -623,12 +655,26 @@ async def cancel_import_view(datasette, request):
         )
     registry = _registry(datasette)
     job = registry.get(database, table) if registry is not None else None
-    if job is None or not await _visible(datasette, request.actor, [job]):
+    if job is None:
         return error(f"No import into {database}.{table}", 404)
-    if not await _can_cancel(datasette, request.actor, job):
+    # cancel-import on its own is enough to cancel, as insert-row is enough
+    # to insert rows (a token made with --all cancel-import works). What
+    # the import is - its source, rows, error - is only shown to actors who
+    # may also view the table
+    can_cancel = await _can_cancel(datasette, request.actor, job)
+    visible = bool(await _visible(datasette, request.actor, [job]))
+    if not can_cancel:
+        if not visible:
+            return error(f"No import into {database}.{table}", 404)
         return error(
             "Permission denied: you cannot cancel imports into this table", 403
         )
+
+    async def details():
+        if not visible:
+            return {}
+        return {"import": await _import_data(datasette, request, job)}
+
     next_url = None
     if is_form:
         next_url = (await request.post_vars()).get("next")
@@ -661,22 +707,31 @@ async def cancel_import_view(datasette, request):
             {
                 "ok": False,
                 "errors": [f"The import into {table} is not running ({job.state})"],
-                "import": await _import_data(datasette, request, job),
+                **(await details()),
             },
             status=409,
         )
-    return Response.json(
-        {"ok": True, "import": await _import_data(datasette, request, job)}
-    )
+    return Response.json({"ok": True, **(await details())})
 
 
 def _safe_next(datasette, next_url, job):
-    # Only a path on this site: never //evil.example or https://...
+    """
+    Where a cancel form redirects to: ``next`` if it is a path on this site,
+    otherwise the table. Never ``//evil.example`` or ``https://...``, and
+    nothing with whitespace or control characters in it - browsers drop a
+    tab or newline before parsing, so ``/<TAB>/evil.example`` would be
+    ``//evil.example``.
+    """
+    import urllib.parse
+
     if (
         next_url
         and next_url.startswith("/")
         and not next_url.startswith("//")
         and "\\" not in next_url
+        and not any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in next_url)
     ):
-        return next_url
+        parts = urllib.parse.urlsplit(next_url)
+        if not parts.scheme and not parts.netloc:
+            return next_url
     return datasette.urls.table(job.database, job.table)

@@ -3,16 +3,24 @@ Background imports: loading a file, a URL or standard input into a new table
 while Datasette serves requests.
 
 Every import is a :class:`TableImport` in the Datasette instance's
-:class:`ImportRegistry` (:func:`import_registry`), keyed by database and
-table, and runs as a task of its own under ``datasette.add_background_task()``
-called ``import DATABASE.TABLE``, so it is listed in ``/-/tasks``. The
-registry is the single source of truth for the progress notices on the
-homepage, database and table pages, for ``/-/imports.json``, for the lines
-the command line prints, and for cancelling. The command line registers one
-import per input; an upload endpoint can do the same with the file it saved::
+:class:`ImportRegistry` (:func:`import_registry`) and runs as a task of its
+own under ``datasette.add_background_task()`` called ``import
+DATABASE.TABLE``, so it is listed in ``/-/tasks``. The registry is the single
+source of truth for the progress notices on the homepage, database and table
+pages, for ``/-/imports.json``, for the lines the command line prints, and
+for cancelling. It keeps every import in the order they were started, and
+:meth:`ImportRegistry.get` looks one up by database and table: the import
+that says what state that table is in. The command line registers one import
+per input; an upload endpoint can do the same with the file it saved::
 
     source = Source(name, "file", path, path=path, temporary=True, table=table)
     job = import_registry(datasette).start(db, source, title=name)
+
+An import into a table that exists already fails (``existing_table`` is
+then True) and leaves that table alone; it does not replace the import that
+created the table as the one :meth:`~ImportRegistry.get` returns, so a
+second upload of the same file cannot make a complete table look
+incomplete.
 
 Life of an import::
 
@@ -40,7 +48,10 @@ table holds exactly the first ``rows_kept`` rows of the input - and the
 import stays in the registry as failed or cancelled, which the pages show as
 an "incomplete table" notice. ``"drop"`` (what the command line uses for a
 ``--save`` file, which has nowhere to record that a table is incomplete)
-drops the table. Either way only a table this import created is touched.
+drops the table. Either way only a table this import created is touched:
+a table that was there before the import checked for it is never dropped,
+counted or labelled incomplete, even if the import is cancelled while it
+waits for a worker.
 
 The names of the tables being imported are reserved in this process with
 :func:`~datasette.imports.scratch.reserve_table` from :meth:`ImportRegistry.start`
@@ -170,10 +181,25 @@ class TableImport:
         self._started = None
         self._import_started = None
         self._finished = None
+        #: Seconds spent queued for a worker slot (not counted in seconds)
+        self.waited = 0.0
+        self._waiting_since = None
         #: The error message, for a failed import
         self.error = None
         #: Whether the table exists: created by this import and not dropped
         self.table_exists = False
+        #: Whether this import created the table (it may have dropped it
+        #: again: on_error="drop")
+        self.created_table = False
+        #: Whether a table of that name was there before this import
+        #: checked: the import then failed (or was cancelled) and left that
+        #: table alone, so it says nothing about the table's state
+        self.existing_table = False
+        # Set once the import has checked that the table does not exist:
+        # from then on (the name being reserved) a table of that name in
+        # scratch can only be this import's
+        self._checked = False
+        self._catalog_task = None
         #: True once every row of the input is in the table
         self.complete = False
         self.widenings = []
@@ -254,14 +280,29 @@ class TableImport:
 
     @property
     def seconds(self) -> float | None:
-        "Seconds since the import started, or that it took."
+        """
+        Seconds the import has been working, or took: downloading and
+        importing, not counting time queued for a worker slot
+        (:attr:`waited_seconds`).
+        """
         if self._started is None:
             return None
         end = self._finished if self._finished is not None else time.monotonic()
-        return end - self._started
+        return max(end - self._started - self.waited_seconds, 0.0)
+
+    @property
+    def waited_seconds(self) -> float:
+        "Seconds spent queued for a worker slot so far."
+        waited = self.waited
+        if self._waiting_since is not None:
+            end = self._finished if self._finished is not None else time.monotonic()
+            waited += end - self._waiting_since
+        return waited
 
     def _outcome(self) -> str:
         kept = self.rows_kept or 0
+        if self.existing_table:
+            return "the table that was there already was left alone"
         if self.on_error == "drop":
             return "the table was removed" if self.rows else "no table was created"
         if kept:
@@ -351,10 +392,13 @@ class TableImport:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "seconds": (round(self.seconds, 3) if self.seconds is not None else None),
+            "waited_seconds": round(self.waited_seconds, 3),
             "error": self.error,
             "on_error": self.on_error,
             "complete": self.complete,
             "table_exists": self.table_exists,
+            "created_table": self.created_table,
+            "existing_table": self.existing_table,
             "rows_kept": self.rows_kept,
             "widenings": [
                 {
@@ -450,24 +494,50 @@ class TableImport:
         created = bool(progress.rows_written) and not self.table_exists
         if created:
             self.table_exists = True
+            self.created_table = True
         self.registry._notify(self, "progress")
-        if created:
-            # The first chunk has created the table. Datasette refreshes its
-            # catalog of tables at most once a second, as requests arrive:
-            # until then the table page would be a 404
-            return self._refresh_catalog()
-        return None
+        if created and self._catalog_task is None:
+            # The first chunk has created the table. Table pages find it at
+            # once (resolve_table() looks in sqlite_master), but the lists
+            # of tables on the homepage and the database page come from
+            # Datasette's catalog, refreshed at most once a second as
+            # requests arrive. Refresh it now, without holding up the rows
+            self._catalog_task = asyncio.ensure_future(self._refresh_catalog())
 
-    async def _refresh_catalog(self):
+    async def _refresh_catalog(self, attempts=20, delay=0.05):
+        """
+        Refresh Datasette's catalog until it lists this table, trying at
+        most ``attempts`` times: ``refresh_schemas(force=True)`` returns at
+        once, without refreshing, while another refresh runs - and that one
+        may have read the schema before the table was created.
+        """
         datasette = self.registry.datasette
         if datasette is None:
             return
         try:
-            await datasette.refresh_schemas(force=True)
+            internal = datasette.get_internal_database()
+            for _ in range(attempts):
+                await datasette.refresh_schemas(force=True)
+                listed = (
+                    await internal.execute(
+                        "select 1 from catalog_tables where database_name = ? "
+                        "and table_name = ?",
+                        [self.database, self.table],
+                    )
+                ).first()
+                if listed is not None:
+                    return
+                await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.exception("Could not refresh the schema for %r", self)
 
     def _finish(self, state, error=None):
+        if self._waiting_since is not None:
+            # Cancelled while queued for a worker slot
+            self.waited += time.monotonic() - self._waiting_since
+            self._waiting_since = None
         self.state = state
         self.waiting_for = None
         self.error = error
@@ -486,6 +556,8 @@ class TableImport:
         if not self._released:
             self._released = True
             release_table(self.db, self.table)
+        if self._catalog_task is not None and not self._catalog_task.done():
+            self._catalog_task.cancel()
         source = self.source
         if source.temporary and (fetched_here or self._delete_input):
             remove_temporary([source])
@@ -522,20 +594,25 @@ class TableImport:
                 fetched_here = True
                 if copy and self._on_fetched is not None:
                     self._on_fetched(self)
+            self._waiting_since = time.monotonic()
             self._set_state("queued", "worker")
             # Waiters get a slot in the order they asked, so local files
             # load in the order they were given: nothing above waits for
             # one. Sniffing and the check for an existing table wait for a
             # thread, so they come after
             async with worker_slots(datasette):
+                self.waited += time.monotonic() - self._waiting_since
+                self._waiting_since = None
                 if source.loader is None:
                     loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, sniff, source, self._loaders)
                 self.loader = source.loader.name
                 if await _table_taken(db, self.table):
+                    self.existing_table = True
                     raise TableExists(
                         f"Table {self.table!r} already exists in {db.name}"
                     )
+                self._checked = True
                 self._set_state("importing")
                 self._import_started = time.monotonic()
                 with import_writes():
@@ -589,9 +666,12 @@ class TableImport:
         self.table_exists = result.table_exists
         if result.table_exists:
             self.rows = result.rows
+            self.created_table = True
         elif result.import_result is not None:
             # Dropped (on_error="drop"): say how many rows went with it
             self.rows = result.import_result.rows
+            if self.rows:
+                self.created_table = True
         self.warnings = list(result.warnings)
         if result.import_result is not None:
             self.widenings = list(result.import_result.widenings)
@@ -611,19 +691,27 @@ class TableImport:
         writes by the time it re-raises (its clean-up writes queue behind
         them), so this sees the final state.
 
-        A cancellation can arrive while the chunk that creates the table is
-        being written, before any progress was reported. In scratch -
-        where only imports write, and this name is reserved - a table that
-        exists by then is this import's own. Anywhere else it is left alone
-        unless this import is known to have written to it.
+        A table that was there before this import checked for one (it was
+        cancelled while queued for a worker, say) is never this import's:
+        it is left alone, and ``existing_table`` says so. A cancellation can
+        also arrive while the chunk that creates the table is being
+        written, before any progress was reported. In scratch - where only
+        imports write, and this name is reserved - a table that exists by
+        then, after the check, is this import's own. Anywhere else it is
+        left alone unless this import is known to have written to it.
         """
         db = self.db
         try:
             exists = await _table_taken(db, self.table)
-            ours = exists and (self.rows > 0 or self.table_exists or is_scratch(db))
+            ours = exists and (
+                self.rows > 0 or self.table_exists or (self._checked and is_scratch(db))
+            )
             if not ours:
+                if exists and not self._checked:
+                    self.existing_table = True
                 self.table_exists = False
                 return
+            self.created_table = True
             if self.on_error == "drop":
                 await drop_table(db, self.table)
                 self.table_exists = False
@@ -662,16 +750,16 @@ def _title(source: Source) -> str:
 
 class ImportRegistry:
     """
-    Every background import for one Datasette instance, keyed by database
-    and table: get it with :func:`import_registry`. Holds the latest import
-    for each table, running or finished, until it is replaced by a new
-    import of the same table or there are more than ``MAX_FINISHED``
-    finished ones.
+    Every background import for one Datasette instance: get it with
+    :func:`import_registry`. Keeps the imports in the order they were
+    started - every running one, and up to ``MAX_FINISHED`` finished ones -
+    and finds the one that says what state a table is in with :meth:`get`.
     """
 
     def __init__(self, datasette):
         self._datasette = weakref.ref(datasette)
-        self._imports: dict[tuple, TableImport] = {}
+        # By id, in the order they were started
+        self._jobs: dict[str, TableImport] = {}
         self._listeners: list[Callable] = []
         self._ids = itertools.count(1)
         #: Goes up by one on every change, for cheap "has anything changed"
@@ -686,22 +774,88 @@ class ImportRegistry:
         # SQLite table names are case-insensitive
         return (database, table.lower())
 
-    def get(self, database: str, table: str) -> TableImport | None:
-        job = self._imports.get(self._key(database, table))
-        if job is not None:
-            job._reconcile()
-        return job
-
-    def imports(self, database: str | None = None) -> list[TableImport]:
-        "Imports in the order they were started, optionally for one database."
+    def _for(self, database: str, table: str) -> list[TableImport]:
+        key = self._key(database, table)
         jobs = [
             job
-            for job in self._imports.values()
-            if database is None or job.database == database
+            for job in self._jobs.values()
+            if self._key(job.database, job.table) == key
         ]
         for job in jobs:
             job._reconcile()
         return jobs
+
+    @staticmethod
+    def _current(jobs: list[TableImport]) -> TableImport | None:
+        """
+        Of the imports into one table (oldest first), the one that says
+        what state it is in:
+
+        1. the one running;
+        2. else the latest that got as far as the table - past the check
+           that it did not exist - if its rows are still there;
+        3. else the latest that did not find the table there already. An
+           import that failed to download, or was cancelled while queued,
+           never touched the table, so it only says something about the
+           table if no earlier import's rows are in it;
+        4. else the latest.
+        """
+        if not jobs:
+            return None
+        for job in reversed(jobs):
+            if job.active:
+                return job
+        reached = next(
+            (job for job in reversed(jobs) if job._checked or job.created_table),
+            None,
+        )
+        if reached is not None and reached.table_exists:
+            return reached
+        for job in reversed(jobs):
+            if not job.existing_table:
+                return job
+        return jobs[-1]
+
+    def get(self, database: str, table: str) -> TableImport | None:
+        """
+        The import that says what state ``table`` (case-insensitive) is in:
+        the import running into it, if there is one; otherwise the latest
+        to finish - except that an import that never touched the table (it
+        failed because the table was there already, failed to download, or
+        was cancelled while queued) does not replace an earlier import
+        whose rows are in the table. ``None`` if no import into that table
+        is known.
+        """
+        return self._current(self._for(database, table))
+
+    def imports(
+        self, database: str | None = None, table: str | None = None
+    ) -> list[TableImport]:
+        """
+        Every import in the order they were started, optionally only those
+        into one database or one table - including imports that failed
+        because their table existed already.
+        """
+        jobs = [
+            job
+            for job in self._jobs.values()
+            if (database is None or job.database == database)
+            and (table is None or job.table.lower() == table.lower())
+        ]
+        for job in jobs:
+            job._reconcile()
+        return jobs
+
+    def tables(self, database: str | None = None) -> list[TableImport]:
+        """
+        One import per table, as :meth:`get` would return it, in the order
+        those imports were started: what the progress notices show.
+        """
+        by_table: dict[tuple, list[TableImport]] = {}
+        for job in self.imports(database):
+            by_table.setdefault(self._key(job.database, job.table), []).append(job)
+        current = [self._current(jobs) for jobs in by_table.values()]
+        return sorted(current, key=lambda job: int(job.id))
 
     def active(self, database: str | None = None) -> list[TableImport]:
         return [job for job in self.imports(database) if job.active]
@@ -754,12 +908,14 @@ class ImportRegistry:
 
         Raises :class:`~datasette.imports.scratch.TableExists` if that table
         is being imported already. A table that exists already is found
-        when the task runs: the import then fails.
+        when the task runs: the import then fails with ``existing_table``
+        set, and leaves the table - and what :meth:`get` says about it -
+        alone.
 
         :param source: what to import. ``source.path`` is the file to load;
             if it is ``None`` the source is fetched first (a URL downloaded,
             standard input or a pipe copied) into ``workdir``, or a private
-            temporary directory
+            temporary directory removed when the import ends
         :param title: how to refer to the source, by default the argument
             as it was typed with any credentials in a URL redacted
         :param on_error: ``"keep"`` or ``"drop"`` the rows imported before a
@@ -781,9 +937,7 @@ class ImportRegistry:
         if not source.table:
             raise ValueError("source.table is not set: see assign_table_names()")
         datasette = self.datasette
-        key = self._key(db.name, source.table)
-        current = self._imports.get(key)
-        if current is not None and current.active:
+        if any(job.active for job in self._for(db.name, source.table)):
             raise TableExists(
                 f"Table {source.table!r} is already being imported into {db.name}"
             )
@@ -805,15 +959,14 @@ class ImportRegistry:
             on_finish=on_finish,
             worker_options=worker_options,
         )
-        self._imports.pop(key, None)
-        self._imports[key] = job
+        self._jobs[job.id] = job
         self._prune()
         try:
             job.task = datasette.add_background_task(
                 job._run, name=f"import {db.name}.{source.table}"
             )
         except BaseException:
-            self._imports.pop(key, None)
+            self._jobs.pop(job.id, None)
             job._cleanup(fetched_here=False)
             raise
         if job.task.task is not None:
@@ -824,18 +977,30 @@ class ImportRegistry:
         return job
 
     def _prune(self):
-        finished = [job for job in self._imports.values() if not job.active]
-        for job in finished[: max(0, len(finished) - MAX_FINISHED)]:
-            self._imports.pop(self._key(job.database, job.table), None)
+        """
+        Forget the oldest finished imports beyond ``MAX_FINISHED``: first
+        those that no longer say what state their table is in (a later
+        import into it did), then the others.
+        """
+        finished = [job for job in self._jobs.values() if not job.active]
+        excess = len(finished) - MAX_FINISHED
+        if excess <= 0:
+            return
+        current = {job.id for job in self.tables()}
+        order = [job for job in finished if job.id not in current] + [
+            job for job in finished if job.id in current
+        ]
+        for job in order[:excess]:
+            self._jobs.pop(job.id, None)
 
     def forget(self, database: str, table: str) -> bool:
-        "Remove a finished import from the registry."
-        job = self.get(database, table)
-        if job is None or job.active:
-            return False
-        del self._imports[self._key(database, table)]
-        self.version += 1
-        return True
+        "Remove the finished imports into a table from the registry."
+        jobs = [job for job in self._for(database, table) if not job.active]
+        for job in jobs:
+            self._jobs.pop(job.id, None)
+        if jobs:
+            self.version += 1
+        return bool(jobs)
 
     def cancel(self, database: str, table: str) -> TableImport | None:
         "Cancel the import into that table, if one is running."
@@ -991,6 +1156,10 @@ class TerminalReporter:
                 f"Loaded {_plural(job.rows, 'row')} from {job.title} "
                 f"({job.loader}) into {where} in {job.seconds:.2f}s"
             )
+            if job.waited_seconds >= 0.5:
+                line += (
+                    f", after waiting {job.waited_seconds:.1f}s for an import " "worker"
+                )
             for widening in job.widenings:
                 line += (
                     f"\n  column {widening.column} changed from "

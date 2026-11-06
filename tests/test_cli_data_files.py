@@ -851,6 +851,28 @@ def test_get_save_interrupted_part_way_cleans_up(tmp_path, big_csv, sig, existin
     assert list(temp.iterdir()) == []
 
 
+def test_get_removes_a_new_save_file_with_nothing_in_it(data_dir):
+    # As serve mode does: an input with no rows creates no table, so the
+    # file this run created would be an empty database
+    (data_dir / "empty.json").write_text("[]")
+    save = data_dir / "e.db"
+    result = run(
+        [str(data_dir / "empty.json"), "--save", str(save), "--get", "/-/versions.json"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "empty.json has no rows, so no table was created" in result.stderr
+    assert f"Removed {save}: nothing was imported into it" in result.stderr
+    assert sorted(p.name for p in data_dir.glob("e.db*")) == []
+    # A file that was there before stays, empty or not
+    sqlite3.connect(save).execute("vacuum").connection.close()
+    result = run(
+        [str(data_dir / "empty.json"), "--save", str(save), "--get", "/-/versions.json"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Removed" not in result.stderr
+    assert save.exists()
+
+
 def test_save_failing_before_load_creates_nothing(data_dir):
     save = data_dir / "never.db"
     (data_dir / "empty.csv").write_text("")

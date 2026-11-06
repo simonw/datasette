@@ -48,6 +48,7 @@ from .imports.scratch import (
     is_scratch,
     load_sources,
     plan_loads,
+    remove_if_empty,
     sniff,
 )
 from .imports.sources import (
@@ -845,6 +846,18 @@ def serve(
                 click.echo(response.text)
         else:
             click.echo(response.text)
+
+        if data_import and data_import.created_file:
+            # A --save file this run created that nothing was loaded into
+            # (every input had no rows) goes again, as in serve mode. Not
+            # before the request, which may have been about it
+            data_import.db.close()
+            if remove_if_empty(data_import.created_file):
+                click.echo(
+                    f"Removed {data_import.created_file}: nothing was "
+                    "imported into it",
+                    err=True,
+                )
 
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)

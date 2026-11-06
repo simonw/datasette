@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block body_class %}imports{% endblock %}
+
+{% block crumbs %}
+{% if database %}{{ crumbs.nav(request=request, database=database) }}{% else %}{{ crumbs.nav(request=request) }}{% endif %}
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if notice %}{{ notice }}{% else %}<p>Nothing has been imported.</p>{% endif %}
+
+{% if imports_url %}<p><a href="{{ imports_url }}">All imports</a></p>{% endif %}
+{% endblock %}

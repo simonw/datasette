@@ -1,8 +1,10 @@
 import sqlite3
 import urllib
 
+import pytest
 from click.testing import CliRunner
 
+from datasette.app import Datasette
 from datasette.cli import cli
 
 
@@ -77,3 +79,36 @@ def test_crossdb_attached_database_list_display(
         '<li><strong>extra database</strong> - <a href="/extra+database/-/query?sql=',
     ):
         assert fragment in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("relative", (False, True))
+async def test_crossdb_versions(tmp_path, monkeypatch, relative):
+    # _versions() opened its connection without uri=True, so the crossdb
+    # ATTACH of "file:...?mode=ro" was a plain file name: a 500 error for an
+    # absolute path, a stray empty file in the current directory for a
+    # relative one
+    directory = tmp_path / "dbs"
+    directory.mkdir()
+    conn = sqlite3.connect(str(directory / "data.db"))
+    conn.execute("create table t (id integer)")
+    conn.close()
+    if relative:
+        monkeypatch.chdir(directory)
+        path = "data.db"
+    else:
+        path = str(directory / "data.db")
+    ds = Datasette([path], crossdb=True)
+    try:
+        await ds.invoke_startup()
+        response = await ds.client.get("/-/versions.json")
+        assert response.status_code == 200
+        assert "sqlite" in response.json()
+        # The crossdb connection itself still works
+        response = await ds.client.get(
+            "/_memory/-/query.json?sql=select+count(*)+as+n+from+data.t&_shape=array"
+        )
+        assert response.json() == [{"n": 0}]
+    finally:
+        ds.close()
+    assert sorted(p.name for p in directory.iterdir()) == ["data.db"]

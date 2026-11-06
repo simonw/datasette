@@ -53,6 +53,14 @@ def test_hook_jump_items_sql():
     assert "jump_items_sql" in dir(pm.hook)
 
 
+def test_hook_register_import_loaders():
+    # Detailed behavior (selection, tie-breaking, a GeoJSON plugin competing
+    # with core JSON) is covered in tests/test_imports_loaders.py.
+    from datasette.imports.loaders import get_loaders
+
+    assert {"csv", "tsv", "json", "ndjson"} <= {loader.name for loader in get_loaders()}
+
+
 def test_hook_shutdown():
     # Detailed behavior (ordering against background-task cancellation and
     # close(), idempotency, exception handling, sync vs async support) is

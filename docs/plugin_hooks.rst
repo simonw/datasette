@@ -1099,6 +1099,179 @@ Column types are assigned to columns via the :ref:`column_types <table_configura
 
 Datasette includes four built-in column types: ``url``, ``email``, ``json``, and ``textarea``. The ``textarea`` type is an editing hint that causes Datasette's insert/edit forms to use a multiline ``<textarea>`` control for that column.
 
+.. _plugin_register_import_loaders:
+
+register_import_loaders()
+-------------------------
+
+Return a list of loaders that can import a file format, such as GeoJSON, KML or Parquet. Each item can be a subclass of ``datasette.imports.loaders.Loader`` or an instance of one.
+
+.. warning::
+    This plugin hook is a prototype and its design may change.
+
+Datasette uses loaders to turn files into tables. It ships with loaders for CSV (``csv``, which also reads semicolon and pipe separated files), TSV (``tsv``), JSON arrays of objects (``json``) and newline-delimited JSON (``ndjson``), and registers them using this same hook.
+
+The hook takes no arguments. Loaders may run in a separate worker process that has no Datasette instance.
+
+This example reads a GeoJSON ``FeatureCollection``, with one row per feature:
+
+.. code-block:: python
+
+    import json
+    from datasette import hookimpl
+    from datasette.imports.loaders import (
+        Loader,
+        Schema,
+        peek_json,
+    )
+
+
+    class GeoJSONLoader(Loader):
+        name = "geojson"
+        description = "GeoJSON FeatureCollection"
+
+        def sniff(self, first_bytes):
+            peek = peek_json(first_bytes)
+            if peek is None or not isinstance(peek.value, dict):
+                return 0.0
+            doc = peek.value
+            if doc.get("type") == "FeatureCollection":
+                return 0.95
+            # "type" can come after a long "features" list
+            features = doc.get("features")
+            if not (
+                isinstance(features, list)
+                and features
+                and isinstance(features[0], dict)
+            ):
+                return 0.0
+            if features[0].get("type") == "Feature":
+                return 0.9
+            # With sorted keys, "geometry" comes before "type", and
+            # a big first geometry can fill the whole window
+            geometry = features[0].get("geometry")
+            if (
+                isinstance(geometry, dict)
+                and "coordinates" in geometry
+            ):
+                return 0.8
+            return 0.0
+
+        def load(self, path):
+            with open(path, "rb") as fp:
+                features = json.load(fp)["features"]
+            yield Schema({"name": "text", "geometry": "text"})
+            for feature in features:
+                properties = feature["properties"] or {}
+                yield {
+                    "name": properties.get("name"),
+                    "geometry": json.dumps(feature["geometry"]),
+                }
+
+
+    @hookimpl
+    def register_import_loaders():
+        return [GeoJSONLoader]
+
+A loader has these attributes and methods:
+
+``name`` - string
+    A short identifier for the format, e.g. ``"geojson"``. This must be unique. A plugin loader with the same name as one of the built-in loaders replaces it.
+
+``description`` - string
+    A human-readable description of the format.
+
+``sniff(self, first_bytes)`` - returns a float
+    ``first_bytes`` is the start of the file, usually the first 64KB. Return your confidence, from ``0.0`` to ``1.0``, that this is a file your loader can read. The bytes can end part way through a record, or even part way through a UTF-8 character.
+
+``load(self, path)`` - a generator
+    ``path`` is the path to a local file. Optionally yield a ``Schema`` first, then yield one dictionary per row. The values in each dictionary should be strings, integers, floats, booleans or ``None``. Lists and dictionaries are stored as JSON. Your loader can read the file more than once, for example to sniff it again, but must not change it. Raise ``datasette.imports.loaders.LoaderError`` with a message that says where the problem is, such as ``"Line 11 is not valid JSON"``, if the file turns out to be broken. Yield a ``Note`` at any point to tell the person importing the file something about how it was read (see :ref:`plugin_register_import_loaders_notes`).
+
+A loader that needs ``load()`` to repeat a decision it made in ``sniff()``, such as which delimiter a CSV file uses, can call ``sniff_windows(fp)`` on the open file. It yields the same growing windows Datasette sniffs (see below): stop at the first one where your own score reaches ``0.7`` and you have the bytes Datasette saw when it picked your loader.
+
+If your ``register_import_loaders()`` hook raises an exception, or Datasette cannot create one of your loader classes with no arguments, that plugin's loaders are skipped and Datasette logs a warning. Imports of other formats keep working.
+
+.. _plugin_register_import_loaders_choosing:
+
+How Datasette picks a loader
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette never looks at the file extension or a ``Content-Type``. Every loader sniffs the same bytes and the highest score wins, so loaders don't need to know about each other. A GeoJSON file is also valid JSON, so the GeoJSON loader has to score higher than the ``json`` loader's ``0.6`` for an object that contains a list of objects.
+
+1. Every loader sniffs the first 64KB of the file.
+2. If no loader scores ``0.7`` or more and the file is longer than that, Datasette reads four times as much (256KB, then 1MB) and asks every loader again. Return a low score when you can't tell yet.
+3. The highest score wins. If two loaders tie, a plugin loader beats a built-in loader, then loaders are ordered by ``name``.
+4. If no loader scores at least ``0.1``, the import fails with a "Could not recognize the file format" error. An empty file fails with "File is empty".
+5. If ``sniff()`` raises an exception, that loader scores ``0.0`` and Datasette logs a warning. Scores outside the range ``0.0`` to ``1.0`` are clamped.
+
+To make the same choice in your own code, ``sniff_path(path)`` in ``datasette.imports.loaders`` returns ``(first_bytes, scores)`` after steps 1 and 2, with the scores ranked as in step 3, and ``choose_loader(scores, first_bytes)`` applies step 4: it returns the winning loader or raises ``EmptyFile`` or ``UnrecognizedFormat``, both subclasses of ``LoaderError`` with the scores in ``.scores``. ``load_path(path)`` does all of that and starts loading.
+
+Use these levels as a guide:
+
+- ``1.0``: the file has a signature that can't be anything else, such as the ``PAR1`` magic bytes of a Parquet file.
+- ``0.9``: you checked the structure. The built-in loaders return ``0.9`` for a JSON array of objects, ``0.95`` for newline-delimited JSON and ``0.9`` for tab-separated values. Comma-separated values score ``0.8``, semicolons ``0.7`` and pipes ``0.6``. Delimited files with ragged rows score three quarters of that.
+- ``0.5`` to ``0.6``: plausible but generic, such as a JSON object that isn't an array.
+- ``0.1`` to ``0.4``: a fallback, such as a text file with one column (``0.2``) or JSON objects printed one after another (``0.4``).
+- ``0.0``: not this format.
+
+Score a file that is clearly your format but that ``load()`` will reject a little above ``0.1``, and raise a ``LoaderError`` from ``load()``. The built-in loaders do this for a JSON array of arrays (``0.15``): "JSON array item 0 is list, expected an object" is more useful than the file being read as something else. Newline-delimited JSON with a few broken lines scores ``0.9`` times the fraction of lines that parse, and ``load()`` raises an error naming the first broken line.
+
+Check the structure of the data rather than searching for a string. A ``FeatureCollection`` can list its ``features`` before its ``"type"`` key, so the string ``"FeatureCollection"`` might be hundreds of megabytes into the file. Don't depend on any key being visible, either: with sorted keys every ``"type"`` comes last, and a big first geometry can fill the whole window. ``peek_json(first_bytes)`` parses as much of a JSON array or object as fits in the window. A complete document is parsed in full. One that is cut off is parsed item by item, stopping at the first array or object with more than ``max_items`` (default 20) items, which keeps sniffing fast. It returns ``None`` if the bytes are not the start of a JSON array or object, otherwise a ``JSONPeek`` with these attributes. Every loader gets the same ``JSONPeek`` object for the same bytes, so don't modify it.
+
+``value``
+    The parsed data. An array or object that was cut off, by the end of the window or by ``max_items``, is a ``PartialList`` or ``PartialDict`` (subclasses of ``list`` and ``dict``) holding the items that were complete, plus the cut-off item itself if it is an array or object.
+
+``complete``
+    ``True`` if the whole document fits in the window.
+
+``trailing``
+    ``True`` if there is more data after a complete document. Newline-delimited JSON looks like this.
+
+.. _plugin_register_import_loaders_schema:
+
+Schemas
+~~~~~~~
+
+Formats that know their column types, such as GeoJSON, Parquet or SpatiaLite, can yield a ``Schema`` before the first row. Datasette creates those columns with those types and skips type detection for them. Datasette still detects types for any keys that are not in the schema.
+
+.. code-block:: python
+
+    from datasette.imports.loaders import Schema
+
+    Schema(
+        {
+            "name": "text",
+            "population": "integer",
+            "area": "float",
+            "geometry": "text",
+        }
+    )
+
+Column types can be ``"text"``, ``"integer"``, ``"float"`` or ``"blob"``. ``schema.to_dict()`` returns ``{"columns": {...}}``, which fits on one line of JSON, and ``Schema.from_dict()`` reads it back.
+
+.. _plugin_register_import_loaders_notes:
+
+Notes
+~~~~~
+
+A loader can yield a ``Note`` anywhere among its rows, before or after the ``Schema``, to tell the person importing the file something about how it was read that they would otherwise not find out:
+
+.. code-block:: python
+
+    from datasette.imports.loaders import Note
+
+    yield Note(
+        "Importing the 2 objects in 'results', ignoring 'total', 'next'"
+    )
+
+Datasette shows notes alongside the import and also logs each one as a warning. Notes are not errors: to reject a file, raise ``LoaderError``. Use them sparingly, for things like data that was skipped or put somewhere unexpected. A note about the whole file, such as a count of odd rows, can come after the last row. The built-in loaders add notes when a JSON object wraps the list of rows alongside other keys, when CSV rows have more fields than the header, and when quotes are read as ordinary characters.
+
+In Python code, ``load_path()`` returns a ``LoadResult`` whose ``notes`` list holds the message of each note yielded so far: it is complete once ``rows`` has been consumed.
+
+The built-in loaders decode text as UTF-8 and read any bytes that are not valid UTF-8 as Windows-1252, so files exported from older spreadsheet software import without errors. A byte order mark at the start of a file is ignored. Pass ``encoding=datasette.imports.loaders.TEXT_ENCODING`` to Python's ``open()`` to decode text the same way in your own loader.
+
+The built-in CSV and TSV loaders don't drop data from untidy files. Blank column names become ``column_1``, ``column_2`` and so on, by position, and repeated names get a suffix: ``name, name`` becomes ``name, name_2``. A row with fewer fields than the header gets ``None`` for the rest. A row with more fields keeps the extra values as a list in an ``_extra`` column. A file with only a header yields a ``Schema`` of text columns, so the empty table still has its columns. If a field starts with a literal ``"`` that would otherwise swallow the rest of the file, such as ``"unbalanced`` in a TSV file, the file is read without treating quotes as special.
+
 .. _plugin_asgi_wrapper:
 
 asgi_wrapper(datasette)

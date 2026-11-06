@@ -1910,6 +1910,9 @@ BackgroundTask objects
 ``.started_at`` - string or ``None``
     ISO 8601 UTC timestamp of when the task was launched.
 
+``.status`` - string or ``None``
+    A short description of what the task is doing right now, such as ``importing events: 4% (324,000 rows)``. Code that holds the handle, usually the task itself, can set this and keep it up to date. It is ``None`` unless something sets it.
+
 ``.function`` - string
     The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
 

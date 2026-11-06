@@ -339,9 +339,10 @@ Datasette tries hard to load untidy files without losing anything.
 - **Ragged rows**: a row with fewer values than the header gets ``NULL`` for the missing columns. A row with more values keeps the extra ones, as a JSON list, in an ``_extra`` column. A file where many rows have more values than the header may not be recognized as CSV at all: add ``:csv`` to load it anyway.
 - **Wrapped JSON**: if a JSON object has exactly one key holding a list of objects, those objects are the rows and the other keys are ignored.
 
-Datasette prints a note in the terminal when it does something you might not expect, such as ignoring keys or putting values in ``_extra``::
+When Datasette does something you might not expect, such as ignoring keys or putting values in ``_extra``, it adds a note to the import. Notes are printed in the terminal after the line for that import, and shown in the import's progress notice, on the table's page and in :ref:`/-/imports.json <JsonDataView_imports>`::
 
-    Import worker: Importing the 2 objects in 'results', ignoring 'total', 'next'
+    Loaded 2 rows from response.json (json) into table response in 0.27s
+      note: Importing the 2 objects in 'results', ignoring 'total', 'next'
 
 Some things are not supported yet:
 

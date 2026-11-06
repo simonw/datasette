@@ -293,6 +293,7 @@ Shows the state of every supervised background task registered with :ref:`datase
             {
                 "name": "my_plugin.poll_for_updates",
                 "state": "running",
+                "status": null,
                 "function": "my_plugin.poll_for_updates",
                 "started_at": "2026-07-30T12:00:00+00:00",
                 "exception": null
@@ -300,6 +301,7 @@ Shows the state of every supervised background task registered with :ref:`datase
             {
                 "name": "my_plugin.broken_task",
                 "state": "crashed",
+                "status": null,
                 "function": "my_plugin.broken_task",
                 "started_at": "2026-07-30T12:00:00+00:00",
                 "exception": "ValueError('something went wrong')"
@@ -309,6 +311,8 @@ Shows the state of every supervised background task registered with :ref:`datase
     }
 
 Each entry's ``function`` identifies the callable by its dotted module and qualified name.
+
+Each entry's ``status`` is a short description of what the task is doing, which the task itself keeps up to date, or ``null`` if it does not set one. Each :ref:`background import <importing_background>` sets it to its progress, for example ``importing events: 4% (324,000 rows)``.
 
 Each entry's ``state`` is one of ``registered`` (added but not yet launched), ``running``, ``completed``, ``crashed`` or ``cancelled``. ``exception`` is a one-line ``repr()`` of the exception for a ``crashed`` task, or ``null`` otherwise - the full traceback is written to the ``datasette.background_tasks`` logger instead, to keep this payload skimmable.
 
@@ -338,17 +342,19 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
           "state": "importing",
           "waiting_for": null,
           "loader": "csv",
-          "rows": 234000,
-          "bytes": 34521088,
+          "rows": 324000,
+          "bytes": 49766400,
           "size": 1012252043,
           "downloaded": null,
           "download_size": null,
-          "fraction": 0.0341032534720209,
-          "percent": 3,
-          "created_at": "2026-11-06T10:42:14.646362+00:00",
-          "started_at": "2026-11-06T10:42:14.722063+00:00",
+          "fraction": 0.04916404006704484,
+          "percent": 4,
+          "finishing": false,
+          "backlog": 0,
+          "created_at": "2026-11-06T12:15:02.316554+00:00",
+          "started_at": "2026-11-06T12:15:02.366354+00:00",
           "finished_at": null,
-          "seconds": 2.976,
+          "seconds": 3.657,
           "waited_seconds": 0.0,
           "error": null,
           "on_error": "keep",
@@ -357,10 +363,11 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
           "created_table": true,
           "existing_table": false,
           "rows_kept": null,
+          "notes": [],
           "widenings": [],
           "task": "import scratch.events",
-          "status": "importing 3% (234,000 rows)",
-          "description": "importing events: 3% (234,000 rows)",
+          "status": "importing 4% (324,000 rows)",
+          "description": "importing events: 4% (324,000 rows)",
           "table_url": "http://127.0.0.1:8001/scratch/events",
           "cancel_url": "http://127.0.0.1:8001/scratch/events/-/cancel-import",
           "can_cancel": false
@@ -394,6 +401,9 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
 ``fraction`` and ``percent``
     How far the import has got, from ``0.0`` to ``1.0`` and as a whole percentage, or ``null`` when that is not known - for a JSON array, for example. ``percent`` only reaches ``100`` once the import is ``done``.
 
+``finishing`` and ``backlog``
+    ``finishing`` is ``true`` while the import finishes off, once every row is in the table. If a column changed to text late in the file, the numbers already stored in it are still being turned into text at that point, and ``backlog`` is the number of rows left to convert.
+
 ``created_at``, ``started_at`` and ``finished_at``
     When the import was added, when its background task started - before any time spent downloading or waiting for an import worker - and when it finished, as ISO 8601 timestamps.
 
@@ -408,6 +418,9 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
 
 ``table_exists``
     Whether the table that this import created is there. ``rows_kept`` is the number of rows that a failed or cancelled import left in the table: the table is incomplete if this is more than zero.
+
+``notes``
+    Notes from the loader about how it read the file, such as keys it ignored or rows with more values than the header. See :ref:`importing_messy`.
 
 ``widenings``
     The columns that changed type part way through the import, as ``{"column": ..., "from": ..., "to": ..., "at_row": ...}`` objects, where ``at_row`` is the number of rows imported before the batch that needed the change. See :ref:`importing_types`.

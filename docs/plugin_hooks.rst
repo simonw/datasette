@@ -1264,7 +1264,7 @@ A loader can yield a ``Note`` anywhere among its rows, before or after the ``Sch
         "Importing the 2 objects in 'results', ignoring 'total', 'next'"
     )
 
-Datasette logs each note as a warning, so the person running ``datasette data.json`` sees it in their terminal while the file imports. Notes are not errors: to reject a file, raise ``LoaderError``. Use them sparingly, for things like data that was skipped or put somewhere unexpected. A note about the whole file, such as a count of odd rows, can come after the last row. The built-in loaders add notes when a JSON object wraps the list of rows alongside other keys, when CSV rows have more fields than the header, and when quotes are read as ordinary characters.
+Datasette shows notes to the person importing the file: they are printed in the terminal after the line that reports the import, and shown in the import's progress notice, on the table's page and in :ref:`/-/imports.json <JsonDataView_imports>`. Each note is also logged as a warning. Notes are not errors: to reject a file, raise ``LoaderError``. Use them sparingly, for things like data that was skipped or put somewhere unexpected. A note about the whole file, such as a count of odd rows, can come after the last row. The built-in loaders add notes when a JSON object wraps the list of rows alongside other keys, when CSV rows have more fields than the header, and when quotes are read as ordinary characters.
 
 In Python code, ``load_path()`` returns a ``LoadResult`` whose ``notes`` list holds the message of each note yielded so far: it is complete once ``rows`` has been consumed.
 

@@ -84,6 +84,14 @@ def register_facet_classes():
 
 
 @hookspec
+def register_import_loaders():
+    """Return a list of Loader subclasses or instances that read file formats for import.
+
+    Takes no datasette argument so it can be called in an import worker process.
+    """
+
+
+@hookspec
 def register_actions(datasette):
     """Register actions: returns a list of datasette.permission.Action objects"""
 

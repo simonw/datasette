@@ -154,6 +154,9 @@ async def test_registry_state_transitions(data_dir):
         await _settled(job)
         assert job.task.state == "completed"
         assert job.task.status == "imported dogs: 3 rows"
+        tasks = (await ds.client.get("/-/tasks.json", actor={"id": "root"})).json()
+        [task] = [t for t in tasks["tasks"] if t["name"] == "import scratch.dogs"]
+        assert (task["state"], task["status"]) == ("completed", "imported dogs: 3 rows")
         rows = (await db.execute("select name from dogs")).rows
         assert [row[0] for row in rows] == ["Cleo", "Pancakes", "Fido"]
         data = job.to_dict()
@@ -402,6 +405,11 @@ async def test_progress_notices_and_endpoint(tmp_path):
         assert job.percent == 40
         assert job.describe() == "importing slow: 40% (4 rows)"
         assert job.task.status == "importing slow: 40% (4 rows)"
+        # So does /-/tasks, for the import's background task
+        tasks = (await ds.client.get("/-/tasks.json", actor={"id": "root"})).json()
+        [task] = [t for t in tasks["tasks"] if t["name"] == "import scratch.slow"]
+        assert task["state"] == "running"
+        assert task["status"] == "importing slow: 40% (4 rows)"
         # The rows so far can be queried
         response = await ds.client.get("/scratch/slow.json?_shape=array")
         assert [row["n"] for row in response.json()] == [0, 1, 2, 3]

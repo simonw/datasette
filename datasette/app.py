@@ -727,7 +727,8 @@ class Datasette:
 
     async def _refresh_schemas(self):
         internal_db = self.get_internal_database()
-        if not self.internal_db_created:
+        first_refresh = not self.internal_db_created
+        if first_refresh:
             await init_internal_db(internal_db)
             await self.apply_metadata_json()
             self.internal_db_created = True
@@ -769,8 +770,12 @@ class Datasette:
             await internal_db.execute_write_fn(delete_stale_database_catalog)
         for database_name, db in self.databases.items():
             schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
-            # Compare schema versions to see if we should skip it
-            if schema_version == current_schema_versions.get(database_name):
+            # Compare schema versions to see if we should skip it. Always
+            # repopulate on the first refresh, since a persistent internal
+            # database may hold catalog rows calculated using older config.
+            if not first_refresh and schema_version == current_schema_versions.get(
+                database_name
+            ):
                 continue
             await populate_schema_tables(internal_db, db, schema_version)
 

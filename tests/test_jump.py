@@ -98,6 +98,98 @@ async def test_jump_searches_tables_databases_views_and_stored_queries(ds_for_ju
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "type_args,expected_types",
+    (
+        ("", {"database", "table", "view", "query"}),
+        ("&type=table", {"table"}),
+        ("&type=table&type=database", {"table", "database"}),
+        ("&type=view&type=query", {"view", "query"}),
+        ("&type=nonexistent", set()),
+    ),
+)
+async def test_jump_filter_by_type(ds_for_jump, type_args, expected_types):
+    response = await ds_for_jump.client.get(
+        "/-/jump.json?q=content" + type_args, actor={"id": "user"}
+    )
+    assert response.status_code == 200
+    types = {match["type"] for match in response.json()["matches"]}
+    assert types == expected_types
+
+
+@pytest.mark.asyncio
+async def test_jump_includes_url_fields(ds_for_jump):
+    response = await ds_for_jump.client.get(
+        "/-/jump.json?q=comment", actor={"id": "user"}
+    )
+    assert response.status_code == 200
+    matches = {match["name"]: match for match in response.json()["matches"]}
+    assert matches["content: comments"] == {
+        "name": "content: comments",
+        "url": "/content/comments",
+        "type": "table",
+        "description": None,
+        "database": "content",
+        "table": "comments",
+    }
+    assert matches["content: comment_summary"]["table"] == "comment_summary"
+    assert matches["content: recent_comments"] == {
+        "name": "content: recent_comments",
+        "display_name": "Recent comments",
+        "url": "/content/recent_comments",
+        "type": "query",
+        "description": None,
+        "database": "content",
+        "query": "recent_comments",
+    }
+    response = await ds_for_jump.client.get(
+        "/-/jump.json?q=content&type=database", actor={"id": "user"}
+    )
+    assert response.json()["matches"] == [
+        {
+            "name": "content",
+            "url": "/content",
+            "type": "database",
+            "description": None,
+            "database": "content",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_jump_excludes_hidden_tables(ds_for_jump):
+    content_db = ds_for_jump.get_database("content")
+    await content_db.execute_write(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS comments_fts USING fts5(body)"
+    )
+    await ds_for_jump._refresh_schemas()
+    response = await ds_for_jump.client.get(
+        "/-/jump.json?q=comments_fts", actor={"id": "user"}
+    )
+    assert response.status_code == 200
+    # The FTS shadow tables such as comments_fts_data are hidden
+    assert [match["name"] for match in response.json()["matches"]] == [
+        "content: comments_fts"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_jump_excludes_tables_hidden_in_config():
+    ds = Datasette(
+        config={"databases": {"data": {"tables": {"secret_stuff": {"hidden": True}}}}}
+    )
+    db = ds.add_memory_database("jump_test_hidden_config", name="data")
+    await db.execute_write("CREATE TABLE IF NOT EXISTS secret_stuff (id INTEGER)")
+    await db.execute_write("CREATE TABLE IF NOT EXISTS visible_stuff (id INTEGER)")
+    await ds.invoke_startup()
+    await ds._refresh_schemas()
+    response = await ds.client.get("/-/jump.json?q=stuff")
+    assert [match["name"] for match in response.json()["matches"]] == [
+        "data: visible_stuff"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_jump_uses_stored_query_names_not_titles(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=datasette", actor={"id": "user"}
@@ -112,9 +204,12 @@ async def test_jump_uses_stored_query_names_not_titles(ds_for_jump):
     assert response.json()["matches"] == [
         {
             "name": "content: release_notes",
+            "display_name": "Recent Datasette releases",
             "url": "/content/release_notes",
             "type": "query",
             "description": None,
+            "database": "content",
+            "query": "release_notes",
         }
     ]
 
@@ -403,6 +498,8 @@ async def test_jump_sql_can_query_named_database(ds_for_jump):
             "url": "/content/comments",
             "type": "comment",
             "description": "Comment from content database",
+            "database": "content",
+            "table": "comments",
         }
     ]
 
@@ -445,6 +542,8 @@ async def test_jump_resolves_url_descriptors_from_sql(ds_for_jump):
             "url": "/content/comments",
             "type": "plugin",
             "description": None,
+            "database": "content",
+            "table": "comments",
         }
     ]
 

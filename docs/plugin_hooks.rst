@@ -1869,7 +1869,7 @@ The SQL query must return these columns:
     Optional longer text describing this individual item, or ``NULL``. The jump menu displays this below the item's URL when it is present.
 
 ``url``
-    The URL to navigate to when the item is selected. This can be either a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods. For example, ``json_object('method', 'table', 'database', 'fixtures', 'table', 'facetable')`` calls ``datasette.urls.table(database='fixtures', table='facetable')``. Unknown methods or invalid named arguments will result in an error.
+    The URL to navigate to when the item is selected. This can be either a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods. For example, ``json_object('method', 'table', 'database', 'fixtures', 'table', 'facetable')`` calls ``datasette.urls.table(database='fixtures', table='facetable')``. Unknown methods or invalid named arguments will result in an error. The named arguments (other than ``format``) are also returned as fields on the item in the JSON API, for example ``"database": "fixtures", "table": "facetable"``.
 
 ``search_text``
     Text that should be searched by the ``?q=`` parameter.

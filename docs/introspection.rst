@@ -9,7 +9,7 @@ Each of these pages can be viewed in your browser. Add ``.json`` to the URL to g
 
 JSON responses that return an object include an ``"ok": true`` key, consistent with the rest of the :ref:`JSON API <json_api>`.
 
-The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads``, ``/-/tasks`` and ``/-/actions``, whose shapes may change in future releases.
+The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads``, ``/-/tasks`` and ``/-/actions`` and the new ``/-/imports`` endpoint, whose shapes may change in future releases.
 
 .. _JsonDataView_metadata:
 
@@ -313,6 +313,112 @@ Each entry's ``function`` identifies the callable by its dotted module and quali
 Each entry's ``state`` is one of ``registered`` (added but not yet launched), ``running``, ``completed``, ``crashed`` or ``cancelled``. ``exception`` is a one-line ``repr()`` of the exception for a ``crashed`` task, or ``null`` otherwise - the full traceback is written to the ``datasette.background_tasks`` logger instead, to keep this payload skimmable.
 
 The top-level ``launched`` flag reports whether the instance has run its one-time background task launch (after ``startup`` hooks finish, or via lifespan/first-request/:ref:`start_background_tasks() <datasette_start_background_tasks>`). It distinguishes "no tasks have been registered" (``tasks`` is empty either way) from "tasks are registered but nothing has armed the launch yet" (``launched`` is ``false`` and every task's ``state`` is still ``registered``) - useful when debugging a host that never triggers Datasette's lifespan events.
+
+.. _introspection_imports:
+
+/-/imports
+----------
+
+Lists the :ref:`background imports <importing_background>` this Datasette instance has run or is running - for example the files passed to ``datasette data.csv`` - with their progress. ``/-/imports`` shows them as a page, with the same progress bars and "Cancel import" buttons as the progress notices on other pages, and ``/-/imports.json`` returns them as JSON.
+
+This endpoint needs ``view-instance``, and only lists imports into tables the actor is allowed to view. Add ``?database=name`` to only list imports into that database, and ``?table=name`` to only list imports into tables of that name. Imports that ``--get`` runs before answering its request are not listed, since they have finished by the time any request is handled.
+
+.. code-block:: json
+
+    {
+      "ok": true,
+      "active": 1,
+      "imports": [
+        {
+          "id": "1",
+          "database": "scratch",
+          "table": "events",
+          "source": "events.csv",
+          "kind": "file",
+          "state": "importing",
+          "waiting_for": null,
+          "loader": "csv",
+          "rows": 234000,
+          "bytes": 34521088,
+          "size": 1012252043,
+          "downloaded": null,
+          "download_size": null,
+          "fraction": 0.0341032534720209,
+          "percent": 3,
+          "created_at": "2026-11-06T10:42:14.646362+00:00",
+          "started_at": "2026-11-06T10:42:14.722063+00:00",
+          "finished_at": null,
+          "seconds": 2.976,
+          "waited_seconds": 0.0,
+          "error": null,
+          "on_error": "keep",
+          "complete": false,
+          "table_exists": true,
+          "created_table": true,
+          "existing_table": false,
+          "rows_kept": null,
+          "widenings": [],
+          "task": "import scratch.events",
+          "status": "importing 3% (234,000 rows)",
+          "description": "importing events: 3% (234,000 rows)",
+          "table_url": "http://127.0.0.1:8001/scratch/events",
+          "cancel_url": "http://127.0.0.1:8001/scratch/events/-/cancel-import",
+          "can_cancel": false
+        }
+      ]
+    }
+
+``active`` is the number of imports still running. Imports are listed in the order they were started, and each one has these keys:
+
+``id``
+    An identifier for the import, unique within this Datasette process.
+
+``database`` and ``table``
+    Where the rows are going.
+
+``source`` and ``kind``
+    What is being imported - a file path, a URL with any passwords, keys or tokens in it redacted, or ``standard input`` - and whether it is a ``file``, a ``url`` or ``stdin``.
+
+``state``
+    One of ``queued``, ``downloading`` (downloading a URL or reading standard input), ``importing``, ``done``, ``failed`` or ``cancelled``. While ``queued``, ``waiting_for`` is ``"worker"`` if the import is waiting for one of the import workers, or ``"start"`` if Datasette has not started its background tasks yet.
+
+``loader``
+    The format the input is being read as, such as ``csv``. ``null`` until it is known.
+
+``rows``
+    How many rows have been imported so far.
+
+``bytes`` and ``size``
+    How far into the file Datasette has read, and the size of the file, in bytes. ``downloaded`` and ``download_size`` are the same for a download, or for standard input; ``download_size`` is ``null`` if the server did not say how big the file is.
+
+``fraction`` and ``percent``
+    How far the import has got, from ``0.0`` to ``1.0`` and as a whole percentage, or ``null`` when that is not known - for a JSON array, for example. ``percent`` only reaches ``100`` once the import is ``done``.
+
+``created_at``, ``started_at`` and ``finished_at``
+    When the import was queued, when it started and when it finished, as ISO 8601 timestamps.
+
+``seconds`` and ``waited_seconds``
+    How long the import has spent working, and how long it spent waiting for an import worker.
+
+``error``
+    The error message, for a failed import.
+
+``complete``
+    ``true`` once every row of the input is in the table.
+
+``table_exists``
+    Whether the table that this import created is there. ``rows_kept`` is the number of rows that a failed or cancelled import left in the table: the table is incomplete if this is more than zero.
+
+``widenings``
+    The columns that changed type part way through the import, as ``{"column": ..., "from": ..., "to": ..., "at_row": ...}`` objects. See :ref:`importing_types`.
+
+``status`` and ``description``
+    A sentence describing the state of the import, without and with the table name.
+
+``table_url``, ``cancel_url`` and ``can_cancel``
+    The table's URL, the URL to ``POST`` to to :ref:`cancel the import <importing_cancel>`, and whether the actor making the request is allowed to cancel it right now.
+
+The other keys - ``on_error``, ``created_table``, ``existing_table`` and ``task``, the name of the import's :ref:`background task <JsonDataView_tasks>` - are mostly useful for debugging.
 
 .. _JsonDataView_actor:
 

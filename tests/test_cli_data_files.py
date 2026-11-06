@@ -936,6 +936,53 @@ async def test_load_source_never_drops_a_table_it_did_not_create(data_dir):
         ds.close()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (True, False))
+async def test_failed_load_drops_the_table_without_converting(
+    data_dir, monkeypatch, exclusive
+):
+    # A column widens to text late, leaving stored numbers to convert, then
+    # the loader fails. The table is dropped anyway, so it is dropped as it
+    # is (on_error="drop") rather than first completed - which would be
+    # seconds of converting for millions of rows
+    from datasette.app import Datasette
+    from datasette.imports.inserter import TypedInserter
+    from datasette.imports.scratch import load_source
+
+    converted = []
+    original = TypedInserter._convert_slice
+
+    def convert_slice(self, conn, rows):
+        converted.append(rows)
+        return original(self, conn, rows)
+
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 10)
+    monkeypatch.setattr(TypedInserter, "_convert_slice", convert_slice)
+    lines = [json.dumps({"a": i}) for i in range(1999)] + ['{"a": "x"}', "{oops"]
+    bad = data_dir / "late.ndjson"
+    bad.write_text("\n".join(lines) + "\n")
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        source = _sources(bad)[0]
+        source.path = source.location
+        with pytest.raises(scratch_module.ImportFailed, match="Line 2001"):
+            await load_source(db, source, exclusive=exclusive)
+        assert await db.table_names() == []
+        # The chunk that widened converted one slice; nothing after that
+        assert len(converted) == 1
+        # The kept spellings went with it, from the write connection
+        with scratch_module.import_writes():
+            temp = await db.execute_write_fn(
+                lambda conn: conn.execute(
+                    "select count(*) from temp.sqlite_master"
+                ).fetchone()[0]
+            )
+        assert temp == 0
+    finally:
+        ds.close()
+
+
 def test_plan_loads_save_conflict_and_session_ownership(data_dir, monkeypatch):
     save = str(data_dir / "s.db")
     conn = sqlite3.connect(save)

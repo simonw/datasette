@@ -432,7 +432,9 @@ async def load_source(
     anything is fetched. If loading fails or is cancelled, the partly
     loaded table is dropped - only if this call created it - and
     :class:`ImportFailed` (or the cancellation) is raised.
-    ``progress(rows_written)`` is called after every chunk.
+    ``progress(rows_written)`` is called after every chunk (and after each
+    slice of converting stored numbers to text after the last one, see
+    :func:`~datasette.imports.inserter.import_rows`).
 
     By default every chunk is its own ``db.execute_write_fn()`` call while
     the loader runs in an executor thread, so other writes and reads can
@@ -488,17 +490,6 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
     loader = source.loader
     table = source.table
     start = time.perf_counter()
-    # Set once a chunk has been committed. The inserter creates the table
-    # with a plain CREATE TABLE in the same transaction as the first chunk,
-    # so from then on the table is certainly this import's own
-    committed = False
-
-    def on_chunk(rows_written):
-        nonlocal committed
-        committed = True
-        if progress is not None:
-            return progress(rows_written)
-
     try:
         result = await loop.run_in_executor(
             None,
@@ -511,6 +502,9 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
                     db, table, result.rows, schema, sample_size, batch_size, progress
                 )
             else:
+                # on_error="drop": if loading fails or is cancelled, the table
+                # is dropped - if this import created it - without first
+                # converting what a late widening left to convert
                 imported = await import_rows(
                     db,
                     table,
@@ -518,27 +512,15 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
                     schema=schema,
                     sample_size=sample_size,
                     batch_size=batch_size,
-                    progress=on_chunk,
+                    progress=progress,
+                    on_error="drop",
                 )
-    except BaseException as ex:
-        # exclusive=True cleans up on the write thread. Otherwise drop the
-        # table if this import created it. A cancellation can arrive while
-        # the first chunk is still being written: the drop queues behind
-        # it, and in scratch - where nothing but imports writes, and this
-        # name is reserved - a table that exists by then is this one's
-        own_table = committed or (
-            isinstance(ex, asyncio.CancelledError) and is_scratch(db)
-        )
-        if not exclusive and own_table:
-            with contextlib.suppress(Exception):
-                await drop_table(db, table)
-        if isinstance(ex, _loaders.LoaderError):
-            raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
-        if isinstance(ex, sqlite3.Error):
-            raise ImportFailed(
-                f"Error loading {source.label} into table {table!r}: {ex}"
-            ) from ex
-        raise
+    except _loaders.LoaderError as ex:
+        raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
+    except sqlite3.Error as ex:
+        raise ImportFailed(
+            f"Error loading {source.label} into table {table!r}: {ex}"
+        ) from ex
     return LoadedTable(
         source=source,
         table=table,
@@ -558,26 +540,22 @@ class _Cancelled(Exception):
 async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, progress):
     # insert_rows() on the write thread, committing every chunk. The write
     # thread cannot be interrupted, so cancellation sets a flag that the
-    # per-chunk progress callback checks.
+    # progress callback checks after every chunk (and every slice of the
+    # conversion after the last one).
     #
-    # load() drops the table itself if anything goes wrong, but only once a
-    # chunk has been committed: the inserter creates the table with a plain
-    # CREATE TABLE in the first chunk's transaction, so before that there is
-    # no table of this import's to drop (a failed first chunk rolls back),
-    # and after it the table is certainly this import's. load() returns
-    # errors rather than raising them, because the write thread prints
-    # every exception it sees to stderr and the command line would show
-    # each error twice
+    # The table is dropped if anything goes wrong: insert_rows() drops it
+    # itself (on_error="drop") if it created it, without completing it
+    # first; load() drops it if the cancellation arrives once it is
+    # complete. load() returns errors rather than raising them, because
+    # the write thread prints every exception it sees to stderr and the
+    # command line would show each error twice
     cancelled = threading.Event()
 
     def load(conn):
         if _table_exists(conn, table):
             return None, TableExists(f"Table {table!r} already exists in {db.name}")
-        ours = False
 
         def on_chunk(rows_written):
-            nonlocal ours
-            ours = True
             if cancelled.is_set():
                 raise _Cancelled
             if progress is not None:
@@ -592,18 +570,16 @@ async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, prog
                 sample_size=sample_size,
                 batch_size=batch_size,
                 progress=on_chunk,
+                on_error="drop",
             )
-            ours = imported.created
-            if cancelled.is_set():
-                raise _Cancelled
-            return imported, None
         except Exception as ex:  # noqa: BLE001 - returned, re-raised below
-            if ours:
-                with contextlib.suppress(Exception):
-                    if conn.in_transaction:
-                        conn.rollback()
-                    conn.execute(f"drop table if exists {_quote(table)}")
             return None, ex
+        if cancelled.is_set():
+            if imported.created:
+                with contextlib.suppress(Exception):
+                    conn.execute(f"drop table if exists {_quote(table)}")
+            return None, _Cancelled()
+        return imported, None
 
     try:
         imported, error = await db.execute_write_fn(load, transaction=False)

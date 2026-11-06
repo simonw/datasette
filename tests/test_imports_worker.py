@@ -921,6 +921,7 @@ def test_worker_dies_with_its_parent(tmp_path):
     finally:
         parent.kill()
         parent.wait()
+        parent.stdout.close()
     for _ in range(200):
         try:
             with open(f"/proc/{worker_pid}/stat") as fp:

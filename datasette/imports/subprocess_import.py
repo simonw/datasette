@@ -46,16 +46,20 @@ Why the parent does the writes
 
 Prototype 3 measured the alternative, the worker inserting into the
 database file itself (``--direct-db``, see
-``prototypes/data_csv/bench_worker.py``). It was about 1.4 times faster on
-a 1GB CSV (about 130,000 rows/s against 93,000) and left the server's
-event loop alone, but it bypasses ``write_wrapper`` plugins, events and
-the write queue, adds a second writing process to contend for the
-database's lock, and is a second write path next to the in-process one
-that Pyodide (no subprocesses) needs anyway. Writing in the parent is
-still faster than loading in-process (81,000-87,000 rows/s), and keeps
-loaders that hold the GIL for a long time - ``json.load()`` of a whole
-file stalled the event loop for 150-200ms on a 27MB file in-process - out
-of the server.
+``prototypes/data_csv/bench_worker.py``). It was 1.1-1.4 times faster on a
+1GB CSV across three sets of runs (120,000 rows/s against 97,000-99,000 in
+the latest) and left the server's event loop alone, but it bypasses
+``write_wrapper`` plugins, events and the write queue, and makes the worker
+a second process writing to the file: a widening that rebuilds a 6M-row
+table held SQLite's write lock for 12s, and the server's own writes to that
+file failed with "database is locked" after their 5s busy timeout
+(``prototypes/data_csv/worker_direct_contention.py``; through the parent
+the same writes queued instead). It is also a second write path next to
+the in-process one that Pyodide (no subprocesses) needs anyway. Writing in
+the parent is still faster than loading in-process (82,000-84,000 rows/s),
+and keeps loaders that hold the GIL for a long time out of the server:
+``json.load()`` of a whole 27MB file stalled the event loop for 150-200ms
+in-process.
 """
 
 import asyncio
@@ -92,7 +96,11 @@ _SCAN = json.scanner.make_scanner(json.decoder.JSONDecoder())
 # Windows has neither: WorkerProcess falls back to Process.kill()/terminate()
 _SIGKILL = getattr(signal, "SIGKILL", None)
 _PROCESS_GROUPS = hasattr(os, "killpg") and os.name == "posix"
-# Default number of workers that may run at once for one Datasette instance
+# Default number of workers that may run at once for one Datasette instance.
+# Measured on 4 CPUs (bench_worker_concurrency.py): 32 files of 1,000 rows
+# took 8.1-8.6s with 1, 4.1-4.2s with 2, 2.4-2.5s with 4; 8 files of 100,000
+# rows went 81,000 -> 84,000-89,000 -> 91,000 rows/s (the parent's loop is
+# the limit) while loop lag p99 went 4.5-4.9 -> 5.6-5.7 -> 8.7-9.2ms
 DEFAULT_MAX_WORKERS = 2
 
 

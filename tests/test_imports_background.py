@@ -1422,6 +1422,10 @@ def test_server_answers_while_stdin_is_still_arriving(tmp_path):
         assert [row["name"] for row in json.loads(body)] == ["Cleo", "Pancakes"]
     finally:
         process.send_signal(signal.SIGINT)
+        if process.stdin.closed:
+            # communicate() flushes stdin, which before Python 3.12 fails
+            # with "flush of closed file" if it was closed already
+            process.stdin = None
         try:
             _, stderr = process.communicate(timeout=15)
         except subprocess.TimeoutExpired:

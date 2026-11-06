@@ -1102,17 +1102,33 @@ def test_fast_patterns_only_match_text_that_round_trips():
     assert _odd_positions(["1", "", "007", "1.5", ""], _I) == [2, 3]
 
 
-def test_sqlite_parses_float_text_like_python():
+def test_sqlite_parses_float_text_like_python(monkeypatch):
     # Canonical float text is bound as text and parsed by SQLite; keeping no
     # spelling for it relies on SQLite getting the same float as float().
-    # The inserter checks this at runtime and binds floats if it fails.
-    conn = sqlite3.connect(":memory:")
-    assert inserter_module._sqlite_parses_floats_exactly(conn)
+    # The inserter checks this at runtime and binds floats if it fails, as
+    # it does on SQLite 3.45, which gets about 1 in 12,000 of these wrong
+    monkeypatch.setattr(inserter_module, "_FLOATS_EXACT", None)
     rng = random.Random(3)
-    for _ in range(5000):
-        text = repr(rng.uniform(-1e9, 1e9) * 10 ** rng.randint(-12, 12))
-        stored = conn.execute("select cast(? as real)", [text]).fetchone()[0]
-        assert stored == float(text), text
+    texts = [
+        repr(rng.uniform(-1e9, 1e9) * 10 ** rng.randint(-12, 12)) for _ in range(5000)
+    ]
+    texts.extend(inserter_module._HARD_FLOATS)
+    conn = sqlite3.connect(":memory:")
+    if inserter_module._sqlite_parses_floats_exactly(conn):
+        for text in texts:
+            stored = conn.execute("select cast(? as real)", [text]).fetchone()[0]
+            assert stored == float(text), text
+    else:
+        assert any(
+            conn.execute("select cast(? as real)", [text]).fetchone()[0] != float(text)
+            for text in inserter_module._HARD_FLOATS
+        )
+    # Either way the inserter stores exactly the float each text means, and
+    # widening to text gives the text back
+    conn, _ = load([{"x": text} for text in texts], sample_size=100, batch_size=1000)
+    assert declared(conn) == {"x": "REAL"}
+    stored = [value for value, _ in column(conn, "x")]
+    assert stored == [float(text) for text in texts]
 
 
 # Robustness -----------------------------------------------------------------

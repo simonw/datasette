@@ -312,6 +312,21 @@ def _positions(items, target):
 # Whether SQLite turns float text into exactly the double float() gives,
 # checked once per process by _sqlite_parses_floats_exactly()
 _FLOATS_EXACT = None
+# Shortest float reprs that SQLite 3.45 (x86-64, 80-bit long double) parses
+# one unit in the last place off: about 1 in 12,000 random reprs is, too
+# few for a random sample to be sure of finding one
+_HARD_FLOATS = (
+    "-9.55486443262481",
+    "-307621.8384230058",
+    "6146.289328387767",
+    "41600.85519560998",
+    "-37.39916031412913",
+    "21600725.73404794",
+    "-0.04574192847840702",
+    "-7791788.365715886",
+    "6946773.62119926",
+    "7956.419716376417",
+)
 
 
 def _sqlite_parses_floats_exactly(conn):
@@ -320,7 +335,9 @@ def _sqlite_parses_floats_exactly(conn):
     relies on SQLite parsing it into the same double as ``float()``: then
     the stored value turns back into exactly that text. SQLite 3.53 does
     for every value tested; builds whose text-to-float conversion is less
-    precise exist, so check a sample once and otherwise convert in Python.
+    precise exist (3.45 gets about 1 in 12,000 shortest reprs wrong), so
+    check known hard cases and a sample once, and otherwise convert in
+    Python.
     """
     global _FLOATS_EXACT
     if _FLOATS_EXACT is None:
@@ -328,6 +345,7 @@ def _sqlite_parses_floats_exactly(conn):
 
         rng = random.Random(0)
         samples = ["0.1", "0.3", "2.675", "1.005", "9007199254740993"]
+        samples.extend(_HARD_FLOATS)
         for _ in range(500):
             digits = rng.choice((15, 17))
             mantissa = rng.randrange(10 ** (digits - 1), 10**digits)

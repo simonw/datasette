@@ -238,6 +238,13 @@ def test_is_sqlite_file(tmp_path):
     assert is_sqlite_file(str(tmp_path / "empty.db"))
     assert is_sqlite_file(str(tmp_path / "empty"))
     assert not is_sqlite_file(str(tmp_path / "empty.csv"))
+    # Any other extension too, as before data files could be loaded
+    for name in ("x.db3", "x.sqlitedb", "empty.data"):
+        (tmp_path / name).write_bytes(b"")
+        assert is_sqlite_file(str(tmp_path / name)), name
+    for name in ("x.TSV", "x.jsonl", "x.txt", "x.geojson"):
+        (tmp_path / name).write_bytes(b"")
+        assert not is_sqlite_file(str(tmp_path / name)), name
     # Content wins over the extension
     assert not is_sqlite_file(str(tmp_path / "data.db"))
     assert not is_sqlite_file(str(tmp_path))
@@ -470,6 +477,12 @@ def test_scratch_file_removed_at_close(data_dir):
 
 
 # Errors ---------------------------------------------------------------------
+
+
+def test_empty_file_with_another_extension_is_a_database(tmp_path):
+    (tmp_path / "x.db3").write_bytes(b"")
+    databases = get_json([str(tmp_path / "x.db3")], "/-/databases.json")
+    assert [db["name"] for db in databases["databases"]] == ["x"]
 
 
 @pytest.mark.parametrize(

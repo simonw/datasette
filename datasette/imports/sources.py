@@ -51,9 +51,19 @@ import urllib.parse
 from collections.abc import Callable, Iterable
 
 SQLITE_HEADER = b"SQLite format 3\x00"
-# Zero-byte files with these extensions (or none) are empty SQLite databases,
-# as they always have been for ``datasette empty.db``
-SQLITE_EXTENSIONS = ("", ".db", ".sqlite", ".sqlite3")
+# A zero-byte file is an empty SQLite database, as it always has been for
+# ``datasette empty.db`` - unless its extension says it is meant to be data
+DATA_EXTENSIONS = (
+    ".csv",
+    ".tsv",
+    ".tab",
+    ".json",
+    ".ndjson",
+    ".jsonl",
+    ".nl",
+    ".txt",
+    ".geojson",
+)
 STDIN_SPECS = ("-", "stdin")
 STDIN_TABLE = "stdin"
 URL_SCHEMES = ("http", "https")
@@ -149,9 +159,11 @@ class Source:
 def is_sqlite_file(path: str) -> bool:
     """
     True if ``path`` is a SQLite database: it starts with the SQLite header,
-    or it is a zero-byte file whose extension is one of ``.db``,
-    ``.sqlite``, ``.sqlite3`` or none at all (SQLite treats an empty file as
-    an empty database). Only regular files are read.
+    or it is a zero-byte file (SQLite treats an empty file as an empty
+    database, and Datasette always has) - unless its extension is one of
+    the data formats' (``.csv``, ``.json`` ... see ``DATA_EXTENSIONS``),
+    which makes it an empty data file to report. Only regular files are
+    read.
     """
     try:
         st = os.stat(path)
@@ -160,7 +172,7 @@ def is_sqlite_file(path: str) -> bool:
     if not stat.S_ISREG(st.st_mode):
         return False
     if st.st_size == 0:
-        return os.path.splitext(path)[1].lower() in SQLITE_EXTENSIONS
+        return os.path.splitext(path)[1].lower() not in DATA_EXTENSIONS
     with open(path, "rb") as fp:
         return fp.read(len(SQLITE_HEADER)) == SQLITE_HEADER
 

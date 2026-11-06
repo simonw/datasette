@@ -964,7 +964,6 @@ async def import_file_via_worker(
     plugins_dir=None,
     sample_size=1000,
     batch_size=1000,
-    widen="auto",
     progress=None,
     on_error="keep",
     memory_limit=None,
@@ -988,7 +987,6 @@ async def import_file_via_worker(
         the same loaders as the server; ``False`` for none
     :param sample_size: rows used to detect column types
     :param batch_size: rows per ``execute_write_fn()`` call after the sample
-    :param widen: passed to :func:`~datasette.imports.inserter.import_rows`
     :param progress: called (and awaited, if it returns an awaitable) with an
         :class:`ImportProgress` after each committed chunk and each
         progress message from the worker
@@ -1047,7 +1045,6 @@ async def import_file_via_worker(
                 env=env,
                 sample_size=sample_size,
                 batch_size=batch_size,
-                widen=widen,
                 progress=progress,
                 on_error=on_error,
                 memory_limit=memory_limit,
@@ -1066,7 +1063,6 @@ async def _import_via_worker(
     env,
     sample_size,
     batch_size,
-    widen,
     progress,
     on_error,
     memory_limit,
@@ -1093,7 +1089,6 @@ async def _import_via_worker(
                     schema=state.schema,
                     sample_size=sample_size,
                     batch_size=batch_size,
-                    widen=widen,
                     progress=state.written,
                 )
             finally:
@@ -1205,7 +1200,6 @@ async def import_file_in_process(
     format=None,
     sample_size=1000,
     batch_size=1000,
-    widen="auto",
     progress=None,
     on_error="keep",
     delete_input=False,
@@ -1303,7 +1297,6 @@ async def import_file_in_process(
                 schema=loaded.schema.columns if loaded.schema else None,
                 sample_size=sample_size,
                 batch_size=batch_size,
-                widen=widen,
                 progress=written,
             )
         except BaseException:
@@ -1340,7 +1333,6 @@ async def import_file(
     format=None,
     sample_size=1000,
     batch_size=1000,
-    widen="auto",
     progress=None,
     on_error="keep",
     delete_input=False,
@@ -1359,7 +1351,6 @@ async def import_file(
         "format": format,
         "sample_size": sample_size,
         "batch_size": batch_size,
-        "widen": widen,
         "progress": progress,
         "on_error": on_error,
         "delete_input": delete_input,

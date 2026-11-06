@@ -21,7 +21,31 @@ and whether anything is left in TMPDIR.
         --table big_1gb --cancel-at 2000000 --root DATA/big-1gb.csv
 
 ``--interrupt-at ROWS`` sends SIGINT part way through instead.
-``--json OUT`` writes the raw numbers.
+``--json OUT`` writes the raw numbers. ``--database NAME`` with
+``--extra=--save --extra=FILE`` queries a --save file instead of scratch;
+``--clients N --think SECONDS`` sets the load.
+
+Results (4 CPUs shared with another agent's tests, load average 1-4):
+
+- First response 0.50-0.53s with a 1GB CSV importing, the same as an empty
+  Datasette (0.47-0.55s, bench_background_startup.py).
+- big-1gb.csv (6.4M rows): 50.7-56.8s with no load, 59.8s with one client
+  making a request about every 0.5s, 199s with four clients requesting
+  without pause (243s before the worker's pipe was grown to 1MB). Loading
+  before serving (--get) takes 41.2s.
+- No request failed because of an import: no "no such table", no schema
+  errors, not during a late integer to text rebuild of a 4M row table, not
+  while 100 columns were added one at a time. The failures seen are
+  Datasette's own: ?_sort_desc on an unindexed column of millions of rows
+  answers 500 (QueryInterrupted not caught by the table view) when it hits
+  the time limit, during the import and after it alike; a group-by hits the
+  1s time limit (400). A table page requested before the first chunk is
+  committed is a 404 that says the table is queued or importing.
+- Under four clients, latency during the import against after it (p50):
+  homepage 117 vs 61ms, table page 399 vs 194ms, table JSON 62 vs 31ms,
+  /-/imports.json 29 vs 13ms; max 0.7-1.9s during.
+- Cancel through the API: 0.13s, rows kept 2,004,000, no worker left.
+  SIGINT part way: 0.5-1.3s to stop, no worker, nothing left in TMPDIR.
 """
 
 # Blocking calls in setup and teardown, outside the measured requests, are fine
@@ -50,20 +74,20 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def endpoints(table, city):
+def endpoints(table, city, database="scratch"):
     q = urllib.parse.quote
     count = f"select count(*) from [{table}]"
     group = f"select city, count(*) from [{table}] group by city order by 2 desc"
     return {
         "home": "/",
-        "database": "/scratch",
-        "table": f"/scratch/{table}",
-        "table.json": f"/scratch/{table}.json?_size=100",
-        "facet": f"/scratch/{table}.json?_facet=city&_size=0",
-        "sort": f"/scratch/{table}.json?_sort_desc=price&_size=10",
-        "filter": f"/scratch/{table}.json?city={q(city)}&_size=10",
-        "count": f"/scratch/-/query.json?sql={q(count)}",
-        "group-by": f"/scratch/-/query.json?sql={q(group)}",
+        "database": f"/{database}",
+        "table": f"/{database}/{table}",
+        "table.json": f"/{database}/{table}.json?_size=100",
+        "facet": f"/{database}/{table}.json?_facet=city&_size=0",
+        "sort": f"/{database}/{table}.json?_sort_desc=price&_size=10",
+        "filter": f"/{database}/{table}.json?city={q(city)}&_size=10",
+        "count": f"/{database}/-/query.json?sql={q(count)}",
+        "group-by": f"/{database}/-/query.json?sql={q(group)}",
         "imports.json": "/-/imports.json",
     }
 
@@ -108,9 +132,12 @@ async def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("files", nargs="+")
     parser.add_argument("--table", required=True, help="Table to query")
+    parser.add_argument("--database", default="scratch", help="Its database")
     parser.add_argument("--city", default="Lima", help="Value for the filter")
     parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--think", type=float, default=0, help="Seconds between requests")
+    parser.add_argument(
+        "--think", type=float, default=0, help="Seconds between requests"
+    )
     parser.add_argument("--after", type=float, default=15.0)
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--cancel-at", type=int, help="Cancel at this many rows")
@@ -161,7 +188,7 @@ async def main():
     process = subprocess.Popen(
         command, stdout=log, stderr=log, env=env, stdin=subprocess.DEVNULL
     )
-    paths = endpoints(args.table, args.city)
+    paths = endpoints(args.table, args.city, args.database)
     results = collections.defaultdict(list)  # (phase, name) -> [(status, ms)]
     errors = collections.defaultdict(collections.Counter)
     state = State()
@@ -222,7 +249,7 @@ async def main():
                 ):
                     t0 = time.perf_counter()
                     r = await client.post(
-                        f"/scratch/{args.table}/-/cancel-import",
+                        f"/{args.database}/{args.table}/-/cancel-import",
                         json={},
                         cookies=cookies,
                     )

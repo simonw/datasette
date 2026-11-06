@@ -434,6 +434,41 @@ def test_worker_keeps_plugin_output_off_the_protocol(tmp_path):
     assert "raw write to fd 1" in stderr
 
 
+def test_worker_sends_loader_notes_as_marked_log_messages(tmp_path):
+    rows = [{"a": 1}, {"a": 2}]
+    path = write(tmp_path / "api.json", json.dumps({"total": 2, "results": rows}))
+    returncode, messages, _ = run_worker(path)
+    assert returncode == 0
+    logs = [m for m in messages if isinstance(m, dict) and m["type"] == "log"]
+    assert logs == [
+        {
+            "type": "log",
+            "level": "WARNING",
+            "logger": "datasette.imports.loaders",
+            "message": "Importing the 2 objects in 'results', ignoring 'total'",
+            "note": True,
+        }
+    ]
+    # A note about the whole file comes after the last row, in order
+    lines = ["a,b"] + ["1,2"] * 20 + ["3,4,5"]
+    path = write(tmp_path / "long.csv", "\n".join(lines) + "\n")
+    returncode, messages, _ = run_worker(path)
+    assert returncode == 0
+    kinds = [m["type"] if isinstance(m, dict) else "row" for m in messages]
+    assert kinds == ["header", "columns"] + ["row"] * 20 + [
+        "columns",
+        "row",
+        "log",
+        "end",
+    ]
+    assert messages[-2]["note"] is True
+    assert messages[-2]["message"].startswith("1 row has more fields")
+    # The worker's copy of the attribute name matches the loaders module
+    from datasette.imports import loaders
+
+    assert worker_module._NOTE_LOG_ATTRIBUTE == loaders.NOTE_LOG_ATTRIBUTE
+
+
 def test_worker_format_option(tmp_path):
     path = write(tmp_path / "data.txt", "a\tb\n1\t2\n")
     returncode, messages, _ = run_worker(path, "--format", "csv")

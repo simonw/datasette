@@ -879,15 +879,132 @@ def test_sniff_windows():
     assert [len(w) for w in L.sniff_windows(fp)] == [100]
 
 
-def test_json_unwrap_logs_the_keys_it_ignores(tmp_path, caplog):
+def test_json_unwrap_notes_the_keys_it_ignores(tmp_path, caplog):
     path = write(
         tmp_path, "a.json", '{"total": 2, "next": null, "results": [{"id": 1}]}'
     )
     with caplog.at_level(logging.WARNING, logger="datasette.imports.loaders"):
-        assert rows_of(path)[2] == [{"id": 1}]
-    assert "importing the 1 objects in 'results' and ignoring 'total', 'next'" in (
-        caplog.text
-    )
+        result = load_path(path)
+        # The note is there as soon as load_path() returns...
+        assert result.notes == [
+            "Importing the 1 object in 'results', ignoring 'total', 'next'"
+        ]
+        assert list(result.rows) == [{"id": 1}]
+    # ...and logged once, marked as a note
+    records = [r for r in caplog.records if hasattr(r, L.NOTE_LOG_ATTRIBUTE)]
+    assert [(r.getMessage(), getattr(r, L.NOTE_LOG_ATTRIBUTE)) for r in records] == [
+        ("Importing the 1 object in 'results', ignoring 'total', 'next'", "json")
+    ]
+    path = write(tmp_path, "b.json", '{"total": 2, "results": [{"id": 1}, {"id": 2}]}')
+    assert load_path(path).notes == [
+        "Importing the 2 objects in 'results', ignoring 'total'"
+    ]
+    # Nothing to say about a plain array
+    path = write(tmp_path, "c.json", '[{"id": 1}]')
+    assert load_path(path).notes == []
+
+
+def test_csv_notes_rows_with_extra_values(tmp_path):
+    lines = ["a,b"] + ["1,2"] * 19 + ["3,4,5,6"] + ["1,2"] * 5 + ["7,8,9"]
+    path = write(tmp_path, "long-rows.csv", "\n".join(lines) + "\n")
+    result = load_path(path)
+    assert result.notes == []
+    rows = list(result.rows)
+    assert len(rows) == 26
+    # Known once every row has been read
+    assert result.notes == [
+        (
+            "2 rows have more fields than the header (the first on line 21): "
+            "the extra values are in the '_extra' column"
+        )
+    ]
+
+
+def test_tsv_with_literal_quotes_has_a_note(tmp_path):
+    content = 'name\tsize\n"unbalanced\t1\nnext\t2\n' + "x\t3\n" * 5
+    path = write(tmp_path, "quotes.tsv", content)
+    result = load_path(path)
+    assert result.loader.name == "tsv"
+    assert len(list(result.rows)) == 7
+    assert len(result.notes) == 1
+    assert result.notes[0].startswith('Reading quotes (") as ordinary characters')
+
+
+class NoteLoader(Loader):
+    name = "notes"
+
+    def load(self, path):
+        yield L.Note("first")
+        yield {"a": 1}
+        yield L.Note("last")
+
+
+def test_plugin_loader_notes(tmp_path):
+    path = write(tmp_path, "a.txt", "anything")
+    result = load_path(path, loaders=[NoteLoader()], format="notes")
+    assert result.notes == ["first"]
+    assert list(result.rows) == [{"a": 1}]
+    assert result.notes == ["first", "last"]
+
+
+def test_split_schema_collects_notes_anywhere(caplog):
+    notes = []
+    items = [
+        L.Note("before the schema"),
+        Schema({"a": "text"}),
+        L.Note("before the rows"),
+        {"a": "1"},
+        L.Note("between rows"),
+        {"a": "2"},
+        L.Note("at the end"),
+    ]
+    with caplog.at_level(logging.WARNING, logger="datasette.imports.loaders"):
+        schema, rows = split_schema(items, "notes", notes=notes)
+        assert schema == Schema({"a": "text"})
+        assert notes == ["before the schema"]
+        assert list(rows) == [{"a": "1"}, {"a": "2"}]
+    assert notes == [
+        "before the schema",
+        "before the rows",
+        "between rows",
+        "at the end",
+    ]
+    assert [r.getMessage() for r in caplog.records] == notes
+    # Without a list the notes are only logged; a note-only load has no rows
+    assert split_schema([L.Note("x")], "notes")[0] is None
+    schema, rows = split_schema([L.Note("x")], "notes")
+    assert (schema, list(rows)) == (None, [])
+    # A schema after a row is still an error, notes or not
+    with pytest.raises(LoaderError, match="Schema after the first item"):
+        list(split_schema([{"a": 1}, L.Note("x"), Schema({"a": "text"})])[1])
+
+
+def test_note_needs_a_message():
+    with pytest.raises(ValueError):
+        L.Note("")
+    with pytest.raises(ValueError):
+        L.Note(None)
+    assert str(L.Note("hello")) == "hello"
+
+
+def test_choose_loader():
+    csv_loader, json_loader = get_loader("csv"), get_loader("json")
+    scores = [L.LoaderScore(json_loader, 0.9), L.LoaderScore(csv_loader, 0.2)]
+    assert L.choose_loader(scores, b"[{}]") is json_loader
+    with pytest.raises(UnrecognizedFormat) as ex:
+        L.choose_loader(scores, b"[{}]", min_confidence=0.95)
+    assert ex.value.scores is scores
+    assert "json=0.90, csv=0.20" in str(ex.value)
+    low = [L.LoaderScore(csv_loader, 0.05)]
+    with pytest.raises(UnrecognizedFormat):
+        L.choose_loader(low, b"abc")
+    with pytest.raises(UnrecognizedFormat, match="no loaders"):
+        L.choose_loader([], b"abc")
+    for empty in (b"", b"  \n", codecs.BOM_UTF8 + b"\n"):
+        with pytest.raises(EmptyFile):
+            L.choose_loader(scores, empty)
+    # The old private name still works
+    assert L._choose(scores, b"[{}]", 0.1) is json_loader
 
 
 def test_peek_json_limits_keys_in_cut_off_objects():

@@ -92,9 +92,13 @@ row
 
 ``log`` (any time after the header)
     ``{"type": "log", "level": "WARNING", "logger": "...", "message":
-    "..."}`` - a warning (or worse) the loader or a plugin logged, such as
-    the JSON loader's "importing the 2 objects in 'results' and ignoring
-    'total'".
+    "..."}`` - a warning (or worse) the loader or a plugin logged. With
+    ``"note": true`` it is a :class:`~datasette.imports.loaders.Note` the
+    loader yielded, something to show the person importing the file, such
+    as the JSON loader's "Importing the 2 objects in 'results', ignoring
+    'total'" (``LoadResult.notes`` in an in-process load). It arrives in
+    order with the rows: a note about the whole file can come after the
+    last row. Parents that don't know ``"note"`` see an ordinary warning.
 
 ``end`` (mandatory last message of a successful import)
     ``{"type": "end", "rows": 100000, "bytes": 15185971, "seconds": 1.9,
@@ -167,6 +171,9 @@ EXIT_USAGE = 2
 
 _BYTES_TYPES = (bytes, bytearray, memoryview)
 _NESTED_TYPES = (list, dict, tuple)
+# loaders.NOTE_LOG_ATTRIBUTE: this module avoids importing the loaders (and
+# their plugin machinery) until it has protected stdout
+_NOTE_LOG_ATTRIBUTE = "datasette_import_note"
 
 
 def _nested_text(value):
@@ -369,14 +376,17 @@ class _LogHandler(logging.Handler):
 
     def emit(self, record):
         try:
-            self.writer.message(
-                {
-                    "type": "log",
-                    "level": record.levelname,
-                    "logger": record.name,
-                    "message": record.getMessage(),
-                }
-            )
+            message = {
+                "type": "log",
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+            }
+            # A Note the loader yielded (split_schema() logs it): something
+            # to show the person importing the file, not just a log line
+            if getattr(record, _NOTE_LOG_ATTRIBUTE, None):
+                message["note"] = True
+            self.writer.message(message)
         except Exception:  # noqa: BLE001
             self.handleError(record)
 
@@ -645,9 +655,7 @@ def run(args, writer, warnings=()):
             scores = []
         else:
             first_bytes, scores = loaders_module.sniff_path(path, loaders)
-            loader = loaders_module._choose(
-                scores, first_bytes, loaders_module.MIN_CONFIDENCE
-            )
+            loader = loaders_module.choose_loader(scores, first_bytes)
         writer.message(
             {
                 "type": "header",

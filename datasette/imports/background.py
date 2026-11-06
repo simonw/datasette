@@ -672,9 +672,9 @@ class TableImport:
         if result.table_exists:
             self.rows = result.rows
             self.created_table = True
-        elif result.import_result is not None:
+        else:
             # Dropped (on_error="drop"): say how many rows went with it
-            self.rows = result.import_result.rows
+            self.rows = result.rows_written
             if self.rows:
                 self.created_table = True
         self.warnings = list(result.warnings)

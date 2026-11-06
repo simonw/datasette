@@ -23,7 +23,7 @@ from datasette.app import Datasette
 from datasette.database import Database
 from datasette.hookspecs import hookimpl
 from datasette.imports import worker as worker_module
-from datasette.imports.inserter import import_rows
+from datasette.imports.inserter import TypedInserter, import_rows
 from datasette.imports.loaders import load_path
 from datasette.imports.subprocess_import import (
     DEFAULT_MAX_WORKERS,
@@ -163,8 +163,14 @@ def decode_all(data, chunk_sizes=None):
     return decoder, messages
 
 
-def rows_of(messages):
-    return [row for kind, payload in messages if kind == "rows" for row in payload]
+def rows_of(messages, decoder):
+    "The rows in ``messages`` as dictionaries: the decoder hands over lists."
+    return [
+        row if isinstance(row, dict) else dict(zip(decoder.columns, row))
+        for kind, payload in messages
+        if kind == "rows"
+        for row in payload
+    ]
 
 
 # Protocol ------------------------------------------------------------------
@@ -205,7 +211,11 @@ def test_protocol_round_trip():
         assert line[:1] in (b"[", b"{")
     for chunk_sizes in (None, [1, 2, 3, 7, 50]):
         decoder, messages = decode_all(data, chunk_sizes)
-        rows = rows_of(messages)
+        # Positional: lists of values in decoder.columns order, as
+        # import_rows(columns=...) takes them - the row with bytes too
+        raw = [row for kind, payload in messages if kind == "rows" for row in payload]
+        assert {type(row) for row in raw} == {list}
+        rows = rows_of(messages, decoder)
         assert len(rows) == len(ROUND_TRIP_ROWS)
         for sent, received in zip(ROUND_TRIP_ROWS, rows):
             # Missing keys come back as None, which the inserter treats the
@@ -347,7 +357,7 @@ def test_protocol_error_keeps_messages_before_the_bad_line():
             b'[1]\n[2]\n{"type":"progress","rows":2}\nnonsense\n[3]\n'
         )
     assert [kind for kind, _ in ex.value.messages] == ["header", "rows", "progress"]
-    assert rows_of(ex.value.messages) == [{"a": 1}, {"a": 2}]
+    assert rows_of(ex.value.messages, decoder) == [{"a": 1}, {"a": 2}]
 
 
 def test_unknown_message_types_are_passed_through():
@@ -619,7 +629,9 @@ async def test_warnings_from_the_worker(db, tmp_path):
     )
     result = await import_file_via_worker(db, "t", path)
     assert result.rows == 2
-    assert any("ignoring 'total'" in warning for warning in result.warnings)
+    # A loader's note is a note, not just a warning
+    assert result.notes == ["Importing the 2 objects in 'results', ignoring 'total'"]
+    assert result.warnings == []
 
 
 @pytest.mark.asyncio
@@ -647,6 +659,53 @@ async def test_worker_error_keeps_rows_sent_before_it(db, tmp_path, on_error):
         assert error.result.rows == 0
         assert not error.result.table_exists
         assert not await db.table_exists("t")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_process", (False, True))
+async def test_loader_error_with_drop_removes_committed_rows(db, tmp_path, in_process):
+    # A full sample is committed before the loader fails: on_error="drop"
+    # has import_rows() drop the table it created, and says how many rows
+    # went with it
+    lines = [json.dumps({"id": i}) for i in range(1500)] + ["{not json"]
+    path = write(tmp_path / "bad.ndjson", "\n".join(lines) + "\n")
+    importer = import_file_in_process if in_process else import_file_via_worker
+    with pytest.raises(WorkerImportError) as ex:
+        await importer(db, "t", path, batch_size=1000, on_error="drop")
+    result = ex.value.result
+    assert ex.value.kind == "error" and ex.value.error_type == "LoaderError"
+    assert (result.rows, result.table_exists) == (0, False)
+    assert result.rows_written == 1000
+    assert not await db.table_exists("t")
+    assert await temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_process", (False, True))
+async def test_progress_while_finishing(db, tmp_path, in_process, monkeypatch):
+    # A column that widens to text in the last chunk leaves stored numbers
+    # to convert once every row is in: progress goes on reporting that
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 500)
+    path = events_csv(tmp_path / "events.csv", rows=3000)
+    seen = []
+    importer = import_file_in_process if in_process else import_file_via_worker
+    result = await importer(
+        db,
+        "t",
+        path,
+        batch_size=1000,
+        progress=lambda p: seen.append((p.rows_written, p.finishing, p.backlog)),
+    )
+    assert result.rows == 3000
+    assert result.import_result.types["late"] == "text"
+    finishing = [(rows, backlog) for rows, done, backlog in seen if done]
+    backlogs = [backlog for _, backlog in finishing]
+    assert backlogs[0] > 0 and backlogs[-1] == 0
+    assert backlogs == sorted(set(backlogs), reverse=True)
+    assert {rows for rows, _ in finishing} == {3000}
+    # Not finishing until every row was in
+    assert all(rows == 3000 for rows, done, _ in seen if done)
+    assert any(not done for _, done, _ in seen)
 
 
 @pytest.mark.asyncio
@@ -984,7 +1043,7 @@ def test_long_line_decodes_in_linear_time():
     rows = []
     start = time.perf_counter()
     for i in range(0, len(data), 65536):
-        rows.extend(rows_of(decoder.feed(data[i : i + 65536])))
+        rows.extend(rows_of(decoder.feed(data[i : i + 65536]), decoder))
     elapsed = time.perf_counter() - start
     assert decoder.close() == b""
     assert [len(row["a"]) for row in rows] == [len(value), 1]
@@ -1034,8 +1093,11 @@ def test_sparse_rows_are_sent_as_positions():
     # Most rows have 5 of ~200 keys: positions, not 200 nulls each
     assert len(sparse) > len(rows) * 0.8
     assert len(data) / len(rows) < 120
-    _, messages = decode_all(data, [1, 7, 4096])
-    received = rows_of(messages)
+    decoder, messages = decode_all(data, [1, 7, 4096])
+    raw = [row for kind, payload in messages if kind == "rows" for row in payload]
+    # Sparse rows are dictionaries, the others lists
+    assert {type(row) for row in raw} == {dict, list}
+    received = rows_of(messages, decoder)
     assert len(received) == len(rows)
     for sent, got in zip(rows, received):
         # Same values; keys come in the row's own order
@@ -1099,11 +1161,11 @@ def test_int_digit_limit_is_the_same_with_or_without_bytes():
         line = worker_module.encode_row(values)
         [(_, [row])] = decoder.feed(line.encode() + b"\n")
         # Within the limit: a number either way
-        assert row["a"] == at_limit
+        assert row[0] == at_limit
     for values in ([too_long, None], [too_long, b"x"]):
         line = worker_module.encode_row(values)
         [(_, [row])] = decoder.feed(line.encode() + b"\n")
-        assert row["a"] == "1" + "0" * limit
+        assert row[0] == "1" + "0" * limit
 
 
 @pytest.mark.asyncio
@@ -1360,8 +1422,8 @@ async def temp_tables(db):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("in_process", (False, True))
 async def test_cancelling_drops_the_temp_spellings_table(db, tmp_path, in_process):
-    # import_rows() leaves its TEMP spellings table on the write connection
-    # when it is cancelled; the parent drops it
+    # The TEMP table of kept spellings on the write connection goes when
+    # the import is cancelled
     plugins = plugin_dir(tmp_path, BEHAVIOUR_PLUGIN)
     started = asyncio.Event()
 
@@ -1417,6 +1479,6 @@ async def test_nested_values_arrive_as_the_text_the_inserter_stores(db, tmp_path
         *WORKER, "--", path, stdout=asyncio.subprocess.PIPE
     )
     stdout, _ = await process.communicate()
-    _, messages = decode_all(stdout)
-    first = rows_of(messages)[0]
+    decoder, messages = decode_all(stdout)
+    first = rows_of(messages, decoder)[0]
     assert first["geometry"] == '{"type": "Point", "coordinates": [1.5, -2]}'

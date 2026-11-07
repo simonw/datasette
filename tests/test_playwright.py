@@ -2967,6 +2967,49 @@ def test_export_data_dialog_on_query_page(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_export_data_dialog_on_row_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/simple_primary_key/1")
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    trigger.click()
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".export-scope")).to_have_text("This row where id = 1")
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    expect(tsv.get_by_role("button", name="Copy", exact=True)).to_be_focused()
+    tsv.get_by_role("button", name="Copy", exact=True).click()
+    expect(tsv.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText") == "id\tcontent\r\n1\thello\r\n"
+    # A single row needs no _size=max, or any other arguments
+    tsv.get_by_role("button", name="Copy URL").click()
+    expect(tsv.locator('[data-export-action="copy-url"]')).to_have_attribute(
+        "data-state", "done"
+    )
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/simple_primary_key/1.tsv"
+    )
+    json_group = dialog.get_by_role("group", name="JSON", exact=True)
+    json_group.get_by_role("button", name="Copy", exact=True).click()
+    expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
+    assert json.loads(page.evaluate("clipboardText"))["rows"] == [
+        {"id": 1, "content": "hello"}
+    ]
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    assert download_info.value.suggested_filename == "simple_primary_key.csv"
+    assert download_info.value.url == (
+        datasette_server + "fixtures/simple_primary_key/1.csv?_dl=on"
+    )
+    assert pathlib_read(download_info.value.path()) == "id,content\n1,hello\n"
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
 def test_export_data_dialog_without_javascript(browser, datasette_server):
     from playwright.sync_api import expect
 

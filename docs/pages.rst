@@ -143,6 +143,8 @@ Rows which are the targets of foreign key references from other tables will show
 
 Note that this URL includes the encoded primary key of the record.
 
+The "Export data" button on a row page offers that row as TSV, CSV or JSON, to view, download or copy - see :ref:`csv_export`.
+
 Here's that same page as JSON:
 
 `../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json>`_

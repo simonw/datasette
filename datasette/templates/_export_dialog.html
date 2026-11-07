@@ -1,4 +1,4 @@
-{#- Export dialog for table and query pages. Expects renderers, append_querystring,
+{#- Export dialog for table, query and row pages. Expects renderers,
     display_rows, url_csv_path, url_csv_hidden_args and url_tsv_path, plus:
     - export_meta: shown in the header and used for download filenames
     - export_scope and export_scope_description: which rows are exported,
@@ -7,11 +7,15 @@
       are rows beyond this page), later (true past the first page, when the
       exports start from this page's ?_next= cursor), max (max_returned_rows),
       total (exact row count or none) and count_url (to fetch the count when
-      total is none) -#}
+      total is none). None to show no row counts.
+    - export_single_row: true on row pages, which offer TSV, CSV and JSON for
+      that one row. Otherwise the dialog also offers more JSON shapes, using
+      append_querystring. -#}
 {% set export_base = export_meta or "data" %}
+{% set export_later = export_rows.later if export_rows else false %}
 {#- "Include all rows" streams every row from the first one, so offer it on
     every later page, and on the first page when CSV would stop short -#}
-{% set csv_stream = display_rows and (export_rows.later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_csv_stream %}
+{% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_csv_stream %}
 {% macro rows_text(n) %}{{ "{:,}".format(n) }} row{{ "" if n == 1 else "s" }}{% endmacro %}
 {#- How many rows an export returns. JSON and plugin formats return the rows
     on this page; TSV and CSV ask for _size=max, starting from this page.
@@ -41,11 +45,11 @@
                         <div class="export-option-text">
                             <div class="export-option-heading">
                                 <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
-                                {{ rows_label("csv", rows, id) }}
+                                {% if rows %}{{ rows_label("csv", rows, id) }}{% endif %}
                             </div>
                             <span class="export-option-description">{{ description }}</span>
                         </div>
-                        <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name" aria-describedby="export-{{ id }}-rows">
+                        <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name"{% if rows %} aria-describedby="export-{{ id }}-rows"{% endif %}>
                             <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
                             <button type="submit" class="export-action" data-export-action="view"{% if formaction %} formaction="{{ formaction }}"{% endif %}>View</button>
                             <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on"{% if formaction %} formaction="{{ formaction }}"{% endif %}>Download</button>
@@ -58,11 +62,11 @@
                 <div class="export-option-text">
                     <div class="export-option-heading">
                         <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
-                        {{ rows_label("json", rows, id) }}
+                        {% if rows %}{{ rows_label("json", rows, id) }}{% endif %}
                     </div>
                     {% if description %}<span class="export-option-description">{{ description }}</span>{% endif %}
                 </div>
-                <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name" aria-describedby="export-{{ id }}-rows">
+                <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name"{% if rows %} aria-describedby="export-{{ id }}-rows"{% endif %}>
                     <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
                     <a class="export-action" data-export-action="view" href="{{ url }}">View</a>
                     <a class="export-action" data-export-action="download" href="{{ url }}" download="{{ filename }}">Download</a>
@@ -70,16 +74,18 @@
                 </div>
             </li>
 {% endmacro %}
-<datasette-modal><dialog id="export-dialog" class="datasette-modal export-dialog" aria-labelledby="export-dialog-title"{% if export_scope or export_rows.later %} aria-describedby="{{ 'export-scope' if export_scope }}{{ ' ' if export_scope and export_rows.later }}{{ 'export-page-note' if export_rows.later }}"{% endif %}
-    data-rows-page="{{ export_rows.page }}" data-rows-more="{{ 'true' if export_rows.more else 'false' }}" data-rows-later="{{ 'true' if export_rows.later else 'false' }}" data-rows-max="{{ export_rows.max }}" data-rows-total="{{ '' if export_rows.total is none else export_rows.total }}"
-    {%- if export_rows.total is none and (export_rows.more or export_rows.later) and export_rows.count_url %} data-count-url="{{ export_rows.count_url }}"{% endif %}>
+<datasette-modal><dialog id="export-dialog" class="datasette-modal export-dialog" aria-labelledby="export-dialog-title"{% if export_scope or export_later %} aria-describedby="{{ 'export-scope' if export_scope }}{{ ' ' if export_scope and export_later }}{{ 'export-page-note' if export_later }}"{% endif %}
+    {%- if export_rows %}
+    data-rows-page="{{ export_rows.page }}" data-rows-more="{{ 'true' if export_rows.more else 'false' }}" data-rows-later="{{ 'true' if export_later else 'false' }}" data-rows-max="{{ export_rows.max }}" data-rows-total="{{ '' if export_rows.total is none else export_rows.total }}"
+    {%- if export_rows.total is none and (export_rows.more or export_later) and export_rows.count_url %} data-count-url="{{ export_rows.count_url }}"{% endif %}
+    {%- endif %}>
     <div class="modal-header">
         <h2 class="modal-title" id="export-dialog-title">Export data</h2>
         {% if export_meta %}<span class="modal-meta" title="{{ export_meta }}">{{ export_meta }}</span>{% endif %}
     </div>
     <div class="modal-body export-links">
         {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}
-        {% if export_rows.later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ "TSV or " if url_tsv_path }}CSV.{% endif %}</p>{% endif %}
+        {% if export_later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ "TSV or " if url_tsv_path }}CSV.{% endif %}</p>{% endif %}
         <ul class="export-options">
             {% if display_rows %}
             {#- One form for TSV and CSV, so the options under them apply to both -#}
@@ -90,7 +96,7 @@
                     {% if expandable_columns or csv_stream %}
                     <div class="export-csv-options">
                         {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> Expand labels</label>{% endif %}
-                        {% if csv_stream %}<label{% if settings.max_csv_mb %} title="Streams every matching row, up to the {{ settings.max_csv_mb }} MB size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_rows.later %} from the first page{% endif %}</span></label>{% endif %}
+                        {% if csv_stream %}<label{% if settings.max_csv_mb %} title="Streams every matching row, up to the {{ settings.max_csv_mb }} MB size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_later %} from the first page{% endif %}</span></label>{% endif %}
                     </div>
                     {% endif %}
                     {% for key, value in url_csv_hidden_args %}
@@ -99,11 +105,15 @@
                 </form>
             </li>
             {% endif %}
+            {% if export_single_row %}
+            {{ export_option("json", "JSON", "The row inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
+            {% else %}
             {{ export_option("json", "JSON", "Rows inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
             {{ export_option("json-array", "JSON array", "Just the rows, as an array of objects", append_querystring(renderers['json'], '_shape=array'), export_base ~ ".json", export_rows) }}
             {{ export_option("json-nl", "Newline-delimited JSON", "One JSON object per line", append_querystring(renderers['json'], '_shape=array&_nl=on'), export_base ~ ".jsonl", export_rows) }}
             {% if primary_keys %}
             {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
+            {% endif %}
             {% endif %}
             {% for name, url in renderers.items() if name != "json" %}
             {{ export_option("format-" ~ loop.index, name, none, url, export_base ~ "." ~ name, export_rows) }}

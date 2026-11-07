@@ -802,7 +802,7 @@ def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefi
         (
             "/prefix/fixtures/simple_primary_key/1",
             "/prefix/fixtures/simple_primary_key/1.json",
-            None,
+            "/prefix/fixtures/simple_primary_key/1.csv",
         ),
         (
             "/prefix/fixtures/-/query?sql=select+1",
@@ -813,20 +813,10 @@ def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefi
         response = app_client_base_url_prefix.get(path)
         assert response.status_code == 200
         soup = Soup(response.text, "html.parser")
-        if soup.select_one(".export-links"):
-            hrefs = _export_urls(soup)
-        else:
-            # The row page still has a plain "This data as" line
-            hrefs = [
-                a["href"]
-                for p in soup.find_all("p")
-                if "This data as" in p.get_text()
-                for a in p.find_all("a", href=True)
-            ]
+        hrefs = _export_urls(soup)
         assert expected_json in hrefs
-        if expected_csv:
-            assert expected_csv in hrefs
-            assert expected_csv.replace(".csv", ".tsv") in hrefs
+        assert expected_csv in hrefs
+        assert expected_csv.replace(".csv", ".tsv") in hrefs
         assert not [href for href in hrefs if href.startswith("/prefix/prefix/")]
         assert response.headers["link"] == (
             f"<http://localhost{expected_json}>; "
@@ -2402,6 +2392,82 @@ async def test_export_dialog_no_csv_without_rows(ds_client):
         "/fixtures/simple_primary_key.json?id=999"
     )
     assert dialog.select_one("form.export-csv-form") is None
+
+
+@pytest.mark.asyncio
+async def test_row_export_dialog(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert "This data as" not in response.text
+    button = soup.select_one(".table-tools button.export-data-button")
+    assert button["commandfor"] == "export-dialog"
+    dialog = soup.select_one("datasette-modal > dialog#export-dialog")
+    assert dialog.select_one(".modal-meta").text == "simple_primary_key"
+    assert dialog.select_one(".export-scope").get_text() == "This row where id = 1"
+    assert dialog["aria-describedby"] == "export-scope"
+    # TSV, CSV and JSON for this one row, plus formats from plugins
+    formats = [
+        (
+            row["data-export-format"],
+            [el["data-export-action"] for el in row.select("[data-export-action]")],
+        )
+        for row in dialog.select(".export-option")
+    ]
+    assert [format for format, _ in formats] == [
+        "tsv",
+        "csv",
+        "json",
+        "format-1",
+        "format-2",
+        "format-3",
+    ]
+    assert {tuple(actions) for _, actions in formats} == {
+        ("copy", "view", "download", "copy-url")
+    }
+    assert dialog.select_one(
+        '[data-export-format="json"] .export-option-description'
+    ).text == ("The row inside an object, with extra details")
+    assert _export_urls(soup)[:3] == [
+        "/fixtures/simple_primary_key/1.tsv",
+        "/fixtures/simple_primary_key/1.csv",
+        "/fixtures/simple_primary_key/1.json",
+    ]
+    assert dialog.select_one('a[data-export-action="download"]')["download"] == (
+        "simple_primary_key.json"
+    )
+    # Every format returns just this row: no row counts, and no options
+    assert dialog.select("[data-export-rows]") == []
+    assert not [key for key in dialog.attrs if key.startswith("data-rows-")]
+    assert not [
+        group
+        for group in dialog.select(".export-actions")
+        if group.has_attr("aria-describedby")
+    ]
+    assert dialog.select_one(".export-csv-options") is None
+    assert soup.find(id="export-page-note") is None
+    # ...and no _size=max, which would do nothing for a single row
+    assert dialog.select("form.export-csv-form input") == []
+    ids = [el["id"] for el in soup.select("[id]")]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_scope",
+    (
+        (
+            "/fixtures/compound_primary_key/a,b",
+            'This row where pk1 = "a" and pk2 = "b"',
+        ),
+        ("/fixtures/no_primary_key/1", "This row where rowid = 1"),
+    ),
+)
+async def test_row_export_dialog_scope(ds_client, path, expected_scope):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("#export-dialog .export-scope").get_text() == expected_scope
 
 
 @pytest.mark.asyncio

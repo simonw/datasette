@@ -516,9 +516,12 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     URL for the CSV export of this page
 
 ``url_csv_hidden_args`` - ``list``
-    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``.
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL
+
+``url_tsv_path`` - ``str``
+    Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
 
 .. [[[end]]]

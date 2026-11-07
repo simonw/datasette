@@ -1,4 +1,4 @@
-/* "Export data" dialog on table and query pages, from _export_dialog.html.
+/* "Export data" dialog on table, query and row pages, from _export_dialog.html.
 
    The template wires the buttons up with commandfor/command so the dialog
    opens without JavaScript too. View and Download are left to the browser:
@@ -78,8 +78,10 @@
     const form = el.closest(".export-csv-form");
     if (!form) return new URL(view.getAttribute("href"), location.href).href;
     const path = view.getAttribute("formaction") || form.getAttribute("action");
-    const params = new URLSearchParams(new FormData(form));
-    return new URL(`${path}?${params}`, location.href).href;
+    const url = new URL(path, location.href);
+    // Row pages have no fields to send, so no "?" either
+    url.search = new URLSearchParams(new FormData(form));
+    return url.href;
   }
 
   function isText(contentType) {
@@ -319,8 +321,10 @@
         // the other formats, rather than submitting the form with _dl=on:
         // WebKit on Linux does not treat that response as a download
         ev.preventDefault();
+        const url = new URL(exportUrl(el));
+        url.searchParams.set("_dl", "on");
         const link = document.createElement("a");
-        link.href = `${exportUrl(el)}&_dl=on`;
+        link.href = url.href;
         link.download = "";
         link.hidden = true;
         // Inside the dialog: everything outside a modal dialog is inert

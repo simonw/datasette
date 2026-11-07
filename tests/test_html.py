@@ -390,7 +390,11 @@ async def test_templates_considered(ds_client, path, expected_considered):
 async def test_row_json_export_link(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     assert response.status_code == 200
-    assert '<a href="/fixtures/simple_primary_key/1.json">json</a>' in response.text
+    soup = Soup(response.text, "html.parser")
+    view = soup.select_one(
+        '#export-dialog [data-export-format="json"] a[data-export-action="view"]'
+    )
+    assert view["href"] == "/fixtures/simple_primary_key/1.json"
 
 
 @pytest.mark.asyncio
@@ -584,8 +588,9 @@ async def test_row_links_from_other_tables(
     response = await ds_client.get(path)
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    h2 = soup.find("h2")
-    assert h2.text == "Links from other tables"
+    # Not the first h2: that is the export dialog's title
+    h2 = soup.find("h2", string="Links from other tables")
+    assert h2 is not None
     li = h2.find_next("ul").find("li")
     text = re.sub(r"\s+", " ", li.text.strip())
     assert text == expected_text

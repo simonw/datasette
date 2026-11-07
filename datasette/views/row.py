@@ -35,7 +35,13 @@ from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, is_csv_format, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    is_csv_format,
+    stream_csv,
+    tsv_export_path,
+)
 from .table import (
     _table_page_data,
     display_columns_and_rows,
@@ -121,7 +127,12 @@ class RowContext(Context):
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     settings: dict = field(
@@ -311,13 +322,13 @@ class RowView(BaseView):
                     )
                 )
 
-        url_csv_args = {"_size": "max", **url_labels_extra}
+        # No _size=max: a row page exports just that row
         url_csv = self.ds.urls.path(
             path_with_format(
                 request=request,
                 path=request.scope.get("route_path"),
                 format="csv",
-                extra_qs=url_csv_args,
+                extra_qs={**url_labels_extra},
             )
         )
         url_csv_path = url_csv.split("?")[0]
@@ -367,8 +378,8 @@ class RowView(BaseView):
                         (key, value)
                         for key, value in urllib.parse.parse_qsl(request.query_string)
                         if key not in ("_labels", "_facet", "_size")
-                    ]
-                    + [("_size", "max")],
+                    ],
+                    url_tsv_path=tsv_export_path(self.ds, request),
                     settings=self.ds.settings_dict(),
                     select_templates=[
                         f"{'*' if template_name == template.name else ''}{template_name}"

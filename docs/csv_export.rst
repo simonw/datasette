@@ -8,7 +8,8 @@ Any Datasette table, view or custom SQL query can be exported as CSV or TSV.
 To export the table you are looking at, click the "Export data" button below
 the filters. The dialog that opens offers the data as TSV, as CSV and in
 different JSON shapes, using the current filters and sort order. Custom SQL
-query pages have the same button above their results.
+query pages have the same button above their results, and each row page has
+one that offers that row as TSV, CSV or JSON.
 
 The top of the dialog describes the filters and sort order that the export
 will use. Each format shows how many rows it returns: JSON formats return the

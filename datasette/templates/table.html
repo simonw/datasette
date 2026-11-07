@@ -254,11 +254,17 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 {% endif %}
 
 {% if table_definition %}
+<details class="table-schema">
+    <summary>Table schema</summary>
     <pre class="wrapped-sql">{{ table_definition }}</pre>
+</details>
 {% endif %}
 
 {% if view_definition %}
+<details class="table-schema">
+    <summary>View definition</summary>
     <pre class="wrapped-sql">{{ view_definition }}</pre>
+</details>
 {% endif %}
 
 {% if allow_execute_sql and query.sql %}

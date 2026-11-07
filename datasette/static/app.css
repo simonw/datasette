@@ -629,6 +629,28 @@ h2 em {
     font-family: monospace;
 }
 
+/* Collapsed CREATE TABLE / CREATE VIEW at the bottom of the table page */
+.table-schema {
+    margin: 1.5rem 0 1rem;
+}
+.table-schema > summary {
+    cursor: pointer;
+    width: fit-content;
+    color: var(--muted, #6b6b6b);
+    font-weight: 600;
+}
+.table-schema > summary:hover {
+    color: var(--ink, #0f0f0f);
+}
+.table-schema .wrapped-sql {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem 1rem;
+    background: var(--card, #fff);
+    border: 1px solid var(--rule, #d8e6f5);
+    border-radius: 0.4rem;
+    font-size: 0.85rem;
+}
+
 /* Tables ==================================================================
    Rows-and-columns tables (table, row and query pages) share the design
    language of the filter panel and modal dialogs:

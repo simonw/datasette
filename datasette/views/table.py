@@ -2152,7 +2152,7 @@ async def table_view_traced(datasette, request):
         )
     else:
         assert False, f"Invalid format: {format_}"
-    if next_url:
+    if next_url and format_ != "html":
         r.headers["link"] = f'<{next_url}>; rel="next"'
     return r
 

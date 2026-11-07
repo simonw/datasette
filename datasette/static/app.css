@@ -370,6 +370,74 @@ a:active  {
     margin-left: 0.5rem;
 }
 
+/* "You are not on the first page" strip, shown when ?_next= is set */
+.page-position {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    margin: 0 0 1rem;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid #c7d7f5;
+    border-radius: 0.4rem;
+    background: #e8effd;
+    color: #1d3461;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+.page-position-footer {
+    justify-content: flex-end;
+    margin: 1rem 0 1.5rem;
+}
+.page-position-text {
+    flex: 1 1 auto;
+}
+.page-position-text strong {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.page-position-text code {
+    font-size: 0.85em;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 0.05em 0.3em;
+    border-radius: 0.2rem;
+}
+.page-position-links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.page-position a.page-position-first,
+.page-position a.page-position-next {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid #1a56db;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #1a56db;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.page-position a.page-position-first:hover,
+.page-position a.page-position-first:focus {
+    background: #1a56db;
+    color: #fff;
+}
+.page-position a.page-position-next {
+    background: #1a56db;
+    color: #fff;
+}
+.page-position a.page-position-next:hover,
+.page-position a.page-position-next:focus {
+    background: #1646b3;
+    border-color: #1646b3;
+    color: #fff;
+}
+
 .table-summary .count-error:not(:empty) {
     display: block;
     margin-top: 0.25rem;

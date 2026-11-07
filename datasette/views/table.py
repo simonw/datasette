@@ -168,6 +168,11 @@ class TableContext(Context):
             "help": "URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved."
         }
     )
+    page_position: dict = field(
+        metadata={
+            "help": "On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page."
+        }
+    )
     filter_description_en: str = field(
         metadata={
             "help": 'Human readable description of the filters, search and ``?_where=`` clauses applied to the table, for example ``where state = "CA"``, or an empty string if there are none.'
@@ -1546,6 +1551,11 @@ class TableCountView(BaseView):
         _, where_clauses, params, _, _ = await _table_filters(
             self.ds, request, resolved.db.name, resolved.table
         )
+        _next = request.args.get("_next")
+        if request.args.get("_count") == "before" and _next:
+            return await self.count_before(
+                request, resolved, _next, where_clauses, params
+            )
         sql = f"select count(*) from {escape_sqlite(resolved.table)}"
         if where_clauses:
             sql += " where " + " and ".join(where_clauses)
@@ -1557,6 +1567,53 @@ class TableCountView(BaseView):
             return Response.error(str(ex), status=400)
         return Response.json(
             {"ok": True, "count": results.single_value()},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def count_before(self, request, resolved, _next, where_clauses, params):
+        """Count the filtered rows that come before a ?_next= cursor.
+
+        Used to show "Rows 51-100" on pages after the first, without slowing
+        down the page itself."""
+        db, table_name = resolved.db, resolved.table
+        if resolved.is_view:
+            # For views _next is a plain offset
+            try:
+                count = int(_next)
+            except ValueError:
+                return Response.error("Invalid _next", status=400)
+        else:
+            pks = await db.primary_keys(table_name)
+            use_rowid = not pks
+            table_metadata = await self.ds.table_config(db.name, table_name)
+            sortable_columns = await _sortable_columns_for_table(
+                self.ds, db.name, table_name, use_rowid
+            )
+            sort, sort_desc, _ = await _sort_order(
+                table_metadata, sortable_columns, request, ""
+            )
+            params = dict(params)
+            cursor_clauses = _next_where_clauses(
+                _next, sort, sort_desc, pks, use_rowid, params
+            )
+            if not cursor_clauses:
+                return Response.error("Invalid _next", status=400)
+            # Rows where the cursor condition is false - or null, which
+            # happens for null sort values that sort before the cursor
+            sql = "select count(*) from {} where {}not coalesce(({}), 0)".format(
+                escape_sqlite(table_name),
+                "".join(f"{clause} and " for clause in where_clauses),
+                " and ".join(cursor_clauses),
+            )
+            try:
+                results = await db.execute(sql, params)
+            except QueryInterrupted:
+                return Response.error("Count query timed out", status=400)
+            except (sqlite3.OperationalError, InvalidSql) as ex:
+                return Response.error(str(ex), status=400)
+            count = results.single_value()
+        return Response.json(
+            {"ok": True, "count": count},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -2043,6 +2100,7 @@ async def table_view_traced(datasette, request):
             supports_search=data["supports_search"],
             extra_wheres_for_ui=data["extra_wheres_for_ui"],
             clear_filters_url=data["clear_filters_url"],
+            page_position=data["page_position"],
             url_csv=data["url_csv"],
             url_csv_path=data["url_csv_path"],
             url_csv_hidden_args=data["url_csv_hidden_args"],
@@ -2093,6 +2151,107 @@ async def table_view_traced(datasette, request):
     if next_url:
         r.headers["link"] = f'<{next_url}>; rel="next"'
     return r
+
+
+def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
+    """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
+
+    Adds the cursor's values to params and returns a list of where clauses."""
+    clauses = []
+    sort_value = None
+    components = urlsafe_components(_next)
+    # If a sort order is applied and there are multiple components,
+    # the first of these is the sort value
+    if (sort or sort_desc) and (len(components) > 1):
+        sort_value = components[0]
+        # Special case for if non-urlencoded first token was $null
+        if _next.split(",")[0] == "$null":
+            sort_value = None
+        components = components[1:]
+
+    # Figure out the SQL for next-based-on-primary-key first
+    next_by_pk_clauses = []
+    if use_rowid:
+        next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+        params[f"p{len(params)}"] = components[0]
+    else:
+        # Apply the tie-breaker based on primary keys
+        if len(components) == len(pks):
+            param_len = len(params)
+            next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
+            for i, pk_value in enumerate(components):
+                params[f"p{param_len + i}"] = pk_value
+
+    # Now add the sort SQL, which may incorporate next_by_pk_clauses
+    if sort or sort_desc:
+        if sort_value is None:
+            if sort_desc:
+                # Just items where column is null ordered by pk
+                clauses.append(
+                    "({column} is null and {next_clauses})".format(
+                        column=escape_sqlite(sort_desc),
+                        next_clauses=" and ".join(next_by_pk_clauses),
+                    )
+                )
+            else:
+                clauses.append(
+                    "({column} is not null or ({column} is null and {next_clauses}))".format(
+                        column=escape_sqlite(sort),
+                        next_clauses=" and ".join(next_by_pk_clauses),
+                    )
+                )
+        else:
+            clauses.append(
+                "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
+                    column=escape_sqlite(sort or sort_desc),
+                    op=">" if sort else "<",
+                    p=len(params),
+                    extra_desc_only=(
+                        ""
+                        if sort
+                        else f" or {escape_sqlite(sort or sort_desc)} is null"
+                    ),
+                    next_clauses=" and ".join(next_by_pk_clauses),
+                )
+            )
+            params[f"p{len(params)}"] = sort_value
+    else:
+        clauses.extend(next_by_pk_clauses)
+    return clauses
+
+
+def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid):
+    """Context for the "you are not on the first page" strip, or None on page 1."""
+    _next = request.args.get("_next")
+    if not _next:
+        return None
+    route_path = request.scope.get("route_path")
+    position = {
+        "first_url": datasette.urls.path(
+            path_with_removed_args(request, {"_next"}, path=route_path)
+        ),
+        "count_before_url": datasette.urls.path(
+            path_with_added_args(
+                request,
+                {"_count": "before"},
+                path=(route_path or request.path).rstrip("/") + "/-/count",
+            )
+        ),
+        "after_column": None,
+        "after_value": None,
+    }
+    if is_view:
+        return position
+    components = urlsafe_components(_next)
+    if (sort or sort_desc) and len(components) > 1:
+        position["after_column"] = sort or sort_desc
+        position["after_value"] = (
+            None if _next.split(",")[0] == "$null" else components[0]
+        )
+    else:
+        position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
+        position["after_value"] = ", ".join(components)
+    return position
 
 
 async def _table_filters(datasette, request, database_name, table_name):
@@ -2249,70 +2408,15 @@ async def table_view_data(
 
     offset = ""
     if _next:
-        sort_value = None
         if is_view:
             # _next is an offset
             offset = f" offset {int(_next)}"
         else:
-            components = urlsafe_components(_next)
-            # If a sort order is applied and there are multiple components,
-            # the first of these is the sort value
-            if (sort or sort_desc) and (len(components) > 1):
-                sort_value = components[0]
-                # Special case for if non-urlencoded first token was $null
-                if _next.split(",")[0] == "$null":
-                    sort_value = None
-                components = components[1:]
-
-            # Figure out the SQL for next-based-on-primary-key first
-            next_by_pk_clauses = []
-            if use_rowid:
-                next_by_pk_clauses.append(f"rowid > :p{len(params)}")
-                params[f"p{len(params)}"] = components[0]
-            else:
-                # Apply the tie-breaker based on primary keys
-                if len(components) == len(pks):
-                    param_len = len(params)
-                    next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
-                    for i, pk_value in enumerate(components):
-                        params[f"p{param_len + i}"] = pk_value
-
-            # Now add the sort SQL, which may incorporate next_by_pk_clauses
+            where_clauses.extend(
+                _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params)
+            )
             if sort or sort_desc:
-                if sort_value is None:
-                    if sort_desc:
-                        # Just items where column is null ordered by pk
-                        where_clauses.append(
-                            "({column} is null and {next_clauses})".format(
-                                column=escape_sqlite(sort_desc),
-                                next_clauses=" and ".join(next_by_pk_clauses),
-                            )
-                        )
-                    else:
-                        where_clauses.append(
-                            "({column} is not null or ({column} is null and {next_clauses}))".format(
-                                column=escape_sqlite(sort),
-                                next_clauses=" and ".join(next_by_pk_clauses),
-                            )
-                        )
-                else:
-                    where_clauses.append(
-                        "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
-                            column=escape_sqlite(sort or sort_desc),
-                            op=">" if sort else "<",
-                            p=len(params),
-                            extra_desc_only=(
-                                ""
-                                if sort
-                                else f" or {escape_sqlite(sort or sort_desc)} is null"
-                            ),
-                            next_clauses=" and ".join(next_by_pk_clauses),
-                        )
-                    )
-                    params[f"p{len(params)}"] = sort_value
                 order_by = f"{order_by}, {order_by_pks}"
-            else:
-                where_clauses.extend(next_by_pk_clauses)
 
     where_clause = ""
     if where_clauses:
@@ -2596,6 +2700,9 @@ async def table_view_data(
                 ]
                 + [("_size", "max")],
             }
+        )
+        data["page_position"] = _page_position(
+            datasette, request, is_view, sort, sort_desc, pks, use_rowid
         )
         # if no sort specified AND table has a single primary key,
         # set sort to that so arrow is displayed

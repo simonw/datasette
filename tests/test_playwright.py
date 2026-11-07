@@ -2726,6 +2726,33 @@ def test_export_data_dialog_long_table_name_on_a_phone(page, datasette_server):
 
 
 @pytest.mark.playwright
+@pytest.mark.parametrize("width,display", [(320, "grid"), (375, "flex")])
+def test_export_data_dialog_actions_fit_narrow_screens(
+    page, datasette_server, width, display
+):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.set_viewport_size({"width": width, "height": 700})
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog).to_be_visible()
+    groups = dialog.evaluate(
+        """dialog => [...dialog.querySelectorAll(".export-actions")].map(group => ({
+            display: getComputedStyle(group).display,
+            clipped: group.scrollWidth - group.clientWidth,
+            visible: [...group.children].filter(el => !el.hidden).length,
+        }))"""
+    )
+    # Four actions in a row where they fit, two by two where they don't,
+    # and never cut off
+    assert {group["display"] for group in groups} == {display}
+    assert {group["clipped"] for group in groups} == {0}
+    assert {group["visible"] for group in groups} == {4}
+
+
+@pytest.mark.playwright
 def test_export_data_dialog_copy_failure(page, datasette_server):
     from playwright.sync_api import expect
 

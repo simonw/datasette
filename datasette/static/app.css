@@ -2004,6 +2004,28 @@ dialog.export-dialog {
     border-left: 1px solid var(--rule);
 }
 
+/* Too narrow for four actions in a row (a 320px phone, or large text): two
+   by two instead, with the gaps showing through as the dividers */
+.export-dialog .export-options {
+    container: export-options / inline-size;
+}
+
+@container export-options (max-width: 18rem) {
+    .export-dialog .export-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--rule);
+    }
+    .export-dialog .export-action {
+        background: var(--card);
+        padding-inline: 0.3rem;
+    }
+    .export-dialog .export-action + .export-action:not([hidden]) {
+        border-left: 0;
+    }
+}
+
 .export-dialog .export-action:hover,
 .export-dialog .export-action:focus-visible {
     background: var(--paper);

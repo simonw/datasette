@@ -478,6 +478,11 @@ class QueryContext(Context):
             "help": "Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML."
         }
     )
+    query_page_data: dict = field(
+        metadata={
+            "help": "JSON data used by the column statistics dialog on the query page, or ``None`` if it is not available. It is only provided for read-only queries that returned rows, use no magic parameters and are run by an actor who can execute custom SQL. Has ``database`` and ``executeSql`` keys. ``executeSql`` has ``queryUrl`` and ``editorUrl``, a ``query`` with the ``sql``, its ``params`` and ``shownRows``, the number of rows shown on the page, and ``columns``: the result columns with unique ``name`` values and the SQLite storage ``type`` seen in the returned rows (``mixed`` if more than one)."
+        }
+    )
     query_actions: callable = field(
         metadata={
             "help": 'Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.'
@@ -1059,6 +1064,27 @@ class QueryView(View):
                     + urlencode({"sql": sql})
                 )
 
+            # Column statistics re-run this query as part of other queries, so
+            # they need permission to execute SQL and a read-only query with
+            # no magic parameters (their values can't be passed back in)
+            query_page_data = None
+            if (
+                allow_execute_sql
+                and is_validated_sql
+                and ":_" not in sql
+                and not stored_query_write
+                and not query_error
+                and rows
+            ):
+                query_page_data = _query_page_data(
+                    datasette,
+                    database,
+                    sql,
+                    named_parameter_values,
+                    columns,
+                    rows,
+                )
+
             async def query_actions():
                 query_actions = []
                 for hook in pm.hook.query_actions(
@@ -1134,6 +1160,7 @@ class QueryView(View):
                             database=database,
                             query_name=stored_query.name if stored_query else None,
                         ),
+                        query_page_data=query_page_data,
                         query_actions=query_actions,
                     ),
                     request=request,
@@ -1190,6 +1217,43 @@ class MagicParameters(dict):
                     return super().__getitem__(key)
         else:
             return super().__getitem__(key)
+
+
+_STORAGE_TYPES = {int: "integer", float: "real", str: "text", bytes: "blob"}
+
+
+def _query_page_data(datasette, database, sql, params, columns, rows):
+    # Used by the column statistics dialog (column-stats.js), which wraps the
+    # query in a CTE with an explicit column list, so every result column
+    # needs a unique name. SQLite compares names case-insensitively.
+    seen = set()
+    stats_columns = []
+    for index, column in enumerate(columns):
+        name = column
+        suffix = 2
+        while name.lower() in seen:
+            name = f"{column}_{suffix}"
+            suffix += 1
+        seen.add(name.lower())
+        # The storage type of the values returned, since query results have
+        # no declared type
+        types = {
+            _STORAGE_TYPES.get(type(row[index]), "")
+            for row in rows
+            if row[index] is not None
+        }
+        storage_type = (types.pop() if len(types) == 1 else "mixed") if types else ""
+        stats_columns.append({"name": name, "type": storage_type})
+    query_path = f"{datasette.urls.database(database)}/-/query"
+    return {
+        "database": database,
+        "executeSql": {
+            "queryUrl": query_path + ".json",
+            "editorUrl": query_path,
+            "query": {"sql": sql, "params": params, "shownRows": len(rows)},
+            "columns": stats_columns,
+        },
+    }
 
 
 async def display_rows(datasette, database, request, rows, columns):

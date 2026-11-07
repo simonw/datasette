@@ -21,6 +21,7 @@
   // selects the column from just the matching rows.
 
   var FILTERED_CTE = "filtered_rows";
+  var QUERY_CTE = "query_rows";
 
   function quoteIdentifier(name) {
     return '"' + String(name).replace(/"/g, '""') + '"';
@@ -124,6 +125,24 @@
 )`,
       ];
     }
+    return source;
+  }
+
+  // The rows returned by an arbitrary SQL query, wrapped in a CTE with an
+  // explicit column list. That works for any read-only query (including ones
+  // with their own WITH clause, ORDER BY or LIMIT) and gives every result
+  // column a unique name: the server de-duplicates names like two "id"
+  // columns from a join. The query's parameters are inlined as literals.
+  function querySourceSql(sql, params, columnNames) {
+    var body = inlineParams(String(sql).replace(/[\s;]+$/, ""), params);
+    var source = { from: null, ctes: [], reserved: body.toLowerCase() };
+    var name = cteName(source, QUERY_CTE);
+    source.from = name;
+    source.ctes = [
+      `${name}(${columnNames.map(quoteIdentifier).join(", ")}) as (
+${body}
+)`,
+    ];
     return source;
   }
 
@@ -424,9 +443,14 @@ limit ${sqlNumber(limit)}`;
 
   // Running queries ========================================================
 
+  // Table pages provide _datasetteTableData, query pages _datasetteQueryData.
+  // Either way executeSql is only there if the actor can execute SQL.
   function getConfig() {
-    var data = window._datasetteTableData;
-    if (!data || !data.executeSql || !data.table) {
+    var data = window._datasetteTableData || window._datasetteQueryData;
+    if (!data || !data.executeSql) {
+      return null;
+    }
+    if (!data.table && !data.executeSql.query) {
       return null;
     }
     return data;
@@ -1159,18 +1183,42 @@ limit ${sqlNumber(limit)}`;
       }
     }
 
-    var tableFilter = config.executeSql.filter || null;
+    // On a query page the statistics cover the rows the query returns;
+    // on a table page the table, or the rows matching its current filters.
+    var pageQuery = config.executeSql.query || null;
+    var tableFilter = pageQuery ? null : config.executeSql.filter || null;
     var useFilter = !!tableFilter && !options.ignoreFilter;
     var source;
     var filterError = null;
     try {
-      source = sourceSql(
-        config.table,
-        column,
-        useFilter ? inlineParams(tableFilter.where, tableFilter.params) : null,
-      );
+      source = pageQuery
+        ? querySourceSql(
+            pageQuery.sql,
+            pageQuery.params,
+            config.executeSql.columns.map((c) => c.name),
+          )
+        : sourceSql(
+            config.table,
+            column,
+            useFilter
+              ? inlineParams(tableFilter.where, tableFilter.params)
+              : null,
+          );
     } catch (error) {
       filterError = error;
+    }
+
+    // Where a "most common value" links to: the table filtered to that
+    // value, or for a query the SQL editor with the query narrowed to it.
+    function valueUrl(value) {
+      if (pageQuery) {
+        return editorUrl(
+          `${withSql(source)}select * from ${source.from}\nwhere ${quoteIdentifier(
+            column,
+          )} = ${sqlLiteral(value)}`,
+        );
+      }
+      return filterUrl(column, String(value), useFilter);
     }
     var overviewSection = section("overview", "Overview");
     s.body.appendChild(overviewSection.node);
@@ -1287,6 +1335,20 @@ limit ${sqlNumber(limit)}`;
       clearLoading(body);
       var total = overview.total_rows;
       var nulls = total - overview.not_null;
+      // The query page shows at most max_returned_rows rows, but the
+      // statistics cover every row the query returns
+      if (pageQuery && total > pageQuery.shownRows) {
+        body.appendChild(
+          h("p", {
+            className: "column-stats-note column-stats-query-note",
+            text: `Statistics cover all ${formatNumber(
+              total,
+            )} rows returned by the query, not only the ${formatNumber(
+              pageQuery.shownRows,
+            )} shown on the page.`,
+          }),
+        );
+      }
       body.appendChild(
         statGrid([
           statTile(
@@ -1339,7 +1401,9 @@ limit ${sqlNumber(limit)}`;
             className: "column-stats-note",
             text: useFilter
               ? "No rows match the current filters."
-              : "This table is empty.",
+              : pageQuery
+                ? "The query returned no rows."
+                : "This table is empty.",
           }),
         );
       }
@@ -1801,7 +1865,7 @@ limit ${sqlNumber(limit)}`;
                 label = h("span", { text: row.value + "…" });
               } else {
                 label = h("a", {
-                  href: filterUrl(column, String(row.value), useFilter),
+                  href: valueUrl(row.value),
                   text:
                     typeof row.value === "number"
                       ? formatNumber(row.value)
@@ -1852,11 +1916,154 @@ limit ${sqlNumber(limit)}`;
     }
   }
 
+  // Query pages ============================================================
+  // On table pages the "Column statistics" item lives in table.js's column
+  // menu. Query results have no other column actions, so this gives each
+  // result column a cog menu with just that item, plus a button for narrow
+  // screens where the table headers are hidden.
+
+  var COG_SVG = `<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="3"></circle>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+</svg>`;
+
+  function initQueryPage() {
+    var data = window._datasetteQueryData;
+    if (!data || !isAvailable() || !window.DatasetteMenu) {
+      return;
+    }
+    var table = document.querySelector("table.rows-and-columns");
+    var columns = data.executeSql.columns;
+    var headers = table ? Array.from(table.querySelectorAll("thead th")) : [];
+    if (!headers.length || headers.length !== columns.length) {
+      return;
+    }
+    var menu = h("div", {
+      id: "column-actions-menu",
+      className: "column-actions-menu datasette-menu",
+      hidden: true,
+    });
+    document.body.appendChild(menu);
+    var wrapper = table.closest(".table-wrapper");
+    if (wrapper) {
+      wrapper.addEventListener("scroll", () => window.DatasetteMenu.close());
+    }
+
+    function openMenu(event, trigger, column) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === "click" && window.DatasetteMenu.isOpenFor(trigger)) {
+        window.DatasetteMenu.close({ restoreFocus: true });
+        return;
+      }
+      window.DatasetteMenu.close();
+      var item = h("a", {
+        href: "#",
+        role: "menuitem",
+        text: "Column statistics",
+      });
+      item.addEventListener("click", (clickEvent) => {
+        clickEvent.preventDefault();
+        window.DatasetteMenu.close({ restoreFocus: true });
+        window.setTimeout(() => {
+          open({
+            column: column.name,
+            columnType: column.type,
+            returnFocusTo: trigger,
+          });
+        }, 0);
+      });
+      menu.innerHTML = "";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", "Actions for column " + column.name);
+      menu.appendChild(
+        h(
+          "div",
+          { className: "datasette-menu-heading", role: "presentation" },
+          [
+            h("strong", {
+              className: "datasette-menu-title",
+              text: column.name,
+            }),
+          ],
+        ),
+      );
+      menu.appendChild(
+        h("ul", { className: "dropdown-actions", role: "none" }, [
+          h("li", { role: "none" }, [item]),
+        ]),
+      );
+      if (column.type) {
+        menu.appendChild(
+          h("p", {
+            className: "dropdown-column-type",
+            text: `Type: ${column.type.toUpperCase()}`,
+          }),
+        );
+      }
+      window.DatasetteMenu.open({
+        trigger: trigger,
+        panel: menu,
+        focusLast: event.key === "ArrowUp",
+        focusMenu: event.type === "keydown" || event.detail === 0,
+      });
+    }
+
+    headers.forEach((th, index) => {
+      var column = columns[index];
+      var trigger = h("button", {
+        type: "button",
+        className: "column-menu-trigger",
+        "aria-label": "Actions for column " + column.name,
+        "aria-haspopup": "menu",
+        "aria-expanded": "false",
+        "aria-controls": menu.id,
+      });
+      trigger.innerHTML = COG_SVG;
+      trigger.addEventListener("click", (event) =>
+        openMenu(event, trigger, column),
+      );
+      trigger.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          openMenu(event, trigger, column);
+        }
+      });
+      th.appendChild(trigger);
+    });
+
+    var mobileButton = h(
+      "button",
+      {
+        type: "button",
+        className:
+          "column-actions-mobile small-screen-only column-stats-mobile",
+        "aria-haspopup": "dialog",
+      },
+      [h("span", { text: "Column statistics" })],
+    );
+    mobileButton.insertAdjacentHTML("afterbegin", COG_SVG);
+    mobileButton.addEventListener("click", () => {
+      open({
+        column: columns[0].name,
+        columnType: columns[0].type,
+        returnFocusTo: mobileButton,
+      });
+    });
+    (wrapper || table).before(mobileButton);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initQueryPage);
+  } else {
+    initQueryPage();
+  }
+
   window.DatasetteColumnStats = {
     isAvailable: isAvailable,
     open: open,
     sql: {
       source: sourceSql,
+      querySource: querySourceSql,
       inlineParams: inlineParams,
       overview: overviewSql,
       numericSummary: numericSummarySql,

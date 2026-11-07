@@ -198,6 +198,9 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``query_actions`` - ``callable``
     Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.
 
+``query_page_data`` - ``dict``
+    JSON data used by the column statistics dialog on the query page, or ``None`` if it is not available. It is only provided for read-only queries that returned rows, use no magic parameters and are run by an actor who can execute custom SQL. Has ``database`` and ``executeSql`` keys. ``executeSql`` has ``queryUrl`` and ``editorUrl``, a ``query`` with the ``sql``, its ``params`` and ``shownRows``, the number of rows shown on the page, and ``columns``: the result columns with unique ``name`` values and the SQLite storage ``type`` seen in the returned rows (``mixed`` if more than one).
+
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` to URLs for this query in that format.
 

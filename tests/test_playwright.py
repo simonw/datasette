@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 
 import httpx2
 import pytest
@@ -2939,3 +2940,83 @@ def test_column_statistics_limits_concurrent_queries(page, datasette_server):
     # The histogram query for score was never sent
     assert not any("as bucket" in sql for sql in calls())
     assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_query_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    # A query with its own WITH clause, a parameter, duplicate "id" columns
+    # and a trailing comment and semicolon
+    sql = (
+        "with s as (select id, score, city from stats_demo where score > :min)\n"
+        "select s.id, s.score, t.id, s.city from s join stats_demo t on t.id = s.id\n"
+        "order by s.score desc limit 5 -- top five\n;"
+    )
+    page.goto(
+        datasette_server
+        + "data/-/query?"
+        + urllib.parse.urlencode({"sql": sql, "min": "10"})
+    )
+    trigger = (
+        page.locator("table.rows-and-columns th").nth(1).locator(".column-menu-trigger")
+    )
+    trigger.click()
+    page.locator("#column-actions-menu").get_by_role(
+        "menuitem", name="Column statistics", exact=True
+    ).click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    tabs = dialog.get_by_role("tab")
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.textContent)") == [
+        "id integer",
+        "score integer",
+        "id_2 integer",
+        "city text",
+    ]
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("score integer")
+    expect(dialog.locator(".column-stats-scope")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "5"
+    assert column_stat(dialog, "numeric", "min") == "16"
+    assert column_stat(dialog, "numeric", "max") == "20"
+    assert column_stat(dialog, "numeric", "median") == "18"
+    dialog.locator(".column-stats-sql summary").click()
+    first_sql = dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    assert first_sql.startswith(
+        'with query_rows("id", "score", "id_2", "city") as (\n'
+        "with s as (select id, score, city from stats_demo where score > '10')"
+    )
+    # Most common values link to the query in the SQL editor, narrowed down
+    dialog.get_by_role("tab", name="city text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    link = dialog.locator(".column-stats-top-values a").first
+    expect(link).to_have_text("Oslo")
+    href = link.get_attribute("href")
+    assert href.startswith("/data/-/query?sql=")
+    linked_sql = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)["sql"][0]
+    assert linked_sql.endswith("select * from query_rows\nwhere \"city\" = 'Oslo'")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_query_page_covers_all_rows(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The page shows max_returned_rows rows; the statistics use them all.
+    # On a narrow screen the dialog opens from a button above the results.
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(datasette_server + "data/-/query?sql=select+id+from+count_numbers")
+    page.get_by_role("button", name="Column statistics").click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    assert column_stat(dialog, "overview", "rows") == "10,002"
+    expect(dialog.locator(".column-stats-query-note")).to_have_text(
+        "Statistics cover all 10,002 rows returned by the query, not only the"
+        " 1,000 shown on the page."
+    )

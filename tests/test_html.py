@@ -716,6 +716,74 @@ def test_allow_sql_off():
         assert b"View and edit SQL" not in response.content
 
 
+def query_page_data(response):
+    match = re.search(
+        r"window\._datasetteQueryData\s*=\s*({.*?});", response.text, re.DOTALL
+    )
+    return json.loads(match.group(1)) if match else None
+
+
+def test_query_page_column_statistics_data(app_client):
+    # The column statistics dialog wraps the query in a CTE, so duplicate
+    # column names (compared case-insensitively) are made unique and the
+    # storage type seen in the returned rows is included
+    sql = (
+        "select id, id as ID, content from simple_primary_key"
+        " where content != :skip order by id"
+    )
+    response = app_client.get(
+        "/fixtures/-/query?" + urllib.parse.urlencode({"sql": sql, "skip": "world"})
+    )
+    assert response.status == 200
+    assert "/column-stats.js" in response.text
+    assert query_page_data(response) == {
+        "database": "fixtures",
+        "executeSql": {
+            "queryUrl": "/fixtures/-/query.json",
+            "editorUrl": "/fixtures/-/query",
+            "query": {"sql": sql, "params": {"skip": "world"}, "shownRows": 4},
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "ID_2", "type": "integer"},
+                {"name": "content", "type": "text"},
+            ],
+        },
+    }
+
+
+def test_stored_query_page_column_statistics_data(app_client):
+    response = app_client.get("/fixtures/neighborhood_search?text=ber")
+    assert response.status == 200
+    execute_sql = query_page_data(response)["executeSql"]
+    assert "where _neighborhood like '%' || :text || '%'" in (
+        execute_sql["query"]["sql"]
+    )
+    assert execute_sql["query"]["params"] == {"text": "ber"}
+    assert [column["name"] for column in execute_sql["columns"]] == [
+        "_neighborhood",
+        "name",
+        "state",
+    ]
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        # Magic parameter values can't be passed back in
+        "/fixtures/magic_parameters",
+        # Not a select query
+        "/fixtures/pragma_cache_size",
+        # No rows, so no results table
+        "/fixtures/-/query?sql=select+*+from+simple_primary_key+where+0",
+    ),
+)
+def test_query_page_column_statistics_not_available(app_client, path):
+    response = app_client.get(path)
+    assert response.status == 200
+    assert query_page_data(response) is None
+    assert "/column-stats.js" not in response.text
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/404", "/fixtures/404"])
 async def test_404(ds_client, path):

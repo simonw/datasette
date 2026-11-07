@@ -249,6 +249,9 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL
 
+``url_tsv_path`` - ``str``
+    Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
+
 Table page
 ----------
 
@@ -426,6 +429,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL
+
+``url_tsv_path`` - ``str``
+    Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
 
 ``view_definition`` - ``str``
     SQL definition for this view

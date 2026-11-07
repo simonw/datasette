@@ -35,7 +35,7 @@ from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import BaseView, DatasetteError, is_csv_format, stream_csv
 from .table import (
     _table_page_data,
     display_columns_and_rows,
@@ -159,8 +159,8 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def as_csv(self, request, database):
-        return await stream_csv(self.ds, self.data, request, database)
+    async def as_csv(self, request, database, format_="csv"):
+        return await stream_csv(self.ds, self.data, request, database, format_=format_)
 
     async def get(self, request):
         db = await self.ds.resolve_database(request)
@@ -169,8 +169,8 @@ class RowView(BaseView):
         format_ = request.url_vars.get("format") or "html"
         data_kwargs = {}
 
-        if format_ == "csv":
-            return await self.as_csv(request, database_route)
+        if is_csv_format(self.ds, format_):
+            return await self.as_csv(request, database_route, format_=format_)
 
         if format_ == "html":
             # HTML views default to expanding all foreign key labels

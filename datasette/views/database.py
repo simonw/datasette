@@ -40,7 +40,7 @@ from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, stream_csv
+from .base import DatasetteError, View, is_csv_format, stream_csv, tsv_export_path
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -461,6 +461,11 @@ class QueryContext(Context):
             "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving the SQL and parameters while forcing ``_size=max``."
         }
     )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
+        }
+    )
     append_querystring: callable = field(
         metadata={
             "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
@@ -873,7 +878,7 @@ class QueryView(View):
             return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
-        if format_ == "csv":
+        if is_csv_format(datasette, format_):
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
 
@@ -883,7 +888,9 @@ class QueryView(View):
                 data = {"rows": results.rows, "columns": results.columns}
                 return data, None, None
 
-            return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
+            return await stream_csv(
+                datasette, fetch_data_for_csv, request, db.name, format_=format_
+            )
         elif format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
@@ -1145,6 +1152,7 @@ class QueryView(View):
                             if key not in ("_size", "_dl")
                         ]
                         + [("_size", "max")],
+                        url_tsv_path=tsv_export_path(datasette, request),
                         append_querystring=append_querystring,
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=metadata,

@@ -2461,6 +2461,9 @@ def test_export_data_dialog(page, datasette_server):
     expect(trigger).to_be_focused()
 
     trigger.click()
+    # Copy comes first, and TSV is the first format
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    expect(tsv.get_by_role("button", name="Copy", exact=True)).to_be_focused()
     array = dialog.get_by_role("group", name="JSON array", exact=True)
     expect(array.get_by_role("link", name="View")).to_have_attribute(
         "href", "/fixtures/facetable.json?state=CA&_labels=on&_shape=array"
@@ -2492,9 +2495,33 @@ def test_export_data_dialog(page, datasette_server):
     assert json.loads(pathlib_read(download.path())) == copied
     expect(dialog).to_be_visible()
 
-    # The CSV row builds its URLs from the form, so its options apply
+    # TSV and CSV build their URLs from the form they share, so its options
+    # apply to both
     csv = dialog.get_by_role("group", name="CSV", exact=True)
     dialog.get_by_label("Expand labels").uncheck()
+    tsv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/facetable.tsv?state=CA&_size=max"
+    )
+    tsv.get_by_role("button", name="Copy", exact=True).click()
+    # Copy URL may still say "Copied", so wait for Copy itself
+    expect(tsv.locator('[data-export-action="copy"]')).to_have_attribute(
+        "data-state", "done"
+    )
+    tsv_lines = page.evaluate("clipboardText").split("\r\n")
+    assert tsv_lines[0].split("\t")[:5] == [
+        "pk",
+        "created",
+        "planet_int",
+        "on_earth",
+        "state",
+    ]
+    assert "_city_id_label" not in tsv_lines[0]
+    assert len([line for line in tsv_lines if line]) == 11
+    with page.expect_download() as download_info:
+        tsv.get_by_role("button", name="Download").click()
+    assert download_info.value.suggested_filename == "facetable.tsv"
+    assert pathlib_read(download_info.value.path()).startswith("pk\tcreated\t")
     csv.get_by_role("button", name="Copy URL").click()
     assert page.evaluate("clipboardText") == (
         datasette_server + "fixtures/facetable.csv?state=CA&_size=max"
@@ -2919,7 +2946,7 @@ def test_export_data_dialog_on_query_page(page, datasette_server):
     dialog = page.locator("#export-dialog")
     trigger.click()
     expect(dialog).to_be_visible()
-    expect(dialog.locator(".export-option-name").first).to_have_text("CSV")
+    expect(dialog.locator(".export-option-name").first).to_have_text("TSV")
     page.keyboard.press("Escape")
     expect(dialog).not_to_be_visible()
     expect(trigger).to_be_focused()
@@ -2928,6 +2955,10 @@ def test_export_data_dialog_on_query_page(page, datasette_server):
     csv = dialog.get_by_role("group", name="CSV", exact=True)
     csv.get_by_role("button", name="Copy", exact=True).click()
     expect(csv.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText").splitlines() == ["n", "hello"]
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    tsv.get_by_role("button", name="Copy", exact=True).click()
+    expect(tsv.get_by_role("button", name="Copied")).to_be_visible()
     assert page.evaluate("clipboardText").splitlines() == ["n", "hello"]
     csv.get_by_role("button", name="View").click()
     page.wait_for_url(re.compile(r"/fixtures/-/query\.csv\?"))
@@ -2946,15 +2977,31 @@ def test_export_data_dialog_without_javascript(browser, datasette_server):
         dialog = page.locator("#export-dialog")
         page.get_by_role("button", name="Export data").click()
         expect(dialog).to_be_visible()
-        # Copy needs JavaScript, so it stays hidden
+        # Copy needs JavaScript, so it stays hidden, and View is first with
+        # no divider before it
         expect(dialog.get_by_role("button", name="Copy", exact=True)).to_have_count(0)
+        assert (
+            dialog.evaluate(
+                """dialog => [...dialog.querySelectorAll(".export-actions")].map(
+                group => getComputedStyle(
+                    group.querySelector(".export-action:not([hidden])")
+                ).borderLeftWidth
+            )"""
+            )
+            == ["0px"] * dialog.locator(".export-actions").count()
+        )
         # Download is a link with a download attribute
         group = dialog.get_by_role("group", name="JSON", exact=True)
         with page.expect_download() as download_info:
             group.get_by_role("link", name="Download").click()
         assert download_info.value.suggested_filename == "facetable.json"
-        dialog.get_by_role("button", name="Close").click()
-        expect(dialog).not_to_be_visible()
+        # TSV's View submits the shared form to .tsv
+        dialog.get_by_role("group", name="TSV", exact=True).get_by_role(
+            "button", name="View"
+        ).click()
+        page.wait_for_url(re.compile(r"/fixtures/facetable\.tsv\?"))
+        assert "_labels=on" in page.url
+        assert page.locator("body").inner_text().startswith("pk\tcreated")
     finally:
         context.close()
 

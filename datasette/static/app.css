@@ -1860,8 +1860,8 @@ a.quiet-button:hover,
 }
 
 /* Export dialog, opened by the "Export data" quiet button. One row per
-   format: its name and description, then a group of View / Download /
-   Copy / Copy URL actions that wraps below the name on narrow screens. */
+   format: its name and description, then a group of Copy / View /
+   Download / Copy URL actions that wraps below the name on narrow screens. */
 dialog.export-dialog {
     width: min(660px, calc(100vw - 32px));
 }
@@ -1938,12 +1938,12 @@ dialog.export-dialog {
     border-radius: 8px;
 }
 
+.export-dialog .export-options > li + li,
 .export-dialog .export-option + .export-option {
     border-top: 1px solid var(--rule);
 }
 
-.export-dialog .export-option:not(.export-option-csv),
-.export-dialog .export-csv-form {
+.export-dialog .export-option {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -2002,7 +2002,8 @@ dialog.export-dialog {
     display: none;
 }
 
-.export-dialog .export-action + .export-action:not([hidden]) {
+/* Dividers between the visible actions: Copy, first, can be hidden */
+.export-dialog .export-action:not([hidden]) ~ .export-action:not([hidden]) {
     border-left: 1px solid var(--rule);
 }
 
@@ -2023,7 +2024,7 @@ dialog.export-dialog {
         background: var(--card);
         padding-inline: 0.3rem;
     }
-    .export-dialog .export-action + .export-action:not([hidden]) {
+    .export-dialog .export-action:not([hidden]) ~ .export-action:not([hidden]) {
         border-left: 0;
     }
 }
@@ -2075,11 +2076,14 @@ dialog.export-dialog {
     overflow-wrap: anywhere;
 }
 
+/* Expand labels and Include all rows, under TSV and CSV: they apply to both */
 .export-dialog .export-csv-options {
     display: flex;
-    flex: 1 0 100%;
     flex-wrap: wrap;
     gap: 0.25rem 1.1rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
 }
 
 .export-dialog .export-csv-options label {

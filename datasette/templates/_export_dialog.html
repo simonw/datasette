@@ -1,5 +1,5 @@
 {#- Export dialog for table and query pages. Expects renderers, append_querystring,
-    display_rows, url_csv_path and url_csv_hidden_args, plus:
+    display_rows, url_csv_path, url_csv_hidden_args and url_tsv_path, plus:
     - export_meta: shown in the header and used for download filenames
     - export_scope and export_scope_description: which rows are exported,
       e.g. "Filtered rows" and 'where state = "CA"'
@@ -14,8 +14,8 @@
 {% set csv_stream = display_rows and (export_rows.later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_csv_stream %}
 {% macro rows_text(n) %}{{ "{:,}".format(n) }} row{{ "" if n == 1 else "s" }}{% endmacro %}
 {#- How many rows an export returns. JSON and plugin formats return the rows
-    on this page; CSV asks for _size=max, starting from this page. Mirrored by
-    rowsLabel() in export-dialog.js. -#}
+    on this page; TSV and CSV ask for _size=max, starting from this page.
+    Mirrored by rowsLabel() in export-dialog.js. -#}
 {% macro rows_label(kind, rows, id) %}
     {%- set n = rows.page -%}
     {%- set total = rows.total -%}
@@ -35,6 +35,24 @@
     {%- else -%}First {{ rows_text(n) }}{%- endif -%}
     </span>
 {%- endmacro %}
+{#- TSV or CSV: submit buttons for the shared form, with TSV using formaction -#}
+{% macro delimited_option(id, name, description, rows, formaction=none) %}
+                    <div class="export-option" data-export-format="{{ id }}">
+                        <div class="export-option-text">
+                            <div class="export-option-heading">
+                                <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
+                                {{ rows_label("csv", rows, id) }}
+                            </div>
+                            <span class="export-option-description">{{ description }}</span>
+                        </div>
+                        <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name" aria-describedby="export-{{ id }}-rows">
+                            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+                            <button type="submit" class="export-action" data-export-action="view"{% if formaction %} formaction="{{ formaction }}"{% endif %}>View</button>
+                            <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on"{% if formaction %} formaction="{{ formaction }}"{% endif %}>Download</button>
+                            <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+                        </div>
+                    </div>
+{% endmacro %}
 {% macro export_option(id, name, description, url, filename, rows) %}
             <li class="export-option" data-export-format="{{ id }}">
                 <div class="export-option-text">
@@ -45,9 +63,9 @@
                     {% if description %}<span class="export-option-description">{{ description }}</span>{% endif %}
                 </div>
                 <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name" aria-describedby="export-{{ id }}-rows">
+                    <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
                     <a class="export-action" data-export-action="view" href="{{ url }}">View</a>
                     <a class="export-action" data-export-action="download" href="{{ url }}" download="{{ filename }}">Download</a>
-                    <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
                     <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
                 </div>
             </li>
@@ -61,28 +79,18 @@
     </div>
     <div class="modal-body export-links">
         {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}
-        {% if export_rows.later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” under CSV to export every row.{% endif %}</p>{% endif %}
+        {% if export_rows.later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ "TSV or " if url_tsv_path }}CSV.{% endif %}</p>{% endif %}
         <ul class="export-options">
             {% if display_rows %}
-            <li class="export-option export-option-csv" data-export-format="csv">
+            {#- One form for TSV and CSV, so the options under them apply to both -#}
+            <li class="export-option-group">
                 <form class="export-csv-form" action="{{ url_csv_path }}" method="get">
-                    <div class="export-option-text">
-                        <div class="export-option-heading">
-                            <span class="export-option-name" id="export-csv-name">CSV</span>
-                            {{ rows_label("csv", export_rows, "csv") }}
-                        </div>
-                        <span class="export-option-description">Comma-separated values, for spreadsheets</span>
-                    </div>
-                    <div class="export-actions" role="group" aria-labelledby="export-csv-name" aria-describedby="export-csv-rows">
-                        <button type="submit" class="export-action" data-export-action="view">View</button>
-                        <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on">Download</button>
-                        <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
-                        <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
-                    </div>
+                    {% if url_tsv_path %}{{ delimited_option("tsv", "TSV", "Tab-separated values, for pasting into Excel or Google Sheets", export_rows, formaction=url_tsv_path) }}{% endif %}
+                    {{ delimited_option("csv", "CSV", "Comma-separated values, for spreadsheets and other tools", export_rows) }}
                     {% if expandable_columns or csv_stream %}
                     <div class="export-csv-options">
                         {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> Expand labels</label>{% endif %}
-                        {% if csv_stream %}<label{% if settings.max_csv_mb %} title="Streams every matching row, up to the {{ settings.max_csv_mb }} MB CSV size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_rows.later %} from the first page{% endif %}</span></label>{% endif %}
+                        {% if csv_stream %}<label{% if settings.max_csv_mb %} title="Streams every matching row, up to the {{ settings.max_csv_mb }} MB size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_rows.later %} from the first page{% endif %}</span></label>{% endif %}
                     </div>
                     {% endif %}
                     {% for key, value in url_csv_hidden_args %}

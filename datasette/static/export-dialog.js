@@ -2,8 +2,8 @@
 
    The template wires the buttons up with commandfor/command so the dialog
    opens without JavaScript too. View and Download are left to the browser:
-   plain links, using the download attribute, or for CSV, form submit buttons
-   with _dl=on. Downloads therefore stream straight to disk and show in the
+   plain links, using the download attribute, or for TSV and CSV, submit
+   buttons for the form that holds their shared options. Downloads therefore stream straight to disk and show in the
    browser's own download list. Here we route the dialog through
    DatasetteModal, reveal the Copy and Copy URL actions when the clipboard is
    available, and keep the row counts up to date. */
@@ -69,20 +69,17 @@
     errorFor(el)?.remove();
   }
 
-  // The CSV row builds its URL from its form, so the checkboxes apply
-  function csvUrl(form) {
-    const params = new URLSearchParams(new FormData(form));
-    return new URL(`${form.getAttribute("action")}?${params}`, location.href)
-      .href;
-  }
-
+  // TSV and CSV build their URLs from the form they share, so its checkboxes
+  // apply. TSV's buttons send the form to its own path using formaction.
   function exportUrl(el) {
-    const form = el.closest(".export-csv-form");
-    if (form) return csvUrl(form);
     const view = el
       .closest(".export-option")
       .querySelector('[data-export-action="view"]');
-    return new URL(view.getAttribute("href"), location.href).href;
+    const form = el.closest(".export-csv-form");
+    if (!form) return new URL(view.getAttribute("href"), location.href).href;
+    const path = view.getAttribute("formaction") || form.getAttribute("action");
+    const params = new URLSearchParams(new FormData(form));
+    return new URL(`${path}?${params}`, location.href).href;
   }
 
   function isText(contentType) {
@@ -154,8 +151,8 @@
   const rowsText = (n) => `${formatNumber(n)} row${n === 1 ? "" : "s"}`;
 
   // How many rows an export returns: JSON and plugin formats return the rows
-  // on this page, CSV asks for _size=max starting from this page, and
-  // "Include all rows" streams every row from the first one.
+  // on this page, TSV and CSV ("csv" here) ask for _size=max starting from
+  // this page, and "Include all rows" streams every row from the first one.
   // Mirrors the rows_label macro in _export_dialog.html.
   function rowsLabel(kind, rows, stream) {
     const { page, more, later, max, total } = rows;
@@ -212,7 +209,7 @@
       rows.total !== null &&
       rows.total <= rows.max
     ) {
-      // CSV already includes every row, so the option would do nothing
+      // TSV and CSV already include every row, so the option would do nothing
       stream.checked = false;
       stream.disabled = true;
       stream.closest("label").hidden = true;
@@ -229,7 +226,7 @@
       el.dataset.partial = String(partial);
     });
     // "Include all rows" starts from the first row, so it leaves out the
-    // page's ?_next= cursor - which CSV streaming would reject anyway
+    // page's ?_next= cursor - which streaming would reject anyway
     const cursor = dialog.querySelector('.export-csv-form input[name="_next"]');
     if (cursor) cursor.disabled = !!(stream && stream.checked);
     const streamLabel = dialog.querySelector(".export-stream-label");
@@ -288,7 +285,7 @@
       // Otherwise Chrome can focus the scrollable body when it overflows
       modal.show({
         returnFocusTo: button,
-        initialFocus: dialog.querySelector(".export-action"),
+        initialFocus: dialog.querySelector(".export-action:not([hidden])"),
       });
       if (dialog.dataset.countUrl) fetchCount(dialog, rows);
     };
@@ -318,9 +315,9 @@
       const el = ev.target.closest("[data-export-action]");
       const action = el && el.dataset.exportAction;
       if (action === "download" && el.closest(".export-csv-form")) {
-        // Download the CSV through a link with a download attribute, like the
-        // other formats, rather than submitting the form with _dl=on: WebKit
-        // on Linux does not treat that response as a download
+        // Download TSV or CSV through a link with a download attribute, like
+        // the other formats, rather than submitting the form with _dl=on:
+        // WebKit on Linux does not treat that response as a download
         ev.preventDefault();
         const link = document.createElement("a");
         link.href = `${exportUrl(el)}&_dl=on`;

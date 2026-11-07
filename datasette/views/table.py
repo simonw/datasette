@@ -61,7 +61,13 @@ from datasette.utils.asgi import (
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    is_csv_format,
+    stream_csv,
+    tsv_export_path,
+)
 from .database import QueryView
 from .table_create_alter import (
     ALTER_TABLE_COLUMN_TYPES,
@@ -172,6 +178,11 @@ class TableContext(Context):
     url_csv_hidden_args: list = field(
         metadata={
             "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
@@ -1838,7 +1849,7 @@ async def table_view_traced(datasette, request):
     data, rows, columns, _expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
-    if format_ == "csv":
+    if is_csv_format(datasette, format_):
 
         async def fetch_data(request, _next=None):
             (
@@ -1863,7 +1874,9 @@ async def table_view_traced(datasette, request):
             data["expanded_columns"] = expanded_columns
             return data, None, None
 
-        return await stream_csv(datasette, fetch_data, request, resolved.db.name)
+        return await stream_csv(
+            datasette, fetch_data, request, resolved.db.name, format_=format_
+        )
     elif format_ in datasette.renderers:
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
@@ -1968,6 +1981,7 @@ async def table_view_traced(datasette, request):
             url_csv=data["url_csv"],
             url_csv_path=data["url_csv_path"],
             url_csv_hidden_args=data["url_csv_hidden_args"],
+            url_tsv_path=data["url_tsv_path"],
             sort=data["sort"],
             sort_desc=data["sort_desc"],
             append_querystring=append_querystring,
@@ -2504,6 +2518,7 @@ async def table_view_data(
                 ),
                 "url_csv": url_csv,
                 "url_csv_path": url_csv_path,
+                "url_tsv_path": tsv_export_path(datasette, request),
                 "url_csv_hidden_args": [
                     (key, value)
                     # Blank values matter: ?name= filters for name = ""

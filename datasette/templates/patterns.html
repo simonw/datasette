@@ -263,20 +263,37 @@
     <div class="modal-body export-links">
       <p class="export-scope"><strong>Filtered rows</strong> where characteristic_id = "2"</p>
       <ul class="export-options">
-        <li class="export-option" data-export-format="csv">
+        <li class="export-option-group">
           <form class="export-csv-form" action="{{ base_url }}fixtures/roadside_attraction_characteristics.csv" method="get">
-            <div class="export-option-text">
-              <div class="export-option-heading">
-                <span class="export-option-name" id="export-csv-name">CSV</span>
-                <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
+            <div class="export-option" data-export-format="tsv">
+              <div class="export-option-text">
+                <div class="export-option-heading">
+                  <span class="export-option-name" id="export-tsv-name">TSV</span>
+                  <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
+                </div>
+                <span class="export-option-description">Tab-separated values, for pasting into Excel or Google Sheets</span>
               </div>
-              <span class="export-option-description">Comma-separated values, for spreadsheets</span>
+              <div class="export-actions" role="group" aria-labelledby="export-tsv-name">
+                <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+                <button type="submit" class="export-action" data-export-action="view" formaction="{{ base_url }}fixtures/roadside_attraction_characteristics.tsv">View</button>
+                <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on" formaction="{{ base_url }}fixtures/roadside_attraction_characteristics.tsv">Download</button>
+                <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+              </div>
             </div>
-            <div class="export-actions" role="group" aria-labelledby="export-csv-name">
-              <button type="submit" class="export-action" data-export-action="view">View</button>
-              <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on">Download</button>
-              <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
-              <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+            <div class="export-option" data-export-format="csv">
+              <div class="export-option-text">
+                <div class="export-option-heading">
+                  <span class="export-option-name" id="export-csv-name">CSV</span>
+                  <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
+                </div>
+                <span class="export-option-description">Comma-separated values, for spreadsheets and other tools</span>
+              </div>
+              <div class="export-actions" role="group" aria-labelledby="export-csv-name">
+                <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+                <button type="submit" class="export-action" data-export-action="view">View</button>
+                <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on">Download</button>
+                <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+              </div>
             </div>
             <div class="export-csv-options">
               <label><input type="checkbox" name="_labels" checked> Expand labels</label>
@@ -294,9 +311,9 @@
             <span class="export-option-description">Rows inside an object, with extra details</span>
           </div>
           <div class="export-actions" role="group" aria-labelledby="export-json-name">
+            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <a class="export-action" data-export-action="view" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">View</a>
             <a class="export-action" data-export-action="download" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on" download="roadside_attraction_characteristics.json">Download</a>
-            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
           </div>
         </li>
@@ -309,9 +326,9 @@
             <span class="export-option-description">Just the rows, as an array of objects</span>
           </div>
           <div class="export-actions" role="group" aria-labelledby="export-json-array-name">
+            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <a class="export-action" data-export-action="view" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array">View</a>
             <a class="export-action" data-export-action="download" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array" download="roadside_attraction_characteristics.json">Download</a>
-            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
           </div>
         </li>
@@ -324,9 +341,9 @@
             <span class="export-option-description">One JSON object per line</span>
           </div>
           <div class="export-actions" role="group" aria-labelledby="export-json-nl-name">
+            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <a class="export-action" data-export-action="view" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array&amp;_nl=on">View</a>
             <a class="export-action" data-export-action="download" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array&amp;_nl=on" download="roadside_attraction_characteristics.jsonl">Download</a>
-            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
           </div>
         </li>

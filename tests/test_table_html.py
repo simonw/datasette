@@ -648,8 +648,8 @@ async def test_table_csv_json_export_interface(ds_client):
     # The old export links and advanced export box are gone
     assert soup.find("div", {"class": "advanced-export"}) is None
     assert "This data as" not in response.text
-    # One row per format, each with View / Download / Copy / Copy URL
-    rows = dialog.select("li.export-option")
+    # One row per format, each with Copy / View / Download / Copy URL
+    rows = dialog.select(".export-option")
     assert [
         (
             row["data-export-format"],
@@ -658,8 +658,9 @@ async def test_table_csv_json_export_interface(ds_client):
         )
         for row in rows
     ] == [
-        (format, name, ["view", "download", "copy", "copy-url"])
+        (format, name, ["copy", "view", "download", "copy-url"])
         for format, name in (
+            ("tsv", "TSV"),
             ("csv", "CSV"),
             ("json", "JSON"),
             ("json-array", "JSON array"),
@@ -677,7 +678,7 @@ async def test_table_csv_json_export_interface(ds_client):
             row.select_one('a[data-export-action="download"]'),
         )
         for row in rows
-        if row["data-export-format"] != "csv"
+        if row["data-export-format"] not in ("tsv", "csv")
     }
     assert {
         format: (view["href"], download["href"], download["download"])
@@ -724,8 +725,10 @@ async def test_table_csv_json_export_interface(ds_client):
     assert all(
         el.has_attr("hidden") for el in dialog.select('[data-export-action^="copy"]')
     )
-    # The CSV row is a form: View submits it, Download submits it with _dl=on
+    # TSV and CSV share a form, so its options apply to both: View submits
+    # it, Download submits it with _dl=on, and TSV sends it to .tsv instead
     form = dialog.select_one("form.export-csv-form")
+    assert form.find_parent("li")["class"] == ["export-option-group"]
     assert form["action"] == "/fixtures/simple_primary_key.csv"
     assert form["method"] == "get"
     inputs = [str(input) for input in form.find_all("input")]
@@ -733,13 +736,29 @@ async def test_table_csv_json_export_interface(ds_client):
         '<input name="id__gt" type="hidden" value="2"/>',
         '<input name="_size" type="hidden" value="max"/>',
     ] == inputs
-    view = form.select_one('[data-export-action="view"]')
-    assert (view.name, view["type"]) == ("button", "submit")
-    download = form.select_one('[data-export-action="download"]')
-    assert (download["type"], download["name"], download["value"]) == (
-        "submit",
-        "_dl",
-        "on",
+    for format, formaction in (
+        ("tsv", "/fixtures/simple_primary_key.tsv"),
+        ("csv", None),
+    ):
+        row = form.select_one(f'[data-export-format="{format}"]')
+        view = row.select_one('[data-export-action="view"]')
+        assert (view.name, view["type"], view.get("formaction")) == (
+            "button",
+            "submit",
+            formaction,
+        )
+        download = row.select_one('[data-export-action="download"]')
+        assert (
+            download["type"],
+            download["name"],
+            download["value"],
+            download.get("formaction"),
+        ) == ("submit", "_dl", "on", formaction)
+    assert (
+        "Excel or Google Sheets"
+        in form.select_one(
+            '[data-export-format="tsv"] .export-option-description'
+        ).get_text()
     )
     # The dialog can be closed without JavaScript
     close = dialog.select_one(".modal-footer button.export-dialog-close")
@@ -762,9 +781,13 @@ async def test_table_view_and_edit_sql_button(ds_client):
 
 
 def _export_urls(soup):
-    "Export dialog View link hrefs, plus the CSV form's action, in order"
+    "Export dialog View link hrefs, plus where the TSV and CSV form goes, in order"
     return [
-        el["href"] if el.name == "a" else el.find_parent("form")["action"]
+        (
+            el["href"]
+            if el.name == "a"
+            else el.get("formaction") or el.find_parent("form")["action"]
+        )
         for el in soup.select('.export-links [data-export-action="view"]')
     ]
 
@@ -803,6 +826,7 @@ def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefi
         assert expected_json in hrefs
         if expected_csv:
             assert expected_csv in hrefs
+            assert expected_csv.replace(".csv", ".tsv") in hrefs
         assert not [href for href in hrefs if href.startswith("/prefix/prefix/")]
         assert response.headers["link"] == (
             f"<http://localhost{expected_json}>; "
@@ -817,6 +841,7 @@ def test_base_url_export_links_when_database_matches_prefix():
         hrefs = _export_urls(Soup(response.text, "html.parser"))
         assert "/data/data/simple_primary_key.json?id__gt=2" in hrefs
         assert "/data/data/simple_primary_key.csv" in hrefs
+        assert "/data/data/simple_primary_key.tsv" in hrefs
         assert response.headers["link"] == (
             "<http://localhost/data/data/simple_primary_key.json?id__gt=2>; "
             'rel="alternate"; type="application/json+datasette"'
@@ -830,6 +855,7 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
     soup = Soup(response.text, "html.parser")
     actual = _export_urls(soup)
     expected = [
+        "/fixtures/facetable.tsv",
         "/fixtures/facetable.csv",
         "/fixtures/facetable.json?_labels=on",
         "/fixtures/facetable.json?_labels=on&_shape=array",
@@ -840,7 +866,7 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
         "/fixtures/facetable.testresponse?_labels=on",
     ]
     assert expected == actual
-    # The CSV form expands labels by default
+    # The TSV and CSV form expands labels by default
     labels = soup.select_one("form.export-csv-form input[name=_labels]")
     assert labels.has_attr("checked")
 
@@ -2142,14 +2168,14 @@ async def test_export_dialog_options(
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     dialog = soup.select_one("dialog#export-dialog")
-    # CSV first, as the most popular format
-    expected_formats = ["csv", "json", "json-array", "json-nl"]
+    # TSV then CSV first, as the most popular formats
+    expected_formats = ["tsv", "csv", "json", "json-array", "json-nl"]
     if has_object:
         expected_formats.append("json-object")
-    formats = [row["data-export-format"] for row in dialog.select("li.export-option")]
+    formats = [row["data-export-format"] for row in dialog.select(".export-option")]
     assert formats[: len(expected_formats)] == expected_formats
     assert "json-object" in formats if has_object else "json-object" not in formats
-    # CSV options
+    # TSV and CSV options
     checkboxes = [input["name"] for input in dialog.select("form input[type=checkbox]")]
     assert checkboxes == (
         (["_labels"] if has_expand else []) + (["_stream"] if has_stream else [])
@@ -2163,7 +2189,7 @@ async def test_export_dialog_options(
 def _export_rows(dialog):
     "{format: (label, partial)} for the dialog's row count pills"
     return {
-        el.find_parent("li")["data-export-format"]: (
+        el.find_parent(class_="export-option")["data-export-format"]: (
             el.text,
             el["data-partial"] == "true",
         )
@@ -2250,6 +2276,7 @@ async def test_export_dialog_scope_and_row_counts(
     assert rows["json"] == expected_json
     assert rows["json-array"] == expected_json
     assert rows["csv"] == expected_csv
+    assert rows["tsv"] == expected_csv
     stream = dialog.select_one(".export-stream-label")
     assert (stream.text if stream else None) == expected_stream
     attrs = {
@@ -2295,11 +2322,12 @@ async def test_export_dialog_on_later_pages(
     rows = _export_rows(dialog)
     assert rows["json"] == expected_json
     assert rows["csv"] == expected_csv
+    assert rows["tsv"] == expected_csv
     # ...and say so
     note = soup.find(id="export-page-note")
     assert note.text == (
         "These exports start from this page, not the first page. "
-        "Check “Include all rows” under CSV to export every row."
+        "Check “Include all rows” to export every row as TSV or CSV."
     )
     assert dialog["aria-describedby"] == "export-scope export-page-note"
     # "Include all rows" is offered on every later page, starting from row 1
@@ -2352,7 +2380,8 @@ async def test_export_dialog_accessible_descriptions(ds_client):
             soup.find(id=group["aria-describedby"]).text,
         )
         for group in groups
-    ][:5] == [
+    ][:6] == [
+        ("TSV", "All 10 rows"),
         ("CSV", "All 10 rows"),
         ("JSON", "First 2 of 10 rows"),
         ("JSON array", "First 2 of 10 rows"),
@@ -2368,7 +2397,7 @@ async def test_export_dialog_no_csv_without_rows(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id=999")
     soup = Soup(response.text, "html.parser")
     dialog = soup.select_one("dialog#export-dialog")
-    # JSON is still offered for an empty result, CSV is not
+    # JSON is still offered for an empty result, TSV and CSV are not
     assert dialog.select_one('a[data-export-action="view"]')["href"] == (
         "/fixtures/simple_primary_key.json?id=999"
     )

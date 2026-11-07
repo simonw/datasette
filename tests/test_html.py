@@ -415,11 +415,14 @@ async def test_query_export_dialog(ds_client):
     assert [
         (
             row.select_one(".export-option-name").text,
-            row.select_one('[data-export-action="view"]').get("href"),
+            row.select_one('[data-export-action="view"]').get("href")
+            or row.select_one('[data-export-action="view"]').get("formaction"),
         )
-        for row in dialog.select("li.export-option")
+        for row in dialog.select(".export-option")
         if not row["data-export-format"].startswith("format-")
     ] == [
+        # TSV and CSV submit the form below, with TSV sent to .tsv instead
+        ("TSV", "/fixtures/-/query.tsv"),
         ("CSV", None),
         (
             "JSON",
@@ -434,12 +437,12 @@ async def test_query_export_dialog(ds_client):
             "/fixtures/-/query.json?sql=select+:name+as+n&name=hello&_hide_sql=1&_shape=array&_nl=on",
         ),
     ]
-    # Downloads are named after the database for arbitrary SQL. The CSV
-    # download is a form submit with _dl=on, named by Content-Disposition.
+    # Downloads are named after the database for arbitrary SQL. The TSV and
+    # CSV downloads are form submits with _dl=on, named by Content-Disposition.
     assert [el["download"] for el in dialog.select('a[data-export-action="download"]')][
         :3
     ] == ["fixtures.json", "fixtures.json", "fixtures.jsonl"]
-    # No CSV options: labels and streaming do not apply to queries
+    # No TSV and CSV options: labels and streaming do not apply to queries
     form = dialog.select_one("form.export-csv-form")
     assert form["action"] == "/fixtures/-/query.csv"
     assert [str(input) for input in form.find_all("input")] == [

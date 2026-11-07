@@ -14,6 +14,11 @@
 </style>
 <script src="{{ static('table-layout.js') }}" defer></script>
 {% endif %}
+{% if query_page_data %}
+<script>window._datasetteQueryData = {{ query_page_data|tojson }};</script>
+{% include "_column_stats_loader.html" %}
+<script src="{{ static('query-column-actions.js') }}" defer></script>
+{% endif %}
 {% include "_codemirror.html" %}
 {% include "_sql_parameter_styles.html" %}
 {% endblock %}

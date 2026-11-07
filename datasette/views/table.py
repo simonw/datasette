@@ -247,7 +247,7 @@ class TableContext(Context):
     )
     table_page_data: dict = field(
         metadata={
-            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
+            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data, optional ``alterTable`` data and optional ``executeSql`` data with ``queryUrl`` and ``editorUrl`` keys, present if the current actor can execute custom SQL against this database. ``executeSql`` also has a ``columns`` list of every column in the table with its ``name`` and declared ``type``, and an optional ``filter`` key with the ``where`` clause, ``params`` and human readable ``description`` of the filters currently applied to the table."
         }
     )
     table_insert_ui: dict = field(
@@ -495,6 +495,7 @@ async def _table_page_data(
     is_view,
     table_insert_ui,
     table_alter_ui,
+    execute_sql_ui=None,
 ):
     data = {
         "database": database_name,
@@ -505,6 +506,8 @@ async def _table_page_data(
         data["insertRow"] = table_insert_ui
     if table_alter_ui:
         data["alterTable"] = table_alter_ui
+    if execute_sql_ui:
+        data["executeSql"] = execute_sql_ui
     if not is_view:
         foreign_keys = await _foreign_key_autocomplete_urls(
             datasette, request, db, database_name, table_name
@@ -579,6 +582,62 @@ async def _table_insert_ui(
         data["upsertPath"] = (
             f"{datasette.urls.table(database_name, table_name)}/-/upsert"
         )
+    return data
+
+
+async def _execute_sql_ui(
+    datasette,
+    request,
+    database_name,
+    filter_where=None,
+    filter_params=None,
+    filter_description=None,
+    db=None,
+    table_name=None,
+    use_rowid=False,
+):
+    # URLs JavaScript can use to run read-only SQL against this database, used
+    # by the column statistics dialog. Only provided if the actor is allowed
+    # to execute arbitrary SQL.
+    if not await datasette.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database=database_name),
+        actor=request.actor,
+    ):
+        return None
+    query_path = f"{datasette.urls.database(database_name)}/-/query"
+    data = {
+        "queryUrl": query_path + ".json",
+        "editorUrl": query_path,
+    }
+    if db is not None and table_name is not None:
+        # Every column with its declared type, including any hidden from the
+        # current page, so the column statistics dialog can switch between them
+        columns = [{"name": "rowid", "type": "integer"}] if use_rowid else []
+        columns.extend(
+            {"name": column.name, "type": (column.type or "").lower()}
+            for column in await db.table_column_details(table_name)
+            # hidden == 1 is a hidden virtual table column, 2 and 3 are
+            # generated columns which can be queried
+            if column.hidden != 1
+        )
+        data["columns"] = columns
+    if filter_where:
+        # The where clause for the filters currently applied to the table,
+        # without pagination. Parameters keep their types (numeric filters
+        # such as __gt use numbers) so JavaScript can inline them as literals.
+        # Statistics can't faithfully reproduce a filter whose parameters
+        # can't be expressed in JSON, so the feature is disabled instead.
+        if not all(
+            value is None or isinstance(value, (str, int, float))
+            for value in (filter_params or {}).values()
+        ):
+            return None
+        data["filter"] = {
+            "where": filter_where,
+            "params": dict(filter_params or {}),
+            "description": filter_description or "",
+        }
     return data
 
 
@@ -2180,6 +2239,8 @@ async def table_view_data(
     )
     # Copy of params so we can mutate them later:
     from_sql_params = dict(**params)
+    # The filter where clause before any pagination clauses are added
+    filter_where_sql = " and ".join(where_clauses)
 
     count_sql = f"select count(*) {from_sql}"
 
@@ -2562,6 +2623,25 @@ async def table_view_data(
             is_view=is_view,
             table_insert_ui=table_insert_ui,
             table_alter_ui=table_alter_ui,
+            execute_sql_ui=await _execute_sql_ui(
+                datasette,
+                request,
+                database_name,
+                filter_where=filter_where_sql,
+                filter_params=from_sql_params,
+                db=db,
+                table_name=table_name,
+                use_rowid=use_rowid,
+                filter_description=filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+            ),
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url

@@ -158,6 +158,39 @@ def write_playwright_database(db_path):
             title text,
             body text
         );
+        create table stats_demo (
+            id integer primary key,
+            score integer,
+            city text
+        );
+        with recursive sequence(n) as (
+            select 1 union all select n + 1 from sequence where n < 20
+        )
+        insert into stats_demo (score, city)
+        select
+            n,
+            case
+                when n <= 8 then 'London'
+                when n <= 13 then 'Paris'
+                when n <= 15 then ''
+                when n <= 17 then null
+                else 'Oslo'
+            end
+        from sequence;
+        -- score_expr has no type affinity, so filtering it on a string
+        -- parameter would compare integers against text
+        create view stats_demo_view as
+            select id, score + 0 as score_expr, city from stats_demo;
+        -- Table and column names that match names used inside the column
+        -- statistics queries
+        create table stats (id integer primary key, vals integer, bucket text);
+        insert into stats (vals, bucket) values
+            (0, '2020-01-01'), (1, '2020-02-01'), (2, '2020-03-01'),
+            (3, '2021-01-01'), (4, '2021-02-01'), (5, '2021-03-01'),
+            (6, '2022-01-01'), (7, '2022-02-01'), (8, '2022-03-01'),
+            (9, '2022-04-01');
+        create table positions (id integer primary key);
+        insert into positions (id) values (2), (3), (4), (5), (6), (7);
         """)
         conn.execute(
             "insert into long_notes (title, body) values (?, ?)",
@@ -2447,6 +2480,324 @@ def test_freeze_pin_freezes_header_and_key_column(page, datasette_server):
     assert page.evaluate("localStorage.getItem('datasette-table-freeze')") == "0"
 
 
+def open_column_statistics(page, column):
+    trigger = page.locator(f'th[data-column="{column}"] .column-menu-trigger')
+    trigger.click()
+    page.locator("#column-actions-menu").get_by_role(
+        "menuitem", name="Column statistics", exact=True
+    ).click()
+    dialog = page.locator("#column-stats-dialog")
+    dialog.wait_for()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    return trigger, dialog
+
+
+def column_stat(dialog, section, stat):
+    return dialog.locator(
+        f'[data-section="{section}"] [data-stat="{stat}"] .column-stats-tile-value'
+    ).inner_text()
+
+
+@pytest.mark.playwright
+def test_column_statistics_numeric_column(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.goto(datasette_server + "data/stats_demo")
+    trigger, dialog = open_column_statistics(page, "score")
+    # The pill for the current column is selected and focused
+    selected = dialog.get_by_role("tab", selected=True)
+    expect(selected).to_have_text("score integer")
+    expect(selected).to_be_focused()
+    assert column_stat(dialog, "overview", "rows") == "20"
+    assert column_stat(dialog, "overview", "null") == "0"
+    assert column_stat(dialog, "overview", "distinct") == "20"
+    assert column_stat(dialog, "numeric", "min") == "1"
+    assert column_stat(dialog, "numeric", "max") == "20"
+    assert column_stat(dialog, "numeric", "mean") == "10.5"
+    assert column_stat(dialog, "numeric", "median") == "10.5"
+    assert column_stat(dialog, "numeric", "sum") == "210"
+    # Sample standard deviation of 1..20
+    assert column_stat(dialog, "numeric", "stddev") == "5.9161"
+    percentiles = dialog.locator('[data-section="numeric"] .column-stats-percentile')
+    assert dict(
+        zip(
+            percentiles.locator("dt").all_inner_texts(),
+            percentiles.locator("dd").all_inner_texts(),
+        )
+    ) == {
+        "p1": "1.19",
+        "p5": "1.95",
+        "p10": "2.9",
+        "p25": "5.75",
+        "median": "10.5",
+        "p75": "15.25",
+        "p90": "18.1",
+        "p95": "19.05",
+        "p99": "19.81",
+    }
+    # Integer columns with a small range get one bucket per value
+    bars = dialog.locator('[data-section="numeric"] .column-stats-bar')
+    expect(bars).to_have_count(20)
+    assert bars.evaluate_all("bars => bars.map(bar => bar.dataset.count)") == (
+        ["1"] * 20
+    )
+    expect(dialog.locator(".column-stats-boxplot")).to_be_visible()
+    expect(dialog.locator(".column-stats-outliers")).to_contain_text("No outliers")
+    expect(dialog.locator('[data-section="top"]')).to_contain_text(
+        "All 20 non-null values are unique."
+    )
+    # Every query is listed with a link to the SQL editor
+    dialog.locator(".column-stats-sql summary").click()
+    links = dialog.locator(".column-stats-sql-list a")
+    expect(links).to_have_count(5)
+    assert all(
+        "/data/-/query?sql=" in href
+        for href in links.evaluate_all("links => links.map(link => link.href)")
+    )
+    expect(dialog.locator(".footer-info")).to_contain_text("5 queries in")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_text_column(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/stats_demo")
+    _, dialog = open_column_statistics(page, "city")
+    assert column_stat(dialog, "overview", "not_null") == "18"
+    assert column_stat(dialog, "overview", "null") == "2"
+    assert column_stat(dialog, "overview", "distinct") == "4"
+    # Categorical text columns lead with their most common values
+    assert dialog.locator(".column-stats-section h3").all_inner_texts() == [
+        "Overview",
+        "Most common values",
+        "Text",
+    ]
+    top_values = dialog.locator(".column-stats-top-values li")
+    assert top_values.locator(".column-stats-top-value").all_inner_texts() == [
+        "London",
+        "Paris",
+        "Oslo",
+        "<empty string>",
+    ]
+    assert top_values.locator(".column-stats-top-count").all_inner_texts() == [
+        "8 · 44%",
+        "5 · 28%",
+        "3 · 17%",
+        "2 · 11%",
+    ]
+    expect(top_values.first.locator("a")).to_have_attribute(
+        "href", "/data/stats_demo?city=London"
+    )
+    assert column_stat(dialog, "text", "min_length") == "0"
+    assert column_stat(dialog, "text", "max_length") == "6"
+    expect(dialog.locator('[data-pattern="blank"]')).to_contain_text("2 (11%)")
+    expect(dialog.locator('[data-range="first"] dd')).to_have_text("<empty string>")
+    expect(dialog.locator('[data-range="last"] dd')).to_have_text("Paris")
+    expect(dialog.locator('[data-section="numeric"]')).to_have_count(0)
+
+
+@pytest.mark.playwright
+def test_column_statistics_shows_query_errors(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/stats_demo")
+    page.route(
+        "**/data/-/query.json?*",
+        lambda route: route.fulfill(
+            status=400,
+            content_type="application/json",
+            body=json.dumps({"ok": False, "errors": ["SQL query took too long"]}),
+        ),
+    )
+    _, dialog = open_column_statistics(page, "score")
+    expect(
+        dialog.locator('[data-section="overview"] .column-stats-error')
+    ).to_have_text("SQL query took too long")
+    expect(dialog.locator(".footer-info")).to_contain_text("1 failed")
+    # The failed query can still be opened in the SQL editor
+    dialog.locator(".column-stats-sql summary").click()
+    expect(dialog.locator(".column-stats-sql-title")).to_have_count(1)
+    expect(dialog.locator(".column-stats-sql-title")).to_contain_text("Overview")
+
+
+@pytest.mark.playwright
+def test_column_statistics_percentiles_match_python(page, datasette_server):
+    import random
+    import statistics
+
+    page.goto(datasette_server + "data/stats_demo")
+    # column-stats.js is only loaded on demand
+    page.evaluate("DatasetteColumnStats.load()")
+    sql = page.evaluate("""() => DatasetteColumnStats.sql.percentiles(
+        DatasetteColumnStats.sql.source("t", "v", null),
+        '"v"',
+        `typeof("v") in ('integer', 'real')`
+    )""")
+    rng = random.Random(0)
+    values = [rng.gauss(50, 20) for _ in range(997)] + [
+        rng.randint(0, 9) for _ in range(5)
+    ]
+    conn = sqlite3.connect(":memory:")
+    conn.execute("create table t (v)")
+    conn.executemany("insert into t values (?)", [(v,) for v in values + [None, "x"]])
+    results = dict(conn.execute(sql).fetchall())
+    # statistics.quantiles(method="inclusive") uses the same linear interpolation
+    cuts = statistics.quantiles(values, n=100, method="inclusive")
+    for p, value in results.items():
+        if p == 0:
+            expected = min(values)
+        elif p == 1:
+            expected = max(values)
+        else:
+            expected = cuts[round(p * 100) - 1]
+        assert value == pytest.approx(expected), p
+
+
+@pytest.mark.playwright
+def test_column_statistics_use_current_filters(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/stats_demo?score__gt=10&_where=score+<=+18")
+    _, dialog = open_column_statistics(page, "score")
+    scope = dialog.locator(".column-stats-scope")
+    expect(scope).to_have_attribute("data-scope", "filtered")
+    expect(scope).to_contain_text("Filtered rows where score <= 18 and score > 10")
+    assert column_stat(dialog, "overview", "rows") == "8"
+    assert column_stat(dialog, "numeric", "min") == "11"
+    assert column_stat(dialog, "numeric", "max") == "18"
+    assert column_stat(dialog, "numeric", "median") == "14.5"
+    # The filter is inlined into every query, with numbers as numbers
+    dialog.locator(".column-stats-sql summary").click()
+    assert 'where "score" > 10 and score <= 18' in (
+        dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    )
+    # Switch to statistics for the whole table and back again
+    scope.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(scope).to_have_attribute("data-scope", "all")
+    expect(dialog.locator('[data-stat="rows"] .column-stats-tile-value')).to_have_text(
+        "20"
+    )
+    expect(scope.get_by_role("button", name="Use filtered rows")).to_be_focused()
+    scope.get_by_role("button", name="Use filtered rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator('[data-stat="rows"] .column-stats-tile-value')).to_have_text(
+        "8"
+    )
+
+
+@pytest.mark.playwright
+def test_column_statistics_filter_links_and_typed_params(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # A view column with no type affinity: a string parameter would match
+    # nothing, so the filter's numeric parameter must be used as a number
+    page.goto(datasette_server + "data/stats_demo_view?score_expr__gte=15")
+    expect(page.locator(".table-summary")).to_contain_text("6 rows")
+    _, dialog = open_column_statistics(page, "city")
+    assert column_stat(dialog, "overview", "rows") == "6"
+    top_values = dialog.locator(".column-stats-top-values li")
+    assert top_values.locator(".column-stats-top-value").all_inner_texts() == [
+        "Oslo",
+        "<empty string>",
+    ]
+    # Value links add to the current filters
+    expect(top_values.first.locator("a")).to_have_attribute(
+        "href", "/data/stats_demo_view?score_expr__gte=15&city=Oslo"
+    )
+
+
+@pytest.mark.playwright
+def test_column_statistics_inline_params(page, datasette_server):
+    page.goto(datasette_server + "data/stats_demo")
+    page.evaluate("DatasetteColumnStats.load()")
+    inline = """([sql, params]) => {
+        try {
+            return DatasetteColumnStats.sql.inlineParams(sql, params);
+        } catch (error) {
+            return "Error: " + error.message;
+        }
+    }"""
+    assert page.evaluate(
+        inline,
+        [
+            (
+                "\"a:p0\" = :p0 and [b:p1] = :p1 and ':p0' = `c:p0` -- :p1\n"
+                "and /* :p0 */ x in (:p0, :p1, :p2)"
+            ),
+            {"p0": "it's", "p1": 2.5, "p2": None},
+        ],
+    ) == (
+        "\"a:p0\" = 'it''s' and [b:p1] = 2.5 and ':p0' = `c:p0` -- :p1\n"
+        "and /* :p0 */ x in ('it''s', 2.5, null)"
+    )
+    assert page.evaluate(inline, ["'it''s :p0' = :p0", {"p0": 7}]) == "'it''s :p0' = 7"
+    assert (
+        page.evaluate(inline, ["x = :missing", {}])
+        == "Error: No value for parameter :missing in the filter"
+    )
+
+
+@pytest.mark.playwright
+def test_column_statistics_switch_columns(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    # city is hidden from the table but still has a pill
+    page.goto(datasette_server + "data/stats_demo?score__gt=10&_nocol=city")
+    trigger, dialog = open_column_statistics(page, "score")
+    tabs = dialog.get_by_role("tab")
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.textContent)") == [
+        "id integer",
+        "score integer",
+        "city text",
+    ]
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("score integer")
+    expect(dialog.locator(".modal-meta")).to_be_hidden()
+    # Switch to the hidden city column with a click; the filter still applies
+    dialog.get_by_role("tab", name="city text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog).to_have_attribute("data-column", "city")
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("city text")
+    expect(dialog.get_by_role("tab", name="city text")).to_be_focused()
+    assert column_stat(dialog, "overview", "rows") == "10"
+    expect(dialog.locator('[data-section="text"]')).to_be_visible()
+    expect(dialog.locator('[data-section="numeric"]')).to_have_count(0)
+    # Switching to all rows is remembered when switching column
+    dialog.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    # Arrow keys move between pills without switching; Enter switches
+    dialog.get_by_role("tab", name="city text").focus()
+    page.keyboard.press("ArrowLeft")
+    expect(dialog.get_by_role("tab", name="score integer")).to_be_focused()
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("city text")
+    page.keyboard.press("Home")
+    expect(dialog.get_by_role("tab", name="id integer")).to_be_focused()
+    page.keyboard.press("ArrowLeft")
+    expect(dialog.get_by_role("tab", name="city text")).to_be_focused()
+    page.keyboard.press("ArrowLeft")
+    page.keyboard.press("Enter")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog).to_have_attribute("data-column", "score")
+    expect(dialog.locator(".column-stats-scope")).to_have_attribute("data-scope", "all")
+    assert column_stat(dialog, "overview", "rows") == "20"
+    assert column_stat(dialog, "numeric", "median") == "10.5"
+    # Only one pill is a tab stop: the selected one
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.tabIndex)") == [-1, 0, -1]
+    # Closing returns focus to the column menu that first opened the dialog
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
 CLIPBOARD_STUB = """
 (() => {
     window.clipboardText = null;
@@ -3234,3 +3585,229 @@ def test_edit_dialog_text_controls_do_not_trigger_mobile_safari_zoom(
     page.locator(".table-create-from-data").click()
     page.locator(".table-create-data-textarea").wait_for()
     assert_text_controls_at_least_16px(page)
+
+
+@pytest.mark.playwright
+def test_column_statistics_names_do_not_collide_with_tables(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The filter mentions "vals" and a table called "positions", both of which
+    # are also names used inside the generated SQL, as is the "stats" table
+    page.goto(
+        datasette_server
+        + "data/stats?vals__gt=1&_where=id+in+(select+id+from+positions)"
+    )
+    _, dialog = open_column_statistics(page, "vals")
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "5"
+    assert column_stat(dialog, "numeric", "median") == "4"
+    expect(dialog.locator(".column-stats-outliers")).to_contain_text("No outliers")
+    dialog.locator(".column-stats-sql summary").click()
+    assert "with filtered_rows as" in (
+        dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    )
+    # Without the filter the "stats" table itself is the source
+    dialog.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "10"
+    assert column_stat(dialog, "numeric", "median") == "4.5"
+    # A column called "bucket" is grouped correctly in the dates chart
+    dialog.get_by_role("tab", name="bucket text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    bars = dialog.locator('[data-section="text"] .column-stats-bar')
+    expect(bars).to_have_count(3)
+    assert bars.evaluate_all("bars => bars.map(bar => bar.title)") == [
+        "2020: 3 values (30%)",
+        "2021: 3 values (30%)",
+        "2022: 4 values (40%)",
+    ]
+
+
+@pytest.mark.playwright
+def test_column_statistics_limits_concurrent_queries(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.goto(datasette_server + "data/stats_demo")
+    # Replace fetch so the test decides when each query finishes
+    page.evaluate("""() => {
+        window.queryCalls = [];
+        window.fetch = (url) => new Promise((resolve) => {
+            window.queryCalls.push({
+                sql: new URL(url, location.href).searchParams.get("sql"),
+                finish: (rows) => resolve(new Response(
+                    JSON.stringify({ok: true, rows: rows}),
+                    {headers: {"content-type": "application/json"}}
+                )),
+            });
+        });
+    }""")
+
+    def calls():
+        return page.evaluate("queryCalls.map(call => call.sql)")
+
+    page.evaluate(
+        "openColumnStatistics(document.querySelector('th[data-column=score]'))"
+    )
+    page.wait_for_function("queryCalls.length === 1")
+    assert "count(distinct" in calls()[0]
+    page.evaluate("""queryCalls[0].finish([{
+        total_rows: 20, not_null: 20, distinct_values: 20, integer_values: 20,
+        real_values: 0, text_values: 0, blob_values: 0,
+        min_number: 1, max_number: 20
+    }])""")
+    # Summary, percentiles and histogram are wanted; only two run at once
+    dialog = page.locator("#column-stats-dialog")
+    expect(dialog.locator(".column-stats-sql-list > li")).to_have_count(4)
+    page.wait_for_function("queryCalls.length === 3")
+    page.wait_for_timeout(100)
+    assert len(calls()) == 3
+    assert "avg(v) as mean" in calls()[1]
+    assert "row_number()" in calls()[2]
+    # Switching column drops the queued histogram query. The two queries
+    # already running are left to finish, so the new overview waits for a slot
+    dialog.get_by_role("tab", name="city text").click()
+    page.wait_for_timeout(100)
+    assert len(calls()) == 3
+    page.evaluate("queryCalls[1].finish([])")
+    page.wait_for_function("queryCalls.length === 4")
+    assert 'count(distinct "city")' in calls()[3]
+    page.evaluate("queryCalls[2].finish([])")
+    page.wait_for_timeout(100)
+    assert len(calls()) == 4
+    # The histogram query for score was never sent
+    assert not any("as bucket" in sql for sql in calls())
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_query_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    # A query with its own WITH clause, a parameter, duplicate "id" columns
+    # and a trailing comment and semicolon
+    sql = (
+        "with s as (select id, score, city from stats_demo where score > :min)\n"
+        "select s.id, s.score, t.id, s.city from s join stats_demo t on t.id = s.id\n"
+        "order by s.score desc limit 5 -- top five\n;"
+    )
+    page.goto(
+        datasette_server
+        + "data/-/query?"
+        + urllib.parse.urlencode({"sql": sql, "min": "10"})
+    )
+    trigger = (
+        page.locator("table.rows-and-columns th").nth(1).locator(".column-menu-trigger")
+    )
+    trigger.click()
+    page.locator("#column-actions-menu").get_by_role(
+        "menuitem", name="Column statistics", exact=True
+    ).click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    tabs = dialog.get_by_role("tab")
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.textContent)") == [
+        "id integer",
+        "score integer",
+        "id_2 integer",
+        "city text",
+    ]
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("score integer")
+    expect(dialog.locator(".column-stats-scope")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "5"
+    assert column_stat(dialog, "numeric", "min") == "16"
+    assert column_stat(dialog, "numeric", "max") == "20"
+    assert column_stat(dialog, "numeric", "median") == "18"
+    dialog.locator(".column-stats-sql summary").click()
+    first_sql = dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    assert first_sql.startswith(
+        'with query_rows("id", "score", "id_2", "city") as (\n'
+        "with s as (select id, score, city from stats_demo where score > '10')"
+    )
+    # Most common values link to the query in the SQL editor, narrowed down
+    dialog.get_by_role("tab", name="city text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    link = dialog.locator(".column-stats-top-values a").first
+    expect(link).to_have_text("Oslo")
+    href = link.get_attribute("href")
+    assert href.startswith("/data/-/query?sql=")
+    linked_sql = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)["sql"][0]
+    assert linked_sql.endswith("select * from query_rows\nwhere \"city\" = 'Oslo'")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_query_page_covers_all_rows(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The page shows max_returned_rows rows; the statistics use them all.
+    # On a narrow screen the dialog opens from a button above the results.
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(datasette_server + "data/-/query?sql=select+id+from+count_numbers")
+    page.get_by_role("button", name="Column statistics").click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    assert column_stat(dialog, "overview", "rows") == "10,002"
+    expect(dialog.locator(".column-stats-query-note")).to_have_text(
+        "Statistics cover all 10,002 rows returned by the query, not only the"
+        " 1,000 shown on the page."
+    )
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "path,trigger_selector,column",
+    (
+        ("data/stats_demo", 'th[data-column="score"] .column-menu-trigger', "score"),
+        (
+            "data/-/query?sql=select+score,+city+from+stats_demo",
+            "th:nth-child(2) .column-menu-trigger",
+            "city",
+        ),
+    ),
+)
+def test_column_statistics_script_loads_on_first_open(
+    page, datasette_server, path, trigger_selector, column
+):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    script_requests = []
+    page.on(
+        "request",
+        lambda request: (
+            script_requests.append(request.url)
+            if "/column-stats.js" in request.url
+            else None
+        ),
+    )
+    page.goto(datasette_server + path)
+    page.wait_for_load_state("networkidle")
+    # The column menus are ready, but the dialog's script is not loaded yet
+    assert page.evaluate("typeof DatasetteColumnStats.sql") == "undefined"
+    assert script_requests == []
+    trigger = page.locator(trigger_selector)
+    trigger.click()
+    page.get_by_role("menuitem", name="Column statistics", exact=True).click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.get_by_role("tab", selected=True)).to_contain_text(column)
+    assert len(script_requests) == 1
+    # Opening it again does not load the script a second time
+    page.keyboard.press("Escape")
+    expect(trigger).to_be_focused()
+    trigger.click()
+    page.get_by_role("menuitem", name="Column statistics", exact=True).click()
+    expect(dialog).to_be_visible()
+    assert len(script_requests) == 1
+    assert page_errors == []

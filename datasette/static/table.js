@@ -344,6 +344,31 @@ function openSetColumnTypeDialog(th) {
   }
 }
 
+function canShowColumnStatistics(th) {
+  return !!(
+    window.DatasetteColumnStats &&
+    window.DatasetteColumnStats.isAvailable() &&
+    th.dataset.column &&
+    th.dataset.isLinkColumn !== "1"
+  );
+}
+
+function openColumnStatistics(th, returnFocusTo) {
+  if (!returnFocusTo) {
+    var active = document.activeElement;
+    returnFocusTo =
+      active && active !== document.body && active.isConnected
+        ? active
+        : document.querySelector(".column-actions-mobile") ||
+          th.querySelector(".column-menu-trigger");
+  }
+  window.DatasetteColumnStats.open({
+    column: th.dataset.column,
+    columnType: th.dataset.columnType || null,
+    returnFocusTo: returnFocusTo,
+  });
+}
+
 function canChooseColumns() {
   return !!(
     document.querySelector("column-chooser") && window._columnChooserData
@@ -401,6 +426,21 @@ function buildColumnActionItems(manager, th, options) {
     columnActions.push({
       label: "Facet by this",
       href: facetUrl(column),
+    });
+  }
+
+  if (canShowColumnStatistics(th)) {
+    columnActions.push({
+      label: "Column statistics",
+      href: "#",
+      onClick:
+        options.onColumnStatistics ||
+        function (ev) {
+          ev.preventDefault();
+          window.setTimeout(function () {
+            openColumnStatistics(th);
+          }, 0);
+        },
     });
   }
 
@@ -547,6 +587,13 @@ const initDatasetteTable = function (manager) {
         closeMenu();
         window.setTimeout(function () {
           openSetColumnTypeDialog(th);
+        }, 0);
+      },
+      onColumnStatistics: function (ev) {
+        ev.preventDefault();
+        closeMenu();
+        window.setTimeout(function () {
+          openColumnStatistics(th, trigger);
         }, 0);
       },
     });

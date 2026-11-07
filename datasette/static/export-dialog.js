@@ -203,22 +203,16 @@
   }
 
   // The page's count can be missing or capped at Datasette's count limit,
-  // so fetch the full count once the dialog is open.
+  // so count the rows once the dialog is open. countTableRows() from
+  // table.js shares one request with the page header's "count all" button.
   async function fetchCount(dialog, rows) {
     const url = dialog.dataset.countUrl;
     delete dialog.dataset.countUrl;
+    if (typeof window.countTableRows !== "function") return;
     renderRows(dialog, rows, true);
     try {
-      const response = await fetch(url + location.search, {
-        method: "POST",
-        headers: { Accept: "application/json" },
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error((data.errors || ["Count failed"]).join(" "));
-      }
-      rows.total = data.count;
-      dialog.dataset.rowsTotal = String(data.count);
+      rows.total = await window.countTableRows(url);
+      dialog.dataset.rowsTotal = String(rows.total);
     } catch (ex) {
       // Keep the labels that don't depend on the count
     }

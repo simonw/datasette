@@ -2580,6 +2580,39 @@ def test_export_data_dialog_fetches_full_count(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_count_all_and_export_dialog_share_one_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    count_requests = []
+    page.on(
+        "request",
+        lambda request: (
+            count_requests.append(request.url) if "/-/count" in request.url else None
+        ),
+    )
+    dialog = page.locator("#export-dialog")
+    stream_label = dialog.locator(".export-stream-label")
+
+    # "count all" in the page header first, then the export dialog
+    page.goto(datasette_server + "data/count_numbers")
+    expect(page.locator(".table-count")).to_have_text("10,000+ rows")
+    page.locator("button.count-all").click()
+    expect(page.locator(".table-count")).to_have_text("10,002 rows")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,002 rows")
+    assert len(count_requests) == 1
+
+    # The export dialog first: its count updates the page header too
+    count_requests.clear()
+    page.goto(datasette_server + "data/count_numbers?id__gt=1")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,001 rows")
+    expect(page.locator(".table-count")).to_have_text("10,001 rows")
+    expect(page.locator("button.count-all")).to_have_count(0)
+    assert len(count_requests) == 1
+
+
+@pytest.mark.playwright
 def test_export_data_dialog_hides_include_all_when_csv_has_every_row(
     page, datasette_server
 ):

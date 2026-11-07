@@ -1204,6 +1204,7 @@ def test_edit_tools_js_loaded_on_demand(page, datasette_server):
     assert page.evaluate("typeof window.datasetteEditTools") == "object"
 
 
+@pytest.mark.playwright
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     page.add_init_script("""
         (() => {

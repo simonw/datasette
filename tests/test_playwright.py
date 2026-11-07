@@ -2773,7 +2773,7 @@ def test_export_data_dialog_on_query_page(page, datasette_server):
     dialog = page.locator("#export-dialog")
     trigger.click()
     expect(dialog).to_be_visible()
-    expect(dialog.locator(".export-option-name").first).to_have_text("JSON")
+    expect(dialog.locator(".export-option-name").first).to_have_text("CSV")
     page.keyboard.press("Escape")
     expect(dialog).not_to_be_visible()
     expect(trigger).to_be_focused()

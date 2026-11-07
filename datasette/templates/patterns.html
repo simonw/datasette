@@ -263,6 +263,28 @@
     <div class="modal-body export-links">
       <p class="export-scope"><strong>Filtered rows</strong> where characteristic_id = "2"</p>
       <ul class="export-options">
+        <li class="export-option" data-export-format="csv">
+          <form class="export-csv-form" action="{{ base_url }}fixtures/roadside_attraction_characteristics.csv" method="get">
+            <div class="export-option-text">
+              <div class="export-option-heading">
+                <span class="export-option-name" id="export-csv-name">CSV</span>
+                <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
+              </div>
+              <span class="export-option-description">Comma-separated values, for spreadsheets</span>
+            </div>
+            <div class="export-actions" role="group" aria-labelledby="export-csv-name">
+              <button type="submit" class="export-action" data-export-action="view">View</button>
+              <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on">Download</button>
+              <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+              <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+            </div>
+            <div class="export-csv-options">
+              <label><input type="checkbox" name="_labels" checked> Expand labels</label>
+            </div>
+            <input type="hidden" name="characteristic_id" value="2">
+            <input type="hidden" name="_size" value="max">
+          </form>
+        </li>
         <li class="export-option" data-export-format="json">
           <div class="export-option-text">
             <div class="export-option-heading">
@@ -307,28 +329,6 @@
             <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
             <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
           </div>
-        </li>
-        <li class="export-option" data-export-format="csv">
-          <form class="export-csv-form" action="{{ base_url }}fixtures/roadside_attraction_characteristics.csv" method="get">
-            <div class="export-option-text">
-              <div class="export-option-heading">
-                <span class="export-option-name" id="export-csv-name">CSV</span>
-                <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
-              </div>
-              <span class="export-option-description">Comma-separated values, for spreadsheets</span>
-            </div>
-            <div class="export-actions" role="group" aria-labelledby="export-csv-name">
-              <button type="submit" class="export-action" data-export-action="view">View</button>
-              <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on">Download</button>
-              <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
-              <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
-            </div>
-            <div class="export-csv-options">
-              <label><input type="checkbox" name="_labels" checked> Expand labels</label>
-            </div>
-            <input type="hidden" name="characteristic_id" value="2">
-            <input type="hidden" name="_size" value="max">
-          </form>
         </li>
       </ul>
       <p class="export-status" role="status"></p>

@@ -63,12 +63,6 @@
         {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}
         {% if export_rows.later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” under CSV to export every row.{% endif %}</p>{% endif %}
         <ul class="export-options">
-            {{ export_option("json", "JSON", "Rows inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
-            {{ export_option("json-array", "JSON array", "Just the rows, as an array of objects", append_querystring(renderers['json'], '_shape=array'), export_base ~ ".json", export_rows) }}
-            {{ export_option("json-nl", "Newline-delimited JSON", "One JSON object per line", append_querystring(renderers['json'], '_shape=array&_nl=on'), export_base ~ ".jsonl", export_rows) }}
-            {% if primary_keys %}
-            {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
-            {% endif %}
             {% if display_rows %}
             <li class="export-option export-option-csv" data-export-format="csv">
                 <form class="export-csv-form" action="{{ url_csv_path }}" method="get">
@@ -96,6 +90,12 @@
                     {% endfor %}
                 </form>
             </li>
+            {% endif %}
+            {{ export_option("json", "JSON", "Rows inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
+            {{ export_option("json-array", "JSON array", "Just the rows, as an array of objects", append_querystring(renderers['json'], '_shape=array'), export_base ~ ".json", export_rows) }}
+            {{ export_option("json-nl", "Newline-delimited JSON", "One JSON object per line", append_querystring(renderers['json'], '_shape=array&_nl=on'), export_base ~ ".jsonl", export_rows) }}
+            {% if primary_keys %}
+            {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
             {% endif %}
             {% for name, url in renderers.items() if name != "json" %}
             {{ export_option("format-" ~ loop.index, name, none, url, export_base ~ "." ~ name, export_rows) }}

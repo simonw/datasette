@@ -660,11 +660,11 @@ async def test_table_csv_json_export_interface(ds_client):
     ] == [
         (format, name, ["view", "download", "copy", "copy-url"])
         for format, name in (
+            ("csv", "CSV"),
             ("json", "JSON"),
             ("json-array", "JSON array"),
             ("json-nl", "Newline-delimited JSON"),
             ("json-object", "JSON object"),
-            ("csv", "CSV"),
             ("format-1", "testall"),
             ("format-2", "testnone"),
             ("format-3", "testresponse"),
@@ -830,11 +830,11 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
     soup = Soup(response.text, "html.parser")
     actual = _export_urls(soup)
     expected = [
+        "/fixtures/facetable.csv",
         "/fixtures/facetable.json?_labels=on",
         "/fixtures/facetable.json?_labels=on&_shape=array",
         "/fixtures/facetable.json?_labels=on&_shape=array&_nl=on",
         "/fixtures/facetable.json?_labels=on&_shape=object",
-        "/fixtures/facetable.csv",
         "/fixtures/facetable.testall?_labels=on",
         "/fixtures/facetable.testnone?_labels=on",
         "/fixtures/facetable.testresponse?_labels=on",
@@ -2142,10 +2142,10 @@ async def test_export_dialog_options(
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     dialog = soup.select_one("dialog#export-dialog")
-    expected_formats = ["json", "json-array", "json-nl"]
+    # CSV first, as the most popular format
+    expected_formats = ["csv", "json", "json-array", "json-nl"]
     if has_object:
         expected_formats.append("json-object")
-    expected_formats.append("csv")
     formats = [row["data-export-format"] for row in dialog.select("li.export-option")]
     assert formats[: len(expected_formats)] == expected_formats
     assert "json-object" in formats if has_object else "json-object" not in formats
@@ -2353,11 +2353,11 @@ async def test_export_dialog_accessible_descriptions(ds_client):
         )
         for group in groups
     ][:5] == [
+        ("CSV", "All 10 rows"),
         ("JSON", "First 2 of 10 rows"),
         ("JSON array", "First 2 of 10 rows"),
         ("Newline-delimited JSON", "First 2 of 10 rows"),
         ("JSON object", "First 2 of 10 rows"),
-        ("CSV", "All 10 rows"),
     ]
     ids = [el["id"] for el in soup.select("[id]")]
     assert len(ids) == len(set(ids))

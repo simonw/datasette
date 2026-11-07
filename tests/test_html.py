@@ -420,6 +420,7 @@ async def test_query_export_dialog(ds_client):
         for row in dialog.select("li.export-option")
         if not row["data-export-format"].startswith("format-")
     ] == [
+        ("CSV", None),
         (
             "JSON",
             "/fixtures/-/query.json?sql=select+:name+as+n&name=hello&_hide_sql=1",
@@ -432,7 +433,6 @@ async def test_query_export_dialog(ds_client):
             "Newline-delimited JSON",
             "/fixtures/-/query.json?sql=select+:name+as+n&name=hello&_hide_sql=1&_shape=array&_nl=on",
         ),
-        ("CSV", None),
     ]
     # Downloads are named after the database for arbitrary SQL. The CSV
     # download is a form submit with _dl=on, named by Content-Disposition.

@@ -2265,6 +2265,24 @@ async def test_export_dialog_scope_and_row_counts(
 
 
 @pytest.mark.asyncio
+async def test_export_dialog_keeps_blank_filter_values(ds_client):
+    # ?content= filters for content = "", so the CSV export must keep it
+    response = await ds_client.get("/fixtures/simple_primary_key?content=")
+    dialog = Soup(response.text, "html.parser").select_one("dialog#export-dialog")
+    assert dialog.select_one(".export-scope").get_text() == (
+        'Filtered rows where content = ""'
+    )
+    assert [
+        (input["name"], input["value"])
+        for input in dialog.select("form input[type=hidden]")
+    ] == [("content", ""), ("_size", "max")]
+    assert dialog.select_one('a[data-export-action="view"]')["href"] == (
+        "/fixtures/simple_primary_key.json?content="
+    )
+    assert _export_rows(dialog)["csv"] == ("All 1 row", False)
+
+
+@pytest.mark.asyncio
 async def test_export_dialog_no_csv_without_rows(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id=999")
     soup = Soup(response.text, "html.parser")

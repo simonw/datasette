@@ -2506,7 +2506,10 @@ async def table_view_data(
                 "url_csv_path": url_csv_path,
                 "url_csv_hidden_args": [
                     (key, value)
-                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    # Blank values matter: ?name= filters for name = ""
+                    for key, value in urllib.parse.parse_qsl(
+                        request.query_string, keep_blank_values=True
+                    )
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],

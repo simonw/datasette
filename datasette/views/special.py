@@ -293,7 +293,9 @@ class PermissionsDebugView(BaseView):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
         form = await request.form()
-        actor = json.loads(form["actor"])
+        actor, error = _parse_actor_json(form["actor"])
+        if error:
+            return Response.error(error, 400)
         permission = form["permission"]
         parent = form.get("resource_1") or None
         child = form.get("resource_2") or None
@@ -607,6 +609,71 @@ class PermissionRulesView(BaseView):
         return Response.json(response, headers=headers)
 
 
+def _parse_actor_json(actor_json):
+    """
+    Parse a hypothetical actor submitted to a permission debugging tool.
+
+    Returns ``(actor, error_message)`` - error_message is None on success.
+    """
+    try:
+        actor = json.loads(actor_json)
+    except json.JSONDecodeError as ex:
+        return None, f"Invalid actor JSON: {ex}"
+    if actor is not None and not isinstance(actor, dict):
+        return None, "actor must be a JSON object or null"
+    return actor, None
+
+
+def _actor_restrictions_error(actor):
+    """
+    Return an error message if the actor's ``_r`` restrictions are malformed.
+
+    The expected shape (see "Restricting the actions that a token can
+    perform" in docs/authentication.rst)::
+
+        {"a": [action, ...],
+         "d": {database: [action, ...]},
+         "r": {database: {resource: [action, ...]}}}
+
+    Returns None if the actor has no restrictions or they are well formed.
+    """
+    if not isinstance(actor, dict) or "_r" not in actor:
+        return None
+
+    def is_action_list(value):
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+    restrictions = actor["_r"]
+    if not isinstance(restrictions, dict):
+        return '"_r" must be an object with optional "a", "d" and "r" keys'
+    if "a" in restrictions and not is_action_list(restrictions["a"]):
+        return '"_r.a" must be a list of action names'
+    if "d" in restrictions:
+        if not isinstance(restrictions["d"], dict):
+            return '"_r.d" must be an object mapping database names to lists of actions'
+        for database, actions in restrictions["d"].items():
+            if not is_action_list(actions):
+                return f'"_r.d.{database}" must be a list of action names'
+    if "r" in restrictions:
+        if not isinstance(restrictions["r"], dict):
+            return (
+                '"_r.r" must be an object mapping database names to objects '
+                "mapping table names to lists of actions"
+            )
+        for database, resources in restrictions["r"].items():
+            if not isinstance(resources, dict):
+                return (
+                    f'"_r.r.{database}" must be an object mapping table names '
+                    "to lists of actions"
+                )
+            for resource, actions in resources.items():
+                if not is_action_list(actions):
+                    return (
+                        f'"_r.r.{database}.{resource}" must be a list of action names'
+                    )
+    return None
+
+
 async def _check_permission_for_actor(ds, action, parent, child, actor):
     """Shared logic for checking and explaining a permission decision."""
     if action not in ds.actions:
@@ -614,6 +681,12 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
 
     if child and not parent:
         return error_body("parent is required when child is provided", 400), 400
+
+    # Malformed restrictions would otherwise crash the permission hooks with a
+    # 500 error - https://github.com/simonw/datasette/issues/1948
+    restrictions_error = _actor_restrictions_error(actor)
+    if restrictions_error:
+        return error_body(restrictions_error, 400), 400
 
     # Use the action's properties to create the appropriate resource object
     action_obj = ds.actions.get(action)
@@ -709,12 +782,9 @@ class PermissionCheckView(BaseView):
         actor = request.actor
         actor_json = request.args.get("actor")
         if actor_json is not None:
-            try:
-                actor = json.loads(actor_json)
-            except json.JSONDecodeError as ex:
-                return Response.error(f"Invalid actor JSON: {ex}", 400)
-            if actor is not None and not isinstance(actor, dict):
-                return Response.error("actor must be a JSON object or null", 400)
+            actor, error = _parse_actor_json(actor_json)
+            if error:
+                return Response.error(error, 400)
 
         response, status = await _check_permission_for_actor(
             self.ds, action, parent, child, actor

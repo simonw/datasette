@@ -271,6 +271,21 @@
     dialog.addEventListener("click", async (ev) => {
       const el = ev.target.closest("[data-export-action]");
       const action = el && el.dataset.exportAction;
+      if (action === "download" && el.closest(".export-csv-form")) {
+        // Download the CSV through a link with a download attribute, like the
+        // other formats, rather than submitting the form with _dl=on: WebKit
+        // on Linux does not treat that response as a download
+        ev.preventDefault();
+        const link = document.createElement("a");
+        link.href = `${exportUrl(el)}&_dl=on`;
+        link.download = "";
+        link.hidden = true;
+        // Inside the dialog: everything outside a modal dialog is inert
+        dialog.append(link);
+        link.click();
+        link.remove();
+        return;
+      }
       if (!STATE_LABELS[action]) return; // View and Download: the browser's
       ev.preventDefault();
       if (el.dataset.state === "busy") return;

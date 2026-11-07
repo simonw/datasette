@@ -2752,6 +2752,68 @@ def test_export_data_dialog_actions_fit_narrow_screens(
     assert {group["visible"] for group in groups} == {4}
 
 
+RECORD_FETCH_SIGNALS = """
+(() => {
+    window.fetchSignals = [];
+    const fetch = window.fetch;
+    window.fetch = (url, init = {}) => {
+        if (init.signal) window.fetchSignals.push(init.signal);
+        return fetch(url, init);
+    };
+})();
+"""
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_copy_refused_or_cancelled(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The export request never finishes
+    page.route("**/facetable.json?*_shape=array*", lambda route: None)
+    page.add_init_script(RECORD_FETCH_SIGNALS)
+    page.add_init_script("""
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            get: () => ({
+                write: async (items) => {
+                    if (window.refuseClipboard) {
+                        throw new DOMException(
+                            "Write permission denied.", "NotAllowedError"
+                        );
+                    }
+                    // Like a real clipboard, wait for the data
+                    await items[0].getType("text/plain");
+                },
+                writeText: async () => {},
+            }),
+        });
+    """)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    group = dialog.get_by_role("group", name="JSON array", exact=True)
+
+    # A clipboard that refuses straight away is reported straight away, and
+    # the stalled request for the data is cancelled
+    page.evaluate("window.refuseClipboard = true")
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy JSON array: Write permission denied."
+    )
+    assert page.evaluate("fetchSignals.map(signal => signal.aborted)") == [True]
+
+    # Closing the dialog cancels a copy that is still waiting for its data
+    page.evaluate("window.refuseClipboard = false")
+    group.get_by_role("button", name=re.compile("^(Copy|Failed)$")).click()
+    expect(group.get_by_role("button", name="Copying…")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    page.wait_for_function("fetchSignals.length === 2 && fetchSignals[1].aborted")
+    page.get_by_role("button", name="Export data").click()
+    expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+
 @pytest.mark.playwright
 def test_export_data_dialog_copy_failure(page, datasette_server):
     from playwright.sync_api import expect

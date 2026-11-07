@@ -65,8 +65,8 @@
     return !contentType || /^text\/|json|xml|javascript|csv/i.test(contentType);
   }
 
-  async function fetchText(url) {
-    const response = await fetch(url, { credentials: "same-origin" });
+  async function fetchText(url, signal) {
+    const response = await fetch(url, { credentials: "same-origin", signal });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -94,12 +94,17 @@
     return new Blob(chunks).text();
   }
 
-  async function copyData(url) {
+  async function copyData(url, controller) {
     // Safari only allows clipboard writes during the click, so hand it a
     // promise for the data rather than awaiting the fetch first.
     if (window.ClipboardItem && navigator.clipboard.write) {
-      const blob = fetchText(url).then(
+      let fetchError = null;
+      const blob = fetchText(url, controller.signal).then(
         (text) => new Blob([text], { type: "text/plain" }),
+        (error) => {
+          fetchError = error;
+          throw error;
+        },
       );
       blob.catch(() => {}); // Reported below instead
       try {
@@ -107,12 +112,17 @@
           new ClipboardItem({ "text/plain": blob }),
         ]);
       } catch (ex) {
-        // Firefox and Safari replace a failed fetch with a generic error
-        await blob;
-        throw ex;
+        // The clipboard can refuse straight away, so stop fetching data that
+        // can no longer be copied rather than waiting for it. When the fetch
+        // is what failed, Firefox and Safari report a generic clipboard error
+        // instead, so report the fetch's own error.
+        controller.abort();
+        throw fetchError || ex;
       }
     } else {
-      await navigator.clipboard.writeText(await fetchText(url));
+      await navigator.clipboard.writeText(
+        await fetchText(url, controller.signal),
+      );
     }
   }
 
@@ -239,6 +249,7 @@
       if (status) status.textContent = message;
     };
     const rows = readRows(dialog);
+    const pendingCopies = new Set();
     const open = () => {
       announce("");
       // Otherwise Chrome can focus the scrollable body when it overflows
@@ -301,11 +312,22 @@
           announce(`Copied the ${name} URL`);
         } else {
           setState(el, "busy");
-          await copyData(url);
+          const controller = new AbortController();
+          pendingCopies.add(controller);
+          try {
+            await copyData(url, controller);
+          } finally {
+            pendingCopies.delete(controller);
+          }
           announce(`Copied ${name} data`);
         }
         setState(el, "done");
       } catch (ex) {
+        if (ex.name === "AbortError" && !dialog.open) {
+          // Cancelled by closing the dialog
+          setState(el, "idle");
+          return;
+        }
         setState(el, "error");
         announce(
           `Could not ${action.replace("-", " ")} ${name}: ${ex.message}`,
@@ -319,6 +341,8 @@
       open();
     }
     dialog.addEventListener("close", () => {
+      // Stop fetching data for copies that can no longer finish
+      pendingCopies.forEach((controller) => controller.abort());
       if (location.hash === "#export") {
         history.replaceState(
           history.state,

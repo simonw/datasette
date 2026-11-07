@@ -2632,6 +2632,8 @@ def test_column_statistics_percentiles_match_python(page, datasette_server):
     import statistics
 
     page.goto(datasette_server + "data/stats_demo")
+    # column-stats.js is only loaded on demand
+    page.evaluate("DatasetteColumnStats.load()")
     sql = page.evaluate("""() => DatasetteColumnStats.sql.percentiles(
         DatasetteColumnStats.sql.source("t", "v", null),
         '"v"',
@@ -2714,6 +2716,7 @@ def test_column_statistics_filter_links_and_typed_params(page, datasette_server)
 @pytest.mark.playwright
 def test_column_statistics_inline_params(page, datasette_server):
     page.goto(datasette_server + "data/stats_demo")
+    page.evaluate("DatasetteColumnStats.load()")
     inline = """([sql, params]) => {
         try {
             return DatasetteColumnStats.sql.inlineParams(sql, params);
@@ -3758,3 +3761,53 @@ def test_column_statistics_query_page_covers_all_rows(page, datasette_server):
         "Statistics cover all 10,002 rows returned by the query, not only the"
         " 1,000 shown on the page."
     )
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "path,trigger_selector,column",
+    (
+        ("data/stats_demo", 'th[data-column="score"] .column-menu-trigger', "score"),
+        (
+            "data/-/query?sql=select+score,+city+from+stats_demo",
+            "th:nth-child(2) .column-menu-trigger",
+            "city",
+        ),
+    ),
+)
+def test_column_statistics_script_loads_on_first_open(
+    page, datasette_server, path, trigger_selector, column
+):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    script_requests = []
+    page.on(
+        "request",
+        lambda request: (
+            script_requests.append(request.url)
+            if "/column-stats.js" in request.url
+            else None
+        ),
+    )
+    page.goto(datasette_server + path)
+    page.wait_for_load_state("networkidle")
+    # The column menus are ready, but the dialog's script is not loaded yet
+    assert page.evaluate("typeof DatasetteColumnStats.sql") == "undefined"
+    assert script_requests == []
+    trigger = page.locator(trigger_selector)
+    trigger.click()
+    page.get_by_role("menuitem", name="Column statistics", exact=True).click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.get_by_role("tab", selected=True)).to_contain_text(column)
+    assert len(script_requests) == 1
+    # Opening it again does not load the script a second time
+    page.keyboard.press("Escape")
+    expect(trigger).to_be_focused()
+    trigger.click()
+    page.get_by_role("menuitem", name="Column statistics", exact=True).click()
+    expect(dialog).to_be_visible()
+    assert len(script_requests) == 1
+    assert page_errors == []

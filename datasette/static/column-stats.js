@@ -1,8 +1,13 @@
 // Column statistics: a modal dialog that summarises a single column by
-// running aggregate SQL queries against the table. The SQL is built here in
-// JavaScript and executed through the database's /-/query.json endpoint, so
-// the feature is only offered when the server says the current actor can
-// execute arbitrary SQL against this database (_datasetteTableData.executeSql).
+// running aggregate SQL queries against the table or query results. The SQL
+// is built here in JavaScript and executed through the database's
+// /-/query.json endpoint, so the feature is only offered when the server says
+// the current actor can execute arbitrary SQL against this database
+// (_datasetteTableData.executeSql or _datasetteQueryData.executeSql).
+//
+// Pages do not load this file up front. _column_stats_loader.html imports it
+// the first time the dialog is opened, so it must work as a module as well
+// as a classic script.
 (() => {
   var DIALOG_ID = "column-stats-dialog";
   var TITLE_ID = "column-stats-title";
@@ -1912,166 +1917,29 @@ limit ${sqlNumber(limit)}`;
     }
   }
 
-  // Query pages ============================================================
-  // On table pages the "Column statistics" item lives in table.js's column
-  // menu. Query results have no other column actions, so this gives each
-  // result column a cog menu with just that item, plus a button for narrow
-  // screens where the table headers are hidden.
-
-  var COG_SVG = `<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="12" cy="12" r="3"></circle>
-  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-</svg>`;
-
-  function initQueryPage() {
-    var data = window._datasetteQueryData;
-    if (!data || !isAvailable() || !window.DatasetteMenu) {
-      return;
-    }
-    var table = document.querySelector("table.rows-and-columns");
-    var columns = data.executeSql.columns;
-    var headers = table ? Array.from(table.querySelectorAll("thead th")) : [];
-    if (!headers.length || headers.length !== columns.length) {
-      return;
-    }
-    var menu = h("div", {
-      id: "column-actions-menu",
-      className: "column-actions-menu datasette-menu",
-      hidden: true,
-    });
-    document.body.appendChild(menu);
-    var wrapper = table.closest(".table-wrapper");
-    if (wrapper) {
-      wrapper.addEventListener("scroll", () => window.DatasetteMenu.close());
-    }
-
-    function openMenu(event, trigger, column) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.type === "click" && window.DatasetteMenu.isOpenFor(trigger)) {
-        window.DatasetteMenu.close({ restoreFocus: true });
-        return;
-      }
-      window.DatasetteMenu.close();
-      var item = h("a", {
-        href: "#",
-        role: "menuitem",
-        text: "Column statistics",
-      });
-      item.addEventListener("click", (clickEvent) => {
-        clickEvent.preventDefault();
-        window.DatasetteMenu.close({ restoreFocus: true });
-        window.setTimeout(() => {
-          open({
-            column: column.name,
-            columnType: column.type,
-            returnFocusTo: trigger,
-          });
-        }, 0);
-      });
-      menu.innerHTML = "";
-      menu.setAttribute("role", "menu");
-      menu.setAttribute("aria-label", "Actions for column " + column.name);
-      menu.appendChild(
-        h(
-          "div",
-          { className: "datasette-menu-heading", role: "presentation" },
-          [
-            h("strong", {
-              className: "datasette-menu-title",
-              text: column.name,
-            }),
-          ],
-        ),
-      );
-      menu.appendChild(
-        h("ul", { className: "dropdown-actions", role: "none" }, [
-          h("li", { role: "none" }, [item]),
-        ]),
-      );
-      if (column.type) {
-        menu.appendChild(
-          h("p", {
-            className: "dropdown-column-type",
-            text: `Type: ${column.type.toUpperCase()}`,
-          }),
-        );
-      }
-      window.DatasetteMenu.open({
-        trigger: trigger,
-        panel: menu,
-        focusLast: event.key === "ArrowUp",
-        focusMenu: event.type === "keydown" || event.detail === 0,
-      });
-    }
-
-    headers.forEach((th, index) => {
-      var column = columns[index];
-      var trigger = h("button", {
-        type: "button",
-        className: "column-menu-trigger",
-        "aria-label": "Actions for column " + column.name,
-        "aria-haspopup": "menu",
-        "aria-expanded": "false",
-        "aria-controls": menu.id,
-      });
-      trigger.innerHTML = COG_SVG;
-      trigger.addEventListener("click", (event) =>
-        openMenu(event, trigger, column),
-      );
-      trigger.addEventListener("keydown", (event) => {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          openMenu(event, trigger, column);
-        }
-      });
-      th.appendChild(trigger);
-    });
-
-    var mobileButton = h(
-      "button",
-      {
-        type: "button",
-        className:
-          "column-actions-mobile small-screen-only column-stats-mobile",
-        "aria-haspopup": "dialog",
+  // _column_stats_loader.html defines a stand-in DatasetteColumnStats whose
+  // open() imports this file and then calls the real open() set here.
+  window.DatasetteColumnStats = Object.assign(
+    window.DatasetteColumnStats || {},
+    {
+      isAvailable: isAvailable,
+      open: open,
+      sql: {
+        source: sourceSql,
+        querySource: querySourceSql,
+        inlineParams: inlineParams,
+        overview: overviewSql,
+        numericSummary: numericSummarySql,
+        percentiles: percentilesSql,
+        histogram: histogramSql,
+        outliers: outliersSql,
+        textSummary: textSummarySql,
+        dateHistogram: dateHistogramSql,
+        topValues: topValuesSql,
+        quoteIdentifier: quoteIdentifier,
       },
-      [h("span", { text: "Column statistics" })],
-    );
-    mobileButton.insertAdjacentHTML("afterbegin", COG_SVG);
-    mobileButton.addEventListener("click", () => {
-      open({
-        column: columns[0].name,
-        columnType: columns[0].type,
-        returnFocusTo: mobileButton,
-      });
-    });
-    (wrapper || table).before(mobileButton);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initQueryPage);
-  } else {
-    initQueryPage();
-  }
-
-  window.DatasetteColumnStats = {
-    isAvailable: isAvailable,
-    open: open,
-    sql: {
-      source: sourceSql,
-      querySource: querySourceSql,
-      inlineParams: inlineParams,
-      overview: overviewSql,
-      numericSummary: numericSummarySql,
-      percentiles: percentilesSql,
-      histogram: histogramSql,
-      outliers: outliersSql,
-      textSummary: textSummarySql,
-      dateHistogram: dateHistogramSql,
-      topValues: topValuesSql,
-      quoteIdentifier: quoteIdentifier,
+      histogramBuckets: histogramBuckets,
+      PERCENTILES: PERCENTILES,
     },
-    histogramBuckets: histogramBuckets,
-    PERCENTILES: PERCENTILES,
-  };
+  );
 })();

@@ -12,7 +12,7 @@
 <script src="{{ static('edit-tools.js') }}" defer></script>
 <script src="{{ static('table.js') }}" defer></script>
 {% if table_page_data.executeSql %}
-<script src="{{ static('column-stats.js') }}" defer></script>
+{% include "_column_stats_loader.html" %}
 {% endif %}
 <script src="{{ static('table-layout.js') }}" defer></script>
 <script src="{{ static('mobile-column-actions.js') }}" defer></script>

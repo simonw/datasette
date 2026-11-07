@@ -839,6 +839,7 @@ def test_query_page_column_statistics_data(app_client):
     )
     assert response.status == 200
     assert "/column-stats.js" in response.text
+    assert "/query-column-actions.js" in response.text
     assert query_page_data(response) == {
         "database": "fixtures",
         "executeSql": {
@@ -885,6 +886,7 @@ def test_query_page_column_statistics_not_available(app_client, path):
     assert response.status == 200
     assert query_page_data(response) is None
     assert "/column-stats.js" not in response.text
+    assert "/query-column-actions.js" not in response.text
 
 
 @pytest.mark.asyncio

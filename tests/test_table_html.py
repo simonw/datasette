@@ -2010,8 +2010,11 @@ def test_table_page_column_statistics_requires_execute_sql(allow_sql):
         assert response.status == 200
         soup = Soup(response.text, "html.parser")
         table_data = table_data_from_soup(soup)
+        # column-stats.js is never loaded up front: a small inline loader
+        # imports it the first time the dialog is opened
         script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
-        has_script = any("/column-stats.js" in src for src in script_srcs)
+        assert not any("/column-stats.js" in src for src in script_srcs)
+        has_script = "/column-stats.js" in response.text
         if allow_sql:
             execute_sql = table_data["executeSql"]
             assert execute_sql["queryUrl"] == "/fixtures/-/query.json"

@@ -61,7 +61,13 @@ from datasette.utils.asgi import (
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    is_csv_format,
+    stream_csv,
+    tsv_export_path,
+)
 from .database import QueryView
 from .table_create_alter import (
     ALTER_TABLE_COLUMN_TYPES,
@@ -112,6 +118,11 @@ class TableContext(Context):
     private: bool = from_extra()
     query: dict = from_extra()
     renderers: dict = from_extra()
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     set_column_type_ui: dict = from_extra()
     sorted_facet_results: list = from_extra()
     suggested_facets: list = from_extra()
@@ -157,11 +168,26 @@ class TableContext(Context):
             "help": "URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved."
         }
     )
+    filter_description_en: str = field(
+        metadata={
+            "help": 'Human readable description of the filters, search and ``?_where=`` clauses applied to the table, for example ``where state = "CA"``, or an empty string if there are none.'
+        }
+    )
+    sort_description_en: str = field(
+        metadata={
+            "help": "Human readable description of the sort order, for example ``sorted by name descending``, or an empty string if no sort order was specified."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
@@ -221,7 +247,7 @@ class TableContext(Context):
     )
     table_page_data: dict = field(
         metadata={
-            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
+            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data, optional ``alterTable`` data and optional ``executeSql`` data with ``queryUrl`` and ``editorUrl`` keys, present if the current actor can execute custom SQL against this database. ``executeSql`` also has a ``columns`` list of every column in the table with its ``name`` and declared ``type``, and an optional ``filter`` key with the ``where`` clause, ``params`` and human readable ``description`` of the filters currently applied to the table."
         }
     )
     table_insert_ui: dict = field(
@@ -469,6 +495,7 @@ async def _table_page_data(
     is_view,
     table_insert_ui,
     table_alter_ui,
+    execute_sql_ui=None,
 ):
     data = {
         "database": database_name,
@@ -479,6 +506,8 @@ async def _table_page_data(
         data["insertRow"] = table_insert_ui
     if table_alter_ui:
         data["alterTable"] = table_alter_ui
+    if execute_sql_ui:
+        data["executeSql"] = execute_sql_ui
     if not is_view:
         foreign_keys = await _foreign_key_autocomplete_urls(
             datasette, request, db, database_name, table_name
@@ -553,6 +582,62 @@ async def _table_insert_ui(
         data["upsertPath"] = (
             f"{datasette.urls.table(database_name, table_name)}/-/upsert"
         )
+    return data
+
+
+async def _execute_sql_ui(
+    datasette,
+    request,
+    database_name,
+    filter_where=None,
+    filter_params=None,
+    filter_description=None,
+    db=None,
+    table_name=None,
+    use_rowid=False,
+):
+    # URLs JavaScript can use to run read-only SQL against this database, used
+    # by the column statistics dialog. Only provided if the actor is allowed
+    # to execute arbitrary SQL.
+    if not await datasette.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database=database_name),
+        actor=request.actor,
+    ):
+        return None
+    query_path = f"{datasette.urls.database(database_name)}/-/query"
+    data = {
+        "queryUrl": query_path + ".json",
+        "editorUrl": query_path,
+    }
+    if db is not None and table_name is not None:
+        # Every column with its declared type, including any hidden from the
+        # current page, so the column statistics dialog can switch between them
+        columns = [{"name": "rowid", "type": "integer"}] if use_rowid else []
+        columns.extend(
+            {"name": column.name, "type": (column.type or "").lower()}
+            for column in await db.table_column_details(table_name)
+            # hidden == 1 is a hidden virtual table column, 2 and 3 are
+            # generated columns which can be queried
+            if column.hidden != 1
+        )
+        data["columns"] = columns
+    if filter_where:
+        # The where clause for the filters currently applied to the table,
+        # without pagination. Parameters keep their types (numeric filters
+        # such as __gt use numbers) so JavaScript can inline them as literals.
+        # Statistics can't faithfully reproduce a filter whose parameters
+        # can't be expressed in JSON, so the feature is disabled instead.
+        if not all(
+            value is None or isinstance(value, (str, int, float))
+            for value in (filter_params or {}).values()
+        ):
+            return None
+        data["filter"] = {
+            "where": filter_where,
+            "params": dict(filter_params or {}),
+            "description": filter_description or "",
+        }
     return data
 
 
@@ -1828,7 +1913,7 @@ async def table_view_traced(datasette, request):
     data, rows, columns, _expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
-    if format_ == "csv":
+    if is_csv_format(datasette, format_):
 
         async def fetch_data(request, _next=None):
             (
@@ -1853,7 +1938,9 @@ async def table_view_traced(datasette, request):
             data["expanded_columns"] = expanded_columns
             return data, None, None
 
-        return await stream_csv(datasette, fetch_data, request, resolved.db.name)
+        return await stream_csv(
+            datasette, fetch_data, request, resolved.db.name, format_=format_
+        )
     elif format_ in datasette.renderers:
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
@@ -1932,6 +2019,8 @@ async def table_view_traced(datasette, request):
             filters=data["filters"],
             form_hidden_args=data["form_hidden_args"],
             human_description_en=data["human_description_en"],
+            filter_description_en=data["filter_description_en"],
+            sort_description_en=data["sort_description_en"],
             is_view=data["is_view"],
             metadata=data["metadata"],
             next_url=data["next_url"],
@@ -1939,6 +2028,7 @@ async def table_view_traced(datasette, request):
             private=data["private"],
             query=data["query"],
             renderers=data["renderers"],
+            renderer_options=datasette._renderer_options,
             set_column_type_ui=data["set_column_type_ui"],
             sorted_facet_results=data["sorted_facet_results"],
             suggested_facets=data["suggested_facets"],
@@ -1956,6 +2046,7 @@ async def table_view_traced(datasette, request):
             url_csv=data["url_csv"],
             url_csv_path=data["url_csv_path"],
             url_csv_hidden_args=data["url_csv_hidden_args"],
+            url_tsv_path=data["url_tsv_path"],
             sort=data["sort"],
             sort_desc=data["sort_desc"],
             append_querystring=append_querystring,
@@ -2148,6 +2239,8 @@ async def table_view_data(
     )
     # Copy of params so we can mutate them later:
     from_sql_params = dict(**params)
+    # The filter where clause before any pagination clauses are added
+    filter_where_sql = " and ".join(where_clauses)
 
     count_sql = f"select count(*) {from_sql}"
 
@@ -2474,11 +2567,31 @@ async def table_view_data(
         url_csv_path = url_csv.split("?")[0]
         data.update(
             {
+                "filter_description_en": filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+                "sort_description_en": (
+                    "sorted by {}{}".format(
+                        sort or sort_desc, " descending" if sort_desc else ""
+                    )
+                    if (sort or sort_desc)
+                    else ""
+                ),
                 "url_csv": url_csv,
                 "url_csv_path": url_csv_path,
+                "url_tsv_path": tsv_export_path(datasette, request),
                 "url_csv_hidden_args": [
                     (key, value)
-                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    # Blank values matter: ?name= filters for name = ""
+                    for key, value in urllib.parse.parse_qsl(
+                        request.query_string, keep_blank_values=True
+                    )
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],
@@ -2510,6 +2623,25 @@ async def table_view_data(
             is_view=is_view,
             table_insert_ui=table_insert_ui,
             table_alter_ui=table_alter_ui,
+            execute_sql_ui=await _execute_sql_ui(
+                datasette,
+                request,
+                database_name,
+                filter_where=filter_where_sql,
+                filter_params=from_sql_params,
+                db=db,
+                table_name=table_name,
+                use_rowid=use_rowid,
+                filter_description=filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+            ),
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url

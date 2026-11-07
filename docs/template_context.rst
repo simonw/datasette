@@ -156,6 +156,9 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``alternate_url_json`` - ``str``
     URL for alternate JSON version of this page
 
+``append_querystring`` - ``callable``
+    Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
+
 ``columns`` - ``list``
     List of result column names in the order they appear in ``display_rows`` and ``rows``.
 
@@ -198,6 +201,12 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``query_actions`` - ``callable``
     Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.
 
+``query_page_data`` - ``dict``
+    JSON data used by the column statistics dialog on the query page, or ``None`` if it is not available. It is only provided for read-only queries that returned rows, use no magic parameters and are run by an actor who can execute custom SQL. Has ``database`` and ``executeSql`` keys. ``executeSql`` has ``queryUrl`` and ``editorUrl``, a ``query`` with the ``sql``, its ``params`` and ``shownRows``, the number of rows shown on the page, and ``columns``: the result columns with unique ``name`` values and the SQLite storage ``type`` seen in the returned rows (``mixed`` if more than one).
+
+``renderer_options`` - ``dict``
+    Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog.
+
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` to URLs for this query in that format.
 
@@ -234,8 +243,20 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``top_stored_query`` - ``callable``
     Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML.
 
+``truncated`` - ``bool``
+    Boolean indicating if the results were truncated at the ``max_returned_rows`` limit
+
 ``url_csv`` - ``str``
     URL for CSV export
+
+``url_csv_hidden_args`` - ``list``
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving the SQL and parameters while forcing ``_size=max``.
+
+``url_csv_path`` - ``str``
+    Path portion of the CSV export URL
+
+``url_tsv_path`` - ``str``
+    Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
 
 Table page
 ----------
@@ -307,6 +328,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``filter_columns`` - ``list``
     List of column names offered by the filter interface, including currently displayed columns and any hidden columns that can still be filtered.
 
+``filter_description_en`` - ``str``
+    Human readable description of the filters, search and ``?_where=`` clauses applied to the table, for example ``where state = "CA"``, or an empty string if there are none.
+
 ``filters`` - ``Filters``
     ``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable.
 
@@ -352,6 +376,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
 
+``renderer_options`` - ``dict``
+    Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog.
+
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` or plugin-provided renderer names to URLs for this data in that format.
 
@@ -372,6 +399,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``sort_desc`` - ``str``
     Column the page is sorted by in descending order, or None
+
+``sort_description_en`` - ``str``
+    Human readable description of the sort order, for example ``sorted by name descending``, or an empty string if no sort order was specified.
 
 ``sorted_facet_results`` - ``list``
     Facet result dictionaries sorted for display. Each item has the same shape as an entry from ``facet_results['results']``.
@@ -395,7 +425,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys.
 
 ``table_page_data`` - ``dict``
-    JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data.
+    JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data, optional ``alterTable`` data and optional ``executeSql`` data with ``queryUrl`` and ``editorUrl`` keys, present if the current actor can execute custom SQL against this database. ``executeSql`` also has a ``columns`` list of every column in the table with its ``name`` and declared ``type``, and an optional ``filter`` key with the ``where`` clause, ``params`` and human readable ``description`` of the filters currently applied to the table.
 
 ``top_table`` - ``callable``
     Async callable that renders the ``top_table`` plugin slot for this table or view and returns HTML.
@@ -404,10 +434,13 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     URL for the CSV export of this page
 
 ``url_csv_hidden_args`` - ``list``
-    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``.
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL
+
+``url_tsv_path`` - ``str``
+    Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
 
 ``view_definition`` - ``str``
     SQL definition for this view
@@ -461,6 +494,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
 
+``renderer_options`` - ``dict``
+    Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog.
+
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` to URLs for this row in that format.
 
@@ -492,9 +528,12 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     URL for the CSV export of this page
 
 ``url_csv_hidden_args`` - ``list``
-    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``.
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL
+
+``url_tsv_path`` - ``str``
+    Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
 
 .. [[[end]]]

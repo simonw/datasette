@@ -133,11 +133,30 @@
 </div>
 {% endif %}
 
-{% if query.sql and allow_execute_sql %}
-    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
-{% endif %}
-
-<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
+<div class="table-tools">
+    {% if query.sql and allow_execute_sql %}
+    <a class="quiet-button view-sql-button" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m16 18 6-6-6-6"></path>
+            <path d="m8 6-6 6 6 6"></path>
+        </svg>
+        <span>View and edit SQL</span>
+    </a>
+    {% endif %}
+    {% include "_export_button.html" %}
+</div>
+{% set export_meta = table %}
+{% set export_scope = "Filtered rows" if filter_description_en else "All rows" %}
+{% set export_scope_description = [filter_description_en, sort_description_en]|select|join(", ") or ("in this view" if is_view else "in this table") %}
+{% set export_rows = {
+    "page": display_rows|length,
+    "more": true if next_url else false,
+    "later": true if request.args.get("_next") else false,
+    "max": settings.max_returned_rows,
+    "total": count if (count is not none and not count_truncated) else none,
+    "count_url": urls.table(database, table) ~ "/-/count",
+} %}
+{% include "_export_dialog.html" %}
 
 {% if suggested_facets %}
     {% include "_suggested_facets.html" %}
@@ -188,31 +207,6 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 
 {% if next_url %}
      <p><a href="{{ next_url }}">Next page</a></p>
-{% endif %}
-
-{% if display_rows %}
-    <div id="export" class="advanced-export">
-        <h3>Advanced export</h3>
-        <p>JSON shape:
-            <a href="{{ renderers['json'] }}">default</a>,
-            <a href="{{ append_querystring(renderers['json'], '_shape=array') }}">array</a>,
-            <a href="{{ append_querystring(renderers['json'], '_shape=array&_nl=on') }}">newline-delimited</a>{% if primary_keys %},
-                <a href="{{ append_querystring(renderers['json'], '_shape=object') }}">object</a>
-            {% endif %}
-        </p>
-        <form class="core" action="{{ url_csv_path }}" method="get">
-            <p>
-                CSV options:
-                <label><input type="checkbox" name="_dl"> download file</label>
-                {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
-                {% if next_url and settings.allow_csv_stream %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
-                <input type="submit" value="Export CSV">
-                {% for key, value in url_csv_hidden_args %}
-                    <input type="hidden" name="{{ key }}" value="{{ value }}">
-                {% endfor %}
-            </p>
-        </form>
-    </div>
 {% endif %}
 
 {% if table_definition %}

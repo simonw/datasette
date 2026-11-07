@@ -59,7 +59,7 @@ def handle_exception(datasette, request, exception):
             body = dict(info)
             body.update(error_body(plain_message or message, status))
             return Response.json(body, status=status, headers=headers)
-        if request.path.split("?")[0].endswith(".csv"):
+        if request.path.split("?")[0].endswith((".csv", ".tsv")):
             return Response.text(
                 plain_message or message, status=status, headers=headers
             )

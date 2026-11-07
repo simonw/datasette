@@ -110,7 +110,7 @@ The HTML interface is worth spending some time exploring. As with other pages, y
 
 The query string arguments are described in more detail here: :ref:`table_arguments`
 
-You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" link to see the SQL query that was used for the page and edit and re-submit it.
+You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" button to see the SQL query that was used for the page and edit and re-submit it.
 
 Some examples:
 
@@ -142,6 +142,8 @@ Rows which are the targets of foreign key references from other tables will show
 `../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001>`_
 
 Note that this URL includes the encoded primary key of the record.
+
+The "Export data" button on a row page offers that row as TSV, CSV or JSON, to view, download or copy - see :ref:`csv_export`.
 
 Here's that same page as JSON:
 

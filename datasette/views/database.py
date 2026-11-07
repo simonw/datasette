@@ -17,6 +17,7 @@ from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.utils import (
     InvalidSql,
     add_cors_headers,
+    append_querystring,
     await_me_maybe,
     call_with_supported_arguments,
     error_body,
@@ -39,7 +40,7 @@ from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, stream_csv
+from .base import DatasetteError, View, is_csv_format, stream_csv, tsv_export_path
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -448,7 +449,33 @@ class QueryContext(Context):
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
         }
     )
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
+    truncated: bool = field(
+        metadata={
+            "help": "Boolean indicating if the results were truncated at the ``max_returned_rows`` limit"
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for CSV export"})
+    url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
+    url_csv_hidden_args: list = field(
+        metadata={
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving the SQL and parameters while forcing ``_size=max``."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
+        }
+    )
+    append_querystring: callable = field(
+        metadata={
+            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
+        }
+    )
     show_hide_hidden: str = field(
         metadata={
             "help": "Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state."
@@ -861,7 +888,7 @@ class QueryView(View):
             return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
-        if format_ == "csv":
+        if is_csv_format(datasette, format_):
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
 
@@ -871,7 +898,9 @@ class QueryView(View):
                 data = {"rows": results.rows, "columns": results.columns}
                 return data, None, None
 
-            return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
+            return await stream_csv(
+                datasette, fetch_data_for_csv, request, db.name, format_=format_
+            )
         elif format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
@@ -1101,6 +1130,14 @@ class QueryView(View):
                         query_actions.extend(extra_links)
                 return query_actions
 
+            url_csv = datasette.urls.path(
+                path_with_format(
+                    request=request,
+                    path=request.scope.get("route_path"),
+                    format="csv",
+                    extra_qs={"_size": "max"},
+                )
+            )
             r = Response.html(
                 await datasette.render_template(
                     template,
@@ -1135,14 +1172,20 @@ class QueryView(View):
                         ),
                         columns=columns,
                         renderers=renderers,
-                        url_csv=datasette.urls.path(
-                            path_with_format(
-                                request=request,
-                                path=request.scope.get("route_path"),
-                                format="csv",
-                                extra_qs={"_size": "max"},
+                        renderer_options=datasette._renderer_options,
+                        truncated=bool(results and results.truncated),
+                        url_csv=url_csv,
+                        url_csv_path=url_csv.split("?")[0],
+                        url_csv_hidden_args=[
+                            (key, value)
+                            for key, value in parse_qsl(
+                                request.query_string, keep_blank_values=True
                             )
-                        ),
+                            if key not in ("_size", "_dl")
+                        ]
+                        + [("_size", "max")],
+                        url_tsv_path=tsv_export_path(datasette, request),
+                        append_querystring=append_querystring,
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=metadata,
                         alternate_url_json=alternate_url_json,

@@ -57,12 +57,19 @@ dialog.datasette-modal::backdrop {
 }
 
 :where(.datasette-modal) .modal-title {
+    /* Keep the title whole: a long modal-meta is what gets truncated */
+    flex-shrink: 0;
+    max-width: 100%;
     font-size: 1rem;
     font-weight: 600;
     color: var(--ink);
 }
 
 :where(.datasette-modal) .modal-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: ui-monospace, monospace;
     font-size: 0.7rem;
     color: var(--muted);

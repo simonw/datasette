@@ -2692,6 +2692,40 @@ def test_export_data_dialog_on_a_later_page(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_export_data_dialog_long_table_name_on_a_phone(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog).to_be_visible()
+    long_name = "this_is_a_very_long_table_name_that_has_no_spaces_in_it_at_all"
+    layout = dialog.evaluate(
+        """(dialog, name) => {
+            const meta = dialog.querySelector(".modal-meta");
+            meta.textContent = name;
+            const title = dialog.querySelector(".modal-title");
+            const scope = dialog.querySelector(".export-scope");
+            return {
+                titleHeight: title.getBoundingClientRect().height,
+                metaTruncated: meta.scrollWidth > meta.clientWidth,
+                metaInside: meta.getBoundingClientRect().right
+                    <= dialog.querySelector(".modal-header").getBoundingClientRect().right,
+                scopeClipped: scope.scrollHeight > scope.clientHeight + 1,
+            };
+        }""",
+        long_name,
+    )
+    # The title stays on one line and the name is cut off with an ellipsis,
+    # rather than squeezing the title into a column of single letters
+    assert layout["titleHeight"] < 30
+    assert layout["metaTruncated"]
+    assert layout["metaInside"]
+    assert not layout["scopeClipped"]
+
+
+@pytest.mark.playwright
 def test_export_data_dialog_copy_failure(page, datasette_server):
     from playwright.sync_api import expect
 

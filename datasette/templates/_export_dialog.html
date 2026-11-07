@@ -57,7 +57,7 @@
     {%- if export_rows.total is none and (export_rows.more or export_rows.later) and export_rows.count_url %} data-count-url="{{ export_rows.count_url }}"{% endif %}>
     <div class="modal-header">
         <h2 class="modal-title" id="export-dialog-title">Export data</h2>
-        {% if export_meta %}<span class="modal-meta">{{ export_meta }}</span>{% endif %}
+        {% if export_meta %}<span class="modal-meta" title="{{ export_meta }}">{{ export_meta }}</span>{% endif %}
     </div>
     <div class="modal-body export-links">
         {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}

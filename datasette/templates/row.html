@@ -9,7 +9,7 @@
 {% if table_page_data.foreignKeys %}
 <script src="{{ static('autocomplete.js') }}" defer></script>
 {% endif %}
-<script src="{{ static('edit-tools.js') }}" defer></script>
+<script src="{{ static('edit-tools-loader.js') }}" data-edit-tools-src="{{ static('edit-tools.js') }}" defer></script>
 {% endif %}
 <style>
 @media only screen and (max-width: 576px) {

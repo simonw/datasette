@@ -261,6 +261,11 @@ class TableContext(Context):
             "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
         }
     )
+    row_mutation_ui: bool = field(
+        metadata={
+            "help": "True if the current actor can edit or delete rows in this table, which enables the row edit/delete JavaScript UI"
+        }
+    )
     table_alter_ui: dict = field(
         metadata={
             "help": "Information needed to enable the alter table UI, or ``None`` if altering this table is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``primaryKeys``, ``columnTypes``, ``defaultExpressions`` and ``foreignKeyTargetsPath`` keys, plus optional ``customColumnTypes`` and ``dropPath`` keys."
@@ -2134,6 +2139,7 @@ async def table_view_traced(datasette, request):
             table_page_data=data["table_page_data"],
             table_insert_ui=data["table_insert_ui"],
             table_alter_ui=data["table_alter_ui"],
+            row_mutation_ui=data["row_mutation_ui"],
         )
         r = Response.html(
             await datasette.render_template(
@@ -2766,6 +2772,15 @@ async def table_view_data(
         )
         data["table_insert_ui"] = table_insert_ui
         data["table_alter_ui"] = table_alter_ui
+        row_mutation_ui = False
+        if not is_view and db.is_mutable:
+            row_action_permissions = await datasette.allowed_many(
+                actions=["update-row", "delete-row"],
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
+            )
+            row_mutation_ui = any(row_action_permissions.values())
+        data["row_mutation_ui"] = row_mutation_ui
         data["table_page_data"] = await _table_page_data(
             datasette=datasette,
             request=request,

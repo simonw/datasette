@@ -1314,7 +1314,7 @@ async def test_database_create_table_action_button_and_data():
         description.extract()
         assert button.text.strip() == "Create table"
         assert any(
-            "edit-tools.js" in script.get("src", "")
+            "edit-tools-loader.js" in script.get("src", "")
             for script in soup.find_all("script")
         )
         assert database_data_from_soup(soup) == {
@@ -1492,7 +1492,7 @@ async def test_table_alter_action_button_and_data():
         description.extract()
         assert button.text.strip() == "Alter table"
         assert any(
-            "edit-tools.js" in script.get("src", "")
+            "edit-tools-loader.js" in script.get("src", "")
             for script in soup.find_all("script")
         )
 
@@ -1852,7 +1852,7 @@ async def test_row_page_edit_delete_action_menu_buttons():
             "tableUrl": "/data/items",
         }
         script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
-        assert any("edit-tools.js" in src for src in script_srcs)
+        assert any("edit-tools-loader.js" in src for src in script_srcs)
         assert not any("table.js" in src for src in script_srcs)
 
         row = soup.select_one("table.rows-and-columns tbody tr")
@@ -1886,6 +1886,58 @@ async def test_row_page_edit_delete_action_menu_buttons():
         ).text.strip() == ("Open a confirmation dialog to delete this row.")
         delete_button.find("span").extract()
         assert delete_button.text.strip() == "Delete row"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "actor,permission,expect_loader",
+    (
+        (None, None, False),
+        ({"id": "root"}, None, False),
+        ({"id": "root"}, "update-row", True),
+        ({"id": "root"}, "delete-row", True),
+        ({"id": "root"}, "insert-row", True),
+    ),
+)
+async def test_table_page_edit_tools_loader_only_for_editors(
+    actor, permission, expect_loader
+):
+    # edit-tools.js is large, so table pages only include the small loader
+    # when the actor can edit something - and never edit-tools.js directly
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": (
+                                {permission: {"id": "root"}} if permission else {}
+                            ),
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_page_edit_tools_loader"),
+            name="data",
+        )
+        await db.execute_write_script("""
+            create table if not exists items (id integer primary key, name text);
+            """)
+        response = await ds.client.get("/data/items", actor=actor)
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
+        has_loader = any("edit-tools-loader.js" in src for src in script_srcs)
+        assert has_loader == expect_loader
+        assert not any(src.endswith("edit-tools.js") for src in script_srcs)
+        assert not any("/edit-tools.js?" in src for src in script_srcs)
     finally:
         ds.close()
 

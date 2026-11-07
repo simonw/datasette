@@ -1185,6 +1185,25 @@ def test_column_chooser_selection_and_drag_in_document(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_edit_tools_js_loaded_on_demand(page, datasette_server):
+    requested = []
+    page.on(
+        "request",
+        lambda request: (
+            requested.append(request.url) if "/edit-tools.js" in request.url else None
+        ),
+    )
+    page.goto(f"{datasette_server}data/projects")
+    page.wait_for_load_state("networkidle")
+    assert requested == []
+    assert page.evaluate("typeof window.datasetteEditTools") == "undefined"
+
+    page.locator('button[data-table-action="insert-row"]').click()
+    page.locator("#row-edit-dialog").wait_for()
+    assert len(requested) == 1
+    assert page.evaluate("typeof window.datasetteEditTools") == "object"
+
+
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     page.add_init_script("""
         (() => {

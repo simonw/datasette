@@ -9,7 +9,9 @@
 {% if table_page_data.foreignKeys %}
 <script src="{{ static('autocomplete.js') }}" defer></script>
 {% endif %}
-<script src="{{ static('edit-tools.js') }}" defer></script>
+{% if table_insert_ui or table_alter_ui or row_mutation_ui %}
+<script src="{{ static('edit-tools-loader.js') }}" data-edit-tools-src="{{ static('edit-tools.js') }}" defer></script>
+{% endif %}
 <script src="{{ static('table.js') }}" defer></script>
 <script src="{{ static('table-layout.js') }}" defer></script>
 <script src="{{ static('mobile-column-actions.js') }}" defer></script>

@@ -355,6 +355,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` or plugin-provided renderer names to URLs for this data in that format.
 
+``row_mutation_ui`` - ``bool``
+    True if the current actor can edit or delete rows in this table, which enables the row edit/delete JavaScript UI
+
 ``rows`` - ``list``
     The rows for this page, as a list of dictionaries mapping column name to raw value.
 

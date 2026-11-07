@@ -180,6 +180,16 @@ def write_playwright_database(db_path):
         -- parameter would compare integers against text
         create view stats_demo_view as
             select id, score + 0 as score_expr, city from stats_demo;
+        -- Table and column names that match names used inside the column
+        -- statistics queries
+        create table stats (id integer primary key, vals integer, bucket text);
+        insert into stats (vals, bucket) values
+            (0, '2020-01-01'), (1, '2020-02-01'), (2, '2020-03-01'),
+            (3, '2021-01-01'), (4, '2021-02-01'), (5, '2021-03-01'),
+            (6, '2022-01-01'), (7, '2022-02-01'), (8, '2022-03-01'),
+            (9, '2022-04-01');
+        create table positions (id integer primary key);
+        insert into positions (id) values (2), (3), (4), (5), (6), (7);
         """)
         conn.execute(
             "insert into long_notes (title, body) values (?, ?)",
@@ -2833,3 +2843,99 @@ def test_edit_dialog_text_controls_do_not_trigger_mobile_safari_zoom(
     page.locator(".table-create-from-data").click()
     page.locator(".table-create-data-textarea").wait_for()
     assert_text_controls_at_least_16px(page)
+
+
+@pytest.mark.playwright
+def test_column_statistics_names_do_not_collide_with_tables(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The filter mentions "vals" and a table called "positions", both of which
+    # are also names used inside the generated SQL, as is the "stats" table
+    page.goto(
+        datasette_server
+        + "data/stats?vals__gt=1&_where=id+in+(select+id+from+positions)"
+    )
+    _, dialog = open_column_statistics(page, "vals")
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "5"
+    assert column_stat(dialog, "numeric", "median") == "4"
+    expect(dialog.locator(".column-stats-outliers")).to_contain_text("No outliers")
+    dialog.locator(".column-stats-sql summary").click()
+    assert "with filtered_rows as" in (
+        dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    )
+    # Without the filter the "stats" table itself is the source
+    dialog.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "10"
+    assert column_stat(dialog, "numeric", "median") == "4.5"
+    # A column called "bucket" is grouped correctly in the dates chart
+    dialog.get_by_role("tab", name="bucket text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    bars = dialog.locator('[data-section="text"] .column-stats-bar')
+    expect(bars).to_have_count(3)
+    assert bars.evaluate_all("bars => bars.map(bar => bar.title)") == [
+        "2020: 3 values (30%)",
+        "2021: 3 values (30%)",
+        "2022: 4 values (40%)",
+    ]
+
+
+@pytest.mark.playwright
+def test_column_statistics_limits_concurrent_queries(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.goto(datasette_server + "data/stats_demo")
+    # Replace fetch so the test decides when each query finishes
+    page.evaluate("""() => {
+        window.queryCalls = [];
+        window.fetch = (url) => new Promise((resolve) => {
+            window.queryCalls.push({
+                sql: new URL(url, location.href).searchParams.get("sql"),
+                finish: (rows) => resolve(new Response(
+                    JSON.stringify({ok: true, rows: rows}),
+                    {headers: {"content-type": "application/json"}}
+                )),
+            });
+        });
+    }""")
+
+    def calls():
+        return page.evaluate("queryCalls.map(call => call.sql)")
+
+    page.evaluate(
+        "openColumnStatistics(document.querySelector('th[data-column=score]'))"
+    )
+    page.wait_for_function("queryCalls.length === 1")
+    assert "count(distinct" in calls()[0]
+    page.evaluate("""queryCalls[0].finish([{
+        total_rows: 20, not_null: 20, distinct_values: 20, integer_values: 20,
+        real_values: 0, text_values: 0, blob_values: 0,
+        min_number: 1, max_number: 20
+    }])""")
+    # Summary, percentiles and histogram are wanted; only two run at once
+    dialog = page.locator("#column-stats-dialog")
+    expect(dialog.locator(".column-stats-sql-list > li")).to_have_count(4)
+    page.wait_for_function("queryCalls.length === 3")
+    page.wait_for_timeout(100)
+    assert len(calls()) == 3
+    assert "avg(v) as mean" in calls()[1]
+    assert "row_number()" in calls()[2]
+    # Switching column drops the queued histogram query. The two queries
+    # already running are left to finish, so the new overview waits for a slot
+    dialog.get_by_role("tab", name="city text").click()
+    page.wait_for_timeout(100)
+    assert len(calls()) == 3
+    page.evaluate("queryCalls[1].finish([])")
+    page.wait_for_function("queryCalls.length === 4")
+    assert 'count(distinct "city")' in calls()[3]
+    page.evaluate("queryCalls[2].finish([])")
+    page.wait_for_timeout(100)
+    assert len(calls()) == 4
+    # The histogram query for score was never sent
+    assert not any("as bucket" in sql for sql in calls())
+    assert page_errors == []

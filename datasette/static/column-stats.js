@@ -101,20 +101,62 @@
   }
 
   // filterWhere is a where clause with its parameters already inlined.
+  //
+  // The queries use common table expressions with short readable names such
+  // as "vals" and "stats". SQLite resolves a table name to a CTE of the same
+  // name anywhere in the statement, so a table called "stats" (or a filter
+  // that mentions one) would hit a "circular reference" error. Any name that
+  // appears in the table name or the filter gets a numeric suffix instead.
   function sourceSql(table, column, filterWhere) {
     var t = quoteIdentifier(table);
-    if (!filterWhere) {
-      return { from: t, ctes: [] };
-    }
-    return {
-      from: FILTERED_CTE,
-      ctes: [
-        `${FILTERED_CTE} as (
+    var source = {
+      from: t,
+      ctes: [],
+      reserved: (String(table) + " " + (filterWhere || "")).toLowerCase(),
+    };
+    if (filterWhere) {
+      var name = cteName(source, FILTERED_CTE);
+      source.from = name;
+      source.ctes = [
+        `${name} as (
   select ${quoteIdentifier(column)} from ${t}
   where ${filterWhere}
 )`,
-      ],
-    };
+      ];
+    }
+    return source;
+  }
+
+  function cteName(source, base) {
+    var name = base;
+    var suffix = 2;
+    while (mentionsIdentifier(source.reserved, name)) {
+      name = `${base}_${suffix}`;
+      suffix += 1;
+    }
+    return name;
+  }
+
+  // True if name appears as a whole word in sql (already lowercased).
+  function mentionsIdentifier(sql, name) {
+    var start = sql.indexOf(name);
+    while (start !== -1) {
+      var before = sql[start - 1] || " ";
+      var after = sql[start + name.length] || " ";
+      if (!/[a-z0-9_$]/.test(before) && !/[a-z0-9_$]/.test(after)) {
+        return true;
+      }
+      start = sql.indexOf(name, start + 1);
+    }
+    return false;
+  }
+
+  function cteNames(source, bases) {
+    var names = {};
+    bases.forEach((base) => {
+      names[base] = cteName(source, base);
+    });
+    return names;
   }
 
   function withSql(source, ctes) {
@@ -149,12 +191,13 @@ from ${source.from}`;
   // returns a float and cannot overflow.
   function numericSummarySql(source, column) {
     var c = quoteIdentifier(column);
+    var n = cteNames(source, ["vals", "stats"]);
     return `${withSql(source, [
-      `vals as (
+      `${n.vals} as (
   select ${c} as v from ${source.from} where ${isNumericSql(c)}
 )`,
-      `stats as (
-  select avg(v) as mean from vals
+      `${n.stats} as (
+  select avg(v) as mean from ${n.vals}
 )`,
     ])}select
   count(*) as count,
@@ -163,7 +206,7 @@ from ${source.from}`;
   total((v - mean) * (v - mean)) / nullif(count(*) - 1, 0) as variance,
   coalesce(sum(v = 0), 0) as zeros,
   coalesce(sum(v < 0), 0) as negative
-from vals, stats`;
+from ${n.vals}, ${n.stats}`;
   }
 
   // Percentiles using linear interpolation between the two closest ranks,
@@ -172,34 +215,43 @@ from vals, stats`;
   // each requested position are picked out and interpolated.
   function percentilesSql(source, valueExpression, where) {
     var values = PERCENTILES.map((p) => `(${sqlNumber(p)})`).join(", ");
+    var n = cteNames(source, [
+      "vals",
+      "ranked",
+      "percentiles",
+      "positions",
+      "picked",
+    ]);
     return `${withSql(source, [
-      `vals as (
+      `${n.vals} as (
   select ${valueExpression} as v from ${source.from} where ${where}
 )`,
-      `ranked as (
-  select v, row_number() over (order by v) - 1 as idx from vals
+      `${n.ranked} as (
+  select v, row_number() over (order by v) - 1 as idx from ${n.vals}
 )`,
-      `percentiles(p) as (
+      `${n.percentiles}(p) as (
   values ${values}
 )`,
-      `positions as (
+      `${n.positions} as (
   select p, (n - 1) * p as pos, cast((n - 1) * p as integer) as lo_idx
-  from percentiles, (select count(*) as n from vals)
+  from ${n.percentiles}, (select count(*) as n from ${n.vals})
 )`,
-      `picked as (
-  select idx, v from ranked
-  where idx in (select lo_idx from positions union select lo_idx + 1 from positions)
+      `${n.picked} as (
+  select idx, v from ${n.ranked}
+  where idx in (select lo_idx from ${n.positions} union select lo_idx + 1 from ${n.positions})
 )`,
     ])}select
   p as percentile,
   min(v) + (pos - lo_idx) * (max(v) - min(v)) as value
-from positions
-join picked on picked.idx in (lo_idx, lo_idx + 1)
+from ${n.positions}
+join ${n.picked} on ${n.picked}.idx in (lo_idx, lo_idx + 1)
 group by p
 order by p`;
   }
 
-  // Count values in equal-width buckets starting at bucketStart.
+  // Count values in equal-width buckets starting at bucketStart. The query
+  // groups by position (1) rather than by the "bucket" alias, because SQLite
+  // would resolve "bucket" to the column if the column is called bucket.
   function histogramSql(source, column, bucketStart, bucketWidth) {
     var c = quoteIdentifier(column);
     return `${withSql(source)}select
@@ -207,8 +259,8 @@ order by p`;
   count(*) as count
 from ${source.from}
 where ${isNumericSql(c)}
-group by bucket
-order by bucket`;
+group by 1
+order by 1`;
   }
 
   // Tukey's fences: values more than 1.5 times the interquartile range below
@@ -224,8 +276,9 @@ where ${isNumericSql(c)}`;
 
   function textSummarySql(source, column) {
     var c = quoteIdentifier(column);
+    var n = cteNames(source, ["vals"]);
     return `${withSql(source, [
-      `vals as (
+      `${n.vals} as (
   select ${c} as v, length(${c}) as len from ${source.from} where typeof(${c}) = 'text'
 )`,
     ])}select
@@ -242,11 +295,11 @@ where ${isNumericSql(c)}`;
   substr(max(v), 1, ${MAX_DISPLAY_LENGTH}) as last_value,
   min(case when v glob ${ISO_DATE_GLOB} then v end) as first_date,
   max(case when v glob ${ISO_DATE_GLOB} then v end) as last_date
-from vals`;
+from ${n.vals}`;
   }
 
   // Group ISO-8601 dates by year, month or decade using a prefix of the
-  // string: 4 = year, 7 = month, 3 = decade.
+  // string: 4 = year, 7 = month, 3 = decade. Grouped by position, as above.
   function dateHistogramSql(source, column, prefixLength) {
     var c = quoteIdentifier(column);
     var bucket =
@@ -259,8 +312,8 @@ from vals`;
 from ${source.from}
 where typeof(${c}) = 'text'
   and ${c} glob ${ISO_DATE_GLOB}
-group by bucket
-order by bucket`;
+group by 1
+order by 1`;
   }
 
   // The most common values. Long strings are truncated for display and blobs
@@ -383,12 +436,70 @@ limit ${sqlNumber(limit)}`;
     return !!(getConfig() && window.HTMLDialogElement && window.fetch);
   }
 
+  // At most MAX_CONCURRENT_QUERIES statistics queries run at once, so
+  // clicking through columns on a large table can't tie up all of
+  // Datasette's SQL threads. Queries still waiting when the dialog moves on
+  // (another column, the other set of rows, or closed) are dropped without
+  // being sent. Queries already sent are left to finish rather than aborted,
+  // because SQLite would keep running them anyway: they hold their slot until
+  // the server responds, which keeps the load bounded, and their results are
+  // ignored.
+  var MAX_CONCURRENT_QUERIES = 2;
+  var activeQueries = 0;
+  var waitingQueries = [];
+
+  function cancelledError() {
+    return new DOMException("Query cancelled", "AbortError");
+  }
+
+  function acquireQuerySlot(signal) {
+    if (signal.aborted) {
+      return Promise.reject(cancelledError());
+    }
+    if (activeQueries < MAX_CONCURRENT_QUERIES) {
+      activeQueries += 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      var waiter = {
+        start() {
+          signal.removeEventListener("abort", cancel);
+          resolve();
+        },
+      };
+      function cancel() {
+        waitingQueries.splice(waitingQueries.indexOf(waiter), 1);
+        reject(cancelledError());
+      }
+      signal.addEventListener("abort", cancel, { once: true });
+      waitingQueries.push(waiter);
+    });
+  }
+
+  // Hand the slot straight to the next waiting query, if there is one.
+  function releaseQuerySlot() {
+    var next = waitingQueries.shift();
+    if (next) {
+      next.start();
+    } else {
+      activeQueries -= 1;
+    }
+  }
+
   async function runQuery(sql, signal) {
+    await acquireQuerySlot(signal);
+    try {
+      return await fetchQuery(sql);
+    } finally {
+      releaseQuerySlot();
+    }
+  }
+
+  async function fetchQuery(sql) {
     var config = getConfig();
     var params = new URLSearchParams({ sql: sql, _shape: "objects" });
     var response = await fetch(config.executeSql.queryUrl + "?" + params, {
       headers: { Accept: "application/json" },
-      signal: signal,
     });
     var data = null;
     try {

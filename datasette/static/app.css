@@ -1373,6 +1373,32 @@ button.core[type=button] {
     border-color: #1949b8;
 }
 
+/* Secondary action: same treatment as the filter row remove buttons */
+.filters a.filters-clear {
+    display: inline-block;
+    border: 1px solid var(--filter-rule);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--filter-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0.55rem 0.85rem;
+    text-decoration: none;
+}
+
+.filters a.filters-clear:hover,
+.filters a.filters-clear:focus {
+    border-color: #c9d5e3;
+    background: #f8fbff;
+    color: var(--filter-ink);
+}
+
+.filters a.filters-clear:focus-visible {
+    outline: 3px solid rgba(26, 86, 219, 0.14);
+    outline-offset: 2px;
+}
+
 .filters button.filter-row-icon {
     display: inline-flex;
     align-items: center;

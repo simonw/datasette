@@ -271,6 +271,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``append_querystring`` - ``callable``
     Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
 
+``clear_filters_url`` - ``str``
+    URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved.
+
 ``columns`` - ``list``
     List of column names returned by this table, row or query.
 

@@ -186,6 +186,7 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 {% if next_url %}
      <p><a href="{{ next_url }}">Next page</a></p>
 {% endif %}
+{% include "_pagination_demo.html" %}
 
 {% if display_rows %}
     <div id="export" class="advanced-export">

@@ -2028,6 +2028,11 @@ dialog.export-dialog {
     cursor: pointer;
 }
 
+.export-dialog .export-csv-options[hidden],
+.export-dialog .export-csv-options label[hidden] {
+    display: none;
+}
+
 .export-dialog .export-csv-options input {
     margin: 0;
     accent-color: var(--accent);

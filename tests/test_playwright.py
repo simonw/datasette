@@ -2546,7 +2546,9 @@ def test_export_data_dialog_fetches_full_count(page, datasette_server):
     ) as count_request:
         page.get_by_role("button", name="Export data").click()
     assert "id__gt=1" in count_request.value.url
-    expect(dialog.locator(".export-stream-label")).to_have_text("Stream 10,001 rows")
+    expect(dialog.locator(".export-stream-label")).to_have_text(
+        "Include all 10,001 rows"
+    )
     expect(json_rows).to_have_text("First 100 of 10,001 rows")
     expect(json_rows).to_have_attribute("data-partial", "true")
     expect(csv_rows).to_have_text("First 1,000 of 10,001 rows")
@@ -2575,6 +2577,31 @@ def test_export_data_dialog_fetches_full_count(page, datasette_server):
     page.get_by_role("button", name="Export data").click()
     expect(dialog).to_be_visible()
     assert not [url for url in requests if "/-/count" in url]
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_hides_include_all_when_csv_has_every_row(
+    page, datasette_server
+):
+    from playwright.sync_api import expect
+
+    # 202 rows: more than a page, but fewer than max_returned_rows (1,000).
+    # With a count the option is never rendered.
+    page.goto(datasette_server + "data/count_numbers?id__gt=9800")
+    dialog = page.locator("#export-dialog")
+    expect(dialog.locator('input[name="_stream"]')).to_have_count(0)
+
+    # Without one it is hidden once the dialog has counted the rows
+    page.goto(datasette_server + "data/count_numbers?id__gt=9800&_nocount=1")
+    stream = dialog.locator('input[name="_stream"]')
+    expect(stream).to_be_attached()
+    csv_rows = dialog.locator('[data-export-format="csv"] [data-export-rows]')
+    expect(csv_rows).to_have_text("Up to 1,000 rows")
+    page.get_by_role("button", name="Export data").click()
+    expect(csv_rows).to_have_text("All 202 rows")
+    expect(stream).to_be_hidden()
+    expect(stream).to_be_disabled()
+    expect(dialog.locator(".export-csv-options")).to_be_hidden()
 
 
 @pytest.mark.playwright

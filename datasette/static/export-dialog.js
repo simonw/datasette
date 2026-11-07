@@ -153,6 +153,14 @@
 
   function renderRows(dialog, rows, counting = false) {
     const stream = dialog.querySelector('input[name="_stream"]');
+    if (stream && rows.total !== null && rows.total <= rows.max) {
+      // CSV already includes every row, so the option would do nothing
+      stream.checked = false;
+      stream.disabled = true;
+      stream.closest("label").hidden = true;
+      const options = stream.closest(".export-csv-options");
+      if (!options.querySelector("label:not([hidden])")) options.hidden = true;
+    }
     dialog.querySelectorAll("[data-export-rows]").forEach((el) => {
       const { text, partial } = rowsLabel(
         el.dataset.exportRows,
@@ -166,10 +174,10 @@
     if (streamLabel) {
       streamLabel.textContent =
         rows.total !== null
-          ? `Stream ${rowsText(rows.total)}`
+          ? `Include all ${rowsText(rows.total)}`
           : counting
-            ? "Stream all rows (counting…)"
-            : "Stream all rows";
+            ? "Include all rows (counting…)"
+            : "Include all rows";
     }
   }
 

@@ -2155,7 +2155,7 @@ async def test_export_dialog_options(
         (["_labels"] if has_expand else []) + (["_stream"] if has_stream else [])
     )
     if has_stream:
-        assert dialog.select_one(".export-stream-label").text == "Stream 202 rows"
+        assert dialog.select_one(".export-stream-label").text == "Include all 202 rows"
     if has_expand:
         assert "Expand labels" in dialog.text
 
@@ -2191,13 +2191,14 @@ def _export_rows(dialog):
             None,
             {"page": "2", "more": "false", "total": "2"},
         ),
-        # JSON gets this page, CSV gets up to max_returned_rows (100 here)
+        # JSON gets this page, CSV gets up to max_returned_rows (100 here),
+        # so there is no need to offer "Include all 15 rows"
         (
             "/fixtures/facetable?_size=2",
             "All rows in this table",
             ("First 2 of 15 rows", True),
             ("All 15 rows", False),
-            "Stream 15 rows",
+            None,
             {"page": "2", "more": "true", "total": "15"},
         ),
         (
@@ -2205,7 +2206,7 @@ def _export_rows(dialog):
             "All rows in this table",
             ("First 50 of 1,001 rows", True),
             ("First 100 of 1,001 rows", True),
-            "Stream 1,001 rows",
+            "Include all 1,001 rows",
             {"page": "50", "more": "true", "total": "1001"},
         ),
         (
@@ -2213,7 +2214,7 @@ def _export_rows(dialog):
             "All rows in this view",
             ("First 25 of 202 rows", True),
             ("First 100 of 202 rows", True),
-            "Stream 202 rows",
+            "Include all 202 rows",
             {"page": "25", "more": "true", "total": "202"},
         ),
         # Without a count, export-dialog.js fetches it when the dialog opens
@@ -2222,7 +2223,7 @@ def _export_rows(dialog):
             "All rows in this table",
             ("First 2 rows", True),
             ("Up to 100 rows", True),
-            "Stream all rows",
+            "Include all rows",
             {
                 "page": "2",
                 "more": "true",

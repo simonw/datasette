@@ -13,7 +13,7 @@ Custom SQL query pages have the same button above their results.
 The top of the dialog describes the filters and sort order that the export
 will use. Each format shows how many rows it returns: JSON formats return the
 rows on the current page, CSV returns up to :ref:`setting_max_returned_rows`
-rows, and the **stream all rows** option returns every matching row. If the
+rows, and the **include all rows** option returns every matching row. If the
 page did not count every row, the dialog counts them when it opens.
 
 Each format in that dialog has four actions:
@@ -35,9 +35,10 @@ and views:
   <https://latest.datasette.io/fixtures/facetable.csv?_labels=on&_size=max>`_
   the ``city_id`` column is accompanied by a ``city_id_label`` column.
 
-* **stream all rows** - by default CSV files only contain the first
+* **include all rows** - by default CSV files only contain the first
   :ref:`setting_max_returned_rows` records. This option will cause Datasette to
-  loop through every matching record and return them as a single CSV file.
+  loop through every matching record and return them as a single CSV file. It
+  is only offered when there are more matching rows than that.
 
 You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
 
@@ -60,7 +61,7 @@ The following options can be used to customize the CSVs returned by Datasette.
 Streaming all records
 ---------------------
 
-The *stream all rows* option is designed to be as efficient as possible -
+The *include all rows* option is designed to be as efficient as possible -
 under the hood it takes advantage of Python 3 asyncio capabilities and
 Datasette's efficient :ref:`pagination <pagination>` to stream back the full
 CSV file.

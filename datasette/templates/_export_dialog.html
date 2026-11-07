@@ -77,11 +77,12 @@
                         <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
                         <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
                     </div>
-                    {% set csv_stream = next_url and settings.allow_csv_stream %}
+                    {#- Only offer to include all rows when CSV would otherwise stop short -#}
+                    {% set csv_stream = next_url and settings.allow_csv_stream and not (export_rows.total is not none and export_rows.total <= export_rows.max) %}
                     {% if expandable_columns or csv_stream %}
                     <div class="export-csv-options">
                         {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> Expand labels</label>{% endif %}
-                        {% if csv_stream %}<label><input type="checkbox" name="_stream"> <span class="export-stream-label">Stream {{ rows_text(export_rows.total) if export_rows.total is not none else "all rows" }}</span></label>{% endif %}
+                        {% if csv_stream %}<label><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}</span></label>{% endif %}
                     </div>
                     {% endif %}
                     {% for key, value in url_csv_hidden_args %}

@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 
 import httpx2
 import pytest
@@ -2479,12 +2480,16 @@ def test_export_data_dialog(page, datasette_server):
     assert {row["state"] for row in copied} == {"CA"}
     expect(array.get_by_role("button", name="Copy", exact=True)).to_be_visible()
 
-    # Download fetches the data and saves it as a file
+    # Download is the browser's own download of the export URL
     with page.expect_download() as download_info:
         array.get_by_role("link", name="Download").click()
     download = download_info.value
+    assert download.url == (
+        datasette_server + "fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
     assert download.suggested_filename == "facetable.json"
     assert json.loads(pathlib_read(download.path())) == copied
+    expect(dialog).to_be_visible()
 
     # The CSV row builds its URLs from the form, so its options apply
     csv = dialog.get_by_role("group", name="CSV", exact=True)
@@ -2496,8 +2501,16 @@ def test_export_data_dialog(page, datasette_server):
     with page.expect_download() as download_info:
         csv.get_by_role("button", name="Download").click()
     download = download_info.value
+    download_url = urllib.parse.urlsplit(download.url)
+    assert download_url.path == "/fixtures/facetable.csv"
+    assert sorted(urllib.parse.parse_qsl(download_url.query)) == [
+        ("_dl", "on"),
+        ("_size", "max"),
+        ("state", "CA"),
+    ]
     assert download.suggested_filename == "facetable.csv"
     assert pathlib_read(download.path()).startswith("pk,created,planet_int")
+    expect(dialog).to_be_visible()
     csv.get_by_role("button", name="View").click()
     page.wait_for_url(re.compile(r"/fixtures/facetable\.csv\?"))
     assert "state=CA" in page.url
@@ -2541,6 +2554,17 @@ def test_export_data_dialog_fetches_full_count(page, datasette_server):
     stream.check()
     expect(csv_rows).to_have_text("All 10,001 rows")
     expect(csv_rows).to_have_attribute("data-partial", "false")
+
+    # A streamed download goes straight to disk, with every row
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    download = download_info.value
+    assert "_stream=on" in download.url
+    assert "_dl=on" in download.url
+    assert download.suggested_filename == "count_numbers.csv"
+    assert len(pathlib_read(download.path()).splitlines()) == 10_002
+
     stream.uncheck()
     expect(csv_rows).to_have_text("First 1,000 of 10,001 rows")
 

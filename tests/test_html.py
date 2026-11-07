@@ -434,11 +434,11 @@ async def test_query_export_dialog(ds_client):
         ),
         ("CSV", None),
     ]
-    # Downloads are named after the database for arbitrary SQL
-    assert [
-        el.get("download") or el.get("data-filename")
-        for el in dialog.select('[data-export-action="download"]')
-    ][:4] == ["fixtures.json", "fixtures.json", "fixtures.jsonl", "fixtures.csv"]
+    # Downloads are named after the database for arbitrary SQL. The CSV
+    # download is a form submit with _dl=on, named by Content-Disposition.
+    assert [el["download"] for el in dialog.select('a[data-export-action="download"]')][
+        :3
+    ] == ["fixtures.json", "fixtures.json", "fixtures.jsonl"]
     # No CSV options: labels and streaming do not apply to queries
     form = dialog.select_one("form.export-csv-form")
     assert form["action"] == "/fixtures/-/query.csv"

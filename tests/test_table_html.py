@@ -741,7 +741,6 @@ async def test_table_csv_json_export_interface(ds_client):
         "_dl",
         "on",
     )
-    assert download["data-filename"] == "simple_primary_key.csv"
     # The dialog can be closed without JavaScript
     close = dialog.select_one(".modal-footer button.export-dialog-close")
     assert close["commandfor"] == "export-dialog"

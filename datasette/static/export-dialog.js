@@ -1,17 +1,18 @@
 /* "Export data" dialog on table and query pages, from _export_dialog.html.
 
    The template wires the buttons up with commandfor/command so the dialog
-   opens without JavaScript too, and its View and Download actions are plain
-   links (or CSV form submit buttons). Here we route the dialog through
-   DatasetteModal, download with fetch() so the button can show progress, and
-   reveal the Copy and Copy URL actions when the clipboard is available. */
+   opens without JavaScript too. View and Download are left to the browser:
+   plain links, using the download attribute, or for CSV, form submit buttons
+   with _dl=on. Downloads therefore stream straight to disk and show in the
+   browser's own download list. Here we route the dialog through
+   DatasetteModal, reveal the Copy and Copy URL actions when the clipboard is
+   available, and keep the row counts up to date. */
 (() => {
   const RESET_AFTER_MS = 1500;
 
   // Extra labels for each action, beyond the label in the template. They are
   // stacked in one grid cell so the button keeps the width of the longest.
   const STATE_LABELS = {
-    download: { busy: "Saving…", error: "Failed" },
     copy: { busy: "Copying…", done: "Copied", error: "Failed" },
     "copy-url": { done: "Copied", error: "Failed" },
   };
@@ -97,20 +98,6 @@
     } else {
       await navigator.clipboard.writeText(await fetchText(url));
     }
-  }
-
-  async function download(url, filename, container) {
-    const blob = await (await fetchOk(url)).blob();
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = href;
-    link.download = filename;
-    link.hidden = true;
-    // Inside the dialog: everything outside a modal dialog is inert
-    container.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
   }
 
   const formatNumber = (n) => n.toLocaleString("en-US");
@@ -255,7 +242,7 @@
     dialog.addEventListener("click", async (ev) => {
       const el = ev.target.closest("[data-export-action]");
       const action = el && el.dataset.exportAction;
-      if (!STATE_LABELS[action]) return; // View: a plain link or submit
+      if (!STATE_LABELS[action]) return; // View and Download: the browser's
       ev.preventDefault();
       if (el.dataset.state === "busy") return;
       const url = exportUrl(el);
@@ -266,20 +253,10 @@
         if (action === "copy-url") {
           await navigator.clipboard.writeText(url);
           announce(`Copied the ${name} URL`);
-        } else if (action === "copy") {
+        } else {
           setState(el, "busy");
           await copyData(url);
           announce(`Copied ${name} data`);
-        } else {
-          setState(el, "busy");
-          await download(
-            url,
-            el.getAttribute("download") || el.dataset.filename,
-            dialog,
-          );
-          announce(`Downloaded ${name}`);
-          setState(el, "idle");
-          return;
         }
         setState(el, "done");
       } catch (ex) {

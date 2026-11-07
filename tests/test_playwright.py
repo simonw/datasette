@@ -192,6 +192,7 @@ def write_playwright_config(config_path):
                     "data": {
                         "permissions": {
                             "create-table": True,
+                            "execute-write-sql": True,
                             "insert-row": True,
                             "set-column-type": True,
                         },
@@ -2956,3 +2957,82 @@ def test_export_data_dialog_without_javascript(browser, datasette_server):
         expect(dialog).not_to_be_visible()
     finally:
         context.close()
+
+
+TEXT_CONTROL_FONT_SIZES_JS = """
+() => {
+  const nonText = new Set([
+    "button", "checkbox", "color", "file", "hidden", "image",
+    "radio", "range", "reset", "submit",
+  ]);
+  return Array.from(document.querySelectorAll("input, select, textarea"))
+    .filter((el) => !(el.tagName === "INPUT" && nonText.has(el.type)))
+    .map((el) => ({
+      control: el.outerHTML.split(">")[0] + ">",
+      fontSize: parseFloat(getComputedStyle(el).fontSize),
+    }));
+}
+"""
+
+
+@pytest.fixture
+def touch_page(browser):
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True
+    )
+    page = context.new_page()
+    if not page.evaluate("matchMedia('(pointer: coarse)').matches"):
+        context.close()
+        pytest.skip("Browser does not emulate a coarse pointer")
+    yield page
+    context.close()
+
+
+def assert_text_controls_at_least_16px(page):
+    # Mobile Safari zooms the page when a text control with a font-size
+    # smaller than 16px is focused
+    controls = page.evaluate(TEXT_CONTROL_FONT_SIZES_JS)
+    assert controls
+    too_small = [control for control in controls if control["fontSize"] < 16]
+    assert too_small == []
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "path",
+    [
+        "fixtures/searchable?_filter_column_1=text1&_filter_op_1=contains&_filter_value_1=a",
+        "data/-/execute-write",
+        "-/api",
+        "-/messages",
+        "-/debug/autocomplete?database=fixtures&table=facetable",
+    ],
+)
+def test_text_controls_do_not_trigger_mobile_safari_zoom(
+    touch_page, datasette_server, path
+):
+    response = touch_page.goto(datasette_server + path)
+    assert response.ok
+    assert_text_controls_at_least_16px(touch_page)
+
+
+@pytest.mark.playwright
+def test_edit_dialog_text_controls_do_not_trigger_mobile_safari_zoom(
+    touch_page, datasette_server
+):
+    page = touch_page
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('button[data-table-action="insert-row"]').click()
+    dialog = page.locator("#row-edit-dialog")
+    dialog.locator('textarea[name="notes"]').wait_for()
+    assert_text_controls_at_least_16px(page)
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").wait_for()
+    assert_text_controls_at_least_16px(page)
+
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    page.locator(".table-create-from-data").click()
+    page.locator(".table-create-data-textarea").wait_for()
+    assert_text_controls_at_least_16px(page)

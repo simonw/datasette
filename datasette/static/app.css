@@ -5290,3 +5290,22 @@ button.column-menu-trigger[aria-expanded="true"] {
         max-width: min(18rem, calc(100vw - 24px));
     }
 }
+
+/* Mobile Safari zooms the page when a text input, select or textarea with
+   a font-size smaller than 16px receives focus. Bump the controls that use
+   a smaller size up to 16px on touch devices. */
+@media (pointer: coarse) {
+    .filters {
+        /* Taller filter controls so the 16px text fits */
+        --filter-control-height: 2.5rem;
+    }
+    .select-wrapper select,
+    .filters input.filter-value,
+    .filters #_search,
+    textarea.row-edit-input,
+    .row-edit-bulk-textarea,
+    .table-create-data-textarea,
+    datasette-autocomplete input[type="text"] {
+        font-size: 16px;
+    }
+}

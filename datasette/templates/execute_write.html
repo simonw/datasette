@@ -40,6 +40,12 @@
     border-radius: 0.25rem;
     min-width: 13rem;
 }
+@media (pointer: coarse) {
+    /* Avoid Mobile Safari zooming in on focus */
+    .execute-write-template-controls select {
+        font-size: 16px;
+    }
+}
 .execute-write-submit-row {
     align-items: center;
     display: flex;

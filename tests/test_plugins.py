@@ -672,11 +672,7 @@ async def test_hook_register_output_renderer_returning_broken_value(ds_client):
 async def test_hook_register_output_renderer_can_render(ds_client):
     response = await ds_client.get("/fixtures/facetable?_no_can_render=1")
     assert response.status_code == 200
-    links = (
-        Soup(response.text, "html.parser")
-        .find("p", {"class": "export-links"})
-        .find_all("a")
-    )
+    links = Soup(response.text, "html.parser").select_one(".export-links").find_all("a")
     actual = [link["href"] for link in links]
     # Should not be present because we sent ?_no_can_render=1
     assert "/fixtures/facetable.testall?_labels=on" not in actual
@@ -719,11 +715,7 @@ async def test_hook_register_output_renderer_can_render_canned_query(ds_client):
     assert saw["sql"] == "PRAGMA cache_size;"
     assert saw["query_name"] == "pragma_cache_size"
     # The renderer's export link should therefore be offered
-    links = (
-        Soup(response.text, "html.parser")
-        .find("p", {"class": "export-links"})
-        .find_all("a")
-    )
+    links = Soup(response.text, "html.parser").select_one(".export-links").find_all("a")
     actual = [link["href"] for link in links]
     assert any(
         href.startswith("/fixtures/pragma_cache_size.testall") for href in actual

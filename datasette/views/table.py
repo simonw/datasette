@@ -157,11 +157,21 @@ class TableContext(Context):
             "help": "URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved."
         }
     )
+    filter_description_en: str = field(
+        metadata={
+            "help": 'Human readable description of the filters, search and ``?_where=`` clauses applied to the table, for example ``where state = "CA"``, or an empty string if there are none.'
+        }
+    )
+    sort_description_en: str = field(
+        metadata={
+            "help": "Human readable description of the sort order, for example ``sorted by name descending``, or an empty string if no sort order was specified."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``."
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
@@ -1932,6 +1942,8 @@ async def table_view_traced(datasette, request):
             filters=data["filters"],
             form_hidden_args=data["form_hidden_args"],
             human_description_en=data["human_description_en"],
+            filter_description_en=data["filter_description_en"],
+            sort_description_en=data["sort_description_en"],
             is_view=data["is_view"],
             metadata=data["metadata"],
             next_url=data["next_url"],
@@ -2474,11 +2486,30 @@ async def table_view_data(
         url_csv_path = url_csv.split("?")[0]
         data.update(
             {
+                "filter_description_en": filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+                "sort_description_en": (
+                    "sorted by {}{}".format(
+                        sort or sort_desc, " descending" if sort_desc else ""
+                    )
+                    if (sort or sort_desc)
+                    else ""
+                ),
                 "url_csv": url_csv,
                 "url_csv_path": url_csv_path,
                 "url_csv_hidden_args": [
                     (key, value)
-                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    # Blank values matter: ?name= filters for name = ""
+                    for key, value in urllib.parse.parse_qsl(
+                        request.query_string, keep_blank_values=True
+                    )
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],

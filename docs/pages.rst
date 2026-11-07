@@ -110,7 +110,7 @@ The HTML interface is worth spending some time exploring. As with other pages, y
 
 The query string arguments are described in more detail here: :ref:`table_arguments`
 
-You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" link to see the SQL query that was used for the page and edit and re-submit it.
+You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" button to see the SQL query that was used for the page and edit and re-submit it.
 
 Some examples:
 

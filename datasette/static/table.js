@@ -853,32 +853,58 @@ function openColumnChooser() {
   });
 }
 
+var tableCount = null;
+
+/* Count the rows matching this page's filters. The "count all" button and the
+   export dialog (export-dialog.js) share this one request, and the count is
+   shown in the page header whichever of them asked for it. Failed counts are
+   forgotten so that they can be retried. */
+function countTableRows(countUrl) {
+  if (!tableCount) {
+    tableCount = fetch(countUrl + location.search, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+      },
+    }).then(async function (response) {
+      var data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error((data.errors || ["Count failed"]).join(" "));
+      }
+      return data.count;
+    });
+    tableCount.then(showTableCount, function () {
+      tableCount = null;
+    });
+  }
+  return tableCount;
+}
+
+function showTableCount(count) {
+  var countEl = document.querySelector(".table-count");
+  if (countEl) {
+    countEl.textContent =
+      count.toLocaleString("en-US") + (count === 1 ? " row" : " rows");
+  }
+  var button = document.querySelector(".count-all");
+  if (button) {
+    button.remove();
+  }
+}
+
 function initCountAll() {
   var button = document.querySelector(".count-all");
   if (!button) {
     return;
   }
   button.addEventListener("click", async function () {
-    var count = document.querySelector(".table-count");
     var error = document.querySelector(".count-error");
     button.disabled = true;
     button.textContent = "Counting…";
     error.textContent = "";
     try {
-      var response = await fetch(button.dataset.countUrl + location.search, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-      var data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error((data.errors || ["Count failed"]).join(" "));
-      }
-      count.textContent =
-        data.count.toLocaleString("en-US") +
-        (data.count === 1 ? " row" : " rows");
-      button.remove();
+      // showTableCount() updates the header and removes this button
+      await countTableRows(button.dataset.countUrl);
     } catch (ex) {
       error.textContent = ex.message || "Count failed";
       button.disabled = false;

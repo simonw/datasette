@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 
 import httpx2
 import pytest
@@ -2416,6 +2417,546 @@ def test_freeze_pin_freezes_header_and_key_column(page, datasette_server):
     page.locator('th[data-column="id"] .freeze-toggle').click()
     expect(table).not_to_have_attribute("data-freeze", "1")
     assert page.evaluate("localStorage.getItem('datasette-table-freeze')") == "0"
+
+
+CLIPBOARD_STUB = """
+(() => {
+    window.clipboardText = null;
+    Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        get: () => ({
+            writeText: async (text) => {
+                window.clipboardText = String(text);
+            },
+            write: async (items) => {
+                const blob = await items[0].getType("text/plain");
+                window.clipboardText = await blob.text();
+            },
+        }),
+    });
+})();
+"""
+
+
+@pytest.mark.playwright
+def test_export_data_dialog(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/facetable?state=CA")
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    expect(dialog).not_to_be_visible()
+
+    trigger.click()
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".modal-title")).to_have_text("Export data")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    trigger.click()
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    trigger.click()
+    array = dialog.get_by_role("group", name="JSON array", exact=True)
+    expect(array.get_by_role("link", name="View")).to_have_attribute(
+        "href", "/fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
+
+    # Copy URL copies the absolute URL
+    array.get_by_role("button", name="Copy URL").click()
+    expect(array.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
+    expect(array.get_by_role("button", name="Copy URL")).to_be_visible()
+
+    # Copy fetches the data and copies it
+    array.get_by_role("button", name="Copy", exact=True).click()
+    expect(array.get_by_role("button", name="Copied")).to_be_visible()
+    copied = json.loads(page.evaluate("clipboardText"))
+    assert {row["state"] for row in copied} == {"CA"}
+    expect(array.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+    # Download is the browser's own download of the export URL
+    with page.expect_download() as download_info:
+        array.get_by_role("link", name="Download").click()
+    download = download_info.value
+    assert download.url == (
+        datasette_server + "fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
+    assert download.suggested_filename == "facetable.json"
+    assert json.loads(pathlib_read(download.path())) == copied
+    expect(dialog).to_be_visible()
+
+    # The CSV row builds its URLs from the form, so its options apply
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    dialog.get_by_label("Expand labels").uncheck()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/facetable.csv?state=CA&_size=max"
+    )
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    download = download_info.value
+    download_url = urllib.parse.urlsplit(download.url)
+    assert download_url.path == "/fixtures/facetable.csv"
+    assert sorted(urllib.parse.parse_qsl(download_url.query)) == [
+        ("_dl", "on"),
+        ("_size", "max"),
+        ("state", "CA"),
+    ]
+    assert download.suggested_filename == "facetable.csv"
+    assert pathlib_read(download.path()).startswith("pk,created,planet_int")
+    expect(dialog).to_be_visible()
+    csv.get_by_role("button", name="View").click()
+    page.wait_for_url(re.compile(r"/fixtures/facetable\.csv\?"))
+    assert "state=CA" in page.url
+    assert "_labels" not in page.url
+    assert "_dl" not in page.url
+
+    # Old links to the "Advanced export" box open the dialog, and closing it
+    # drops the #export so a reload doesn't reopen it
+    page.goto(datasette_server + "fixtures/facetable#export")
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    # The dialog's close event fires just after it is hidden
+    page.wait_for_function("location.hash === ''")
+    assert page.url == datasette_server + "fixtures/facetable"
+
+
+def pathlib_read(path):
+    with open(path, encoding="utf-8") as fp:
+        return fp.read()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_fetches_full_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # count_numbers has 10,002 rows, past the 10,000 row count limit
+    page.goto(datasette_server + "data/count_numbers?id__gt=1")
+    dialog = page.locator("#export-dialog")
+    assert dialog.get_attribute("data-count-url") == "/data/count_numbers/-/count"
+    stream = dialog.locator('input[name="_stream"]')
+    csv_rows = dialog.locator('[data-export-format="csv"] [data-export-rows]')
+    json_rows = dialog.locator('[data-export-format="json"] [data-export-rows]')
+    expect(json_rows).to_have_text("First 100 rows")
+    expect(csv_rows).to_have_text("Up to 1,000 rows")
+
+    with page.expect_request(
+        lambda request: "/-/count" in request.url and request.method == "POST"
+    ) as count_request:
+        page.get_by_role("button", name="Export data").click()
+    assert "id__gt=1" in count_request.value.url
+    expect(dialog.locator(".export-stream-label")).to_have_text(
+        "Include all 10,001 rows"
+    )
+    expect(json_rows).to_have_text("First 100 of 10,001 rows")
+    expect(json_rows).to_have_attribute("data-partial", "true")
+    expect(csv_rows).to_have_text("First 1,000 of 10,001 rows")
+
+    stream.check()
+    expect(csv_rows).to_have_text("All 10,001 rows")
+    expect(csv_rows).to_have_attribute("data-partial", "false")
+
+    # A streamed download goes straight to disk, with every row
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    download = download_info.value
+    assert "_stream=on" in download.url
+    assert "_dl=on" in download.url
+    assert download.suggested_filename == "count_numbers.csv"
+    assert len(pathlib_read(download.path()).splitlines()) == 10_002
+
+    stream.uncheck()
+    expect(csv_rows).to_have_text("First 1,000 of 10,001 rows")
+
+    # The count is only fetched once
+    page.keyboard.press("Escape")
+    requests = []
+    page.on("request", lambda request: requests.append(request.url))
+    page.get_by_role("button", name="Export data").click()
+    expect(dialog).to_be_visible()
+    assert not [url for url in requests if "/-/count" in url]
+
+
+@pytest.mark.playwright
+def test_count_all_and_export_dialog_share_one_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    count_requests = []
+    page.on(
+        "request",
+        lambda request: (
+            count_requests.append(request.url) if "/-/count" in request.url else None
+        ),
+    )
+    dialog = page.locator("#export-dialog")
+    stream_label = dialog.locator(".export-stream-label")
+
+    # "count all" in the page header first, then the export dialog
+    page.goto(datasette_server + "data/count_numbers")
+    expect(page.locator(".table-count")).to_have_text("10,000+ rows")
+    page.locator("button.count-all").click()
+    expect(page.locator(".table-count")).to_have_text("10,002 rows")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,002 rows")
+    assert len(count_requests) == 1
+
+    # The export dialog first: its count updates the page header too
+    count_requests.clear()
+    page.goto(datasette_server + "data/count_numbers?id__gt=1")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,001 rows")
+    expect(page.locator(".table-count")).to_have_text("10,001 rows")
+    expect(page.locator("button.count-all")).to_have_count(0)
+    assert len(count_requests) == 1
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_retries_a_failed_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    def time_out(route):
+        route.fulfill(
+            status=400,
+            content_type="application/json",
+            body='{"ok": false, "errors": ["Count query timed out"]}',
+        )
+
+    page.route("**/-/count*", time_out)
+    page.goto(datasette_server + "data/count_numbers")
+    dialog = page.locator("#export-dialog")
+    stream_label = dialog.locator(".export-stream-label")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all rows")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+
+    # Opening the dialog again tries the count again
+    page.unroute("**/-/count*")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,002 rows")
+    expect(page.locator(".table-count")).to_have_text("10,002 rows")
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_hides_include_all_when_csv_has_every_row(
+    page, datasette_server
+):
+    from playwright.sync_api import expect
+
+    # 202 rows: more than a page, but fewer than max_returned_rows (1,000).
+    # With a count the option is never rendered.
+    page.goto(datasette_server + "data/count_numbers?id__gt=9800")
+    dialog = page.locator("#export-dialog")
+    expect(dialog.locator('input[name="_stream"]')).to_have_count(0)
+
+    # Without one it is hidden once the dialog has counted the rows
+    page.goto(datasette_server + "data/count_numbers?id__gt=9800&_nocount=1")
+    stream = dialog.locator('input[name="_stream"]')
+    expect(stream).to_be_attached()
+    csv_rows = dialog.locator('[data-export-format="csv"] [data-export-rows]')
+    expect(csv_rows).to_have_text("Up to 1,000 rows")
+    page.get_by_role("button", name="Export data").click()
+    expect(csv_rows).to_have_text("All 202 rows")
+    expect(stream).to_be_hidden()
+    expect(stream).to_be_disabled()
+    expect(dialog.locator(".export-csv-options")).to_be_hidden()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_on_a_later_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "data/count_numbers.json?_size=10")
+    next_token = page.evaluate("JSON.parse(document.body.innerText).next")
+    page.goto(datasette_server + f"data/count_numbers?_size=10&_next={next_token}")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog.locator("#export-page-note")).to_contain_text(
+        "These exports start from this page"
+    )
+    json_rows = dialog.locator('[data-export-format="json"] [data-export-rows]')
+    expect(json_rows).to_have_text("10 rows on this page")
+
+    # The exports are this page's rows: ids 11 to 20
+    json_group = dialog.get_by_role("group", name="JSON array", exact=True)
+    json_group.get_by_role("button", name="Copy", exact=True).click()
+    expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
+    assert [row["id"] for row in json.loads(page.evaluate("clipboardText"))] == list(
+        range(11, 21)
+    )
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy URL").click()
+    assert f"_next={next_token}" in page.evaluate("clipboardText")
+
+    # "Include all rows" drops the cursor and starts from the first row
+    stream = dialog.locator('input[name="_stream"]')
+    expect(dialog.locator(".export-stream-label")).to_have_text(
+        "Include all 10,002 rows from the first page"
+    )
+    stream.check()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "data/count_numbers.csv?_stream=on&_size=max"
+    )
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    lines = pathlib_read(download_info.value.path()).splitlines()
+    assert lines[:3] == ["id", "1", "2"]
+    assert len(lines) == 10_003
+    # Unchecking it puts the cursor back
+    stream.uncheck()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert f"_next={next_token}" in page.evaluate("clipboardText")
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_long_table_name_on_a_phone(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog).to_be_visible()
+    long_name = "this_is_a_very_long_table_name_that_has_no_spaces_in_it_at_all"
+    layout = dialog.evaluate(
+        """(dialog, name) => {
+            const meta = dialog.querySelector(".modal-meta");
+            meta.textContent = name;
+            const title = dialog.querySelector(".modal-title");
+            const scope = dialog.querySelector(".export-scope");
+            return {
+                titleHeight: title.getBoundingClientRect().height,
+                metaTruncated: meta.scrollWidth > meta.clientWidth,
+                metaInside: meta.getBoundingClientRect().right
+                    <= dialog.querySelector(".modal-header").getBoundingClientRect().right,
+                scopeClipped: scope.scrollHeight > scope.clientHeight + 1,
+            };
+        }""",
+        long_name,
+    )
+    # The title stays on one line and the name is cut off with an ellipsis,
+    # rather than squeezing the title into a column of single letters
+    assert layout["titleHeight"] < 30
+    assert layout["metaTruncated"]
+    assert layout["metaInside"]
+    assert not layout["scopeClipped"]
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("width,display", [(320, "grid"), (375, "flex")])
+def test_export_data_dialog_actions_fit_narrow_screens(
+    page, datasette_server, width, display
+):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.set_viewport_size({"width": width, "height": 700})
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog).to_be_visible()
+    groups = dialog.evaluate(
+        """dialog => [...dialog.querySelectorAll(".export-actions")].map(group => ({
+            display: getComputedStyle(group).display,
+            clipped: group.scrollWidth - group.clientWidth,
+            visible: [...group.children].filter(el => !el.hidden).length,
+        }))"""
+    )
+    # Four actions in a row where they fit, two by two where they don't,
+    # and never cut off
+    assert {group["display"] for group in groups} == {display}
+    assert {group["clipped"] for group in groups} == {0}
+    assert {group["visible"] for group in groups} == {4}
+
+
+RECORD_FETCH_SIGNALS = """
+(() => {
+    window.fetchSignals = [];
+    const fetch = window.fetch;
+    window.fetch = (url, init = {}) => {
+        if (init.signal) window.fetchSignals.push(init.signal);
+        return fetch(url, init);
+    };
+})();
+"""
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_copy_refused_or_cancelled(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The export request never finishes
+    page.route("**/facetable.json?*_shape=array*", lambda route: None)
+    page.add_init_script(RECORD_FETCH_SIGNALS)
+    page.add_init_script("""
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            get: () => ({
+                write: async (items) => {
+                    if (window.refuseClipboard) {
+                        throw new DOMException(
+                            "Write permission denied.", "NotAllowedError"
+                        );
+                    }
+                    // Like a real clipboard, wait for the data
+                    await items[0].getType("text/plain");
+                },
+                writeText: async () => {},
+            }),
+        });
+    """)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    group = dialog.get_by_role("group", name="JSON array", exact=True)
+
+    # A clipboard that refuses straight away is reported straight away, and
+    # the stalled request for the data is cancelled
+    page.evaluate("window.refuseClipboard = true")
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy JSON array: Write permission denied."
+    )
+    assert page.evaluate("fetchSignals.map(signal => signal.aborted)") == [True]
+
+    # Closing the dialog cancels a copy that is still waiting for its data
+    page.evaluate("window.refuseClipboard = false")
+    group.get_by_role("button", name=re.compile("^(Copy|Failed)$")).click()
+    expect(group.get_by_role("button", name="Copying…")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    page.wait_for_function("fetchSignals.length === 2 && fetchSignals[1].aborted")
+    page.get_by_role("button", name="Export data").click()
+    expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_copy_failure(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    # A failed fetch shows "Failed", then resets
+    page.route(
+        "**/facetable.json?*_shape=array*", lambda route: route.fulfill(status=500)
+    )
+    group = dialog.get_by_role("group", name="JSON array", exact=True)
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy JSON array: HTTP 500"
+    )
+    # "Failed" stays, with the reason shown under the row
+    error = dialog.locator('[data-export-format="json-array"] .export-option-error')
+    expect(error).to_be_visible()
+    expect(error).to_have_text("Could not copy JSON array: HTTP 500")
+    page.wait_for_timeout(2000)
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    # Copy URL working in the same row leaves the Copy failure alone
+    group.get_by_role("button", name="Copy URL").click()
+    expect(group.get_by_role("button", name="Copied")).to_be_visible()
+    expect(error).to_be_visible()
+    # Trying again clears it
+    page.unroute("**/facetable.json?*_shape=array*")
+    group.get_by_role("button", name="Failed").click()
+    expect(group.get_by_role("button", name="Copied")).to_have_count(1)
+    expect(error).to_have_count(0)
+    # So does closing and reopening the dialog
+    page.route(
+        "**/facetable.json?*_shape=array*", lambda route: route.fulfill(status=500)
+    )
+    page.wait_for_timeout(1600)
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(error).to_be_visible()
+    page.keyboard.press("Escape")
+    page.get_by_role("button", name="Export data").click()
+    expect(error).to_have_count(0)
+    expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+    # Anything over 10 MB is left to Download, without reading all of it
+    clipboard_before = page.evaluate("clipboardText")
+    page.route(
+        "**/facetable.csv*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/csv; charset=utf-8",
+            body="x" * (11 * 1024 * 1024),
+        ),
+    )
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy", exact=True).click()
+    expect(csv.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy CSV: over 10 MB is too much to copy, use Download"
+    )
+    expect(
+        dialog.locator('[data-export-format="csv"] .export-option-error')
+    ).to_have_text("Could not copy CSV: over 10 MB is too much to copy, use Download")
+    assert page.evaluate("clipboardText") == clipboard_before
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_on_query_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/-/query?sql=select+:name+as+n&name=hello")
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    trigger.click()
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".export-option-name").first).to_have_text("CSV")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    trigger.click()
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy", exact=True).click()
+    expect(csv.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText").splitlines() == ["n", "hello"]
+    csv.get_by_role("button", name="View").click()
+    page.wait_for_url(re.compile(r"/fixtures/-/query\.csv\?"))
+    assert "name=hello" in page.url
+    assert "hello" in page.locator("body").inner_text()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_without_javascript(browser, datasette_server):
+    from playwright.sync_api import expect
+
+    context = browser.new_context(java_script_enabled=False)
+    try:
+        page = context.new_page()
+        page.goto(datasette_server + "fixtures/facetable")
+        dialog = page.locator("#export-dialog")
+        page.get_by_role("button", name="Export data").click()
+        expect(dialog).to_be_visible()
+        # Copy needs JavaScript, so it stays hidden
+        expect(dialog.get_by_role("button", name="Copy", exact=True)).to_have_count(0)
+        # Download is a link with a download attribute
+        group = dialog.get_by_role("group", name="JSON", exact=True)
+        with page.expect_download() as download_info:
+            group.get_by_role("link", name="Download").click()
+        assert download_info.value.suggested_filename == "facetable.json"
+        dialog.get_by_role("button", name="Close").click()
+        expect(dialog).not_to_be_visible()
+    finally:
+        context.close()
 
 
 TEXT_CONTROL_FONT_SIZES_JS = """

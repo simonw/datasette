@@ -1,8 +1,9 @@
 /* "Export data" dialog on table, query and row pages, from _export_dialog.html.
 
-   The template loads this file the first time the dialog is opened, and
-   wires the buttons up with commandfor/command so the dialog opens without
-   JavaScript too. View and Download are left to the browser:
+   The template imports this file as a module the first time the dialog is
+   opened, so it must work as a module as well as a classic script. The
+   template also wires the buttons up with commandfor/command so the dialog
+   opens without JavaScript too. View and Download are left to the browser:
    plain links, using the download attribute, or for TSV and CSV, submit
    buttons for the form that holds their shared options. Downloads therefore stream straight to disk and show in the
    browser's own download list. Here we route the dialog through

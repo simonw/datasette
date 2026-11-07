@@ -9,6 +9,9 @@
    available, and keep the row counts up to date. */
 (() => {
   const RESET_AFTER_MS = 1500;
+  // Copy holds the whole export in memory and on the clipboard, so give up
+  // on anything bigger than this and suggest Download instead
+  const MAX_COPY_BYTES = 10 * 1024 * 1024;
 
   // Extra labels for each action, beyond the label in the template. They are
   // stacked in one grid cell so the button keeps the width of the longest.
@@ -75,7 +78,25 @@
     if (!isText(response.headers.get("content-type"))) {
       throw new Error("not a text format");
     }
-    return response.text();
+    if (!response.body) return response.text();
+    // Read as it arrives, so a huge export is abandoned at the limit rather
+    // than loaded in full first
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_COPY_BYTES) {
+        reader.cancel();
+        throw new Error(
+          `over ${MAX_COPY_BYTES / 1024 / 1024} MB is too much to copy, use Download`,
+        );
+      }
+      chunks.push(value);
+    }
+    return new Blob(chunks).text();
   }
 
   async function copyData(url) {

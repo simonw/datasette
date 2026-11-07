@@ -2624,6 +2624,23 @@ def test_export_data_dialog_copy_failure(page, datasette_server):
     )
     expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
 
+    # Anything over 10 MB is left to Download, without reading all of it
+    page.route(
+        "**/facetable.csv*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/csv; charset=utf-8",
+            body="x" * (11 * 1024 * 1024),
+        ),
+    )
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy", exact=True).click()
+    expect(csv.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy CSV: over 10 MB is too much to copy, use Download"
+    )
+    assert page.evaluate("clipboardText") is None
+
 
 @pytest.mark.playwright
 def test_export_data_dialog_on_query_page(page, datasette_server):

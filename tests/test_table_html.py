@@ -1094,6 +1094,15 @@ async def test_row_delete_action_data_attributes():
             "database": "data",
             "table": "items",
             "tableUrl": "/data/items",
+            "executeSql": {
+                "queryUrl": "/data/-/query.json",
+                "editorUrl": "/data/-/query",
+                "columns": [
+                    {"name": "id", "type": "integer"},
+                    {"name": "name", "type": "text"},
+                    {"name": "score", "type": "integer"},
+                ],
+            },
         }
         assert soup.select_one('button[data-table-action="insert-row"]') is None
 
@@ -1855,6 +1864,67 @@ def test_table_data_uses_base_url(app_client_base_url_prefix):
         "database": "fixtures",
         "table": "simple_primary_key",
         "tableUrl": "/prefix/fixtures/simple_primary_key",
+        "executeSql": {
+            "queryUrl": "/prefix/fixtures/-/query.json",
+            "editorUrl": "/prefix/fixtures/-/query",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "content", "type": "text"},
+            ],
+        },
+    }
+
+
+@pytest.mark.parametrize("allow_sql", (True, False))
+def test_table_page_column_statistics_requires_execute_sql(allow_sql):
+    # The column statistics dialog builds SQL in JavaScript, so its script and
+    # the URLs it needs are only included if the actor can execute SQL
+    config = {} if allow_sql else {"allow_sql": {}}
+    with make_app_client(config=config) as client:
+        response = client.get("/fixtures/sortable")
+        assert response.status == 200
+        soup = Soup(response.text, "html.parser")
+        table_data = table_data_from_soup(soup)
+        script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
+        has_script = any("/column-stats.js" in src for src in script_srcs)
+        if allow_sql:
+            execute_sql = table_data["executeSql"]
+            assert execute_sql["queryUrl"] == "/fixtures/-/query.json"
+            assert execute_sql["editorUrl"] == "/fixtures/-/query"
+            assert "filter" not in execute_sql
+            assert has_script
+        else:
+            assert "executeSql" not in table_data
+            assert not has_script
+
+
+def test_table_page_column_statistics_columns(app_client):
+    # Every column is listed with its declared type, including columns hidden
+    # with ?_nocol= and the rowid of a table without a primary key
+    response = app_client.get("/fixtures/no_primary_key?_nocol=content")
+    assert response.status == 200
+    table_data = table_data_from_soup(Soup(response.text, "html.parser"))
+    assert table_data["executeSql"]["columns"] == [
+        {"name": "rowid", "type": "integer"},
+        {"name": "content", "type": "text"},
+        {"name": "a", "type": "text"},
+        {"name": "b", "type": "text"},
+        {"name": "c", "type": "text"},
+    ]
+
+
+def test_table_page_column_statistics_filter(app_client):
+    # Column statistics use the table's current filters. Pagination from
+    # ?_next= is not part of the filter and numeric parameters keep their type.
+    response = app_client.get(
+        "/fixtures/facetable?planet_int__gt=0&state=CA&_where=pk+<+10&_next=2"
+    )
+    assert response.status == 200
+    table_data = table_data_from_soup(Soup(response.text, "html.parser"))
+    assert table_data["executeSql"]["filter"] == {
+        "where": '"planet_int" > :p0 and "state" = :p1 and pk < 10',
+        "params": {"p0": 0, "p1": "CA"},
+        "description": 'where pk < 10, planet_int > 0 and state = "CA"',
     }
 
 

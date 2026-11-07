@@ -32,6 +32,7 @@ from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
     compound_keys_after_sql,
+    compound_keys_at_or_before_sql,
     decode_write_json_rows,
     escape_sqlite,
     filters_should_redirect,
@@ -1593,17 +1594,14 @@ class TableCountView(BaseView):
                 table_metadata, sortable_columns, request, ""
             )
             params = dict(params)
-            cursor_clauses = _next_where_clauses(
+            before_clause = _at_or_before_next_where_clause(
                 _next, sort, sort_desc, pks, use_rowid, params
             )
-            if not cursor_clauses:
+            if before_clause is None:
                 return Response.error("Invalid _next", status=400)
-            # Rows where the cursor condition is false - or null, which
-            # happens for null sort values that sort before the cursor
-            sql = "select count(*) from {} where {}not coalesce(({}), 0)".format(
+            sql = "select count(*) from {} where {}".format(
                 escape_sqlite(table_name),
-                "".join(f"{clause} and " for clause in where_clauses),
-                " and ".join(cursor_clauses),
+                " and ".join(where_clauses + [before_clause]),
             )
             try:
                 results = await db.execute(sql, params)
@@ -2153,11 +2151,8 @@ async def table_view_traced(datasette, request):
     return r
 
 
-def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
-    """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
-
-    Adds the cursor's values to params and returns a list of where clauses."""
-    clauses = []
+def _parse_next(_next, sort, sort_desc):
+    """Split a ?_next= cursor into (sort_value, primary key components)."""
     sort_value = None
     components = urlsafe_components(_next)
     # If a sort order is applied and there are multiple components,
@@ -2168,6 +2163,56 @@ def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
         if _next.split(",")[0] == "$null":
             sort_value = None
         components = components[1:]
+    return sort_value, components
+
+
+def _at_or_before_next_where_clause(_next, sort, sort_desc, pks, use_rowid, params):
+    """SQL clause selecting the rows up to and including a ?_next= cursor - the
+    rows on earlier pages. Returns None if the cursor is not valid.
+
+    This is the inverse of _next_where_clauses(), written out directly rather
+    than as "not (...)" so that SQLite can use an index range search on the
+    primary key (or on the sort column, if it is indexed)."""
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+    if use_rowid:
+        if len(components) != 1:
+            return None
+        pk_clause = f"rowid <= :p{len(params)}"
+        params[f"p{len(params)}"] = components[0]
+    else:
+        if len(components) != len(pks):
+            return None
+        param_len = len(params)
+        pk_clause = compound_keys_at_or_before_sql(pks, param_len)
+        for i, pk_value in enumerate(components):
+            params[f"p{param_len + i}"] = pk_value
+    if not (sort or sort_desc):
+        return pk_clause
+    # Rows are ordered by the sort column then the primary key. SQLite puts
+    # nulls first in ascending order and last in descending order.
+    column = escape_sqlite(sort or sort_desc)
+    if sort_value is None:
+        if sort:
+            # Only nulls come before, up to the cursor's primary key
+            return f"({column} is null and {pk_clause})"
+        # Every non-null value comes before the nulls
+        return f"({column} is not null or ({column} is null and {pk_clause}))"
+    p = f":p{len(params)}"
+    params[f"p{len(params)}"] = sort_value
+    if sort:
+        return (
+            f"({column} is null or {column} < {p}"
+            f" or ({column} = {p} and {pk_clause}))"
+        )
+    return f"({column} > {p} or ({column} = {p} and {pk_clause}))"
+
+
+def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
+    """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
+
+    Adds the cursor's values to params and returns a list of where clauses."""
+    clauses = []
+    sort_value, components = _parse_next(_next, sort, sort_desc)
 
     # Figure out the SQL for next-based-on-primary-key first
     next_by_pk_clauses = []

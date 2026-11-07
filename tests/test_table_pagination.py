@@ -3,6 +3,7 @@ Tests for the table page pagination bar and the ?_count=before option of the
 /-/count endpoint, which tells pages after the first which rows they show.
 """
 
+import sqlite3
 import urllib.parse
 
 import pytest
@@ -263,3 +264,39 @@ async def test_bar_base_url(tmp_path):
         assert response.json() == {"ok": True, "count": 2}
     finally:
         ds.close()
+
+
+@pytest.mark.parametrize(
+    "pks,use_rowid,next_value",
+    [
+        (["pk1", "pk2"], False, "b,2"),
+        (["id"], False, "10"),
+        ([], True, "10"),
+    ],
+)
+def test_count_before_uses_primary_key_index(pks, use_rowid, next_value):
+    # The count of earlier rows should be an index range search, not a scan
+    # of the whole table - so its cost grows with how far into the table the
+    # page is rather than with the size of the table
+    from datasette.views.table import _at_or_before_next_where_clause
+
+    conn = sqlite3.connect(":memory:")
+    if use_rowid:
+        conn.execute("create table t (name text)")
+    else:
+        conn.execute(
+            "create table t ({}, value text, primary key ({}))".format(
+                ", ".join(f"{pk} text" for pk in pks), ", ".join(pks)
+            )
+        )
+    params = {}
+    clause = _at_or_before_next_where_clause(
+        next_value, None, None, pks, use_rowid, params
+    )
+    plan = " ".join(
+        row[-1]
+        for row in conn.execute(
+            f"explain query plan select count(*) from t where {clause}", params
+        )
+    )
+    assert plan.startswith("SEARCH"), plan

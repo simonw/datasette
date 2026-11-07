@@ -854,7 +854,8 @@ def test_cors(
         response.headers["Access-Control-Allow-Headers"]
         == "Authorization, Content-Type"
     )
-    assert response.headers["Access-Control-Expose-Headers"] == "Link"
+    # TelemetryMiddleware appends traceresponse while the suite's provider records.
+    assert response.headers["Access-Control-Expose-Headers"] == "Link, traceresponse"
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )

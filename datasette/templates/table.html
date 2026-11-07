@@ -148,6 +148,7 @@
 {% set export_rows = {
     "page": display_rows|length,
     "more": true if next_url else false,
+    "later": true if request.args.get("_next") else false,
     "max": settings.max_returned_rows,
     "total": count if (count is not none and not count_truncated) else none,
     "count_url": urls.table(database, table) ~ "/-/count",

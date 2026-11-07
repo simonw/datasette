@@ -1887,6 +1887,17 @@ dialog.export-dialog {
     overflow: hidden;
 }
 
+/* Past the first page: the exports start from this page's rows */
+.export-dialog .export-page-note {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
 .export-dialog .export-option-heading {
     display: flex;
     flex-wrap: wrap;

@@ -422,7 +422,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     URL for the CSV export of this page
 
 ``url_csv_hidden_args`` - ``list``
-    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``.
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL

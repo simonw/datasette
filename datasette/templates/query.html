@@ -82,6 +82,7 @@
 {% set export_rows = {
     "page": display_rows|length,
     "more": true if truncated else false,
+    "later": false,
     "max": display_rows|length,
     "total": none,
     "count_url": none,

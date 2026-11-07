@@ -2261,7 +2261,60 @@ async def test_export_dialog_scope_and_row_counts(
         for key, value in dialog.attrs.items()
         if key.startswith("data-rows-") or key == "data-count-url"
     }
-    assert attrs == {"max": "100", **expected_attrs}
+    assert attrs == {"max": "100", "later": "false", **expected_attrs}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "size,expected_json,expected_csv",
+    [
+        # Page 2 of 8: CSV continues from this page up to max_returned_rows
+        (2, ("2 rows on this page", True), ("Up to 100 rows from this page", True)),
+        # Page 2 of 2, the last page
+        (10, ("5 rows on this page", True), ("5 rows on this page", True)),
+    ],
+)
+async def test_export_dialog_on_later_pages(
+    ds_client, size, expected_json, expected_csv
+):
+    first = await ds_client.get(f"/fixtures/facetable.json?_size={size}")
+    next_token = first.json()["next"]
+    response = await ds_client.get(
+        f"/fixtures/facetable?_size={size}&_next={next_token}"
+    )
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.select_one("dialog#export-dialog")
+    # Exports are of the rows on this page, so they keep the ?_next= cursor
+    assert dialog.select_one('a[data-export-action="view"]')["href"] == (
+        f"/fixtures/facetable.json?_size={size}&_next={next_token}&_labels=on"
+    )
+    assert [
+        (input["name"], input["value"])
+        for input in dialog.select("form input[type=hidden]")
+    ] == [("_next", next_token), ("_size", "max")]
+    rows = _export_rows(dialog)
+    assert rows["json"] == expected_json
+    assert rows["csv"] == expected_csv
+    # ...and say so
+    note = soup.find(id="export-page-note")
+    assert note.text == (
+        "These exports start from this page, not the first page. "
+        "Check “Include all rows” under CSV to export every row."
+    )
+    assert dialog["aria-describedby"] == "export-scope export-page-note"
+    # "Include all rows" is offered on every later page, starting from row 1
+    assert dialog.select_one(".export-stream-label").text == (
+        "Include all 15 rows from the first page"
+    )
+    assert dialog["data-rows-later"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_first_page_has_no_page_note(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_size=2")
+    soup = Soup(response.text, "html.parser")
+    assert soup.find(id="export-page-note") is None
+    assert soup.select_one("dialog#export-dialog")["data-rows-later"] == "false"
 
 
 @pytest.mark.asyncio

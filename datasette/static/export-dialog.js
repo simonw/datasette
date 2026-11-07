@@ -119,11 +119,12 @@
   const formatNumber = (n) => n.toLocaleString("en-US");
   const rowsText = (n) => `${formatNumber(n)} row${n === 1 ? "" : "s"}`;
 
-  // How many rows an export returns: JSON and plugin formats return this
-  // page, CSV asks for _size=max, and streamed CSV returns every row.
+  // How many rows an export returns: JSON and plugin formats return the rows
+  // on this page, CSV asks for _size=max starting from this page, and
+  // "Include all rows" streams every row from the first one.
   // Mirrors the rows_label macro in _export_dialog.html.
   function rowsLabel(kind, rows, stream) {
-    const { page, more, max, total } = rows;
+    const { page, more, later, max, total } = rows;
     if (kind === "csv" && stream) {
       return {
         text: total === null ? "All rows" : `All ${rowsText(total)}`,
@@ -132,15 +133,16 @@
     }
     let n = page;
     if (kind === "csv" && more) {
-      if (total !== null) {
-        n = Math.min(total, max);
-      } else if (page < max) {
-        return { text: `Up to ${rowsText(max)}`, partial: true };
-      } else {
-        n = max;
+      if (later || (total === null && page < max)) {
+        return {
+          text: `Up to ${rowsText(max)}${later ? " from this page" : ""}`,
+          partial: true,
+        };
       }
+      n = total === null ? max : Math.min(total, max);
     }
     if (n === 0) return { text: "No rows", partial: false };
+    if (later) return { text: `${rowsText(n)} on this page`, partial: true };
     if (!more || (total !== null && n >= total)) {
       return {
         text: `All ${rowsText(total === null ? n : total)}`,
@@ -157,10 +159,12 @@
   }
 
   function readRows(dialog) {
-    const { rowsPage, rowsMore, rowsMax, rowsTotal } = dialog.dataset;
+    const { rowsPage, rowsMore, rowsLater, rowsMax, rowsTotal } =
+      dialog.dataset;
     return {
       page: Number(rowsPage),
       more: rowsMore === "true",
+      later: rowsLater === "true",
       max: Number(rowsMax),
       total: rowsTotal ? Number(rowsTotal) : null,
     };
@@ -168,7 +172,12 @@
 
   function renderRows(dialog, rows, counting = false) {
     const stream = dialog.querySelector('input[name="_stream"]');
-    if (stream && rows.total !== null && rows.total <= rows.max) {
+    if (
+      stream &&
+      !rows.later &&
+      rows.total !== null &&
+      rows.total <= rows.max
+    ) {
       // CSV already includes every row, so the option would do nothing
       stream.checked = false;
       stream.disabled = true;
@@ -185,14 +194,19 @@
       el.textContent = text;
       el.dataset.partial = String(partial);
     });
+    // "Include all rows" starts from the first row, so it leaves out the
+    // page's ?_next= cursor - which CSV streaming would reject anyway
+    const cursor = dialog.querySelector('.export-csv-form input[name="_next"]');
+    if (cursor) cursor.disabled = !!(stream && stream.checked);
     const streamLabel = dialog.querySelector(".export-stream-label");
     if (streamLabel) {
+      const fromStart = rows.later ? " from the first page" : "";
       streamLabel.textContent =
         rows.total !== null
-          ? `Include all ${rowsText(rows.total)}`
+          ? `Include all ${rowsText(rows.total)}${fromStart}`
           : counting
             ? "Include all rows (counting…)"
-            : "Include all rows";
+            : `Include all rows${fromStart}`;
     }
   }
 

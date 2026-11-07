@@ -171,7 +171,7 @@ class TableContext(Context):
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``."
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})

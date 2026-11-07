@@ -2644,6 +2644,54 @@ def test_export_data_dialog_hides_include_all_when_csv_has_every_row(
 
 
 @pytest.mark.playwright
+def test_export_data_dialog_on_a_later_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "data/count_numbers.json?_size=10")
+    next_token = page.evaluate("JSON.parse(document.body.innerText).next")
+    page.goto(datasette_server + f"data/count_numbers?_size=10&_next={next_token}")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog.locator("#export-page-note")).to_contain_text(
+        "These exports start from this page"
+    )
+    json_rows = dialog.locator('[data-export-format="json"] [data-export-rows]')
+    expect(json_rows).to_have_text("10 rows on this page")
+
+    # The exports are this page's rows: ids 11 to 20
+    json_group = dialog.get_by_role("group", name="JSON array", exact=True)
+    json_group.get_by_role("button", name="Copy", exact=True).click()
+    expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
+    assert [row["id"] for row in json.loads(page.evaluate("clipboardText"))] == list(
+        range(11, 21)
+    )
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy URL").click()
+    assert f"_next={next_token}" in page.evaluate("clipboardText")
+
+    # "Include all rows" drops the cursor and starts from the first row
+    stream = dialog.locator('input[name="_stream"]')
+    expect(dialog.locator(".export-stream-label")).to_have_text(
+        "Include all 10,002 rows from the first page"
+    )
+    stream.check()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "data/count_numbers.csv?_stream=on&_size=max"
+    )
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    lines = pathlib_read(download_info.value.path()).splitlines()
+    assert lines[:3] == ["id", "1", "2"]
+    assert len(lines) == 10_003
+    # Unchecking it puts the cursor back
+    stream.uncheck()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert f"_next={next_token}" in page.evaluate("clipboardText")
+
+
+@pytest.mark.playwright
 def test_export_data_dialog_copy_failure(page, datasette_server):
     from playwright.sync_api import expect
 

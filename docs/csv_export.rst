@@ -13,8 +13,11 @@ Custom SQL query pages have the same button above their results.
 The top of the dialog describes the filters and sort order that the export
 will use. Each format shows how many rows it returns: JSON formats return the
 rows on the current page, CSV returns up to :ref:`setting_max_returned_rows`
-rows, and the **include all rows** option returns every matching row. If the
-page did not count every row, the dialog counts them when it opens.
+rows starting from the current page, and the **include all rows** option
+returns every matching row, starting from the first one. If you have moved
+past the first page the dialog says so, since the exports then start from
+that page. If the page did not count every row, the dialog counts them when
+it opens.
 
 Each format in that dialog has four actions:
 
@@ -37,8 +40,9 @@ and views:
 
 * **include all rows** - by default CSV files only contain the first
   :ref:`setting_max_returned_rows` records. This option will cause Datasette to
-  loop through every matching record and return them as a single CSV file. It
-  is only offered when there are more matching rows than that.
+  loop through every matching record and return them as a single CSV file,
+  starting from the first one even if you are on a later page. On the first
+  page it is only offered when there are more matching rows than that.
 
 You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
 

@@ -311,6 +311,29 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
     return ",".join(bits)
 
 
+def compound_keys_at_or_before_sql(pks, start_index=0):
+    # The inverse of compound_keys_after_sql(): rows up to and including the
+    # cursor. Written out directly, rather than as "not (...after...)", so
+    # SQLite can answer it with a range search on the primary key index.
+    # For pk1/pk2/pk3 returns:
+    #
+    # ([pk1] < :p0)
+    #   or
+    # ([pk1] = :p0 and [pk2] < :p1)
+    #   or
+    # ([pk1] = :p0 and [pk2] = :p1 and [pk3] <= :p2)
+    or_clauses = []
+    for i, pk in enumerate(pks):
+        and_clauses = [
+            f"{escape_sqlite(earlier)} = :p{j + start_index}"
+            for j, earlier in enumerate(pks[:i])
+        ]
+        op = "<=" if i == len(pks) - 1 else "<"
+        and_clauses.append(f"{escape_sqlite(pk)} {op} :p{i + start_index}")
+        or_clauses.append(f"({' and '.join(and_clauses)})")
+    return "({})".format("\n  or\n".join(or_clauses))
+
+
 def compound_keys_after_sql(pks, start_index=0):
     # Implementation of keyset pagination
     # See https://github.com/simonw/datasette/issues/190

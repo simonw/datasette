@@ -50,14 +50,56 @@
 </dl>
 {% endif %}
 
-{% if count or human_description_en %}
+{% macro pagination_links() %}
+    <span class="page-position-links">
+        {% if page_position %}
+        <a class="page-position-first" href="{{ page_position.first_url }}">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+            Back to first page
+        </a>
+        {% endif %}
+        {% if next_url %}
+        <a class="page-position-next" href="{{ next_url }}">
+            Next page
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+        {% endif %}
+    </span>
+{% endmacro %}
+
+{# The position strip appears whenever results span more than one page, and
+   carries the total row count - so the heading only shows the count when there
+   is no strip, or when the count is truncated and needs its "count all" button #}
+{% set paginated = page_position or next_url %}
+{% set count_in_strip = paginated and count is not none and not count_truncated %}
+{% if (count and not count_in_strip) or human_description_en %}
     <h3 class="table-summary">
-        {% if count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
+        {% if count_in_strip %}
+        {% elif count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
         <button type="button" class="count-all" data-count-url="{{ urls.table(database, table) }}/-/count">count all</button>
         <span class="count-error" role="alert"></span>
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}<span class="table-summary-description">{{ human_description_en }}</span>{% endif %}
     </h3>
+{% endif %}
+
+{% if paginated %}
+<nav class="page-position" aria-label="Pagination"
+    {% if page_position %}data-count-before-url="{{ page_position.count_before_url }}"{% endif %}
+    data-page-rows="{{ display_rows|length }}"
+    {% if count_in_strip %}data-total="{{ count }}"{% endif %}>
+    <span class="page-position-text" aria-live="polite">
+        {% if not page_position %}Rows <strong>1–{{ "{:,}".format(display_rows|length) }}</strong>{% if count_in_strip %} of <strong>{{ "{:,}".format(count) }}</strong>{% endif %}
+        {% else %}
+            {% if page_position.after_column %}Continuing after
+                <code>{{ page_position.after_column }}</code> =
+                {% if page_position.after_value is none %}<em>null</em>{% else %}<code>{{ page_position.after_value|truncate(40) }}</code>{% endif %}
+            {% else %}Not the first page{% endif %}
+            {% if count_in_strip %} · {{ "{:,}".format(count) }} row{% if count != 1 %}s{% endif %}{% endif %}
+        {% endif %}
+    </span>
+    {{ pagination_links() }}
+</nav>
 {% endif %}
 
 <form class="core filters" action="{{ urls.table(database, table) }}" method="get">
@@ -205,16 +247,24 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 
 {% include custom_table_templates %}
 
-{% if next_url %}
-     <p><a href="{{ next_url }}">Next page</a></p>
+{% if paginated %}
+<nav class="page-position page-position-footer" aria-label="Pagination">
+    {{ pagination_links() }}
+</nav>
 {% endif %}
 
 {% if table_definition %}
+<details class="table-schema">
+    <summary>Table schema</summary>
     <pre class="wrapped-sql">{{ table_definition }}</pre>
+</details>
 {% endif %}
 
 {% if view_definition %}
+<details class="table-schema">
+    <summary>View definition</summary>
     <pre class="wrapped-sql">{{ view_definition }}</pre>
+</details>
 {% endif %}
 
 {% if allow_execute_sql and query.sql %}

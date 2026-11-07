@@ -361,6 +361,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``ok`` - ``bool``
     True if the data for this page was retrieved without errors
 
+``page_position`` - ``dict``
+    On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page.
+
 ``path_with_replaced_args`` - ``callable``
     Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument.
 

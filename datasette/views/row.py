@@ -35,7 +35,13 @@ from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    is_csv_format,
+    stream_csv,
+    tsv_export_path,
+)
 from .table import (
     _table_page_data,
     display_columns_and_rows,
@@ -81,7 +87,7 @@ class RowContext(Context):
     )
     display_columns: list = field(
         metadata={
-            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row."
         }
     )
     display_rows: list = field(
@@ -117,11 +123,21 @@ class RowContext(Context):
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this row in that format."
         }
     )
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     settings: dict = field(
@@ -159,8 +175,8 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def as_csv(self, request, database):
-        return await stream_csv(self.ds, self.data, request, database)
+    async def as_csv(self, request, database, format_="csv"):
+        return await stream_csv(self.ds, self.data, request, database, format_=format_)
 
     async def get(self, request):
         db = await self.ds.resolve_database(request)
@@ -169,8 +185,8 @@ class RowView(BaseView):
         format_ = request.url_vars.get("format") or "html"
         data_kwargs = {}
 
-        if format_ == "csv":
-            return await self.as_csv(request, database_route)
+        if is_csv_format(self.ds, format_):
+            return await self.as_csv(request, database_route, format_=format_)
 
         if format_ == "html":
             # HTML views default to expanding all foreign key labels
@@ -311,13 +327,13 @@ class RowView(BaseView):
                     )
                 )
 
-        url_csv_args = {"_size": "max", **url_labels_extra}
+        # No _size=max: a row page exports just that row
         url_csv = self.ds.urls.path(
             path_with_format(
                 request=request,
                 path=request.scope.get("route_path"),
                 format="csv",
-                extra_qs=url_csv_args,
+                extra_qs={**url_labels_extra},
             )
         )
         url_csv_path = url_csv.split("?")[0]
@@ -361,14 +377,15 @@ class RowView(BaseView):
                     table_page_data=context["table_page_data"],
                     top_row=context["top_row"],
                     renderers=renderers,
+                    renderer_options=self.ds._renderer_options,
                     url_csv=url_csv,
                     url_csv_path=url_csv_path,
                     url_csv_hidden_args=[
                         (key, value)
                         for key, value in urllib.parse.parse_qsl(request.query_string)
                         if key not in ("_labels", "_facet", "_size")
-                    ]
-                    + [("_size", "max")],
+                    ],
+                    url_tsv_path=tsv_export_path(self.ds, request),
                     settings=self.ds.settings_dict(),
                     select_templates=[
                         f"{'*' if template_name == template.name else ''}{template_name}"

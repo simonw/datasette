@@ -9,8 +9,14 @@
 {% if table_page_data.foreignKeys %}
 <script src="{{ static('autocomplete.js') }}" defer></script>
 {% endif %}
-<script src="{{ static('edit-tools.js') }}" defer></script>
+{% if table_insert_ui or table_alter_ui or row_mutation_ui %}
+<script src="{{ static('edit-tools-loader.js') }}" data-edit-tools-src="{{ static('edit-tools.js') }}" defer></script>
+{% endif %}
 <script src="{{ static('table.js') }}" defer></script>
+{% if table_page_data.executeSql %}
+{% include "_column_stats_loader.html" %}
+{% endif %}
+<script src="{{ static('table-layout.js') }}" defer></script>
 <script src="{{ static('mobile-column-actions.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
@@ -46,14 +52,56 @@
 </dl>
 {% endif %}
 
-{% if count or human_description_en %}
+{% macro pagination_links() %}
+    <span class="page-position-links">
+        {% if page_position %}
+        <a class="page-position-first" href="{{ page_position.first_url }}">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+            Back to first page
+        </a>
+        {% endif %}
+        {% if next_url %}
+        <a class="page-position-next" href="{{ next_url }}">
+            Next page
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+        {% endif %}
+    </span>
+{% endmacro %}
+
+{# The position strip appears whenever results span more than one page, and
+   carries the total row count - so the heading only shows the count when there
+   is no strip, or when the count is truncated and needs its "count all" button #}
+{% set paginated = page_position or next_url %}
+{% set count_in_strip = paginated and count is not none and not count_truncated %}
+{% if (count and not count_in_strip) or human_description_en %}
     <h3 class="table-summary">
-        {% if count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
+        {% if count_in_strip %}
+        {% elif count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
         <button type="button" class="count-all" data-count-url="{{ urls.table(database, table) }}/-/count">count all</button>
         <span class="count-error" role="alert"></span>
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}<span class="table-summary-description">{{ human_description_en }}</span>{% endif %}
     </h3>
+{% endif %}
+
+{% if paginated %}
+<nav class="page-position" aria-label="Pagination"
+    {% if page_position %}data-count-before-url="{{ page_position.count_before_url }}"{% endif %}
+    data-page-rows="{{ display_rows|length }}"
+    {% if count_in_strip %}data-total="{{ count }}"{% endif %}>
+    <span class="page-position-text" aria-live="polite">
+        {% if not page_position %}Rows <strong>1–{{ "{:,}".format(display_rows|length) }}</strong>{% if count_in_strip %} of <strong>{{ "{:,}".format(count) }}</strong>{% endif %}
+        {% else %}
+            {% if page_position.after_column %}Continuing after
+                <code>{{ page_position.after_column }}</code> =
+                {% if page_position.after_value is none %}<em>null</em>{% else %}<code>{{ page_position.after_value|truncate(40) }}</code>{% endif %}
+            {% else %}Not the first page{% endif %}
+            {% if count_in_strip %} · {{ "{:,}".format(count) }} row{% if count != 1 %}s{% endif %}{% endif %}
+        {% endif %}
+    </span>
+    {{ pagination_links() }}
+</nav>
 {% endif %}
 
 <form class="core filters" action="{{ urls.table(database, table) }}" method="get">
@@ -112,6 +160,9 @@
             <input type="hidden" name="{{ key }}" value="{{ value }}">
         {% endfor %}
         <input type="submit" value="Apply filters" tabindex="0">
+        {% if clear_filters_url %}
+            <a class="filters-clear" href="{{ clear_filters_url }}">Clear filters</a>
+        {% endif %}
     </div>
 </form>
 
@@ -126,11 +177,30 @@
 </div>
 {% endif %}
 
-{% if query.sql and allow_execute_sql %}
-    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
-{% endif %}
-
-<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
+<div class="table-tools">
+    {% if query.sql and allow_execute_sql %}
+    <a class="quiet-button view-sql-button" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m16 18 6-6-6-6"></path>
+            <path d="m8 6-6 6 6 6"></path>
+        </svg>
+        <span>View and edit SQL</span>
+    </a>
+    {% endif %}
+    {% include "_export_button.html" %}
+</div>
+{% set export_meta = table %}
+{% set export_scope = "Filtered rows" if filter_description_en else "All rows" %}
+{% set export_scope_description = [filter_description_en, sort_description_en]|select|join(", ") or ("in this view" if is_view else "in this table") %}
+{% set export_rows = {
+    "page": display_rows|length,
+    "more": true if next_url else false,
+    "later": true if request.args.get("_next") else false,
+    "max": settings.max_returned_rows,
+    "total": count if (count is not none and not count_truncated) else none,
+    "count_url": urls.table(database, table) ~ "/-/count",
+} %}
+{% include "_export_dialog.html" %}
 
 {% if suggested_facets %}
     {% include "_suggested_facets.html" %}
@@ -179,41 +249,24 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 
 {% include custom_table_templates %}
 
-{% if next_url %}
-     <p><a href="{{ next_url }}">Next page</a></p>
-{% endif %}
-
-{% if display_rows %}
-    <div id="export" class="advanced-export">
-        <h3>Advanced export</h3>
-        <p>JSON shape:
-            <a href="{{ renderers['json'] }}">default</a>,
-            <a href="{{ append_querystring(renderers['json'], '_shape=array') }}">array</a>,
-            <a href="{{ append_querystring(renderers['json'], '_shape=array&_nl=on') }}">newline-delimited</a>{% if primary_keys %},
-                <a href="{{ append_querystring(renderers['json'], '_shape=object') }}">object</a>
-            {% endif %}
-        </p>
-        <form class="core" action="{{ url_csv_path }}" method="get">
-            <p>
-                CSV options:
-                <label><input type="checkbox" name="_dl"> download file</label>
-                {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
-                {% if next_url and settings.allow_csv_stream %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
-                <input type="submit" value="Export CSV">
-                {% for key, value in url_csv_hidden_args %}
-                    <input type="hidden" name="{{ key }}" value="{{ value }}">
-                {% endfor %}
-            </p>
-        </form>
-    </div>
+{% if paginated %}
+<nav class="page-position page-position-footer" aria-label="Pagination">
+    {{ pagination_links() }}
+</nav>
 {% endif %}
 
 {% if table_definition %}
+<details class="table-schema">
+    <summary>Table schema</summary>
     <pre class="wrapped-sql">{{ table_definition }}</pre>
+</details>
 {% endif %}
 
 {% if view_definition %}
+<details class="table-schema">
+    <summary>View definition</summary>
     <pre class="wrapped-sql">{{ view_definition }}</pre>
+</details>
 {% endif %}
 
 {% if allow_execute_sql and query.sql %}

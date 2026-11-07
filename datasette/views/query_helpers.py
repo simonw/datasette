@@ -21,7 +21,9 @@ from datasette.utils.sql_analysis import Operation, SQLAnalysis
 from datasette.write_sql import (
     IgnoreWriteSqlOperation,
     QueryWriteRejected,
+    RejectWriteSqlOperation,
     RequireWriteSqlPermissions,
+    UnsupportedWriteSqlOperation,
     decision_for_write_sql_operation,
     operation_is_write,
 )
@@ -234,12 +236,21 @@ def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
             if isinstance(decision, RequireWriteSqlPermissions)
             else ""
         )
+        # Why an operation can never run, whatever the actor's permissions
+        message = (
+            decision.message
+            if isinstance(
+                decision, (RejectWriteSqlOperation, UnsupportedWriteSqlOperation)
+            )
+            else None
+        )
         rows.append(
             {
                 "operation": operation.operation,
                 "database": operation.database,
                 "table": operation.table or operation.target,
                 "required_permission": required_permission,
+                "message": message,
                 "source": operation.source,
             }
         )
@@ -275,7 +286,11 @@ def _execute_write_disabled_reason(sql, analysis_error, analysis_rows):
         return "Enter writable SQL before executing."
     if analysis_error:
         return analysis_error
-    if any(row.get("allowed") is False for row in analysis_rows):
+    denied_rows = [row for row in analysis_rows if row.get("allowed") is False]
+    for row in denied_rows:
+        if row.get("message"):
+            return row["message"]
+    if denied_rows:
         return "You do not have permission for every operation listed above."
     return None
 

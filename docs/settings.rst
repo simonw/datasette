@@ -419,9 +419,9 @@ Default: ``on``
 
 .. [[[end]]]
 
-Enables :ref:`the CSV export feature <csv_export>` where an entire table
-(potentially hundreds of thousands of rows) can be exported as a single CSV
-file. You can turn it off like this:
+Enables :ref:`the CSV and TSV export feature <csv_export>` where an entire
+table (potentially hundreds of thousands of rows) can be exported as a single
+CSV or TSV file. You can turn it off like this:
 
 ::
 
@@ -440,7 +440,7 @@ Default: ``100``
 
 .. [[[end]]]
 
-The maximum size of CSV that can be exported, in megabytes.
+The maximum size of CSV or TSV that can be exported, in megabytes.
 You can disable the limit entirely by setting this to 0:
 
 ::

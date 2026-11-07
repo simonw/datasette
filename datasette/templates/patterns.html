@@ -7,6 +7,7 @@
     <meta name="robots" content="noindex">
     <script src="{{ static('menus.js') }}" defer></script>
     <script src="{{ static('modal.js') }}" defer></script>
+    <script src="{{ static('export-dialog.js') }}" defer></script>
 </head>
 <body>
 
@@ -229,6 +230,7 @@
             </div>
             <label class="sort_by_desc"><input type="checkbox" name="_sort_by_desc"> descending</label>
         <input type="submit" value="Apply filters">
+        <a class="filters-clear" href="{{ base_url }}fixtures/roadside_attraction_characteristics">Clear filters</a>
     </div>
   </form>
 
@@ -243,87 +245,172 @@
     </ul>
   </div>
 
-  <p><a class="not-underlined" title="select rowid, attraction_id, characteristic_id from roadside_attraction_characteristics where &#34;characteristic_id&#34; = :p0 order by rowid limit 101" href="{{ base_url }}fixtures?sql=select+rowid%2C+attraction_id%2C+characteristic_id+from+roadside_attraction_characteristics+where+%22characteristic_id%22+%3D+%3Ap0+order+by+rowid+limit+101&amp;p0=2">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+  <div class="table-tools">
+    <a class="quiet-button view-sql-button" title="select rowid, attraction_id, characteristic_id from roadside_attraction_characteristics where &#34;characteristic_id&#34; = :p0 order by rowid limit 101" href="{{ base_url }}fixtures?sql=select+rowid%2C+attraction_id%2C+characteristic_id+from+roadside_attraction_characteristics+where+%22characteristic_id%22+%3D+%3Ap0+order+by+rowid+limit+101&amp;p0=2">
+      <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></svg>
+      <span>View and edit SQL</span>
+    </a>
+    <button type="button" class="quiet-button export-data-button" aria-haspopup="dialog" aria-controls="export-dialog" commandfor="export-dialog" command="show-modal">
+      <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+      <span>Export data</span>
+    </button>
+  </div>
+  <datasette-modal><dialog id="export-dialog" class="datasette-modal export-dialog" aria-labelledby="export-dialog-title">
+    <div class="modal-header">
+      <h2 class="modal-title" id="export-dialog-title">Export data</h2>
+      <span class="modal-meta">roadside_attraction_characteristics</span>
+    </div>
+    <div class="modal-body export-links">
+      <p class="export-scope"><strong>Filtered rows</strong> where characteristic_id = "2"</p>
+      <div class="export-options export-option-group">
+          <form class="export-csv-form" action="{{ base_url }}fixtures/roadside_attraction_characteristics.csv" method="get">
+            <div class="export-option" data-export-format="tsv">
+              <div class="export-option-text">
+                <div class="export-option-heading">
+                  <span class="export-option-name" id="export-tsv-name">TSV</span>
+                  <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
+                </div>
+                <span class="export-option-description">Tab-separated values, for pasting into Excel or Google Sheets</span>
+              </div>
+              <div class="export-actions" role="group" aria-labelledby="export-tsv-name">
+                <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+                <button type="submit" class="export-action" data-export-action="view" formaction="{{ base_url }}fixtures/roadside_attraction_characteristics.tsv">View</button>
+                <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on" formaction="{{ base_url }}fixtures/roadside_attraction_characteristics.tsv">Download</button>
+                <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+              </div>
+            </div>
+            <div class="export-option" data-export-format="csv">
+              <div class="export-option-text">
+                <div class="export-option-heading">
+                  <span class="export-option-name" id="export-csv-name">CSV</span>
+                  <span class="export-rows" data-export-rows="csv" data-partial="false">All 2 rows</span>
+                </div>
+                <span class="export-option-description">Comma-separated values, for spreadsheets and other tools</span>
+              </div>
+              <div class="export-actions" role="group" aria-labelledby="export-csv-name">
+                <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+                <button type="submit" class="export-action" data-export-action="view">View</button>
+                <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on">Download</button>
+                <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+              </div>
+            </div>
+            <div class="export-csv-options">
+              <label><input type="checkbox" name="_labels" checked> Expand labels</label>
+            </div>
+            <input type="hidden" name="characteristic_id" value="2">
+            <input type="hidden" name="_size" value="max">
+          </form>
+      </div>
+      <ul class="export-options">
+        <li class="export-option" data-export-format="json">
+          <div class="export-option-text">
+            <div class="export-option-heading">
+              <span class="export-option-name" id="export-json-name">JSON</span>
+              <span class="export-rows" data-export-rows="json" data-partial="false">All 2 rows</span>
+            </div>
+            <span class="export-option-description">Rows inside an object, with extra details</span>
+          </div>
+          <div class="export-actions" role="group" aria-labelledby="export-json-name">
+            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+            <a class="export-action" data-export-action="view" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">View</a>
+            <a class="export-action" data-export-action="download" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on" download="roadside_attraction_characteristics.json">Download</a>
+            <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+          </div>
+        </li>
+        <li class="export-option" data-export-format="json-array">
+          <div class="export-option-text">
+            <div class="export-option-heading">
+              <span class="export-option-name" id="export-json-array-name">JSON array</span>
+              <span class="export-rows" data-export-rows="json" data-partial="false">All 2 rows</span>
+            </div>
+            <span class="export-option-description">Just the rows, as an array of objects</span>
+          </div>
+          <div class="export-actions" role="group" aria-labelledby="export-json-array-name">
+            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+            <a class="export-action" data-export-action="view" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array">View</a>
+            <a class="export-action" data-export-action="download" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array" download="roadside_attraction_characteristics.json">Download</a>
+            <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+          </div>
+        </li>
+        <li class="export-option" data-export-format="json-nl">
+          <div class="export-option-text">
+            <div class="export-option-heading">
+              <span class="export-option-name" id="export-json-nl-name">Newline-delimited JSON</span>
+              <span class="export-rows" data-export-rows="json" data-partial="false">All 2 rows</span>
+            </div>
+            <span class="export-option-description">One JSON object per line</span>
+          </div>
+          <div class="export-actions" role="group" aria-labelledby="export-json-nl-name">
+            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+            <a class="export-action" data-export-action="view" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array&amp;_nl=on">View</a>
+            <a class="export-action" data-export-action="download" href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array&amp;_nl=on" download="roadside_attraction_characteristics.jsonl">Download</a>
+            <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+          </div>
+        </li>
+      </ul>
+      <p class="export-status" role="status"></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="modal-btn modal-btn-ghost export-dialog-close" commandfor="export-dialog" command="close">Close</button>
+    </div>
+  </dialog></datasette-modal>
 
-  <p class="export-links">This data as <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">json</a>, <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.csv?characteristic_id=2&amp;_labels=on&amp;_size=max">CSV</a> (<a href="#export">advanced</a>)</p>
-
-  <p class="suggested-facets">
-        Suggested facets: <a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet=tags#facet-tags">tags</a>, <a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_date=created#facet-created">created</a> (date), <a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_array=tags#facet-tags">tags</a> (array)
-    </p>
+  <div class="suggested-facets">
+    <span class="suggested-facets-label" id="suggested-facets-label">Suggested facets</span>
+    <ul class="suggested-facets-list" aria-labelledby="suggested-facets-label">
+      <li><a class="suggested-facet" href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet=tags#facet-tags">
+        <span class="suggested-facet-name">tags</span>
+      </a></li>
+      <li><a class="suggested-facet" href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_date=created#facet-created">
+        <span class="suggested-facet-name">created</span>
+        <span class="suggested-facet-type">date</span>
+      </a></li>
+      <li><a class="suggested-facet" href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_array=tags#facet-tags">
+        <span class="suggested-facet-name">tags</span>
+        <span class="suggested-facet-type">array</span>
+      </a></li>
+    </ul>
+  </div>
 
     <div class="facet-results">
-
-            <div class="facet-info facet-fixtures-facetable-tags" id="facet-tags">
-                <p class="facet-info-name">
-                    <strong>tags (array)</strong>
-
-                        <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created" class="cross">✖</a>
-
-                </p>
-                <ul>
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag1">tag1</a> 2</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag2">tag2</a> 1</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag3">tag3</a> 1</li>
-
-
-
-                </ul>
-            </div>
-
-            <div class="facet-info facet-fixtures-facetable-created" id="facet-created">
-                <p class="facet-info-name">
-                    <strong>created</strong>
-
-                        <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_array=tags" class="cross">✖</a>
-
-                </p>
-                <ul>
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;created=2019-01-14+08%3A00%3A00">2019-01-14 08:00:00</a> 4</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;created=2019-01-15+08%3A00%3A00">2019-01-15 08:00:00</a> 4</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;created=2019-01-16+08%3A00%3A00">2019-01-16 08:00:00</a> 2</li>
-
-
-
-                </ul>
-            </div>
-
-            <div class="facet-info facet-fixtures-facetable-city_id" id="facet-city_id">
-                <p class="facet-info-name">
-                    <strong>city_id</strong>
-
-                        <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=created&amp;_facet_array=tags" class="cross">✖</a>
-
-                </p>
-                <ul>
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;city_id=1">San Francisco</a> 6</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;city_id=2">Los Angeles</a> 4</li>
-
-
-
-                </ul>
-            </div>
-
+        <div class="facet-info facet-fixtures-facetable-tags" id="facet-tags" data-column="tags">
+            <p class="facet-info-name">
+                <strong>tags <span class="facet-info-type">array</span>
+                    <span class="facet-info-total">3</span>
+                </strong>
+                <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created" class="cross" title="Remove this facet" aria-label="Remove tags facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
+            </p>
+            <ul class="tight-bullets">
+                <li style="--facet-proportion: 20.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag1" data-facet-value="tag1">tag1</a> <span class="facet-count">2</span></li>
+                <li style="--facet-proportion: 10.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag2" data-facet-value="tag2">tag2</a> <span class="facet-count">1</span></li>
+                <li style="--facet-proportion: 10.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag3" data-facet-value="tag3">tag3</a> <span class="facet-count">1</span></li>
+            </ul>
+        </div>
+        <div class="facet-info facet-fixtures-facetable-created" id="facet-created" data-column="created">
+            <p class="facet-info-name">
+                <strong>created <span class="facet-info-type">date</span>
+                    <span class="facet-info-total">&gt;2</span>
+                </strong>
+                <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_array=tags" class="cross" title="Remove this facet" aria-label="Remove created facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
+            </p>
+            <ul class="tight-bullets">
+                <li style="--facet-proportion: 40.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_date=created&amp;_facet_array=tags&amp;created__date=2019-01-14" data-facet-value="2019-01-14">2019-01-14</a> <span class="facet-count">4</span></li>
+                <li style="--facet-proportion: 40.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_date=created&amp;_facet_array=tags&amp;created__date=2019-01-15" data-facet-value="2019-01-15">2019-01-15</a> <span class="facet-count">4</span></li>
+                <li class="facet-truncated"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_date=created&amp;_facet_array=tags&amp;_facet_size=max">Show more…</a></li>
+            </ul>
+        </div>
+        <div class="facet-info facet-fixtures-facetable-city_id" id="facet-city_id" data-column="city_id">
+            <p class="facet-info-name">
+                <strong>city_id
+                    <span class="facet-info-total">2</span>
+                </strong>
+                <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=created&amp;_facet_array=tags" class="cross" title="Remove this facet" aria-label="Remove city_id facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
+            </p>
+            <ul class="tight-bullets">
+                <li class="facet-selected" style="--facet-proportion: 60.00%"><span class="facet-value-label">San Francisco</span> <span class="facet-count">6</span> <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags" class="cross" title="Remove this filter" aria-label="Remove filter city_id: San Francisco"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a></li>
+                <li style="--facet-proportion: 40.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;city_id=2" data-facet-value="2">Los Angeles</a> <span class="facet-count">4</span></li>
+            </ul>
+        </div>
     </div>
 
     <table class="rows-and-columns">
@@ -364,24 +451,6 @@
             </tr>
         </tbody>
     </table>
-    <div id="export" class="advanced-export">
-        <h3>Advanced export</h3>
-        <p>JSON shape:
-            <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">default</a>,
-            <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array">array</a>,
-            <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array&amp;_nl=on">newline-delimited</a>
-        </p>
-        <form action="{{ base_url }}fixtures/roadside_attraction_characteristics.csv" method="get">
-            <p>
-                CSV options:
-                <label><input type="checkbox" name="_dl"> download file</label>
-                <label><input type="checkbox" name="_labels" checked> expand labels</label>
-                <input type="submit" value="Export CSV">
-                <input type="hidden" name="characteristic_id" value="2">
-                <input type="hidden" name="_size" value="max">
-            </p>
-        </form>
-    </div>
     <pre class="wrapped-sql">CREATE TABLE roadside_attraction_characteristics (
     attraction_id INTEGER REFERENCES roadside_attractions(pk),
     characteristic_id INTEGER REFERENCES attraction_characteristic(pk)
@@ -391,7 +460,12 @@
 <h2 class="pattern-heading">.bd for /database/table/row</h2>
 <section class="content">
     <h1 style="padding-left: 10px; border-left: 10px solid #ff0000">roadside_attractions: 2</h1>
-    <p>This data as <a href="{{ base_url }}fixtures/roadside_attractions/2.json">json</a></p>
+    <div class="table-tools">
+      <button type="button" class="quiet-button export-data-button" aria-haspopup="dialog" aria-controls="export-dialog" commandfor="export-dialog" command="show-modal">
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+        <span>Export data</span>
+      </button>
+    </div>
     <table class="rows-and-columns">
         <thead>
             <tr>

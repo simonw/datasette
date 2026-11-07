@@ -588,6 +588,8 @@ class Datasette:
         # CLI settings should overwrite datasette.json settings
         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
+        # File extension -> label, description, is_binary and is_webpage
+        self._renderer_options = {}
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
             self.executor = None
@@ -2542,6 +2544,12 @@ ORDER BY allowed.parent, allowed.child
         """Register output renderers which output data in custom formats."""
         # Built-in renderers
         self.renderers["json"] = (json_renderer, lambda: True)
+        self._renderer_options["json"] = {
+            "label": "JSON",
+            "description": None,
+            "is_binary": False,
+            "is_webpage": False,
+        }
 
         # Hooks
         hook_renderers = []
@@ -2553,11 +2561,26 @@ ORDER BY allowed.parent, allowed.child
                 hook_renderers.append(hook)
 
         for renderer in hook_renderers:
-            self.renderers[renderer["extension"]] = (
+            extension = renderer["extension"]
+            self.renderers[extension] = (
                 # It used to be called "callback" - remove this in Datasette 1.0
                 renderer.get("render") or renderer["callback"],
                 renderer.get("can_render") or (lambda: True),
             )
+            # How the export dialog presents this format
+            is_binary = bool(renderer.get("is_binary"))
+            is_webpage = bool(renderer.get("is_webpage"))
+            if is_binary and is_webpage:
+                raise StartupError(
+                    f"Output renderer '{extension}' cannot set both is_binary "
+                    "and is_webpage"
+                )
+            self._renderer_options[extension] = {
+                "label": renderer.get("label") or extension,
+                "description": renderer.get("description"),
+                "is_binary": is_binary,
+                "is_webpage": is_webpage,
+            }
 
     async def render_template(
         self,

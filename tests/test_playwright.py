@@ -2859,9 +2859,35 @@ def test_export_data_dialog_copy_failure(page, datasette_server):
     expect(dialog.locator(".export-status")).to_have_text(
         "Could not copy JSON array: HTTP 500"
     )
+    # "Failed" stays, with the reason shown under the row
+    error = dialog.locator('[data-export-format="json-array"] .export-option-error')
+    expect(error).to_be_visible()
+    expect(error).to_have_text("Could not copy JSON array: HTTP 500")
+    page.wait_for_timeout(2000)
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    # Copy URL working in the same row leaves the Copy failure alone
+    group.get_by_role("button", name="Copy URL").click()
+    expect(group.get_by_role("button", name="Copied")).to_be_visible()
+    expect(error).to_be_visible()
+    # Trying again clears it
+    page.unroute("**/facetable.json?*_shape=array*")
+    group.get_by_role("button", name="Failed").click()
+    expect(group.get_by_role("button", name="Copied")).to_have_count(1)
+    expect(error).to_have_count(0)
+    # So does closing and reopening the dialog
+    page.route(
+        "**/facetable.json?*_shape=array*", lambda route: route.fulfill(status=500)
+    )
+    page.wait_for_timeout(1600)
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(error).to_be_visible()
+    page.keyboard.press("Escape")
+    page.get_by_role("button", name="Export data").click()
+    expect(error).to_have_count(0)
     expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
 
     # Anything over 10 MB is left to Download, without reading all of it
+    clipboard_before = page.evaluate("clipboardText")
     page.route(
         "**/facetable.csv*",
         lambda route: route.fulfill(
@@ -2876,7 +2902,10 @@ def test_export_data_dialog_copy_failure(page, datasette_server):
     expect(dialog.locator(".export-status")).to_have_text(
         "Could not copy CSV: over 10 MB is too much to copy, use Download"
     )
-    assert page.evaluate("clipboardText") is None
+    expect(
+        dialog.locator('[data-export-format="csv"] .export-option-error')
+    ).to_have_text("Could not copy CSV: over 10 MB is too much to copy, use Download")
+    assert page.evaluate("clipboardText") == clipboard_before
 
 
 @pytest.mark.playwright

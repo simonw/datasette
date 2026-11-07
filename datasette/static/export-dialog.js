@@ -34,15 +34,39 @@
     el.dataset.state = "idle";
   }
 
+  // "Copied" resets after a moment; "Failed" stays until the next attempt
   function setState(el, state) {
     clearTimeout(resetTimers.get(el));
     el.dataset.state = state;
-    if (state === "done" || state === "error") {
+    if (state === "done") {
       resetTimers.set(
         el,
         setTimeout(() => setState(el, "idle"), RESET_AFTER_MS),
       );
     }
+  }
+
+  // Why an action failed, shown under its row
+  function errorFor(el) {
+    const actions = el.closest(".export-actions");
+    return actions.parentElement.querySelector(
+      `:scope > .export-option-error[data-action="${el.dataset.exportAction}"]`,
+    );
+  }
+
+  function showError(el, message) {
+    let error = errorFor(el);
+    if (!error) {
+      error = document.createElement("p");
+      error.className = "export-option-error";
+      error.dataset.action = el.dataset.exportAction;
+      el.closest(".export-actions").after(error);
+    }
+    error.textContent = message;
+  }
+
+  function clearError(el) {
+    errorFor(el)?.remove();
   }
 
   // The CSV row builds its URL from its form, so the checkboxes apply
@@ -254,6 +278,13 @@
     const pendingCopies = new Set();
     const open = () => {
       announce("");
+      // Start afresh, without failures from last time
+      dialog
+        .querySelectorAll('.export-action[data-state="error"]')
+        .forEach((el) => {
+          setState(el, "idle");
+          clearError(el);
+        });
       // Otherwise Chrome can focus the scrollable body when it overflows
       modal.show({
         returnFocusTo: button,
@@ -308,6 +339,7 @@
       const name = el
         .closest(".export-option")
         .querySelector(".export-option-name").textContent;
+      clearError(el);
       try {
         if (action === "copy-url") {
           await navigator.clipboard.writeText(url);
@@ -331,9 +363,9 @@
           return;
         }
         setState(el, "error");
-        announce(
-          `Could not ${action.replace("-", " ")} ${name}: ${ex.message}`,
-        );
+        const message = `Could not ${action.replace("-", " ")} ${name}: ${ex.message}`;
+        showError(el, message);
+        announce(message);
       }
     });
 

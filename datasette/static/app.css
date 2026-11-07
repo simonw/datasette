@@ -2064,6 +2064,15 @@ dialog.export-dialog {
     color: #b91c1c;
 }
 
+/* Why an action failed: stays until that action is tried again */
+.export-dialog .export-option-error {
+    flex: 1 0 100%;
+    margin: 0;
+    color: #b91c1c;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
 .export-dialog .export-csv-options {
     display: flex;
     flex: 1 0 100%;

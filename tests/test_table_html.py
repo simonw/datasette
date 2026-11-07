@@ -635,41 +635,169 @@ async def test_table_html_simple_primary_key(ds_client):
 async def test_table_csv_json_export_interface(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id__gt=2")
     assert response.status_code == 200
-    # The links at the top of the page
-    links = (
-        Soup(response.text, "html.parser")
-        .find("p", {"class": "export-links"})
-        .find_all("a")
-    )
-    actual = [link["href"] for link in links]
-    expected = [
-        "/fixtures/simple_primary_key.json?id__gt=2",
-        "/fixtures/simple_primary_key.testall?id__gt=2",
-        "/fixtures/simple_primary_key.testnone?id__gt=2",
-        "/fixtures/simple_primary_key.testresponse?id__gt=2",
-        "/fixtures/simple_primary_key.csv?id__gt=2&_size=max",
-        "#export",
-    ]
-    assert expected == actual
-    # And the advanced export box at the bottom:
-    div = Soup(response.text, "html.parser").find("div", {"class": "advanced-export"})
-    json_links = [a["href"] for a in div.find("p").find_all("a")]
+    soup = Soup(response.text, "html.parser")
+    # The "Export data" button opens the export dialog
+    button = soup.select_one(".table-tools button.export-data-button")
+    assert button.text.strip() == "Export data"
+    assert button["aria-controls"] == "export-dialog"
+    assert button["commandfor"] == "export-dialog"
+    assert button["command"] == "show-modal"
+    dialog = soup.select_one("datasette-modal > dialog#export-dialog")
+    assert dialog["aria-labelledby"] == "export-dialog-title"
+    assert soup.find(id="export-dialog-title").text == "Export data"
+    # The old export links and advanced export box are gone
+    assert soup.find("div", {"class": "advanced-export"}) is None
+    assert "This data as" not in response.text
+    # One row per format, each with Copy / View / Download / Copy URL
+    rows = dialog.select(".export-option")
     assert [
-        "/fixtures/simple_primary_key.json?id__gt=2",
-        "/fixtures/simple_primary_key.json?id__gt=2&_shape=array",
-        "/fixtures/simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
-        "/fixtures/simple_primary_key.json?id__gt=2&_shape=object",
-    ] == json_links
-    # And the CSV form
-    form = div.find("form")
-    assert form["action"].endswith("/simple_primary_key.csv")
+        (
+            row["data-export-format"],
+            row.select_one(".export-option-name").text,
+            [el["data-export-action"] for el in row.select("[data-export-action]")],
+        )
+        for row in rows
+    ] == [
+        (format, name, ["copy", "view", "download", "copy-url"])
+        for format, name in (
+            ("tsv", "TSV"),
+            ("csv", "CSV"),
+            ("json", "JSON"),
+            ("json-array", "JSON array"),
+            ("json-nl", "Newline-delimited JSON"),
+            ("json-object", "JSON object"),
+            ("format-1", "testall"),
+            ("format-2", "testnone"),
+            ("format-3", "testresponse"),
+        )
+    ]
+    # View and Download are links that work without JavaScript
+    links = {
+        row["data-export-format"]: (
+            row.select_one('a[data-export-action="view"]'),
+            row.select_one('a[data-export-action="download"]'),
+        )
+        for row in rows
+        if row["data-export-format"] not in ("tsv", "csv")
+    }
+    assert {
+        format: (view["href"], download["href"], download["download"])
+        for format, (view, download) in links.items()
+    } == {
+        "json": (
+            "/fixtures/simple_primary_key.json?id__gt=2",
+            "/fixtures/simple_primary_key.json?id__gt=2",
+            "simple_primary_key.json",
+        ),
+        "json-array": (
+            "/fixtures/simple_primary_key.json?id__gt=2&_shape=array",
+            "/fixtures/simple_primary_key.json?id__gt=2&_shape=array",
+            "simple_primary_key.json",
+        ),
+        "json-nl": (
+            "/fixtures/simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
+            "/fixtures/simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
+            "simple_primary_key.jsonl",
+        ),
+        "json-object": (
+            "/fixtures/simple_primary_key.json?id__gt=2&_shape=object",
+            "/fixtures/simple_primary_key.json?id__gt=2&_shape=object",
+            "simple_primary_key.json",
+        ),
+        # Formats from register_output_renderer plugins
+        "format-1": (
+            "/fixtures/simple_primary_key.testall?id__gt=2",
+            "/fixtures/simple_primary_key.testall?id__gt=2",
+            "simple_primary_key.testall",
+        ),
+        "format-2": (
+            "/fixtures/simple_primary_key.testnone?id__gt=2",
+            "/fixtures/simple_primary_key.testnone?id__gt=2",
+            "simple_primary_key.testnone",
+        ),
+        "format-3": (
+            "/fixtures/simple_primary_key.testresponse?id__gt=2",
+            "/fixtures/simple_primary_key.testresponse?id__gt=2",
+            "simple_primary_key.testresponse",
+        ),
+    }
+    # Copy needs the clipboard API, so export-dialog.js reveals it
+    assert all(
+        el.has_attr("hidden") for el in dialog.select('[data-export-action^="copy"]')
+    )
+    # TSV and CSV share a form, so its options apply to both: View submits
+    # it, Download submits it with _dl=on, and TSV sends it to .tsv instead
+    form = dialog.select_one("form.export-csv-form")
+    # ...in a box of their own, as the options do not apply to other formats
+    boxes = dialog.select(".modal-body > .export-options")
+    assert [box.name for box in boxes] == ["div", "ul"]
+    assert boxes[0]["class"] == ["export-options", "export-option-group"]
+    assert boxes[0].select_one("form") is form
+    assert [row["data-export-format"] for row in boxes[0].select(".export-option")] == [
+        "tsv",
+        "csv",
+    ]
+    assert form["action"] == "/fixtures/simple_primary_key.csv"
+    assert form["method"] == "get"
     inputs = [str(input) for input in form.find_all("input")]
     assert [
-        '<input name="_dl" type="checkbox"/>',
-        '<input type="submit" value="Export CSV"/>',
         '<input name="id__gt" type="hidden" value="2"/>',
         '<input name="_size" type="hidden" value="max"/>',
     ] == inputs
+    for format, formaction in (
+        ("tsv", "/fixtures/simple_primary_key.tsv"),
+        ("csv", None),
+    ):
+        row = form.select_one(f'[data-export-format="{format}"]')
+        view = row.select_one('[data-export-action="view"]')
+        assert (view.name, view["type"], view.get("formaction")) == (
+            "button",
+            "submit",
+            formaction,
+        )
+        download = row.select_one('[data-export-action="download"]')
+        assert (
+            download["type"],
+            download["name"],
+            download["value"],
+            download.get("formaction"),
+        ) == ("submit", "_dl", "on", formaction)
+    assert (
+        "Excel or Google Sheets"
+        in form.select_one(
+            '[data-export-format="tsv"] .export-option-description'
+        ).get_text()
+    )
+    # The dialog can be closed without JavaScript
+    close = dialog.select_one(".modal-footer button.export-dialog-close")
+    assert close["commandfor"] == "export-dialog"
+    assert close["command"] == "close"
+
+
+@pytest.mark.asyncio
+async def test_table_view_and_edit_sql_button(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key?id__gt=2")
+    soup = Soup(response.text, "html.parser")
+    tools = soup.select_one(".table-tools")
+    assert [el.text.strip() for el in tools.select(".quiet-button")] == [
+        "View and edit SQL",
+        "Export data",
+    ]
+    link = tools.select_one("a.quiet-button.view-sql-button")
+    assert link["href"].startswith("/fixtures?sql=select+id")
+    assert link["title"].startswith("select id, content from simple_primary_key")
+
+
+def _export_urls(soup):
+    "Export dialog View link hrefs, plus where the TSV and CSV form goes, in order"
+    return [
+        (
+            el["href"]
+            if el.name == "a"
+            else el.get("formaction") or el.find_parent("form")["action"]
+        )
+        for el in soup.select('.export-links [data-export-action="view"]')
+    ]
 
 
 def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefix):
@@ -677,29 +805,26 @@ def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefi
         (
             "/prefix/fixtures/simple_primary_key?id__gt=2",
             "/prefix/fixtures/simple_primary_key.json?id__gt=2",
-            "/prefix/fixtures/simple_primary_key.csv?id__gt=2&_size=max",
+            "/prefix/fixtures/simple_primary_key.csv",
         ),
         (
             "/prefix/fixtures/simple_primary_key/1",
             "/prefix/fixtures/simple_primary_key/1.json",
-            None,
+            "/prefix/fixtures/simple_primary_key/1.csv",
         ),
         (
             "/prefix/fixtures/-/query?sql=select+1",
             "/prefix/fixtures/-/query.json?sql=select+1",
-            "/prefix/fixtures/-/query.csv?sql=select+1&_size=max",
+            "/prefix/fixtures/-/query.csv",
         ),
     ):
         response = app_client_base_url_prefix.get(path)
         assert response.status_code == 200
         soup = Soup(response.text, "html.parser")
-        export_links = soup.find("p", {"class": "export-links"}) or next(
-            p for p in soup.find_all("p") if "This data as" in p.get_text()
-        )
-        hrefs = [a["href"] for a in export_links.find_all("a", href=True)]
+        hrefs = _export_urls(soup)
         assert expected_json in hrefs
-        if expected_csv:
-            assert expected_csv in hrefs
+        assert expected_csv in hrefs
+        assert expected_csv.replace(".csv", ".tsv") in hrefs
         assert not [href for href in hrefs if href.startswith("/prefix/prefix/")]
         assert response.headers["link"] == (
             f"<http://localhost{expected_json}>; "
@@ -711,12 +836,10 @@ def test_base_url_export_links_when_database_matches_prefix():
     with make_app_client(settings={"base_url": "/data/"}, filename="data.db") as client:
         response = client.get("/data/data/simple_primary_key?id__gt=2")
         assert response.status_code == 200
-        export_links = Soup(response.text, "html.parser").find(
-            "p", {"class": "export-links"}
-        )
-        hrefs = [a["href"] for a in export_links.find_all("a", href=True)]
+        hrefs = _export_urls(Soup(response.text, "html.parser"))
         assert "/data/data/simple_primary_key.json?id__gt=2" in hrefs
-        assert "/data/data/simple_primary_key.csv?id__gt=2&_size=max" in hrefs
+        assert "/data/data/simple_primary_key.csv" in hrefs
+        assert "/data/data/simple_primary_key.tsv" in hrefs
         assert response.headers["link"] == (
             "<http://localhost/data/data/simple_primary_key.json?id__gt=2>; "
             'rel="alternate"; type="application/json+datasette"'
@@ -727,21 +850,23 @@ def test_base_url_export_links_when_database_matches_prefix():
 async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert response.status_code == 200
-    links = (
-        Soup(response.text, "html.parser")
-        .find("p", {"class": "export-links"})
-        .find_all("a")
-    )
-    actual = [link["href"] for link in links]
+    soup = Soup(response.text, "html.parser")
+    actual = _export_urls(soup)
     expected = [
+        "/fixtures/facetable.tsv",
+        "/fixtures/facetable.csv",
         "/fixtures/facetable.json?_labels=on",
+        "/fixtures/facetable.json?_labels=on&_shape=array",
+        "/fixtures/facetable.json?_labels=on&_shape=array&_nl=on",
+        "/fixtures/facetable.json?_labels=on&_shape=object",
         "/fixtures/facetable.testall?_labels=on",
         "/fixtures/facetable.testnone?_labels=on",
         "/fixtures/facetable.testresponse?_labels=on",
-        "/fixtures/facetable.csv?_labels=on&_size=max",
-        "#export",
     ]
     assert expected == actual
+    # The TSV and CSV form expands labels by default
+    labels = soup.select_one("form.export-csv-form input[name=_labels]")
+    assert labels.has_attr("checked")
 
 
 @pytest.mark.asyncio
@@ -2034,22 +2159,323 @@ async def test_table_metadata(ds_client):
         ("/fixtures/complex_foreign_keys", True, False, True),
     ],
 )
-async def test_advanced_export_box(ds_client, path, has_object, has_stream, has_expand):
+async def test_export_dialog_options(
+    ds_client, path, has_object, has_stream, has_expand
+):
     response = await ds_client.get(path)
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    # JSON shape options
-    expected_json_shapes = ["default", "array", "newline-delimited"]
+    dialog = soup.select_one("dialog#export-dialog")
+    # TSV then CSV first, as the most popular formats
+    expected_formats = ["tsv", "csv", "json", "json-array", "json-nl"]
     if has_object:
-        expected_json_shapes.append("object")
-    div = soup.find("div", {"class": "advanced-export"})
-    assert expected_json_shapes == [a.text for a in div.find("p").find_all("a")]
-    # "stream all rows" option
+        expected_formats.append("json-object")
+    formats = [row["data-export-format"] for row in dialog.select(".export-option")]
+    assert formats[: len(expected_formats)] == expected_formats
+    assert "json-object" in formats if has_object else "json-object" not in formats
+    # TSV and CSV options
+    checkboxes = [input["name"] for input in dialog.select("form input[type=checkbox]")]
+    assert checkboxes == (
+        (["_labels"] if has_expand else []) + (["_stream"] if has_stream else [])
+    )
     if has_stream:
-        assert "stream all rows" in str(div)
-    # "expand labels" option
+        assert dialog.select_one(".export-stream-label").text == "Include all 202 rows"
     if has_expand:
-        assert "expand labels" in str(div)
+        assert "Expand labels" in dialog.text
+
+
+def _export_rows(dialog):
+    "{format: (label, partial)} for the dialog's row count pills"
+    return {
+        el.find_parent(class_="export-option")["data-export-format"]: (
+            el.text,
+            el["data-partial"] == "true",
+        )
+        for el in dialog.select("[data-export-rows]")
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_scope,expected_json,expected_csv,expected_stream,expected_attrs",
+    [
+        (
+            "/fixtures/facetable?state=CA&_sort_desc=pk&_where=_city_id=1",
+            'Filtered rows where _city_id=1 and state = "CA", sorted by pk descending',
+            ("All 6 rows", False),
+            ("All 6 rows", False),
+            None,
+            {"page": "6", "more": "false", "total": "6"},
+        ),
+        (
+            "/fixtures/searchable?_search=dog",
+            'Filtered rows where search matches "dog"',
+            ("All 2 rows", False),
+            ("All 2 rows", False),
+            None,
+            {"page": "2", "more": "false", "total": "2"},
+        ),
+        # JSON gets this page, CSV gets up to max_returned_rows (100 here),
+        # so there is no need to offer "Include all 15 rows"
+        (
+            "/fixtures/facetable?_size=2",
+            "All rows in this table",
+            ("First 2 of 15 rows", True),
+            ("All 15 rows", False),
+            None,
+            {"page": "2", "more": "true", "total": "15"},
+        ),
+        (
+            "/fixtures/compound_three_primary_keys",
+            "All rows in this table",
+            ("First 50 of 1,001 rows", True),
+            ("First 100 of 1,001 rows", True),
+            "Include all 1,001 rows",
+            {"page": "50", "more": "true", "total": "1001"},
+        ),
+        (
+            "/fixtures/paginated_view",
+            "All rows in this view",
+            ("First 25 of 202 rows", True),
+            ("First 100 of 202 rows", True),
+            "Include all 202 rows",
+            {"page": "25", "more": "true", "total": "202"},
+        ),
+        # Without a count, export-dialog.js fetches it when the dialog opens
+        (
+            "/fixtures/facetable?_size=2&_nocount=1",
+            "All rows in this table",
+            ("First 2 rows", True),
+            ("Up to 100 rows", True),
+            "Include all rows",
+            {
+                "page": "2",
+                "more": "true",
+                "total": "",
+                "count-url": "/fixtures/facetable/-/count",
+            },
+        ),
+    ],
+)
+async def test_export_dialog_scope_and_row_counts(
+    ds_client,
+    path,
+    expected_scope,
+    expected_json,
+    expected_csv,
+    expected_stream,
+    expected_attrs,
+):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    dialog = Soup(response.text, "html.parser").select_one("dialog#export-dialog")
+    assert dialog.select_one(".export-scope").get_text() == expected_scope
+    rows = _export_rows(dialog)
+    assert rows["json"] == expected_json
+    assert rows["json-array"] == expected_json
+    assert rows["csv"] == expected_csv
+    assert rows["tsv"] == expected_csv
+    stream = dialog.select_one(".export-stream-label")
+    assert (stream.text if stream else None) == expected_stream
+    attrs = {
+        (
+            key.removeprefix("data-rows-")
+            if key.startswith("data-rows-")
+            else "count-url"
+        ): value
+        for key, value in dialog.attrs.items()
+        if key.startswith("data-rows-") or key == "data-count-url"
+    }
+    assert attrs == {"max": "100", "later": "false", **expected_attrs}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "size,expected_json,expected_csv",
+    [
+        # Page 2 of 8: CSV continues from this page up to max_returned_rows
+        (2, ("2 rows on this page", True), ("Up to 100 rows from this page", True)),
+        # Page 2 of 2, the last page
+        (10, ("5 rows on this page", True), ("5 rows on this page", True)),
+    ],
+)
+async def test_export_dialog_on_later_pages(
+    ds_client, size, expected_json, expected_csv
+):
+    first = await ds_client.get(f"/fixtures/facetable.json?_size={size}")
+    next_token = first.json()["next"]
+    response = await ds_client.get(
+        f"/fixtures/facetable?_size={size}&_next={next_token}"
+    )
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.select_one("dialog#export-dialog")
+    # Exports are of the rows on this page, so they keep the ?_next= cursor
+    assert dialog.select_one('a[data-export-action="view"]')["href"] == (
+        f"/fixtures/facetable.json?_size={size}&_next={next_token}&_labels=on"
+    )
+    assert [
+        (input["name"], input["value"])
+        for input in dialog.select("form input[type=hidden]")
+    ] == [("_next", next_token), ("_size", "max")]
+    rows = _export_rows(dialog)
+    assert rows["json"] == expected_json
+    assert rows["csv"] == expected_csv
+    assert rows["tsv"] == expected_csv
+    # ...and say so
+    note = soup.find(id="export-page-note")
+    assert note.text == (
+        "These exports start from this page, not the first page. "
+        "Check “Include all rows” to export every row as TSV or CSV."
+    )
+    assert dialog["aria-describedby"] == "export-scope export-page-note"
+    # "Include all rows" is offered on every later page, starting from row 1
+    assert dialog.select_one(".export-stream-label").text == (
+        "Include all 15 rows from the first page"
+    )
+    assert dialog["data-rows-later"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_first_page_has_no_page_note(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_size=2")
+    soup = Soup(response.text, "html.parser")
+    assert soup.find(id="export-page-note") is None
+    assert soup.select_one("dialog#export-dialog")["data-rows-later"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_keeps_blank_filter_values(ds_client):
+    # ?content= filters for content = "", so the CSV export must keep it
+    response = await ds_client.get("/fixtures/simple_primary_key?content=")
+    dialog = Soup(response.text, "html.parser").select_one("dialog#export-dialog")
+    assert dialog.select_one(".export-scope").get_text() == (
+        'Filtered rows where content = ""'
+    )
+    assert [
+        (input["name"], input["value"])
+        for input in dialog.select("form input[type=hidden]")
+    ] == [("content", ""), ("_size", "max")]
+    assert dialog.select_one('a[data-export-action="view"]')["href"] == (
+        "/fixtures/simple_primary_key.json?content="
+    )
+    assert _export_rows(dialog)["csv"] == ("All 1 row", False)
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_accessible_descriptions(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_size=2&state=CA")
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.select_one("dialog#export-dialog")
+    # The scope is read out when the dialog opens
+    assert soup.find(id=dialog["aria-describedby"]).get_text() == (
+        'Filtered rows where state = "CA"'
+    )
+    # Each group of actions is named by its format and described by its rows
+    groups = dialog.select('.export-actions[role="group"]')
+    assert [
+        (
+            soup.find(id=group["aria-labelledby"]).text,
+            soup.find(id=group["aria-describedby"]).text,
+        )
+        for group in groups
+    ][:6] == [
+        ("TSV", "All 10 rows"),
+        ("CSV", "All 10 rows"),
+        ("JSON", "First 2 of 10 rows"),
+        ("JSON array", "First 2 of 10 rows"),
+        ("Newline-delimited JSON", "First 2 of 10 rows"),
+        ("JSON object", "First 2 of 10 rows"),
+    ]
+    ids = [el["id"] for el in soup.select("[id]")]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_no_csv_without_rows(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key?id=999")
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.select_one("dialog#export-dialog")
+    # JSON is still offered for an empty result, TSV and CSV are not
+    assert dialog.select_one('a[data-export-action="view"]')["href"] == (
+        "/fixtures/simple_primary_key.json?id=999"
+    )
+    assert dialog.select_one("form.export-csv-form") is None
+
+
+@pytest.mark.asyncio
+async def test_row_export_dialog(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert "This data as" not in response.text
+    button = soup.select_one(".table-tools button.export-data-button")
+    assert button["commandfor"] == "export-dialog"
+    dialog = soup.select_one("datasette-modal > dialog#export-dialog")
+    assert dialog.select_one(".modal-meta").text == "simple_primary_key"
+    assert dialog.select_one(".export-scope").get_text() == "This row where id = 1"
+    assert dialog["aria-describedby"] == "export-scope"
+    # TSV, CSV and JSON for this one row, plus formats from plugins
+    formats = [
+        (
+            row["data-export-format"],
+            [el["data-export-action"] for el in row.select("[data-export-action]")],
+        )
+        for row in dialog.select(".export-option")
+    ]
+    assert [format for format, _ in formats] == [
+        "tsv",
+        "csv",
+        "json",
+        "format-1",
+        "format-2",
+        "format-3",
+    ]
+    assert {tuple(actions) for _, actions in formats} == {
+        ("copy", "view", "download", "copy-url")
+    }
+    assert dialog.select_one(
+        '[data-export-format="json"] .export-option-description'
+    ).text == ("The row inside an object, with extra details")
+    assert _export_urls(soup)[:3] == [
+        "/fixtures/simple_primary_key/1.tsv",
+        "/fixtures/simple_primary_key/1.csv",
+        "/fixtures/simple_primary_key/1.json",
+    ]
+    assert dialog.select_one('a[data-export-action="download"]')["download"] == (
+        "simple_primary_key.json"
+    )
+    # Every format returns just this row: no row counts, and no options
+    assert dialog.select("[data-export-rows]") == []
+    assert not [key for key in dialog.attrs if key.startswith("data-rows-")]
+    assert not [
+        group
+        for group in dialog.select(".export-actions")
+        if group.has_attr("aria-describedby")
+    ]
+    assert dialog.select_one(".export-csv-options") is None
+    assert soup.find(id="export-page-note") is None
+    # ...and no _size=max, which would do nothing for a single row
+    assert dialog.select("form.export-csv-form input") == []
+    ids = [el["id"] for el in soup.select("[id]")]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_scope",
+    (
+        (
+            "/fixtures/compound_primary_key/a,b",
+            'This row where pk1 = "a" and pk2 = "b"',
+        ),
+        ("/fixtures/no_primary_key/1", "This row where rowid = 1"),
+    ),
+)
+async def test_row_export_dialog_scope(ds_client, path, expected_scope):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("#export-dialog .export-scope").get_text() == expected_scope
 
 
 @pytest.mark.asyncio

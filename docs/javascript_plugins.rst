@@ -574,7 +574,7 @@ The following classes can be used by your modal:
     Sets the title's font size, weight and color. Use ``aria-labelledby`` to associate the title with the dialog.
 
 ``modal-meta``
-    Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background.
+    Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background. Text too long to fit next to the ``modal-title`` is cut off with an ellipsis, so consider setting a ``title`` attribute with the full text.
 
 ``modal-body``
     Adds padding and makes overflowing content scroll while the header and footer remain visible. Sets ``min-height: 0``, ``overflow: auto`` and ``padding: 16px 24px 24px``.

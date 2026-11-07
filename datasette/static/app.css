@@ -1931,11 +1931,17 @@ dialog.export-dialog {
     color: #92400e;
 }
 
+/* Two boxes: TSV and CSV with the options they share, then the rest */
 .export-dialog .export-options {
     margin: 0;
     padding: 0;
     border: 1px solid var(--rule);
     border-radius: 8px;
+}
+
+/* Keeps the options strip inside the rounded corners */
+.export-dialog .export-option-group {
+    overflow: hidden;
 }
 
 .export-dialog .export-options > li + li,

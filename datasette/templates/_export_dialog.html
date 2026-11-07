@@ -86,10 +86,11 @@
     <div class="modal-body export-links">
         {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}
         {% if export_later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ "TSV or " if url_tsv_path }}CSV.{% endif %}</p>{% endif %}
-        <ul class="export-options">
-            {% if display_rows %}
-            {#- One form for TSV and CSV, so the options under them apply to both -#}
-            <li class="export-option-group">
+        {% if display_rows %}
+        {#- TSV and CSV share a form, so the options under them apply to both.
+            The other formats are in a separate box below, as the options do
+            not apply to them. -#}
+        <div class="export-options export-option-group">
                 <form class="export-csv-form" action="{{ url_csv_path }}" method="get">
                     {% if url_tsv_path %}{{ delimited_option("tsv", "TSV", "Tab-separated values, for pasting into Excel or Google Sheets", export_rows, formaction=url_tsv_path) }}{% endif %}
                     {{ delimited_option("csv", "CSV", "Comma-separated values, for spreadsheets and other tools", export_rows) }}
@@ -103,8 +104,9 @@
                         <input type="hidden" name="{{ key }}" value="{{ value }}">
                     {% endfor %}
                 </form>
-            </li>
-            {% endif %}
+        </div>
+        {% endif %}
+        <ul class="export-options">
             {% if export_single_row %}
             {{ export_option("json", "JSON", "The row inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
             {% else %}

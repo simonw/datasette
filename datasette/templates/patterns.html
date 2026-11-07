@@ -262,8 +262,7 @@
     </div>
     <div class="modal-body export-links">
       <p class="export-scope"><strong>Filtered rows</strong> where characteristic_id = "2"</p>
-      <ul class="export-options">
-        <li class="export-option-group">
+      <div class="export-options export-option-group">
           <form class="export-csv-form" action="{{ base_url }}fixtures/roadside_attraction_characteristics.csv" method="get">
             <div class="export-option" data-export-format="tsv">
               <div class="export-option-text">
@@ -301,7 +300,8 @@
             <input type="hidden" name="characteristic_id" value="2">
             <input type="hidden" name="_size" value="max">
           </form>
-        </li>
+      </div>
+      <ul class="export-options">
         <li class="export-option" data-export-format="json">
           <div class="export-option-text">
             <div class="export-option-heading">

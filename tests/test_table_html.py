@@ -728,7 +728,15 @@ async def test_table_csv_json_export_interface(ds_client):
     # TSV and CSV share a form, so its options apply to both: View submits
     # it, Download submits it with _dl=on, and TSV sends it to .tsv instead
     form = dialog.select_one("form.export-csv-form")
-    assert form.find_parent("li")["class"] == ["export-option-group"]
+    # ...in a box of their own, as the options do not apply to other formats
+    boxes = dialog.select(".modal-body > .export-options")
+    assert [box.name for box in boxes] == ["div", "ul"]
+    assert boxes[0]["class"] == ["export-options", "export-option-group"]
+    assert boxes[0].select_one("form") is form
+    assert [row["data-export-format"] for row in boxes[0].select(".export-option")] == [
+        "tsv",
+        "csv",
+    ]
     assert form["action"] == "/fixtures/simple_primary_key.csv"
     assert form["method"] == "get"
     inputs = [str(input) for input in form.find_all("input")]

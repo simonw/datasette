@@ -302,6 +302,8 @@ If it cannot find the requested configuration at the table layer, it will fall b
 
 In this case, the above code would return that configuration for ANY table within the ``sf-trees`` database.
 
+An explicit empty dictionary at the database or table layer counts as configuration and prevents fallback to the next layer.
+
 The plugin configuration could also be set at the top level of ``datasette.yaml``:
 
 .. [[[cog

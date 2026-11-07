@@ -2619,6 +2619,33 @@ def test_count_all_and_export_dialog_share_one_count(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_export_data_dialog_retries_a_failed_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    def time_out(route):
+        route.fulfill(
+            status=400,
+            content_type="application/json",
+            body='{"ok": false, "errors": ["Count query timed out"]}',
+        )
+
+    page.route("**/-/count*", time_out)
+    page.goto(datasette_server + "data/count_numbers")
+    dialog = page.locator("#export-dialog")
+    stream_label = dialog.locator(".export-stream-label")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all rows")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+
+    # Opening the dialog again tries the count again
+    page.unroute("**/-/count*")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,002 rows")
+    expect(page.locator(".table-count")).to_have_text("10,002 rows")
+
+
+@pytest.mark.playwright
 def test_export_data_dialog_hides_include_all_when_csv_has_every_row(
     page, datasette_server
 ):

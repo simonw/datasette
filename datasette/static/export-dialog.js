@@ -232,7 +232,9 @@
       rows.total = await window.countTableRows(url);
       dialog.dataset.rowsTotal = String(rows.total);
     } catch (ex) {
-      // Keep the labels that don't depend on the count
+      // Keep the labels that don't depend on the count, and try again the
+      // next time the dialog opens
+      dialog.dataset.countUrl = url;
     }
     renderRows(dialog, rows);
   }

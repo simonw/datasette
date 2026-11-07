@@ -22,6 +22,9 @@ dialog.datasette-modal {
     overflow: hidden;
     font-family: system-ui, -apple-system, sans-serif;
     background: var(--card);
+    /* Stop iOS Safari enlarging longer runs of text in landscape */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 dialog.datasette-modal[open] {

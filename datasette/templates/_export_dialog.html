@@ -132,4 +132,36 @@
         <button type="button" class="modal-btn modal-btn-ghost export-dialog-close" commandfor="export-dialog" command="close">Close</button>
     </div>
 </dialog></datasette-modal>
-<script src="{{ static('export-dialog.js') }}" defer></script>
+<script>
+// export-dialog.js is only needed once the dialog opens, so load it on the
+// first click of the Export data button, or straight away for a link to
+// #export. Then click again: the script opens the dialog, or if it failed to
+// load the button's commandfor opens it without.
+(() => {
+  const src = {{ static("export-dialog.js")|tojson }};
+  let state = "idle";
+  function load() {
+    state = "loading";
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    }).finally(() => {
+      state = "done";
+    });
+  }
+  document.addEventListener("click", (ev) => {
+    const button = ev.target.closest(".export-data-button");
+    if (!button || ev.defaultPrevented || state === "done") return;
+    ev.preventDefault();
+    if (state === "idle") {
+      load()
+        .catch(() => {})
+        .then(() => button.click());
+    }
+  });
+  if (location.hash === "#export") load();
+})();
+</script>

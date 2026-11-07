@@ -2701,7 +2701,9 @@ def test_export_data_dialog_retries_a_failed_count(page, datasette_server):
     page.goto(datasette_server + "data/count_numbers")
     dialog = page.locator("#export-dialog")
     stream_label = dialog.locator(".export-stream-label")
-    page.get_by_role("button", name="Export data").click()
+    with page.expect_request("**/-/count*"):
+        page.get_by_role("button", name="Export data").click()
+    expect(dialog).to_be_visible()
     expect(stream_label).to_have_text("Include all rows")
     page.keyboard.press("Escape")
     expect(dialog).not_to_be_visible()
@@ -3070,6 +3072,49 @@ def test_export_data_dialog_on_row_page(page, datasette_server):
     page.keyboard.press("Escape")
     expect(dialog).not_to_be_visible()
     expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_loads_its_script_on_first_open(page, datasette_server):
+    from playwright.sync_api import expect
+
+    requests = []
+    page.on(
+        "request",
+        lambda request: "export-dialog.js" in request.url and requests.append(request),
+    )
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.wait_for_load_state("networkidle")
+    assert requests == []
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    trigger.click()
+    expect(dialog).to_be_visible()
+    # The script has taken over: Copy is shown, and focused
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    expect(tsv.get_by_role("button", name="Copy", exact=True)).to_be_focused()
+    assert len(requests) == 1
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    trigger.click()
+    expect(dialog).to_be_visible()
+    assert len(requests) == 1
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_opens_if_its_script_fails(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.route("**/export-dialog.js*", lambda route: route.abort())
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    # The button's commandfor opens it instead, without the Copy actions
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_role("button", name="Copy", exact=True)).to_have_count(0)
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).not_to_be_visible()
 
 
 @pytest.mark.playwright

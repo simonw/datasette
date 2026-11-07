@@ -455,7 +455,11 @@ async def test_query_export_dialog(ds_client):
         '<input name="_hide_sql" type="hidden" value="1"/>',
         '<input name="_size" type="hidden" value="max"/>',
     ]
-    assert soup.find("script", src=re.compile(r"export-dialog\.js"))
+    # export-dialog.js is loaded when the dialog first opens, not up front
+    assert not soup.find("script", src=re.compile(r"export-dialog\.js"))
+    assert re.search(
+        r'const src = "/-/static/export-dialog\.js\?_hash=\w+";', response.text
+    )
 
 
 @pytest.mark.asyncio

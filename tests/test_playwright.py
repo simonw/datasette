@@ -2517,9 +2517,15 @@ def test_export_data_dialog(page, datasette_server):
     assert "_labels" not in page.url
     assert "_dl" not in page.url
 
-    # Old links to the "Advanced export" box open the dialog
+    # Old links to the "Advanced export" box open the dialog, and closing it
+    # drops the #export so a reload doesn't reopen it
     page.goto(datasette_server + "fixtures/facetable#export")
     expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    # The dialog's close event fires just after it is hidden
+    page.wait_for_function("location.hash === ''")
+    assert page.url == datasette_server + "fixtures/facetable"
 
 
 def pathlib_read(path):

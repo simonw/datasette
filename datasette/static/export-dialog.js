@@ -12,6 +12,7 @@
   // Copy holds the whole export in memory and on the clipboard, so give up
   // on anything bigger than this and suggest Download instead
   const MAX_COPY_BYTES = 10 * 1024 * 1024;
+  const resetTimers = new WeakMap();
 
   // Extra labels for each action, beyond the label in the template. They are
   // stacked in one grid cell so the button keeps the width of the longest.
@@ -34,13 +35,12 @@
   }
 
   function setState(el, state) {
-    clearTimeout(el._exportResetTimer);
+    clearTimeout(resetTimers.get(el));
     el.dataset.state = state;
-    el.setAttribute("aria-busy", String(state === "busy"));
     if (state === "done" || state === "error") {
-      el._exportResetTimer = setTimeout(
-        () => setState(el, "idle"),
-        RESET_AFTER_MS,
+      resetTimers.set(
+        el,
+        setTimeout(() => setState(el, "idle"), RESET_AFTER_MS),
       );
     }
   }
@@ -61,20 +61,15 @@
     return new URL(view.getAttribute("href"), location.href).href;
   }
 
-  async function fetchOk(url) {
-    const response = await fetch(url, { credentials: "same-origin" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return response;
-  }
-
   function isText(contentType) {
     return !contentType || /^text\/|json|xml|javascript|csv/i.test(contentType);
   }
 
   async function fetchText(url) {
-    const response = await fetchOk(url);
+    const response = await fetch(url, { credentials: "same-origin" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     if (!isText(response.headers.get("content-type"))) {
       throw new Error("not a text format");
     }
@@ -167,8 +162,7 @@
       page: Number(rowsPage),
       more: rowsMore === "true",
       max: Number(rowsMax),
-      total:
-        rowsTotal === "" || rowsTotal === undefined ? null : Number(rowsTotal),
+      total: rowsTotal ? Number(rowsTotal) : null,
     };
   }
 
@@ -305,10 +299,20 @@
       }
     });
 
-    // Links to the old "Advanced export" box used #export
+    // Links to the old "Advanced export" box used #export. Drop it on close
+    // so that reloading the page or going back does not reopen the dialog.
     if (location.hash === "#export") {
       open();
     }
+    dialog.addEventListener("close", () => {
+      if (location.hash === "#export") {
+        history.replaceState(
+          history.state,
+          "",
+          location.pathname + location.search,
+        );
+      }
+    });
   }
 
   if (document.readyState === "loading") {

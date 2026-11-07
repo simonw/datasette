@@ -1863,6 +1863,12 @@ dialog.export-dialog {
     gap: 0.9rem;
 }
 
+/* The body scrolls instead: without this the clamped scope box, which hides
+   its overflow, would be squashed when the list is taller than the dialog */
+.export-dialog .modal-body > * {
+    flex-shrink: 0;
+}
+
 /* Which rows the export covers, e.g. "Filtered rows where state = "CA"" */
 .export-dialog .export-scope {
     margin: 0;
@@ -1873,6 +1879,12 @@ dialog.export-dialog {
     font-size: 0.875rem;
     line-height: 1.4;
     overflow-wrap: anywhere;
+    /* Long filters or query parameters: the full text is in the title */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
 }
 
 .export-dialog .export-option-heading {
@@ -1910,7 +1922,7 @@ dialog.export-dialog {
     border-top: 1px solid var(--rule);
 }
 
-.export-dialog .export-option:not(:has(> form)),
+.export-dialog .export-option:not(.export-option-csv),
 .export-dialog .export-csv-form {
     display: flex;
     flex-wrap: wrap;

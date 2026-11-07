@@ -2283,6 +2283,34 @@ async def test_export_dialog_keeps_blank_filter_values(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_export_dialog_accessible_descriptions(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_size=2&state=CA")
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.select_one("dialog#export-dialog")
+    # The scope is read out when the dialog opens
+    assert soup.find(id=dialog["aria-describedby"]).get_text() == (
+        'Filtered rows where state = "CA"'
+    )
+    # Each group of actions is named by its format and described by its rows
+    groups = dialog.select('.export-actions[role="group"]')
+    assert [
+        (
+            soup.find(id=group["aria-labelledby"]).text,
+            soup.find(id=group["aria-describedby"]).text,
+        )
+        for group in groups
+    ][:5] == [
+        ("JSON", "First 2 of 10 rows"),
+        ("JSON array", "First 2 of 10 rows"),
+        ("Newline-delimited JSON", "First 2 of 10 rows"),
+        ("JSON object", "First 2 of 10 rows"),
+        ("CSV", "All 10 rows"),
+    ]
+    ids = [el["id"] for el in soup.select("[id]")]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.asyncio
 async def test_export_dialog_no_csv_without_rows(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id=999")
     soup = Soup(response.text, "html.parser")

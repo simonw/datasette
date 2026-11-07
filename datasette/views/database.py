@@ -449,6 +449,11 @@ class QueryContext(Context):
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
         }
     )
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     truncated: bool = field(
         metadata={
             "help": "Boolean indicating if the results were truncated at the ``max_returned_rows`` limit"
@@ -1141,6 +1146,7 @@ class QueryView(View):
                         ),
                         columns=columns,
                         renderers=renderers,
+                        renderer_options=datasette._renderer_options,
                         truncated=bool(results and results.truncated),
                         url_csv=url_csv,
                         url_csv_path=url_csv.split("?")[0],

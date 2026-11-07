@@ -28,6 +28,11 @@ Each format in that dialog has four actions:
 * **Download** - save it as a file in your downloads directory.
 * **Copy URL** - copy the URL for that format, for use with other tools.
 
+Formats added by plugins can offer fewer of these. A binary format, such as a
+spreadsheet file, offers **Download** and **Copy URL**, and a format that opens
+a web page offers **View** and **Copy URL**. See
+:ref:`plugin_register_output_renderer`.
+
 The two copy actions use the browser clipboard, so they are only shown when
 Datasette is served over HTTPS or from ``localhost``.
 

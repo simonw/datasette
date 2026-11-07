@@ -118,6 +118,11 @@ class TableContext(Context):
     private: bool = from_extra()
     query: dict = from_extra()
     renderers: dict = from_extra()
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     set_column_type_ui: dict = from_extra()
     sorted_facet_results: list = from_extra()
     suggested_facets: list = from_extra()
@@ -1964,6 +1969,7 @@ async def table_view_traced(datasette, request):
             private=data["private"],
             query=data["query"],
             renderers=data["renderers"],
+            renderer_options=datasette._renderer_options,
             set_column_type_ui=data["set_column_type_ui"],
             sorted_facet_results=data["sorted_facet_results"],
             suggested_facets=data["suggested_facets"],

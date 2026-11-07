@@ -72,11 +72,15 @@
   // TSV and CSV build their URLs from the form they share, so its checkboxes
   // apply. TSV's buttons send the form to its own path using formaction.
   function exportUrl(el) {
-    const view = el
-      .closest(".export-option")
-      .querySelector('[data-export-action="view"]');
+    const row = el.closest(".export-option");
     const form = el.closest(".export-csv-form");
-    if (!form) return new URL(view.getAttribute("href"), location.href).href;
+    if (!form) {
+      // The View or Download link: binary formats have no View, and web
+      // pages no Download
+      const link = row.querySelector("a.export-action[href]");
+      return new URL(link.getAttribute("href"), location.href).href;
+    }
+    const view = row.querySelector('[data-export-action="view"]');
     const path = view.getAttribute("formaction") || form.getAttribute("action");
     const url = new URL(path, location.href);
     // Row pages have no fields to send, so no "?" either
@@ -93,8 +97,13 @@
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    if (!isText(response.headers.get("content-type"))) {
-      throw new Error("not a text format");
+    const contentType = response.headers.get("content-type");
+    if (/^text\/html/i.test(contentType || "")) {
+      // A plugin format that shows a page rather than returning data
+      throw new Error("this format is a web page, use View");
+    }
+    if (!isText(contentType)) {
+      throw new Error("not a text format, use Download");
     }
     if (!response.body) return response.text();
     // Read as it arrives, so a huge export is abandoned at the limit rather

@@ -201,6 +201,9 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``query_actions`` - ``callable``
     Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.
 
+``renderer_options`` - ``dict``
+    Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog.
+
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` to URLs for this query in that format.
 
@@ -370,6 +373,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
 
+``renderer_options`` - ``dict``
+    Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog.
+
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` or plugin-provided renderer names to URLs for this data in that format.
 
@@ -484,6 +490,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
+
+``renderer_options`` - ``dict``
+    Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog.
 
 ``renderers`` - ``dict``
     Dictionary mapping output format names such as ``json`` to URLs for this row in that format.

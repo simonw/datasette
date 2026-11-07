@@ -10,7 +10,9 @@
       total is none). None to show no row counts.
     - export_single_row: true on row pages, which offer TSV, CSV and JSON for
       that one row. Otherwise the dialog also offers more JSON shapes, using
-      append_querystring. -#}
+      append_querystring.
+    Formats from plugins use renderer_options for their label, description
+    and which actions to offer. -#}
 {% set export_base = export_meta or "data" %}
 {% set export_later = export_rows.later if export_rows else false %}
 {#- "Include all rows" streams every row from the first one, so offer it on
@@ -57,8 +59,10 @@
                         </div>
                     </div>
 {% endmacro %}
-{% macro export_option(id, name, description, url, filename, rows) %}
-            <li class="export-option" data-export-format="{{ id }}">
+{#- kind is "binary" for Download and Copy URL only, "webpage" for View and
+    Copy URL only, or none for all four actions -#}
+{% macro export_option(id, name, description, url, filename, rows, kind=none) %}
+            <li class="export-option" data-export-format="{{ id }}"{% if kind %} data-export-kind="{{ kind }}"{% endif %}>
                 <div class="export-option-text">
                     <div class="export-option-heading">
                         <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
@@ -67,9 +71,9 @@
                     {% if description %}<span class="export-option-description">{{ description }}</span>{% endif %}
                 </div>
                 <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name"{% if rows %} aria-describedby="export-{{ id }}-rows"{% endif %}>
-                    <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
-                    <a class="export-action" data-export-action="view" href="{{ url }}">View</a>
-                    <a class="export-action" data-export-action="download" href="{{ url }}" download="{{ filename }}">Download</a>
+                    {% if not kind %}<button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>{% endif %}
+                    {% if kind != "binary" %}<a class="export-action" data-export-action="view" href="{{ url }}">View</a>{% endif %}
+                    {% if kind != "webpage" %}<a class="export-action" data-export-action="download" href="{{ url }}" download="{{ filename }}">Download</a>{% endif %}
                     <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
                 </div>
             </li>
@@ -118,7 +122,8 @@
             {% endif %}
             {% endif %}
             {% for name, url in renderers.items() if name != "json" %}
-            {{ export_option("format-" ~ loop.index, name, none, url, export_base ~ "." ~ name, export_rows) }}
+            {% set options = (renderer_options or {}).get(name) or {} %}
+            {{ export_option("format-" ~ loop.index, options.label or name, options.description, url, export_base ~ "." ~ name, export_rows, kind="binary" if options.is_binary else ("webpage" if options.is_webpage else none)) }}
             {% endfor %}
         </ul>
         <p class="export-status" role="status"></p>

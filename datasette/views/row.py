@@ -123,6 +123,11 @@ class RowContext(Context):
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this row in that format."
         }
     )
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
@@ -372,6 +377,7 @@ class RowView(BaseView):
                     table_page_data=context["table_page_data"],
                     top_row=context["top_row"],
                     renderers=renderers,
+                    renderer_options=self.ds._renderer_options,
                     url_csv=url_csv,
                     url_csv_path=url_csv_path,
                     url_csv_hidden_args=[

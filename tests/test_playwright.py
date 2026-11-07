@@ -264,6 +264,34 @@ def register_column_types(datasette):
 
 
 @hookimpl
+def register_output_renderer(datasette):
+    from datasette.utils.asgi import Response
+
+    def page(rows):
+        return Response.html(f"<!DOCTYPE html><h1>{len(rows)} rows</h1>")
+
+    return [
+        # Returns a web page without saying so, like older plugins
+        {"extension": "htmlpage", "render": page},
+        {
+            "extension": "chart",
+            "render": page,
+            "label": "Chart",
+            "description": "Opens a chart of these rows",
+            "is_webpage": True,
+        },
+        {
+            "extension": "gz",
+            "render": lambda: Response(
+                body=b"\\x1f\\x8b", content_type="application/gzip"
+            ),
+            "label": "Gzipped data",
+            "is_binary": True,
+        },
+    ]
+
+
+@hookimpl
 def extra_body_script():
     return {
         "module": True,
@@ -2477,6 +2505,18 @@ def test_export_data_dialog(page, datasette_server):
     )
     expect(array.get_by_role("button", name="Copy URL")).to_be_visible()
 
+    # ...including for plugin formats with no View (binary) or no Download
+    # (web pages)
+    for name, extension in (("Gzipped data", "gz"), ("Chart", "chart")):
+        group = dialog.get_by_role("group", name=name, exact=True)
+        group.get_by_role("button", name="Copy URL").click()
+        expect(group.locator('[data-export-action="copy-url"]')).to_have_attribute(
+            "data-state", "done"
+        )
+        assert page.evaluate("clipboardText") == (
+            datasette_server + f"fixtures/facetable.{extension}?state=CA&_labels=on"
+        )
+
     # Copy fetches the data and copies it
     array.get_by_role("button", name="Copy", exact=True).click()
     expect(array.get_by_role("button", name="Copied")).to_be_visible()
@@ -2794,17 +2834,30 @@ def test_export_data_dialog_actions_fit_narrow_screens(
     dialog = page.locator("#export-dialog")
     expect(dialog).to_be_visible()
     groups = dialog.evaluate(
-        """dialog => [...dialog.querySelectorAll(".export-actions")].map(group => ({
-            display: getComputedStyle(group).display,
-            clipped: group.scrollWidth - group.clientWidth,
-            visible: [...group.children].filter(el => !el.hidden).length,
-        }))"""
+        """dialog => [...dialog.querySelectorAll(".export-option")].map(row => {
+            const group = row.querySelector(".export-actions");
+            const visible = [...group.children].filter(el => !el.hidden);
+            return {
+                name: row.querySelector(".export-option-name").textContent,
+                display: getComputedStyle(group).display,
+                clipped: group.scrollWidth - group.clientWidth,
+                visible: visible.map(el => el.dataset.exportAction),
+                firstBorder: getComputedStyle(visible[0]).borderLeftWidth,
+            };
+        })"""
     )
     # Four actions in a row where they fit, two by two where they don't,
     # and never cut off
     assert {group["display"] for group in groups} == {display}
     assert {group["clipped"] for group in groups} == {0}
-    assert {group["visible"] for group in groups} == {4}
+    assert {group["firstBorder"] for group in groups} == {"0px"}
+    # Plugin formats can offer fewer actions
+    actions = {group["name"]: group["visible"] for group in groups}
+    assert actions.pop("Chart") == ["view", "copy-url"]
+    assert actions.pop("Gzipped data") == ["download", "copy-url"]
+    assert {tuple(visible) for visible in actions.values()} == {
+        ("copy", "view", "download", "copy-url")
+    }
 
 
 RECORD_FETCH_SIGNALS = """
@@ -2933,6 +2986,16 @@ def test_export_data_dialog_copy_failure(page, datasette_server):
     expect(
         dialog.locator('[data-export-format="csv"] .export-option-error')
     ).to_have_text("Could not copy CSV: over 10 MB is too much to copy, use Download")
+    assert page.evaluate("clipboardText") == clipboard_before
+
+    # A plugin format that returns a web page without saying so (with
+    # is_webpage) is not copied as HTML
+    htmlpage = dialog.get_by_role("group", name="htmlpage", exact=True)
+    htmlpage.get_by_role("button", name="Copy", exact=True).click()
+    expect(htmlpage.get_by_role("button", name="Failed")).to_be_visible()
+    expect(
+        dialog.locator('[data-export-format="format-1"] .export-option-error')
+    ).to_have_text("Could not copy htmlpage: this format is a web page, use View")
     assert page.evaluate("clipboardText") == clipboard_before
 
 

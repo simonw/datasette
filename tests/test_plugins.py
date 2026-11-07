@@ -21,6 +21,7 @@ from datasette.permissions import Action, PermissionSQL
 from datasette.plugins import DEFAULT_PLUGINS, get_plugins, pm
 from datasette.resources import DatabaseResource
 from datasette.utils import StartupError, await_me_maybe
+from datasette.utils.asgi import Response
 from datasette.utils.sqlite import sqlite3
 
 from .fixtures import (
@@ -666,6 +667,102 @@ async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse?_broken=1")
     assert response.status_code == 500
     assert "this should break should be dict or Response" in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/options_demo/t",
+        "/options_demo/-/query?sql=select+*+from+t",
+        "/options_demo/t/1",
+    ),
+)
+async def test_hook_register_output_renderer_export_options(path):
+    class OptionsPlugin:
+        @hookimpl
+        def register_output_renderer(self):
+            return [
+                {
+                    "extension": "md",
+                    "render": lambda: {"body": "| id |"},
+                    "label": "Markdown table",
+                    "description": "For pasting into GitHub issues",
+                },
+                {
+                    "extension": "csvgz",
+                    "render": lambda: Response(body=b"\x1f\x8b"),
+                    "is_binary": True,
+                },
+                {
+                    "extension": "chart",
+                    "render": lambda: Response.html("<h1>Chart</h1>"),
+                    "label": "Chart",
+                    "is_webpage": True,
+                },
+            ]
+
+    plugin = OptionsPlugin()
+    pm.register(plugin, name="options_demo")
+    try:
+        ds = Datasette(memory=True)
+        await ds.invoke_startup()
+        db = ds.add_memory_database("options_demo")
+        await db.execute_write("create table t (id integer primary key)")
+        await db.execute_write("insert into t values (1)")
+        response = await ds.client.get(path)
+        assert response.status_code == 200
+        dialog = Soup(response.text, "html.parser").select_one("#export-dialog")
+        rows = {
+            row.select_one(".export-option-name").text: (
+                row.get("data-export-kind"),
+                getattr(row.select_one(".export-option-description"), "text", None),
+                [el["data-export-action"] for el in row.select("[data-export-action]")],
+            )
+            for row in dialog.select(".export-option")
+            if row["data-export-format"].startswith("format-")
+        }
+        # Other tests can leave the fixture plugins' formats registered too
+        assert {
+            name: rows[name]
+            for name in ("Markdown table", "csvgz", "Chart")
+            if name in rows
+        } == {
+            "Markdown table": (
+                None,
+                "For pasting into GitHub issues",
+                ["copy", "view", "download", "copy-url"],
+            ),
+            # The label defaults to the extension
+            "csvgz": ("binary", None, ["download", "copy-url"]),
+            "Chart": ("webpage", None, ["view", "copy-url"]),
+        }
+    finally:
+        pm.unregister(plugin, name="options_demo")
+
+
+@pytest.mark.asyncio
+async def test_hook_register_output_renderer_binary_and_webpage_is_an_error():
+    class BothPlugin:
+        @hookimpl
+        def register_output_renderer(self):
+            return {
+                "extension": "both",
+                "render": lambda: {"body": ""},
+                "is_binary": True,
+                "is_webpage": True,
+            }
+
+    plugin = BothPlugin()
+    pm.register(plugin, name="both_demo")
+    try:
+        with pytest.raises(StartupError) as ex:
+            Datasette(memory=True)
+        assert str(ex.value) == (
+            "Output renderer 'both' cannot set both is_binary and is_webpage"
+        )
+    finally:
+        pm.unregister(plugin, name="both_demo")
 
 
 @pytest.mark.asyncio

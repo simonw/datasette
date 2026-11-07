@@ -3280,11 +3280,6 @@ dialog.column-stats-dialog {
     overflow-wrap: anywhere;
 }
 
-.column-stats-percentile-median {
-    outline: 1.5px solid var(--accent);
-    outline-offset: -1.5px;
-}
-
 /* Text patterns and range */
 .column-stats-patterns {
     list-style: none;

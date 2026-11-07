@@ -797,11 +797,7 @@ limit ${sqlNumber(limit)}`;
           h(
             "div",
             {
-              className:
-                "column-stats-percentile" +
-                (row.percentile === 0.5
-                  ? " column-stats-percentile-median"
-                  : ""),
+              className: "column-stats-percentile",
               "data-percentile": percentileLabel(row.percentile),
             },
             [

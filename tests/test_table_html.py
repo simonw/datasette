@@ -2123,6 +2123,35 @@ async def test_advanced_export_box(ds_client, path, has_object, has_stream, has_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_href",
+    [
+        ("/fixtures/facetable", None),
+        ("/fixtures/facetable?_sort=pk&_facet=state", None),
+        (
+            "/fixtures/facetable?state=CA&_city_id__gt=1&_sort=pk&_facet=state",
+            "/fixtures/facetable?_sort=pk&_facet=state",
+        ),
+        (
+            "/fixtures/facetable?state=CA&_next=5&_where=_city_id%3D1",
+            "/fixtures/facetable?_where=_city_id%3D1",
+        ),
+    ],
+)
+async def test_clear_filters_button(ds_client, path, expected_href):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    links = soup.select("form.filters a.filters-clear")
+    if expected_href is None:
+        assert links == []
+    else:
+        assert [(a.text, a["href"]) for a in links] == [
+            ("Clear filters", expected_href)
+        ]
+
+
+@pytest.mark.asyncio
 async def test_extra_where_clauses(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_where=_neighborhood='Dogpatch'&_where=_city_id=1"

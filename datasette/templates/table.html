@@ -116,6 +116,9 @@
             <input type="hidden" name="{{ key }}" value="{{ value }}">
         {% endfor %}
         <input type="submit" value="Apply filters" tabindex="0">
+        {% if clear_filters_url %}
+            <a class="filters-clear" href="{{ clear_filters_url }}">Clear filters</a>
+        {% endif %}
     </div>
 </form>
 

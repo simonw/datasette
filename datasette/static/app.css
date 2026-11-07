@@ -60,6 +60,8 @@ dialog.datasette-modal::backdrop {
     /* Keep the title whole: a long modal-meta is what gets truncated */
     flex-shrink: 0;
     max-width: 100%;
+    /* A heading's margins would push it off centre from the modal-meta */
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
     color: var(--ink);

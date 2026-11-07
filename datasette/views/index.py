@@ -1,4 +1,5 @@
 import json
+import urllib.parse
 
 from datasette.plugins import pm
 from datasette.utils import (
@@ -26,6 +27,8 @@ class IndexView(BaseView):
     async def get(self, request):
         as_format = request.url_vars["format"]
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        if not as_format:
+            return await self.render_html(request)
 
         # Get all allowed databases and tables in bulk
         db_page = await self.ds.allowed_resources(
@@ -144,48 +147,96 @@ class IndexView(BaseView):
                 }
             )
 
-        if as_format:
-            headers = {}
-            if self.ds.cors:
-                add_cors_headers(headers)
-            return Response(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "unstable": UNSTABLE_API_MESSAGE,
-                        "databases": databases,
-                        "metadata": await self.ds.get_instance_metadata(),
-                    },
-                    cls=CustomJSONEncoder,
-                ),
-                content_type="application/json; charset=utf-8",
-                headers=headers,
-            )
-        else:
-            homepage_actions = []
-            for hook in pm.hook.homepage_actions(
-                datasette=self.ds,
-                actor=request.actor,
-                request=request,
-            ):
-                extra_links = await await_me_maybe(hook)
-                if extra_links:
-                    homepage_actions.extend(extra_links)
-            alternative_homepage = request.path == "/-/"
-            return await self.render(
-                ["default:index.html" if alternative_homepage else "index.html"],
-                request=request,
-                context={
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response(
+            json.dumps(
+                {
+                    "ok": True,
+                    "unstable": UNSTABLE_API_MESSAGE,
                     "databases": databases,
                     "metadata": await self.ds.get_instance_metadata(),
-                    "datasette_version": __version__,
-                    "private": not await self.ds.allowed(
-                        action="view-instance", actor=None
-                    ),
-                    "top_homepage": make_slot_function(
-                        "top_homepage", self.ds, request
-                    ),
-                    "homepage_actions": homepage_actions,
-                    "noindex": request.path == "/-/",
                 },
+                cls=CustomJSONEncoder,
+            ),
+            content_type="application/json; charset=utf-8",
+            headers=headers,
+        )
+
+    async def render_html(self, request):
+        from datasette.homepage import build_catalog, PAGE_SIZE
+
+        q = request.args.get("q", "")
+        database = request.args.get("database") or None
+        try:
+            page = max(int(request.args.get("page", "1")), 1)
+        except ValueError:
+            page = 1
+        catalog = await build_catalog(
+            self.ds, request.actor, q=q, database=database, page=page
+        )
+        if database not in {d["name"] for d in catalog.databases}:
+            database = None
+        page_count = max((catalog.total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
+
+        def page_url(n):
+            args = []
+            if q:
+                args.append(("q", q))
+            if database:
+                args.append(("database", database))
+            if n > 1:
+                args.append(("page", str(n)))
+            return self.ds.urls.instance() + (
+                "?" + urllib.parse.urlencode(args) if args else ""
             )
+
+        def database_url(name):
+            args = []
+            if q:
+                args.append(("q", q))
+            if name:
+                args.append(("database", name))
+            return self.ds.urls.instance() + (
+                "?" + urllib.parse.urlencode(args) if args else ""
+            )
+
+        homepage_actions = []
+        for hook in pm.hook.homepage_actions(
+            datasette=self.ds,
+            actor=request.actor,
+            request=request,
+        ):
+            extra_links = await await_me_maybe(hook)
+            if extra_links:
+                homepage_actions.extend(extra_links)
+        alternative_homepage = request.path == "/-/"
+        return await self.render(
+            ["default:index.html" if alternative_homepage else "index.html"],
+            request=request,
+            context={
+                # Kept for custom index.html templates written against the
+                # old context; each entry is a summary of one database
+                "databases": catalog.databases,
+                "catalog": catalog,
+                "items": catalog.items,
+                "queries": catalog.queries,
+                "q": q,
+                "database_filter": database,
+                "database_url": database_url,
+                "page": page,
+                "page_count": page_count,
+                "page_size": PAGE_SIZE,
+                "previous_url": page_url(page - 1) if page > 1 else None,
+                "next_url": page_url(page + 1) if page < page_count else None,
+                "metadata": await self.ds.get_instance_metadata(),
+                "datasette_version": __version__,
+                "private": not await self.ds.allowed(
+                    action="view-instance", actor=None
+                ),
+                "top_homepage": make_slot_function("top_homepage", self.ds, request),
+                "homepage_actions": homepage_actions,
+                "noindex": request.path == "/-/",
+            },
+        )

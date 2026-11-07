@@ -125,6 +125,31 @@ const datasetteManager = {
   },
 
   /**
+   * Sections shown on the homepage, between the search box and the catalog.
+   * Each plugin's makeHomepageSections(context) returns an array of
+   * {id, render(node, context)} objects, the same shape as makeJumpSections.
+   */
+  makeHomepageSections: (context) => {
+    let homepageSections = [];
+
+    datasetteManager.plugins.forEach((plugin, pluginName) => {
+      if (plugin.makeHomepageSections) {
+        try {
+          const sections = plugin.makeHomepageSections(context) || [];
+          homepageSections.push(...sections);
+        } catch (error) {
+          console.error(
+            `Error in makeHomepageSections() for plugin ${pluginName}`,
+            error,
+          );
+        }
+      }
+    });
+
+    return homepageSections;
+  },
+
+  /**
    * In MVP, each plugin can only have 1 instance.
    * In future, panels could be repeated. We omit that for now since so many plugins depend on
    * shared URL state, so having multiple instances of plugin at same time is problematic.

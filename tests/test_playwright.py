@@ -3831,3 +3831,33 @@ def test_column_statistics_script_loads_on_first_open(
     expect(dialog).to_be_visible()
     assert len(script_requests) == 1
     assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_facet_by_this_offered_for_first_column_of_view(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # Views have no link column, so their first column is a regular column
+    page.goto(datasette_server + "fixtures/paginated_view")
+    page.locator('th[data-column="content"] .column-menu-trigger').click()
+    facet_item = page.locator("#column-actions-menu").get_by_role(
+        "menuitem", name="Facet by this", exact=True
+    )
+    expect(facet_item).to_be_visible()
+    facet_item.click()
+    page.wait_for_url(re.compile(r"[?&]_facet=content(&|$)"))
+
+
+@pytest.mark.playwright
+def test_facet_by_this_not_offered_for_single_primary_key(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "fixtures/facetable")
+    page.locator('th[data-column="pk"] .column-menu-trigger').click()
+    menu = page.locator("#column-actions-menu")
+    expect(
+        menu.get_by_role("menuitem", name="Sort descending", exact=True)
+    ).to_be_visible()
+    expect(
+        menu.get_by_role("menuitem", name="Facet by this", exact=True)
+    ).to_have_count(0)

@@ -23,13 +23,13 @@ Try `searching Datasette ecosystem repositories for "csv" <https://datasette.io/
 
 SQLite full-text search supports wildcards. This means you can easily implement prefix auto-complete by including an asterisk at the end of the search term - for example::
 
-    /dbname/tablename/?_search=rob*
+    /dbname/tablename?_search=rob*
 
 This will return all records containing at least one word that starts with the letters ``rob``.
 
 You can also run searches against just the content of a specific named column by using ``_search_COLNAME=TERMS`` - for example, this would search for just rows where the ``name`` column in the FTS index mentions ``Sarah``::
 
-    /dbname/tablename/?_search_name=Sarah
+    /dbname/tablename?_search_name=Sarah
 
 
 .. _full_text_search_advanced_queries:

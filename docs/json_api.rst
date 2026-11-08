@@ -58,8 +58,8 @@ Some JSON endpoints are **exempt** from this promise:
   and the ``debug`` and ``request`` extras.
 - The endpoints for :ref:`loading files <importing>` are new, and their design
   may change in future releases: :ref:`/-/imports and /-/imports.json
-  <JsonDataView_imports>`, the :ref:`upload endpoint <json_api_upload>`
-  ``/<database>/-/upload`` and the :ref:`cancel-import endpoint
+  <JsonDataView_imports>`, the :ref:`import endpoint <json_api_import>`
+  ``/<database>/-/import`` and the :ref:`cancel-import endpoint
   <importing_cancel>` ``/<database>/<table>/-/cancel-import``, along with
   the ``import`` key in their responses and in the ``404`` for a table that
   an import has not created yet. Their errors use the
@@ -2308,24 +2308,24 @@ To use the ``"replace": true`` option you will also need the :ref:`actions_updat
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
-.. _json_api_upload:
+.. _json_api_import:
 
 .. _TableImportView:
 
 Creating a table from a file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To create a table from a file - CSV, TSV, a JSON array of objects, newline-delimited JSON, or a format added by a plugin using the :ref:`register_import_loaders() <plugin_register_import_loaders>` hook - make a ``POST`` to ``/<database>/-/upload`` with the file as ``multipart/form-data``. This requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions, as creating a table from example rows does. This endpoint is new, and is not yet covered by the :ref:`API stability promise <json_api_stability>`.
+To create a table from a file - CSV, TSV, a JSON array of objects, newline-delimited JSON, or a format added by a plugin using the :ref:`register_import_loaders() <plugin_register_import_loaders>` hook - make a ``POST`` to ``/<database>/-/import`` with the file as ``multipart/form-data``. This requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions, as creating a table from example rows does. This endpoint is new, and is not yet covered by the :ref:`API stability promise <json_api_stability>`.
 
 ::
 
-    POST /<database>/-/upload
+    POST /<database>/-/import
     Content-Type: multipart/form-data; boundary=...
     Authorization: Bearer dstok_<rest-of-token>
 
 For example, using ``curl``::
 
-    curl http://127.0.0.1:8001/data/-/upload \
+    curl http://127.0.0.1:8001/data/-/import \
       -H "Authorization: Bearer $TOKEN" \
       -F file=@events.csv
 

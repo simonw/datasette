@@ -2916,7 +2916,7 @@ ORDER BY allowed.parent, allowed.child
             r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
-        add_route(TableImportView.as_view(self), r"/(?P<database>[^\/\.]+)/-/upload$")
+        add_route(TableImportView.as_view(self), r"/(?P<database>[^\/\.]+)/-/import$")
         add_route(
             DatabaseForeignKeyTargetsView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/foreign-key-targets$",

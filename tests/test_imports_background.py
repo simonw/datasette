@@ -1459,7 +1459,7 @@ async def test_cli_reporter_leaves_out_uploads(data_dir, capsys):
         await ds.client.get("/-/imports.json")
         assert await registry.wait(20)
         response = await ds.client.post(
-            "/other/-/upload",
+            "/other/-/import",
             files={"file": ("events.csv", CSV.encode(), "text/csv")},
             actor=ROOT,
         )

@@ -1,5 +1,5 @@
 """
-``POST /<database>/-/upload``: create a table from an uploaded file.
+``POST /<database>/-/import``: create a table from an uploaded file.
 
 The file is saved to a private temporary directory and checked - is it
 empty, is it a SQLite database, does a loader recognize it - before
@@ -107,7 +107,7 @@ def upload_formats() -> list[dict]:
 
 
 def upload_path(datasette, database: str) -> str:
-    return datasette.urls.database(database) + "/-/upload"
+    return datasette.urls.database(database) + "/-/import"
 
 
 def upload_ui_context(datasette, db, can_insert_rows) -> dict | None:

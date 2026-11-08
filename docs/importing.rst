@@ -396,7 +396,7 @@ Uploading files
 
 You can also create a table by uploading a file through Datasette's web interface. Open the "Create table" dialog from a database's actions menu and click "Create table from data", then open a file or drop one onto the text area. It will be uploaded to Datasette, which imports it in the background in the same way as a file given on the command line, and can read any format Datasette can load - including newline-delimited JSON and formats from plugins. As with ``--save``, if the import fails or is cancelled the table is dropped again.
 
-Uploads need the :ref:`create-table <actions_create_table>` and :ref:`insert-row <actions_insert_row>` permissions on the database. They are never accepted into ``scratch``, which is read-only. The largest file you can upload is set by :ref:`setting_max_upload_mb`, and the :ref:`upload API <json_api_upload>` lets you upload files from your own code.
+Uploads need the :ref:`create-table <actions_create_table>` and :ref:`insert-row <actions_insert_row>` permissions on the database. They are never accepted into ``scratch``, which is read-only. The largest file you can upload is set by :ref:`setting_max_upload_mb`, and the :ref:`import API <json_api_import>` lets you upload files from your own code.
 
 Each uploaded file is kept in the system's temporary directory until its import has finished, including while it waits for an import worker behind other imports. As with ``scratch``, that directory can be a ``tmpfs`` file system that uses memory: set ``TMPDIR`` to a directory on disk if that is a problem (see :ref:`importing_scratch`).
 

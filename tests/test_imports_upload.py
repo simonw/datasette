@@ -1,5 +1,5 @@
 """
-Tests for ``POST /<database>/-/upload``: creating a table from an uploaded
+Tests for ``POST /<database>/-/import``: creating a table from an uploaded
 file, imported in the background. See datasette/views/upload.py.
 """
 
@@ -138,7 +138,7 @@ async def upload(
     **fields,
 ):
     return await ds.client.post(
-        f"/{database}/-/upload",
+        f"/{database}/-/import",
         files={"file": (filename, content, "application/octet-stream")},
         data=fields,
         actor=actor,
@@ -485,7 +485,7 @@ def _errors(response):
 @pytest.mark.asyncio
 async def test_no_file(ds):
     response = await ds.client.post(
-        "/data/-/upload", files={"table": (None, "dogs")}, actor=ROOT
+        "/data/-/import", files={"table": (None, "dogs")}, actor=ROOT
     )
     assert response.status_code == 400
     assert _errors(response) == [
@@ -496,7 +496,7 @@ async def test_no_file(ds):
 @pytest.mark.asyncio
 async def test_urls_are_not_accepted(ds):
     response = await ds.client.post(
-        "/data/-/upload",
+        "/data/-/import",
         data={"file": "https://example.com/data.csv"},
         actor=ROOT,
     )
@@ -509,7 +509,7 @@ async def test_urls_are_not_accepted(ds):
 @pytest.mark.asyncio
 async def test_not_multipart(ds):
     response = await ds.client.post(
-        "/data/-/upload", json={"file": "dogs.csv"}, actor=ROOT
+        "/data/-/import", json={"file": "dogs.csv"}, actor=ROOT
     )
     assert response.status_code == 400
     assert _errors(response) == [
@@ -629,7 +629,7 @@ async def test_database_not_found(ds):
 
 @pytest.mark.asyncio
 async def test_get_is_not_allowed(ds):
-    response = await ds.client.get("/data/-/upload", actor=ROOT)
+    response = await ds.client.get("/data/-/import", actor=ROOT)
     assert response.status_code == 405
 
 
@@ -805,7 +805,7 @@ async def test_token_restricted_to_other_actions_is_refused(ds):
         handler="signed",
     )
     response = await ds.client.post(
-        "/data/-/upload",
+        "/data/-/import",
         files={"file": ("dogs.csv", CSV, "text/csv")},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -819,7 +819,7 @@ async def test_token_restricted_to_other_actions_is_refused(ds):
         handler="signed",
     )
     response = await ds.client.post(
-        "/data/-/upload",
+        "/data/-/import",
         files={"file": ("dogs.csv", CSV, "text/csv")},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -1008,8 +1008,8 @@ async def raw_upload(ds, *, disconnect):
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
-        "path": "/data/-/upload",
-        "raw_path": b"/data/-/upload",
+        "path": "/data/-/import",
+        "raw_path": b"/data/-/import",
         "query_string": b"",
         "root_path": "",
         "server": ("localhost", 80),
@@ -1160,7 +1160,7 @@ async def database_page_data(ds, actor):
 async def test_dialog_data(ds):
     page = await database_page_data(ds, ROOT)
     assert page["createTable"]["upload"] == {
-        "path": "/data/-/upload",
+        "path": "/data/-/import",
         "maxBytes": 100 * 1024 * 1024,
         "formats": [
             {"name": loader.name, "description": loader.description}

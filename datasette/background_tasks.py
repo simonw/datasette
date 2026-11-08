@@ -36,7 +36,7 @@ logger = logging.getLogger("datasette.background_tasks")
 
 
 def _utcnow_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def _function_path(func: Callable) -> str:

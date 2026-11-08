@@ -56,7 +56,7 @@ def handle_exception(datasette, request, exception):
         if datasette.cors:
             add_cors_headers(headers)
         path = request.path.split("?")[0]
-        if path.endswith(".csv"):
+        if path.endswith((".csv", ".tsv")):
             return Response.text(
                 plain_message or message, status=status, headers=headers
             )

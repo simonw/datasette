@@ -1,5 +1,3 @@
-import hashlib
-
 from .utils import (
     detect_fts,
     detect_primary_keys,
@@ -9,21 +7,6 @@ from .utils import (
     sqlite3,
     table_columns,
 )
-
-HASH_BLOCK_SIZE = 1024 * 1024
-
-
-def inspect_hash(path):
-    """Calculate the hash of a database, efficiently."""
-    m = hashlib.sha256()
-    with path.open("rb") as fp:
-        while True:
-            data = fp.read(HASH_BLOCK_SIZE)
-            if not data:
-                break
-            m.update(data)
-
-    return m.hexdigest()
 
 
 def inspect_views(conn):

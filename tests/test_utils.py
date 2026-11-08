@@ -541,6 +541,22 @@ def test_compound_keys_after_sql():
     """.strip() == utils.compound_keys_after_sql(["a", "b", "c"])
 
 
+def test_compound_keys_at_or_before_sql():
+    assert "((a <= :p0))" == utils.compound_keys_at_or_before_sql(["a"])
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b <= :p1))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b"])
+    assert """
+((a < :p3)
+  or
+(a = :p3 and b < :p4)
+  or
+(a = :p3 and b = :p4 and c <= :p5))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b", "c"], 3)
+
+
 def test_table_columns():
     conn = sqlite3.connect(":memory:")
     conn.executescript("""

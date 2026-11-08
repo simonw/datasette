@@ -22,6 +22,9 @@ dialog.datasette-modal {
     overflow: hidden;
     font-family: system-ui, -apple-system, sans-serif;
     background: var(--card);
+    /* Stop iOS Safari enlarging longer runs of text in landscape */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 dialog.datasette-modal[open] {
@@ -57,12 +60,21 @@ dialog.datasette-modal::backdrop {
 }
 
 :where(.datasette-modal) .modal-title {
+    /* Keep the title whole: a long modal-meta is what gets truncated */
+    flex-shrink: 0;
+    max-width: 100%;
+    /* A heading's margins would push it off centre from the modal-meta */
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
     color: var(--ink);
 }
 
 :where(.datasette-modal) .modal-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: ui-monospace, monospace;
     font-size: 0.7rem;
     color: var(--muted);
@@ -361,6 +373,74 @@ a:active  {
     margin-left: 0.5rem;
 }
 
+/* "You are not on the first page" strip, shown when ?_next= is set */
+.page-position {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    margin: 0 0 1rem;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid #c7d7f5;
+    border-radius: 0.4rem;
+    background: #e8effd;
+    color: #1d3461;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+.page-position-footer {
+    justify-content: flex-end;
+    margin: 1rem 0 1.5rem;
+}
+.page-position-text {
+    flex: 1 1 auto;
+}
+.page-position-text strong {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.page-position-text code {
+    font-size: 0.85em;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 0.05em 0.3em;
+    border-radius: 0.2rem;
+}
+.page-position-links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.page-position a.page-position-first,
+.page-position a.page-position-next {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid #1a56db;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #1a56db;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.page-position a.page-position-first:hover,
+.page-position a.page-position-first:focus {
+    background: #1a56db;
+    color: #fff;
+}
+.page-position a.page-position-next {
+    background: #1a56db;
+    color: #fff;
+}
+.page-position a.page-position-next:hover,
+.page-position a.page-position-next:focus {
+    background: #1646b3;
+    border-color: #1646b3;
+    color: #fff;
+}
+
 .table-summary .count-error:not(:empty) {
     display: block;
     margin-top: 0.25rem;
@@ -469,18 +549,6 @@ footer.ft p {
     margin: 0;
     padding: 0;
 }
-header.hd .crumbs {
-    float: left;
-}
-header.hd .actor {
-    float: right;
-    text-align: right;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    position: relative;
-    top: -3px;
-}
-
 footer.ft a:link,
 footer.ft a:visited,
 footer.ft a:hover,
@@ -516,100 +584,6 @@ button.button-as-link:focus {
 /* Body */
 section.content {
     margin: 0 1rem;
-}
-
-/* Navigation menu */
-details.nav-menu > summary {
-    list-style: none;
-    display: inline;
-    float: right;
-    position: relative;
-    cursor: pointer;
-}
-details.nav-menu > summary::-webkit-details-marker {
-    display: none;
-}
-details .nav-menu-inner {
-    position: absolute;
-    top: 2.6rem;
-    right: 10px;
-    width: 180px;
-    background-color: #276890;
-    z-index: 1000;
-    padding: 0;
-}
-.nav-menu-inner li,
-form.nav-menu-logout {
-    padding: 0.3rem 0.5rem;
-    border-top: 1px solid #ffffff69;
-}
-.nav-menu-inner a {
-    display: block;
-}
-.nav-menu-inner button.button-as-link {
-    display: block;
-    width: 100%;
-    text-align: left;
-    font: inherit;
-}
-.nav-menu-inner .keyboard-shortcut {
-    float: right;
-    box-sizing: border-box;
-    min-width: 1.4em;
-    margin-left: 0.75rem;
-    padding: 0 0.35em;
-    border: 1px solid rgba(255,255,244,0.6);
-    border-radius: 3px;
-    background: rgba(255,255,244,0.12);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.85em;
-    line-height: 1.35;
-    text-align: center;
-    text-decoration: none;
-}
-@media (max-width: 640px) {
-    .nav-menu-inner .keyboard-shortcut {
-        display: none;
-    }
-}
-
-/* Table/database actions menu */
-.page-action-menu {
-    position: relative;
-    margin-bottom: 0.5em;
-}
-.actions-menu-links {
-    display: inline;
-}
-.actions-menu-links .dropdown-menu {
-    position: absolute;
-    top: calc(100% + 10px);
-    left: 0;
-    z-index: 10000;
-}
-.page-action-menu .icon-text {
-    display: inline-flex;
-    align-items: center;
-    border-radius: .25rem;
-    padding: 5px 12px 3px 7px;
-    color: #fff;
-    font-weight: 400;
-    font-size: 0.8em;
-    background: linear-gradient(180deg, #007bff 0%, #4E79C7 100%);
-    border-color: #007bff;
-}
-.page-action-menu .icon-text span {
-    /* Nudge text up a bit */
-    position: relative;
-    top: -2px;
-}
-.page-action-menu .icon-text:hover {
-    cursor: pointer;
-}
-.page-action-menu .icon {
-    width: 18px;
-    height: 18px;
-    margin-right: 4px;
 }
 
 /* Components ============================================================== */
@@ -658,38 +632,593 @@ h2 em {
     font-family: monospace;
 }
 
-/* Tables ================================================================== */
+/* Collapsed CREATE TABLE / CREATE VIEW at the bottom of the table page */
+.table-schema {
+    margin: 1.5rem 0 1rem;
+}
+.table-schema > summary {
+    cursor: pointer;
+    width: fit-content;
+    color: var(--muted, #6b6b6b);
+    font-weight: 600;
+}
+.table-schema > summary:hover {
+    color: var(--ink, #0f0f0f);
+}
+.table-schema .wrapped-sql {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem 1rem;
+    background: var(--card, #fff);
+    border: 1px solid var(--rule, #d8e6f5);
+    border-radius: 0.4rem;
+    font-size: 0.85rem;
+}
+
+/* Tables ==================================================================
+   Rows-and-columns tables (table, row and query pages) share the design
+   language of the filter panel and modal dialogs:
+   - Tokens: --ink, --paper, --muted, --rule and --accent from
+     dialog.datasette-modal and .filters, plus Datasette's link colours and
+     the column menu's slate.
+   - The filter panel's 8px radius and 1px --rule border for the card.
+   - The modal header band: --paper background separated by a --rule line.
+
+   Layout:
+   - The table sizes to its content (max-content) and scrolls sideways inside
+     the card instead of squeezing columns, so wrappable text such as a JSON
+     array does not collapse into a tall narrow strip.
+   - Every cell is capped at a readable measure and long unbroken values
+     (URLs, hashes) wrap inside it.
+   - Numbers are right aligned with tabular figures; headers of numeric
+     columns follow them, and numeric cells reserve the gear's width so the
+     label still ends exactly where the digits end.
+   - Soft edge shadows appear only when there is more table to scroll to.
+   - table-layout.js clamps long values to a short preview and adds the
+     freeze pin (see "Long values" and "Freeze" below).
+
+   Below 577px the rows become stacked cards: see the max-width: 576px block
+   under Overrides. */
 .table-wrapper {
     overflow-x: auto;
 }
+.table-wrapper,
+table.rows-and-columns {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    --slate: #536978;
+    --link: #276890;
+    --link-visited: #2d7a62;
+    /* #f3f8ff over white, but translucent so the scroll-edge shadows
+       still show through on the hovered row. */
+    --row-hover: rgba(0, 110, 255, 0.047);
+    --cell-measure: 30rem;
+    --shadow: rgba(30, 64, 110, 0.12);
+}
 table.rows-and-columns {
     border-collapse: collapse;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
 }
 table.rows-and-columns td {
-    border-top: 1px solid #aaa;
-    border-right: 1px solid #eee;
-    padding: 4px;
     vertical-align: top;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
+/* Primary key: the row's identity. */
 table.rows-and-columns td.type-pk {
-    font-weight: bold;
+    font-weight: 600;
 }
+/* Foreign key ids and similar asides. */
 table.rows-and-columns td em {
+    color: var(--muted);
+    font-size: 0.8125em;
     font-style: normal;
-    font-size: 0.8em;
-    color: #aaa;
 }
-table.rows-and-columns th {
-    padding-right: 1em;
+/* Links keep Datasette's colour and its no-underline table style, with an
+   underline on hover. Visited is darkened from #54AC8E to pass AA. */
+table.rows-and-columns td a:link {
+    color: var(--link);
+    text-decoration: none;
 }
-table.rows-and-columns a:link {
+table.rows-and-columns td a:visited {
+    color: var(--link-visited);
     text-decoration: none;
 }
 .rows-and-columns td ol,
 .rows-and-columns td ul {
     list-style: initial;
     list-style-position: inside;
+}
+
+@media (min-width: 577px) {
+    .table-wrapper:has(> table.rows-and-columns) {
+        box-sizing: border-box;
+        width: fit-content;
+        max-width: 100%;
+        margin: 0 0 1rem;
+        overscroll-behavior-inline: contain;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        /* Scroll shadows: the two white covers travel with the content
+           (local), the two shadows stay pinned to the edges (scroll), so a
+           shadow only shows on a side that has more table to reveal. */
+        background:
+            linear-gradient(to right, var(--card) 30%, rgba(255, 255, 255, 0)) left center / 48px 100% no-repeat local,
+            linear-gradient(to left, var(--card) 30%, rgba(255, 255, 255, 0)) right center / 48px 100% no-repeat local,
+            linear-gradient(to right, var(--shadow), rgba(30, 64, 110, 0)) left center / 14px 100% no-repeat scroll,
+            linear-gradient(to left, var(--shadow), rgba(30, 64, 110, 0)) right center / 14px 100% no-repeat scroll,
+            var(--card);
+        box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
+    }
+
+    .table-wrapper:has(> table.rows-and-columns):focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    table.rows-and-columns {
+        width: max-content;
+        min-width: 100%;
+        font-size: 0.875rem;
+        line-height: 1.45;
+    }
+
+    /* Header band */
+
+    table.rows-and-columns th {
+        padding: 0.45rem 0.5rem 0.45rem 0.75rem;
+        border-bottom: 1px solid var(--rule);
+        background: rgba(238, 246, 255, 0.88);
+        color: var(--ink);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1.3;
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    /* The narrower right padding leaves room for the column menu's gear,
+       which only table pages have. */
+    table.rows-and-columns th:last-child,
+    body:not(.table) table.rows-and-columns th {
+        padding-right: 0.75rem;
+    }
+
+    table.rows-and-columns th a:is(:link, :visited) {
+        color: inherit;
+        text-decoration: none;
+        border-radius: 3px;
+    }
+
+    table.rows-and-columns th a:hover {
+        color: var(--accent);
+        text-decoration: underline;
+        text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        text-underline-offset: 3px;
+    }
+
+    table.rows-and-columns th a:focus-visible {
+        color: var(--accent);
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    table.rows-and-columns th button.column-menu-trigger {
+        width: 22px;
+        min-height: 22px;
+        margin: -3px 0 -3px 3px;
+        color: var(--slate);
+        border-radius: 5px;
+    }
+
+    table.rows-and-columns th button.column-menu-trigger svg {
+        width: 15px;
+        height: 15px;
+        opacity: 1;
+    }
+
+    table.rows-and-columns th button.column-menu-trigger:hover,
+    table.rows-and-columns th button.column-menu-trigger[aria-expanded="true"] {
+        background: var(--rule);
+        color: var(--ink);
+    }
+
+    /* Body cells */
+
+    table.rows-and-columns td {
+        max-width: var(--cell-measure);
+        padding: 0.5rem 0.75rem;
+        border: 0;
+        border-top: 1px solid var(--rule);
+    }
+
+    table.rows-and-columns tbody tr:first-child td {
+        border-top: 0;
+    }
+
+    table.rows-and-columns tbody tr:hover td {
+        background: var(--row-hover);
+    }
+
+    /* Numbers: right aligned on tabular figures. Foreign key cells are
+       type-int too but show a label link, so they stay left aligned. */
+    table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)) {
+        text-align: right;
+    }
+
+    /* On table pages the extra right padding reserves the header gear's
+       width (header padding + the word space before the gear + gear margin
+       and width), so a numeric header label ends exactly where digits end. */
+    body.table table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)) {
+        --gear-space: calc(0.5rem + 0.28 * 0.8125rem + 25px);
+        padding-right: var(--gear-space);
+    }
+
+    /* The last header cell has wider right padding; match it. */
+    body.table table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)):last-child {
+        padding-right: calc(var(--gear-space) + 0.25rem);
+    }
+
+    /* Numeric headers follow their digits. Primary keys stay left aligned,
+       as do foreign key columns showing labels: the server sets
+       data-has-fks when a column's cells on this page link to other rows. */
+    table.rows-and-columns th:is(
+        [data-column-type*="int"],
+        [data-column-type*="real"],
+        [data-column-type*="floa"],
+        [data-column-type*="doub"],
+        [data-column-type*="dec"],
+        [data-column-type="numeric"]
+    ):not([data-is-pk="1"], [data-has-fks="1"]) {
+        text-align: right;
+    }
+
+    table.rows-and-columns td a:hover {
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+    }
+
+    table.rows-and-columns td a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+        border-radius: 2px;
+    }
+}
+
+/* Long values (all widths)
+   table-layout.js wraps any cell whose value would run past the preview in
+   .long-value > .long-value-text + button.long-value-toggle. Collapsed, the
+   value is a preview of --long-value-lines lines (3) with line breaks folded
+   into spaces (a README's blank lines would otherwise use up the preview),
+   its last line fading out under a small "expand" pill, so the row stays a
+   predictable height. Values that fit the preview once folded keep their
+   line breaks instead (.keeps-breaks). Expanded, the value shows in full
+   with its original line breaks, and the pill floats to its top right as
+   "collapse", on the line the reader clicked from. */
+
+/* Registered so that --long-value-line: 1lh resolves on .long-value (the
+   text's line height) and is inherited as that length. Unregistered, it
+   would be re-resolved against the pill's own, smaller line height. */
+@property --long-value-line {
+    syntax: "<length>";
+    inherits: true;
+    initial-value: 0px;
+}
+
+table.rows-and-columns {
+    --long-value-lines: 3; /* table-layout.js reads this too */
+}
+
+table.rows-and-columns .long-value {
+    --long-value-line: 1lh;
+    --long-value-pill-height: 1.25rem;
+    --long-value-fade-clear: 5.5rem; /* the pill's width plus a gap; text fades out over the next 4rem */
+    position: relative;
+    display: flow-root; /* contains the floated "collapse" pill */
+}
+
+table.rows-and-columns .long-value-text {
+    white-space: pre-wrap;
+}
+
+table.rows-and-columns .long-value:not(.is-expanded) > .long-value-text {
+    max-height: calc(var(--long-value-lines) * 1lh);
+    overflow: hidden;
+    white-space: normal;
+    /* Room for focus rings on links at either end of a line. */
+    padding-inline: 3px;
+    margin-inline: -3px;
+    /* Fully visible except the end of the last line, which fades out
+       behind the pill. */
+    -webkit-mask:
+        linear-gradient(#000 0 0) left top / 100% calc(100% - 1lh) no-repeat,
+        linear-gradient(to left, transparent var(--long-value-fade-clear), #000 calc(var(--long-value-fade-clear) + 4rem)) left bottom / 100% 1lh no-repeat;
+    mask:
+        linear-gradient(#000 0 0) left top / 100% calc(100% - 1lh) no-repeat,
+        linear-gradient(to left, transparent var(--long-value-fade-clear), #000 calc(var(--long-value-fade-clear) + 4rem)) left bottom / 100% 1lh no-repeat;
+}
+
+table.rows-and-columns .long-value.keeps-breaks:not(.is-expanded) > .long-value-text {
+    white-space: pre-wrap;
+}
+
+table.rows-and-columns .long-value-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    height: var(--long-value-pill-height);
+    padding: 0 0.4rem 0 0.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--accent);
+    font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
+    white-space: nowrap;
+    cursor: pointer;
+    /* Keep "expand" / "collapse" out of copied text. */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Collapsed: centred on the preview's last line, over the fade. */
+table.rows-and-columns .long-value:not(.is-expanded) > .long-value-toggle {
+    position: absolute;
+    right: 0;
+    bottom: calc((var(--long-value-line) - var(--long-value-pill-height)) / 2);
+}
+
+/* Expanded: floated to the top right, centred on the first line. */
+table.rows-and-columns .long-value.is-expanded > .long-value-toggle {
+    float: right;
+    margin: calc((var(--long-value-line) - var(--long-value-pill-height)) / 2) 0 0.25rem 0.75rem;
+}
+
+table.rows-and-columns .long-value-toggle svg {
+    transition: transform 0.15s;
+}
+
+table.rows-and-columns .long-value.is-expanded > .long-value-toggle svg {
+    transform: rotate(180deg);
+}
+
+table.rows-and-columns .long-value-toggle:hover {
+    border-color: #bfccd9;
+    background: var(--rule);
+}
+
+table.rows-and-columns .long-value-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    table.rows-and-columns .long-value-toggle svg {
+        transition: none;
+    }
+}
+
+/* A larger touch target on the stacked mobile cards. */
+@media (max-width: 576px) {
+    table.rows-and-columns .long-value {
+        --long-value-pill-height: 1.75rem;
+        --long-value-fade-clear: 6.5rem;
+    }
+
+    table.rows-and-columns .long-value-toggle {
+        padding: 0 0.6rem 0 0.75rem;
+        font-size: 0.8125rem;
+    }
+}
+
+/* Freeze
+   table-layout.js adds button.freeze-toggle (a pin) to the primary key
+   header, or to the first header when there is no key column (query
+   results, views). Pressed, it sets data-freeze="N" on the table (N = how
+   many leading Link and key columns to freeze, up to 4; 0 freezes only the
+   header row),
+   --freeze-left-2..4 on the table and --freeze-width / --freeze-top on the
+   wrapper. The card then becomes a scroll box the height of the window, with
+   the header row stuck to its top and the key columns stuck to its left.
+   Shadows appear on the frozen edges only once content has scrolled under
+   them (.is-scrolled-x/y). Not applied to the stacked mobile cards. */
+@media (min-width: 577px) {
+    /* The pin matches the gear. */
+    table.rows-and-columns th .freeze-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        min-height: 22px;
+        margin: -3px 0 -3px 2px;
+        padding: 0;
+        vertical-align: middle;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--slate);
+        cursor: pointer;
+    }
+
+    table.rows-and-columns th .freeze-toggle svg {
+        display: block;
+        transform: rotate(45deg);
+        transition: transform 0.15s ease;
+    }
+
+    table.rows-and-columns th .freeze-toggle:hover {
+        background: var(--rule);
+        color: var(--ink);
+    }
+
+    table.rows-and-columns th :is(.freeze-toggle, .column-expand-toggle):focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+    }
+
+    /* Expand-all: the same pill as the cells' "expand", reading "expand all"
+       or "collapse all", so it is clearly part of that feature rather than a
+       sort control. White, to stand out on the header band. */
+    table.rows-and-columns th .column-expand-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        height: 1.25rem;
+        margin: -2px 0 -2px 6px;
+        padding: 0 0.4rem 0 0.5rem;
+        vertical-align: middle;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        background: var(--card);
+        color: var(--accent);
+        font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
+        white-space: nowrap;
+        cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    table.rows-and-columns th .column-expand-toggle svg {
+        display: block;
+        transition: transform 0.15s;
+    }
+
+    table.rows-and-columns th .column-expand-toggle[data-state="all"] svg {
+        transform: rotate(180deg);
+    }
+
+    table.rows-and-columns th .column-expand-toggle:hover {
+        border-color: #bfccd9;
+        background: var(--rule);
+    }
+
+    /* Pinned: upright, filled, in the accent colour on the accent tint used
+       by Datasette's selected menu items. */
+    table.rows-and-columns th .freeze-toggle[aria-pressed="true"] {
+        background: #e8effd;
+        color: var(--accent);
+    }
+
+    table.rows-and-columns th .freeze-toggle[aria-pressed="true"] svg {
+        transform: none;
+    }
+
+    table.rows-and-columns th .freeze-toggle[aria-pressed="true"] .freeze-toggle-head {
+        fill: currentColor;
+    }
+
+    /* The card becomes the scroll box. */
+    .table-wrapper:has(> table.rows-and-columns[data-freeze]) {
+        max-height: calc(100dvh - 1rem);
+        overflow: auto;
+        overscroll-behavior: contain;
+        /* Keyboard focus scrolls cells clear of the frozen parts. */
+        scroll-padding: var(--freeze-top, 0px) 0 0 var(--freeze-width, 0px);
+    }
+
+    /* Collapsed borders stay behind when cells stick; separate ones travel
+       with them. The table only uses top/bottom rules, so it looks the same
+       either way. */
+    table.rows-and-columns[data-freeze] {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    table.rows-and-columns[data-freeze] thead tr {
+        --freeze-cell-bg: #f0f7ff; /* the header band, made opaque */
+        --freeze-z: 3;
+    }
+
+    table.rows-and-columns[data-freeze] tbody tr {
+        --freeze-cell-bg: var(--card);
+        --freeze-z: 1;
+    }
+
+    table.rows-and-columns[data-freeze] tbody tr:hover {
+        --freeze-cell-bg: #f3f8ff; /* --row-hover over white, made opaque */
+    }
+
+    table.rows-and-columns[data-freeze] thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--freeze-cell-bg);
+    }
+
+    table.rows-and-columns:is([data-freeze="1"], [data-freeze="2"], [data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(1),
+    table.rows-and-columns:is([data-freeze="2"], [data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(2),
+    table.rows-and-columns:is([data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(3),
+    table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4) {
+        position: sticky;
+        left: 0;
+        z-index: var(--freeze-z);
+        background: var(--freeze-cell-bg);
+    }
+
+    table.rows-and-columns[data-freeze] :is(th, td):nth-child(2) {
+        left: var(--freeze-left-2, 0px);
+    }
+
+    table.rows-and-columns[data-freeze] :is(th, td):nth-child(3) {
+        left: var(--freeze-left-3, 0px);
+    }
+
+    table.rows-and-columns[data-freeze] :is(th, td):nth-child(4) {
+        left: var(--freeze-left-4, 0px);
+    }
+
+    /* A hairline on the frozen edge. */
+    table.rows-and-columns[data-freeze="1"] :is(th, td):nth-child(1),
+    table.rows-and-columns[data-freeze="2"] :is(th, td):nth-child(2),
+    table.rows-and-columns[data-freeze="3"] :is(th, td):nth-child(3),
+    table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4) {
+        box-shadow: inset -1px 0 0 var(--rule);
+    }
+
+    /* Soft shadows once content has scrolled under a frozen edge. They are
+       gradients on pseudo-elements, not box-shadows, so they run unbroken
+       across cell boundaries. Sticky cells contain them. */
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="1"] :is(th, td):nth-child(1)::before,
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="2"] :is(th, td):nth-child(2)::before,
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="3"] :is(th, td):nth-child(3)::before,
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4)::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 100%;
+        width: 8px;
+        background: linear-gradient(to right, rgba(30, 64, 110, 0.13), rgba(30, 64, 110, 0));
+        pointer-events: none;
+    }
+
+    .table-wrapper.is-scrolled-y > table.rows-and-columns[data-freeze] thead th::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        height: 8px;
+        background: linear-gradient(rgba(30, 64, 110, 0.13), rgba(30, 64, 110, 0));
+        pointer-events: none;
+    }
+}
+
+@media (min-width: 577px) and (prefers-reduced-motion: reduce) {
+    table.rows-and-columns th :is(.freeze-toggle, .column-expand-toggle) svg {
+        transition: none;
+    }
+}
+
+@media (max-width: 576px) {
+    table.rows-and-columns th :is(.freeze-toggle, .column-expand-toggle) {
+        display: none;
+    }
 }
 a.blob-download {
     display: inline-block;
@@ -715,10 +1244,6 @@ form.sql textarea {
 }
 form.sql label {
     width: 15%;
-}
-.advanced-export input[type=submit] {
-    font-size: 0.6em;
-    margin-left: 1em;
 }
 label.sort_by_desc {
     padding-right: 1em;
@@ -950,6 +1475,32 @@ button.core[type=button] {
     border-color: #1949b8;
 }
 
+/* Secondary action: same treatment as the filter row remove buttons */
+.filters a.filters-clear {
+    display: inline-block;
+    border: 1px solid var(--filter-rule);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--filter-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0.55rem 0.85rem;
+    text-decoration: none;
+}
+
+.filters a.filters-clear:hover,
+.filters a.filters-clear:focus {
+    border-color: #c9d5e3;
+    background: #f8fbff;
+    color: var(--filter-ink);
+}
+
+.filters a.filters-clear:focus-visible {
+    outline: 3px solid rgba(26, 86, 219, 0.14);
+    outline-offset: 2px;
+}
+
 .filters button.filter-row-icon {
     display: inline-flex;
     align-items: center;
@@ -1040,55 +1591,653 @@ button.core[type=button] {
 
 
 
+/* Facet results: one card per facet, using the same colors, borders and
+   radius as the filter box and the suggested facet chips. */
 .facet-results {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
 }
 .facet-info {
+    box-sizing: border-box;
     width: 250px;
-    margin-right: 15px;
+    max-width: 100%;
+    padding: 0.3rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.875rem;
 }
-.facet-info-total {
-    font-size: 0.8em;
-    color: #666;
-    padding-right: 0.25em;
+.facet-info p.facet-info-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.75rem;
+    margin: 0 0 0.1rem;
+    padding: 0.1rem 0.1rem 0.1rem 0.45rem;
 }
-/* The label may wrap (word-break: break-all on the li) but the count should
-   stay on one line - https://github.com/simonw/datasette/issues/2754 */
-.facet-count {
+.facet-info-name strong {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+.facet-info-type {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #eef6ff;
+    color: #6b6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+    font-weight: 400;
     white-space: nowrap;
 }
-.facet-info li,
-.facet-info ul {
-    margin: 0;
-    padding: 0;
-}
-.facet-info ul {
-    padding-left: 1.25em;
-    margin-bottom: 1em;
+.facet-info-total {
+    margin-left: 0.15rem;
+    color: #6b6b6b;
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 .facet-info a.cross:link,
 .facet-info a.cross:visited,
 .facet-info a.cross:hover,
 .facet-info a.cross:focus,
 .facet-info a.cross:active {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: 5px;
+    color: #6b6b6b;
     text-decoration: none;
 }
-ul li.facet-truncated {
-    list-style-type: none;
+.facet-info a.cross svg {
+    display: block;
+}
+.facet-info-name a.cross:link,
+.facet-info-name a.cross:visited {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: #8a8a8a;
+}
+.facet-info-name a.cross:hover,
+.facet-info-name a.cross:focus-visible {
+    background: #eef6ff;
+    color: #0f0f0f;
+}
+.facet-info a.cross:focus-visible {
+    outline: 2px solid #1a56db;
+    outline-offset: 1px;
+}
+.facet-results .facet-info ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+/* Long labels wrap but the count stays on one line -
+   https://github.com/simonw/datasette/issues/2754 */
+.facet-results .facet-info li {
     position: relative;
-    top: -0.35em;
-    text-indent: 0.85em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    list-style: none;
+    line-height: 1.35;
+    word-break: normal;
+    /* Proportion bar: this value's share of the rows in the current result
+       set, from the --facet-proportion set on the li by the template */
+    background-image: linear-gradient(
+        to right,
+        rgba(26, 86, 219, 0.1) var(--facet-proportion, 0%),
+        transparent var(--facet-proportion, 0%)
+    );
+}
+/* The value link stretches to cover the whole row, count included */
+.facet-results .facet-info li > a:first-child {
+    flex: 1;
+    min-width: 0;
+    color: #1a56db;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.facet-results .facet-info li > a:first-child::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+}
+.facet-results .facet-info li > a:first-child:focus-visible {
+    outline: none;
+}
+.facet-results .facet-info li > a:first-child:focus-visible::after {
+    outline: 2px solid #1a56db;
+    outline-offset: -1px;
+}
+.facet-results .facet-info li:has(> a:first-child):hover {
+    background-color: #f3f7fe;
+}
+.facet-results .facet-info li:has(> a:first-child):hover > a:first-child {
+    color: #1949b8;
+}
+.facet-count {
+    flex: none;
+    margin-left: auto;
+    color: #6b6b6b;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.facet-results .facet-info li.facet-selected {
+    align-items: center;
+    background-color: #e8effd;
+    color: #1949b8;
+    font-weight: 600;
+}
+.facet-value-label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.facet-selected .facet-count {
+    font-weight: 400;
+}
+.facet-selected a.cross:link,
+.facet-selected a.cross:visited {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: -0.1rem -0.25rem -0.1rem -0.35rem;
+    color: #1a56db;
+}
+.facet-selected a.cross:hover,
+.facet-selected a.cross:focus-visible {
+    background: #fff;
+    color: #1949b8;
+}
+.facet-results .facet-info li.facet-truncated {
+    color: #6b6b6b;
+}
+.facet-results .facet-info li.facet-truncated > a:first-child {
+    color: #6b6b6b;
+}
+@media (pointer: coarse) {
+    .facet-results .facet-info li {
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+    }
+}
+@media only screen and (max-width: 576px) {
+    .facet-info {
+        width: 100%;
+    }
 }
 
-.advanced-export {
-    margin-top: 1em;
-    padding: 0.01em 2em 0.01em 1em;
-    width: auto;
-    display: inline-block;
-    box-shadow: 1px 2px 8px 2px rgba(0,0,0,0.08);
-	background-color: white;
+/* Suggested facets: a row of "add facet" chips that reuse the colors
+   and radius of the filter controls above them. */
+.suggested-facets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.4rem 0.6rem;
+    max-width: 760px;
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+}
+
+.suggested-facets-label {
+    flex: none;
+    color: #6b6b6b;
+    font-weight: 600;
+    line-height: 1.75rem;
+}
+
+.suggested-facets-list {
+    display: flex;
+    flex: 1 1 16rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.suggested-facets-list li {
+    display: flex;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.suggested-facets a.suggested-facet {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 5px;
+    background: #fff;
+    color: #1a56db;
+    line-height: 1.2;
+    text-decoration: none;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.suggested-facets a.suggested-facet:hover {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.suggested-facets a.suggested-facet:focus-visible {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+    outline: 2px solid #1a56db;
+    outline-offset: 2px;
+}
+
+.suggested-facet-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suggested-facet-type {
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #eef6ff;
+    color: #6b6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+}
+
+@media (pointer: coarse) {
+    .suggested-facets-label {
+        line-height: 2.25rem;
+    }
+    .suggested-facets a.suggested-facet {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .suggested-facets a.suggested-facet {
+        transition: none;
+    }
+}
+
+/* Quiet buttons: low-key secondary actions such as "Export data" and
+   "View and edit SQL", in the suggested facet chips' colours. Works on
+   both <button> and <a>. */
+.table-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 1rem;
+}
+
+.quiet-button,
+a.quiet-button:link,
+a.quiet-button:visited {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 5px;
+    background: #fff;
+    color: #24465d;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.quiet-button svg {
+    display: block;
+    flex-shrink: 0;
+    color: #6b6b6b;
+    transition: color 0.12s;
+}
+
+.quiet-button:hover,
+a.quiet-button:hover,
+.quiet-button:focus-visible {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.quiet-button:hover svg,
+.quiet-button:focus-visible svg {
+    color: currentColor;
+}
+
+.quiet-button:focus-visible {
+    outline: 2px solid #1a56db;
+    outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+    .quiet-button,
+    a.quiet-button:link,
+    a.quiet-button:visited {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quiet-button,
+    .quiet-button svg {
+        transition: none;
+    }
+}
+
+/* Export dialog, opened by the "Export data" quiet button. One row per
+   format: its name and description, then a group of Copy / View /
+   Download / Copy URL actions that wraps below the name on narrow screens. */
+dialog.export-dialog {
+    width: min(660px, calc(100vw - 32px));
+}
+
+.export-dialog .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+/* The body scrolls instead: without this the clamped scope box, which hides
+   its overflow, would be squashed when the list is taller than the dialog */
+.export-dialog .modal-body > * {
+    flex-shrink: 0;
+}
+
+/* Which rows the export covers, e.g. "Filtered rows where state = "CA"" */
+.export-dialog .export-scope {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    /* Long filters or query parameters: the full text is in the title */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+}
+
+/* Past the first page: the exports start from this page's rows */
+.export-dialog .export-page-note {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.export-dialog .export-option-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.15rem 0.5rem;
+}
+
+/* How many rows each format returns: amber when it is not every row */
+.export-dialog .export-rows {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.export-dialog .export-rows[data-partial="true"] {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Two boxes: TSV and CSV with the options they share, then the rest */
+.export-dialog .export-options {
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+}
+
+/* Keeps the options strip inside the rounded corners */
+.export-dialog .export-option-group {
+    overflow: hidden;
+}
+
+.export-dialog .export-options > li + li,
+.export-dialog .export-option + .export-option {
+    border-top: 1px solid var(--rule);
+}
+
+.export-dialog .export-option {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.export-dialog .export-option-text {
+    display: flex;
+    flex: 1 1 12rem;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.export-dialog .export-option-name {
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.export-dialog .export-option-description {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.export-dialog .export-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--card);
+    overflow: hidden;
+}
+
+.export-dialog .export-action {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--accent);
+    font: 500 0.8rem/1.2 system-ui, -apple-system, sans-serif;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.export-dialog .export-action[hidden] {
+    display: none;
+}
+
+/* Dividers between the visible actions: Copy, first, can be hidden */
+.export-dialog .export-action:not([hidden]) ~ .export-action:not([hidden]) {
+    border-left: 1px solid var(--rule);
+}
+
+/* Too narrow for four actions in a row (a 320px phone, or large text): two
+   by two instead, with the gaps showing through as the dividers */
+.export-dialog .export-options {
+    container: export-options / inline-size;
+}
+
+@container export-options (max-width: 18rem) {
+    .export-dialog .export-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--rule);
+    }
+    .export-dialog .export-action {
+        background: var(--card);
+        padding-inline: 0.3rem;
+    }
+    .export-dialog .export-action:not([hidden]) ~ .export-action:not([hidden]) {
+        border-left: 0;
+    }
+}
+
+.export-dialog .export-action:hover,
+.export-dialog .export-action:focus-visible {
+    background: var(--paper);
+    color: #1949b8;
+}
+
+.export-dialog .export-action:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* State labels added by export-dialog.js share one grid cell, so a
+   button keeps its width as "Copy" becomes "Copying…" and "Copied". */
+.export-dialog .export-action-label {
+    grid-area: 1 / 1;
+    visibility: hidden;
+}
+
+.export-dialog .export-action[data-state="idle"] > [data-state="idle"],
+.export-dialog .export-action[data-state="busy"] > [data-state="busy"],
+.export-dialog .export-action[data-state="done"] > [data-state="done"],
+.export-dialog .export-action[data-state="error"] > [data-state="error"] {
+    visibility: visible;
+}
+
+.export-dialog .export-action[data-state="busy"] {
+    color: var(--muted);
+    cursor: progress;
+}
+
+.export-dialog .export-action[data-state="done"] {
+    color: #1a7f37;
+}
+
+.export-dialog .export-action[data-state="error"] {
+    color: #b91c1c;
+}
+
+/* Why an action failed: stays until that action is tried again */
+.export-dialog .export-option-error {
+    flex: 1 0 100%;
+    margin: 0;
+    color: #b91c1c;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+/* Expand labels and Include all rows, under TSV and CSV: they apply to both */
+.export-dialog .export-csv-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.1rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
+}
+
+.export-dialog .export-csv-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--ink);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.export-dialog .export-csv-options[hidden],
+.export-dialog .export-csv-options label[hidden] {
+    display: none;
+}
+
+.export-dialog .export-csv-options input {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.export-dialog .export-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+    .export-dialog .export-actions {
+        flex: 1 0 100%;
+    }
+    .export-dialog .export-action {
+        flex: 1 1 auto;
+        padding-inline: 0.3rem;
+    }
+}
+
+@media (pointer: coarse) {
+    .export-dialog .export-action {
+        min-height: 2.25rem;
+    }
+    .export-dialog .export-csv-options label {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .export-dialog .export-action {
+        transition: none;
+    }
 }
 
 .download-sqlite em {
@@ -1860,6 +3009,503 @@ dialog.set-column-type-dialog {
 .set-column-type-option-description {
     color: var(--muted);
     font-size: 0.9rem;
+}
+
+/* Column statistics dialog (column-stats.js) */
+dialog.column-stats-dialog {
+    width: min(720px, calc(100vw - 32px));
+    max-height: min(860px, calc(100dvh - 32px));
+}
+
+.column-stats-dialog .modal-header {
+    justify-content: space-between;
+}
+
+.column-stats-dialog .modal-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* A pill for each column, to switch the dialog between columns */
+.column-stats-columns {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+    max-height: 5.6rem;
+    overflow-y: auto;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.column-stats-columns[hidden] {
+    display: none;
+}
+
+.column-stats-column {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    max-width: 16rem;
+    padding: 3px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.column-stats-column:hover {
+    border-color: var(--accent);
+}
+
+.column-stats-column:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.column-stats-column-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.column-stats-column-type {
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
+.column-stats-column[aria-selected="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    cursor: default;
+}
+
+.column-stats-column[aria-selected="true"] .column-stats-column-type {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.column-stats-body {
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.column-stats-section + .column-stats-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+}
+
+.column-stats-section h3 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.column-stats-subtitle {
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.column-stats-section h4 {
+    margin: 14px 0 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+
+.column-stats-loading,
+.column-stats-note {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.column-stats-error {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-left: 3px solid #b91c1c;
+    background: rgba(185, 28, 28, 0.06);
+    color: #b91c1c;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+/* Which rows the statistics cover: filtered rows or the whole table */
+.column-stats-scope {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    flex-wrap: wrap;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--paper);
+    font-size: 0.85rem;
+}
+
+.column-stats-scope p {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.column-stats-scope[data-scope="all"] .column-stats-scope-description {
+    color: var(--muted);
+}
+
+.column-stats-scope-toggle {
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--card);
+    color: var(--accent);
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.column-stats-scope-toggle:hover {
+    border-color: var(--accent);
+}
+
+/* Stat tiles */
+.column-stats-tiles {
+    display: grid;
+    grid-template-columns: repeat(var(--column-stats-tile-columns, 4), minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+}
+
+.column-stats-tile {
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #fbfdff;
+    min-width: 0;
+}
+
+.column-stats-tile dt {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-tile dd {
+    margin: 2px 0 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.column-stats-tile-value {
+    font-size: 1rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.column-stats-tile-detail {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+/* Storage type breakdown */
+.column-stats-types-bar {
+    display: flex;
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 4px;
+    overflow: hidden;
+    gap: 2px;
+}
+
+.column-stats-types-bar span {
+    flex-basis: 0;
+    min-width: 3px;
+}
+
+.column-stats-types-legend {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.column-stats-swatch {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    margin-right: 5px;
+}
+
+.column-stats-type-integer { background: #1a56db; }
+.column-stats-type-real { background: #0e9f6e; }
+.column-stats-type-text { background: #c27803; }
+.column-stats-type-blob { background: #7e3af2; }
+
+/* Bar charts */
+.column-stats-figure {
+    margin: 12px 0 0;
+}
+
+.column-stats-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 96px;
+    padding-bottom: 1px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.column-stats-bar {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+
+.column-stats-bar-fill {
+    display: block;
+    width: 100%;
+    background: rgba(26, 86, 219, 0.55);
+    border-radius: 2px 2px 0 0;
+}
+
+.column-stats-bar:hover .column-stats-bar-fill {
+    background: var(--accent);
+}
+
+.column-stats-axis {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 3px;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-chart-caption {
+    margin: 4px 0 0;
+    min-height: 1.2em;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* Box plot, on the same min to max scale as the histogram axis */
+.column-stats-boxplot {
+    position: relative;
+    height: 18px;
+    margin-top: 10px;
+}
+
+.column-stats-boxplot-whisker {
+    position: absolute;
+    top: 8px;
+    height: 2px;
+    background: var(--muted);
+}
+
+.column-stats-boxplot-box {
+    position: absolute;
+    top: 2px;
+    height: 14px;
+    box-sizing: border-box;
+    border: 1.5px solid var(--accent);
+    background: rgba(26, 86, 219, 0.12);
+    border-radius: 3px;
+}
+
+.column-stats-boxplot-median {
+    position: absolute;
+    top: 0;
+    height: 18px;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--ink);
+}
+
+/* Percentiles */
+.column-stats-percentiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 4px;
+    margin: 0;
+}
+
+.column-stats-percentile {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--paper);
+    font-size: 0.8rem;
+    min-width: 0;
+}
+
+.column-stats-percentile dt {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-percentile dd {
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* Text patterns and range */
+.column-stats-patterns {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.85rem;
+}
+
+.column-stats-patterns li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--rule);
+}
+
+.column-stats-range {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 12px 0 0;
+}
+
+.column-stats-range dt {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-range dd {
+    margin: 2px 0 0;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    max-height: 4.5em;
+    overflow: hidden;
+}
+
+/* Most common values */
+.column-stats-top-values {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.column-stats-top-values li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 5px 0;
+    font-size: 0.85rem;
+}
+
+.column-stats-top-value {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.column-stats-value-special {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.column-stats-top-count {
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.column-stats-top-bar {
+    grid-column: 1 / -1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--paper);
+    overflow: hidden;
+}
+
+.column-stats-top-bar span {
+    display: block;
+    height: 100%;
+    background: rgba(26, 86, 219, 0.55);
+}
+
+/* SQL used to calculate the statistics */
+.column-stats-sql {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    font-size: 0.85rem;
+}
+
+.column-stats-sql summary {
+    cursor: pointer;
+    color: var(--muted);
+}
+
+.column-stats-sql-list {
+    margin: 8px 0 0;
+    padding-left: 1.4em;
+}
+
+.column-stats-sql-list li + li {
+    margin-top: 10px;
+}
+
+.column-stats-sql-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.column-stats-sql-list pre {
+    margin: 4px 0 0;
+    padding: 8px 10px;
+    background: var(--paper);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+@media (max-width: 576px) {
+    .column-stats-dialog .modal-body {
+        padding: 12px 16px 20px;
+    }
+    .column-stats-columns {
+        padding: 8px 16px;
+    }
+    .column-stats-tiles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .column-stats-range {
+        grid-template-columns: 1fr;
+    }
 }
 
 .row-mutation-status {
@@ -3787,27 +5433,43 @@ select.table-alter-input {
         left: -9999px;
     }
 
+    /* Each row is a card in the same tokens as the desktop table. It opens
+       with its first field on a --paper band, like a modal header; labels
+       sit above values in the column menu's slate. */
+    table.rows-and-columns {
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
+
     table.rows-and-columns tr {
-        border: 1px solid #ccc;
-        margin-bottom: 1em;
-        border-radius: 10px;
-        background-color: white;
-        padding: 0.2rem;
+        margin: 0 0 0.75rem;
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        background: var(--card);
+        box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
     }
 
     table.rows-and-columns td {
-        /* Behave  like a "row" */
-        border: none;
-        border-bottom: 1px solid #eee;
-        padding: 0;
-        padding-left: 10%;
+        /* Behave like a "row" */
+        padding: 0.45rem 0.75rem 0.5rem;
+        border: 0;
+        border-top: 1px solid var(--rule);
+    }
+
+    table.rows-and-columns td:first-child {
+        border-top: 0;
+        background: var(--paper);
     }
 
     table.rows-and-columns td:before {
         display: block;
-        color: black;
-        margin-left: -10%;
-        font-size: 0.8em;
+        margin: 0 0 1px;
+        color: var(--slate);
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1.4;
     }
 
     .row-inline-actions {
@@ -3914,93 +5576,6 @@ select.table-alter-input {
     }
 }
 
-svg.dropdown-menu-icon {
-    display: inline-block;
-    position: relative;
-    top: 2px;
-    cursor: pointer;
-    opacity: 0.8;
-}
-.dropdown-menu {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    line-height: 1.4;
-    font-size: 16px;
-    box-shadow: 2px 2px 2px #aaa;
-    background-color: #fff;
-    z-index: 1000;
-}
-.dropdown-menu ul,
-.dropdown-menu li {
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
-}
-.dropdown-menu .dropdown-column-type {
-    font-size: 0.7em;
-    color: #666;
-    margin: 0;
-    padding: 4px 8px 4px 8px;
-}
-.dropdown-menu .dropdown-column-description {
-    margin: 0;
-    color: #666;
-    padding: 4px 8px 4px 8px;
-    max-width: 20em;
-}
-.dropdown-menu li {
-    border-bottom: 1px solid #ccc;
-}
-.dropdown-menu li:last-child {
-    border: none;
-}
-.dropdown-menu a:link,
-.dropdown-menu a:visited,
-.dropdown-menu a:hover,
-.dropdown-menu a:focus,
-.dropdown-menu a:active,
-.dropdown-menu button.action-menu-button {
-    text-decoration: none;
-    display: block;
-    padding: 4px 8px 2px 8px;
-    color: #222;
-    white-space: nowrap;
-}
-.dropdown-menu button.action-menu-button {
-    appearance: none;
-    background: none;
-    border: none;
-    box-sizing: border-box;
-    cursor: pointer;
-    font: inherit;
-    text-align: left;
-    width: 100%;
-}
-.dropdown-menu a:hover,
-.dropdown-menu button.action-menu-button:hover,
-.dropdown-menu button.action-menu-button:focus {
-    background-color: #eee;
-}
-.dropdown-menu .dropdown-description {
-    display: block;
-    margin: 0;
-    color: #666;
-    font-size: 0.8em;
-    max-width: 80vw;
-    white-space: normal;
-}
-.dropdown-menu .hook {
-    display: block;
-    position: absolute;
-    top: -5px;
-    left: 6px;
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-bottom: 5px solid #666;
-}
-
 .stored-query-edit-sql {
     padding-left: 0.5em;
     position: relative;
@@ -4032,19 +5607,307 @@ dl.column-descriptions dd {
     color: #666;
 }
 
-.anim-scale-in {
-    animation-name: scale-in;
-    animation-duration: 0.15s;
-    animation-timing-function: cubic-bezier(0.2, 0, 0.13, 1.5);
+/* Shared app, resource and column menus */
+.page-action-menu {
+    position: relative;
+    margin-bottom: 0.5em;
+}
+.actions-menu-links {
+    display: inline;
+}
+.page-action-menu .icon-text {
+    display: inline-flex;
+    align-items: center;
+    border-radius: .25rem;
+    padding: 5px 12px 3px 7px;
+    color: #fff;
+    font-weight: 400;
+    font-size: 0.8em;
+    background: var(--accent, #1a56db);
+}
+.page-action-menu .icon-text span {
+    /* Nudge text up a bit */
+    position: relative;
+    top: -2px;
+}
+.page-action-menu .icon-text:hover {
+    cursor: pointer;
+}
+.page-action-menu .icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 4px;
 }
 
-@keyframes scale-in {
-    0% {
-        opacity: 0;
-        transform: scale(0.6);
+header.app-header {
+    padding-top: 0;
+    padding-right: 4px;
+    padding-bottom: 0;
+}
+.app-header > nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+    min-height: 2.6rem;
+}
+header.app-header .crumbs {
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+    overflow-wrap: anywhere;
+}
+header.app-header .actor {
+    order: 1;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+.app-header details.nav-menu {
+    order: 2;
+    flex-shrink: 0;
+}
+.app-header details.nav-menu > summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    list-style: none;
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 44px;
+    height: 2.6rem;
+    border-radius: 6px;
+}
+.app-header details.nav-menu > summary::-webkit-details-marker {
+    display: none;
+}
+.app-header details.nav-menu > summary:hover {
+    background: #ffffff20;
+}
+.app-header details.nav-menu > summary[aria-expanded="true"] {
+    background: transparent;
+}
+.page-action-menu .datasette-menu-trigger {
+    display: inline-flex;
+    border-radius: .25rem;
+}
+button.column-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 2px 0 4px 4px;
+    vertical-align: middle;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #24465d;
+    cursor: pointer;
+}
+button.column-menu-trigger:hover,
+button.column-menu-trigger[aria-expanded="true"] {
+    background: #e2ebf1;
+}
+.column-menu-trigger svg {
+    display: block;
+    opacity: 0.8;
+    width: 16px;
+    height: 16px;
+}
+.datasette-menu {
+    --menu-ink: #203748;
+    --menu-muted: #536978;
+    --menu-line: #dce5eb;
+    --menu-hover: #edf3f7;
+    position: absolute;
+    z-index: 1000;
+    box-sizing: border-box;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--menu-line);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--menu-ink);
+    font-size: 15px;
+    line-height: 1.4;
+    box-shadow: 0 8px 28px #18384d1a, 0 2px 6px #18384d0d;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.datasette-menu.nav-menu-inner {
+    --menu-ink: #fff;
+    --menu-muted: #d0e4f1;
+    --menu-line: #ffffff30;
+    --menu-hover: #ffffff18;
+    background: #276890;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+.datasette-menu.datasette-menu-floating {
+    position: fixed;
+    inset: auto;
+    max-width: none;
+    z-index: 20000;
+}
+.datasette-menu[hidden] {
+    display: none;
+}
+.datasette-menu ul,
+.datasette-menu li {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    list-style: none;
+}
+.datasette-menu .datasette-menu-heading {
+    position: relative;
+    padding: 10px 12px 12px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--menu-line);
+    overflow-wrap: anywhere;
+}
+.datasette-menu-heading strong {
+    display: block;
+    font-size: 15px;
+}
+.datasette-menu-heading small {
+    display: block;
+    margin-top: 2px;
+    color: var(--menu-muted);
+    font-size: 12px;
+}
+.datasette-menu :is(a, button.button-as-link) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 8px;
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--menu-ink);
+    font: inherit;
+    line-height: 1.4;
+    text-align: left;
+    text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    background: transparent;
+    cursor: pointer;
+}
+.datasette-menu :is(a, button.button-as-link):hover,
+.datasette-menu :is(a, button.button-as-link):focus-visible {
+    background: var(--menu-hover);
+}
+.datasette-menu.nav-menu-inner :is(a, button.button-as-link) {
+    color: var(--menu-ink);
+    min-height: 36px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+:is(.datasette-menu-trigger, .column-menu-trigger, .datasette-menu a, .datasette-menu button):focus-visible {
+    outline: 2px solid #598fce;
+    outline-offset: -2px;
+}
+.app-header .nav-menu :is(summary, a, button):focus-visible {
+    outline: 2px solid #c3e5ff;
+    outline-offset: -2px;
+}
+.datasette-menu .dropdown-description {
+    display: block;
+    flex-basis: 100%;
+    color: var(--menu-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.datasette-menu .keyboard-shortcut {
+    box-sizing: border-box;
+    min-width: 1.4em;
+    margin-left: auto;
+    padding: 0 0.35em;
+    border: 1px solid rgba(255,255,244,0.6);
+    border-radius: 3px;
+    background: rgba(255,255,244,0.12);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    line-height: 1.35;
+    text-align: center;
+    text-decoration: none;
+}
+.datasette-menu .nav-menu-logout,
+.datasette-menu li.menu-separator {
+    margin: 4px 0 0;
+    padding: 4px 0 0;
+    border-top: 1px solid var(--menu-line);
+}
+.datasette-menu .dropdown-column-type,
+.datasette-menu .dropdown-column-description {
+    margin: 0;
+    padding: 8px 12px;
+    color: var(--menu-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.datasette-menu .dropdown-column-description {
+    font-size: 14px;
+}
+.column-actions-menu.datasette-menu .datasette-menu-heading {
+    padding: 8px 10px;
+}
+.column-actions-menu.datasette-menu :is(a, button.button-as-link) {
+    min-height: 38px;
+    padding: 7px 10px;
+}
+.column-actions-menu.datasette-menu :is(.dropdown-column-type, .dropdown-column-description) {
+    padding: 6px 10px;
+}
+@media (pointer: coarse), (max-width: 600px) {
+    .app-header details.nav-menu > summary {
+        width: 48px;
     }
-    100% {
-        opacity: 1;
-        transform: scale(1);
+    .datasette-menu :is(a, button.button-as-link) {
+        min-height: 48px;
+    }
+    .datasette-menu.nav-menu-inner :is(a, button.button-as-link) {
+        min-height: 44px;
+    }
+    .column-actions-menu.datasette-menu :is(a, button.button-as-link) {
+        min-height: 44px;
+    }
+    .datasette-menu .keyboard-shortcut {
+        display: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .datasette-menu.nav-menu-inner.datasette-menu-floating {
+        width: max-content;
+        min-width: min(14rem, calc(100vw - 24px));
+        max-width: min(18rem, calc(100vw - 24px));
+    }
+}
+
+/* Mobile Safari zooms the page when a text input, select or textarea with
+   a font-size smaller than 16px receives focus. Bump the controls that use
+   a smaller size up to 16px on touch devices. */
+@media (pointer: coarse) {
+    .filters {
+        /* Taller filter controls so the 16px text fits */
+        --filter-control-height: 2.5rem;
+    }
+    .select-wrapper select,
+    .filters input.filter-value,
+    .filters #_search,
+    textarea.row-edit-input,
+    .row-edit-bulk-textarea,
+    .table-create-data-textarea,
+    datasette-autocomplete input[type="text"] {
+        font-size: 16px;
     }
 }

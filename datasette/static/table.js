@@ -1,9 +1,9 @@
-var DROPDOWN_HTML = `<div class="dropdown-menu">
-<div class="hook"></div>
-<ul class="dropdown-actions"></ul>
+var DROPDOWN_HTML = `<div class="datasette-menu-heading" role="presentation">
+<strong class="datasette-menu-title"></strong>
+</div>
+<ul class="dropdown-actions" role="none"></ul>
 <p class="dropdown-column-type"></p>
-<p class="dropdown-column-description"></p>
-</div>`;
+<p class="dropdown-column-description"></p>`;
 
 var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="12" cy="12" r="3"></circle>
@@ -344,6 +344,31 @@ function openSetColumnTypeDialog(th) {
   }
 }
 
+function canShowColumnStatistics(th) {
+  return !!(
+    window.DatasetteColumnStats &&
+    window.DatasetteColumnStats.isAvailable() &&
+    th.dataset.column &&
+    th.dataset.isLinkColumn !== "1"
+  );
+}
+
+function openColumnStatistics(th, returnFocusTo) {
+  if (!returnFocusTo) {
+    var active = document.activeElement;
+    returnFocusTo =
+      active && active !== document.body && active.isConnected
+        ? active
+        : document.querySelector(".column-actions-mobile") ||
+          th.querySelector(".column-menu-trigger");
+  }
+  window.DatasetteColumnStats.open({
+    column: th.dataset.column,
+    columnType: th.dataset.columnType || null,
+    returnFocusTo: returnFocusTo,
+  });
+}
+
 function canChooseColumns() {
   return !!(
     document.querySelector("column-chooser") && window._columnChooserData
@@ -404,9 +429,25 @@ function buildColumnActionItems(manager, th, options) {
     });
   }
 
+  if (canShowColumnStatistics(th)) {
+    columnActions.push({
+      label: "Column statistics",
+      href: "#",
+      onClick:
+        options.onColumnStatistics ||
+        function (ev) {
+          ev.preventDefault();
+          window.setTimeout(function () {
+            openColumnStatistics(th);
+          }, 0);
+        },
+    });
+  }
+
   if (options.includeChooseColumns && canChooseColumns()) {
     columnActions.push({
       label: "Choose columns",
+      menuGroupStart: true,
       href: "#",
       onClick:
         options.onChooseColumns ||
@@ -435,6 +476,7 @@ function buildColumnActionItems(manager, th, options) {
   if (th.dataset.isPk !== "1" && hasMultipleVisibleColumns(manager)) {
     columnActions.push({
       label: "Hide this column",
+      menuGroupStart: true,
       href: hideColumnUrl(column),
     });
   }
@@ -451,6 +493,11 @@ function buildColumnActionItems(manager, th, options) {
       label: "Show not-blank rows",
       href: notBlankUrl(column),
     });
+  }
+
+  // "Expand long values" / "Collapse long values", from table-layout.js
+  if (manager.longValueColumnActions) {
+    columnActions = columnActions.concat(manager.longValueColumnActions(th));
   }
 
   return columnActions.concat(manager.makeColumnActions(getColumnMeta(th)));
@@ -504,36 +551,29 @@ const initDatasetteTable = function (manager) {
     return;
   }
   function closeMenu() {
-    menu.style.display = "none";
-    menu.classList.remove("anim-scale-in");
+    window.DatasetteMenu.close({ restoreFocus: true });
   }
 
   const tableWrapper = document.querySelector(manager.selectors.tableWrapper);
   if (tableWrapper) {
-    tableWrapper.addEventListener("scroll", closeMenu);
+    tableWrapper.addEventListener("scroll", () => window.DatasetteMenu.close());
   }
-  document.body.addEventListener("click", (ev) => {
-    /* was this click outside the menu? */
-    var target = ev.target;
-    while (target && target != menu) {
-      target = target.parentNode;
-    }
-    if (!target) {
-      closeMenu();
-    }
-  });
 
   function onTableHeaderClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
-    menu.innerHTML = DROPDOWN_HTML;
-    var th = ev.target;
-    while (th.nodeName != "TH") {
-      th = th.parentNode;
+    const trigger = ev.currentTarget;
+    if (ev.type === "click" && window.DatasetteMenu.isOpenFor(trigger)) {
+      closeMenu();
+      return;
     }
-    var rect = th.getBoundingClientRect();
-    var menuTop = rect.bottom + window.scrollY;
-    var menuLeft = rect.left + window.scrollX;
+    window.DatasetteMenu.close();
+    const th = trigger.closest("th");
+    menu.innerHTML = DROPDOWN_HTML;
+    menu.setAttribute("role", "menu");
+    const heading = menu.querySelector(".datasette-menu-title");
+    heading.textContent = th.dataset.column;
+    menu.setAttribute("aria-label", "Actions for column " + th.dataset.column);
     var actionState = manager.columnActions.buildColumnActionState(th, {
       includeChooseColumns: true,
       includeShowAllColumns: true,
@@ -549,12 +589,23 @@ const initDatasetteTable = function (manager) {
           openSetColumnTypeDialog(th);
         }, 0);
       },
+      onColumnStatistics: function (ev) {
+        ev.preventDefault();
+        closeMenu();
+        window.setTimeout(function () {
+          openColumnStatistics(th, trigger);
+        }, 0);
+      },
     });
     var menuList = menu.querySelector("ul.dropdown-actions");
     menuList.innerHTML = "";
     actionState.actionItems.forEach((itemConfig) => {
       var menuItem = document.createElement("li");
-      menuItem.appendChild(renderActionLink(itemConfig));
+      menuItem.setAttribute("role", "none");
+      if (itemConfig.menuGroupStart) menuItem.classList.add("menu-separator");
+      const link = renderActionLink(itemConfig);
+      link.setAttribute("role", "menuitem");
+      menuItem.appendChild(link);
       menuList.appendChild(menuItem);
     });
 
@@ -573,54 +624,44 @@ const initDatasetteTable = function (manager) {
     } else {
       columnDescriptionP.style.display = "none";
     }
-    menu.style.position = "absolute";
-    menu.style.top = menuTop + 6 + "px";
-    menu.style.left = menuLeft + "px";
-    menu.style.display = "block";
-    menu.classList.add("anim-scale-in");
-
-    // Measure width of menu and adjust position if too far right
-    const menuWidth = menu.offsetWidth;
-    const windowWidth = window.innerWidth;
-    if (menuLeft + menuWidth > windowWidth) {
-      menu.style.left = windowWidth - menuWidth - 20 + "px";
-    }
-    // Align menu .hook arrow with the column cog icon
-    const hook = menu.querySelector(".hook");
-    const icon = th.querySelector(".dropdown-menu-icon");
-    const iconRect = icon.getBoundingClientRect();
-    const hookLeft = iconRect.left - menuLeft + 1 + "px";
-    hook.style.left = hookLeft;
-    // Move the whole menu right if the hook is too far right
-    const menuRect = menu.getBoundingClientRect();
-    if (iconRect.right > menuRect.right) {
-      menu.style.left = iconRect.right - menuWidth + "px";
-      // And move hook tip as well
-      hook.style.left = menuWidth - 13 + "px";
-    }
+    window.DatasetteMenu.open({
+      trigger,
+      panel: menu,
+      focusLast: ev.key === "ArrowUp",
+      focusMenu: ev.type === "keydown" || ev.detail === 0,
+    });
   }
 
-  var svg = document.createElement("div");
-  svg.innerHTML = DROPDOWN_ICON_SVG;
-  svg = svg.querySelector("*");
-  svg.classList.add("dropdown-menu-icon");
-  var menu = document.createElement("div");
-  menu.innerHTML = DROPDOWN_HTML;
-  menu = menu.querySelector("*");
-  menu.style.position = "absolute";
-  menu.style.display = "none";
+  const menu = document.createElement("div");
+  menu.id = "column-actions-menu";
+  menu.className = "column-actions-menu datasette-menu";
+  menu.hidden = true;
   document.body.appendChild(menu);
 
-  var ths = Array.from(
+  const ths = Array.from(
     document.querySelectorAll(manager.selectors.tableHeaders),
   );
   ths.forEach((th) => {
-    if (!th.querySelector("a")) {
-      return;
-    }
-    var icon = svg.cloneNode(true);
-    icon.addEventListener("click", onTableHeaderClick);
-    th.appendChild(icon);
+    if (!th.querySelector("a")) return;
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "column-menu-trigger";
+    trigger.setAttribute(
+      "aria-label",
+      "Actions for column " + th.dataset.column,
+    );
+    trigger.setAttribute("aria-haspopup", "menu");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-controls", menu.id);
+    trigger.innerHTML = DROPDOWN_ICON_SVG;
+    const icon = trigger.querySelector("svg");
+    icon.setAttribute("aria-hidden", "true");
+    trigger.addEventListener("click", onTableHeaderClick);
+    trigger.addEventListener("keydown", (event) => {
+      if (["ArrowDown", "ArrowUp"].includes(event.key))
+        onTableHeaderClick(event);
+    });
+    th.appendChild(trigger);
   });
 };
 
@@ -786,7 +827,9 @@ function initAutocompleteForFilterValues(manager) {
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
       var links = Array.from(
-        facetResult.querySelectorAll("li:not(.facet-truncated) a"),
+        facetResult.querySelectorAll(
+          "li:not(.facet-truncated) a[data-facet-value]",
+        ),
       );
       // Create a datalist element
       var datalist = document.createElement("datalist");
@@ -857,32 +900,58 @@ function openColumnChooser() {
   });
 }
 
+var tableCount = null;
+
+/* Count the rows matching this page's filters. The "count all" button and the
+   export dialog (export-dialog.js) share this one request, and the count is
+   shown in the page header whichever of them asked for it. Failed counts are
+   forgotten so that they can be retried. */
+function countTableRows(countUrl) {
+  if (!tableCount) {
+    tableCount = fetch(countUrl + location.search, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+      },
+    }).then(async function (response) {
+      var data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error((data.errors || ["Count failed"]).join(" "));
+      }
+      return data.count;
+    });
+    tableCount.then(showTableCount, function () {
+      tableCount = null;
+    });
+  }
+  return tableCount;
+}
+
+function showTableCount(count) {
+  var countEl = document.querySelector(".table-count");
+  if (countEl) {
+    countEl.textContent =
+      count.toLocaleString("en-US") + (count === 1 ? " row" : " rows");
+  }
+  var button = document.querySelector(".count-all");
+  if (button) {
+    button.remove();
+  }
+}
+
 function initCountAll() {
   var button = document.querySelector(".count-all");
   if (!button) {
     return;
   }
   button.addEventListener("click", async function () {
-    var count = document.querySelector(".table-count");
     var error = document.querySelector(".count-error");
     button.disabled = true;
     button.textContent = "Counting…";
     error.textContent = "";
     try {
-      var response = await fetch(button.dataset.countUrl + location.search, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-      var data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error((data.errors || ["Count failed"]).join(" "));
-      }
-      count.textContent =
-        data.count.toLocaleString("en-US") +
-        (data.count === 1 ? " row" : " rows");
-      button.remove();
+      // showTableCount() updates the header and removes this button
+      await countTableRows(button.dataset.countUrl);
     } catch (ex) {
       error.textContent = ex.message || "Count failed";
       button.disabled = false;
@@ -891,11 +960,54 @@ function initCountAll() {
   });
 }
 
+/* On pages after the first (?_next=), ask how many rows come before this
+   page so the position strip can say "Rows 51–100 of 1,761". This runs after
+   page load so it never slows the page down; if it fails or times out the
+   strip keeps its server-rendered "Continuing after ..." text. */
+async function initPagePosition() {
+  var strip = document.querySelector(".page-position");
+  // No count-before URL on the first page: it already knows it starts at row 1
+  if (!strip || !strip.dataset.countBeforeUrl) {
+    return;
+  }
+  var pageRows = parseInt(strip.dataset.pageRows, 10);
+  if (!pageRows) {
+    return;
+  }
+  try {
+    var response = await fetch(strip.dataset.countBeforeUrl, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    var data = await response.json();
+    if (!response.ok || !data.ok) {
+      return;
+    }
+    var fmt = function (n) {
+      return n.toLocaleString("en-US");
+    };
+    var html =
+      "Rows <strong>" +
+      fmt(data.count + 1) +
+      "–" +
+      fmt(data.count + pageRows) +
+      "</strong>";
+    if (strip.dataset.total) {
+      html +=
+        " of <strong>" + fmt(parseInt(strip.dataset.total, 10)) + "</strong>";
+    }
+    strip.querySelector(".page-position-text").innerHTML = html;
+  } catch (ex) {
+    // Leave the fallback text in place
+  }
+}
+
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
   initCountAll();
+  initPagePosition();
   initializeColumnActions(manager);
 
   // Main table

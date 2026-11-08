@@ -3,6 +3,7 @@ import re
 from html import unescape
 
 import pytest
+import sqlite_utils
 from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
@@ -1597,6 +1598,7 @@ async def test_create_query_analyze_endpoint_uses_sql_only():
             "database": "data",
             "table": "dogs",
             "required_permission": "view-table",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -2111,6 +2113,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
             "database": "data",
             "table": "dogs",
             "required_permission": "insert-row, update-row, delete-row",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -2129,6 +2132,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
             "database": "data",
             "table": "dogs",
             "required_permission": "insert-row, update-row, delete-row",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -2910,7 +2914,12 @@ async def test_execute_write_form_rejects_vacuum_operation_with_flash_error():
         '<p class="message-error">VACUUM is not allowed in user-supplied SQL</p>'
         in denied_response.text
     )
-    assert denied_response.text.count("VACUUM is not allowed in user-supplied SQL") == 1
+    # Shown once as the error, and once against the operation it applies to
+    assert denied_response.text.count("VACUUM is not allowed in user-supplied SQL") == 2
+    assert (
+        '<span class="execute-write-analysis-rejected">'
+        "VACUUM is not allowed in user-supplied SQL</span>"
+    ) in denied_response.text
 
 
 @pytest.mark.asyncio
@@ -3099,6 +3108,156 @@ async def test_execute_write_rejects_virtual_and_shadow_table_writes(
 
 
 @pytest.mark.asyncio
+async def test_execute_write_on_table_with_fts_triggers():
+    # sqlite-utils enable_fts(create_triggers=True) keeps an external-content
+    # FTS index in sync using triggers. Permission on the table itself must be
+    # enough to write to it - no separate grants on the FTS tables.
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "repos": {
+                            "permissions": {
+                                "view-table": {"id": "writer"},
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_fts_triggers", name="data")
+
+    def create_fts_table(conn):
+        repos = sqlite_utils.Database(conn)["repos"]
+        repos.insert({"id": 1, "name": "datasette"}, pk="id")
+        repos.enable_fts(["name"], create_triggers=True)
+
+    await db.execute_write_fn(create_fts_table)
+    await ds.invoke_startup()
+
+    async def search(term):
+        return [
+            row[0]
+            for row in await db.execute(
+                "select rowid from repos_fts where repos_fts match ?", [term]
+            )
+        ]
+
+    assert await search("datasette") == [1]
+
+    for sql, term, expected in (
+        ("insert into repos (id, name) values (2, 'llm')", "llm", [2]),
+        ("update repos set name = 'sqlite-utils' where id = 1", "utils", [1]),
+        ("delete from repos where id = 2", "llm", []),
+    ):
+        analysis_response = await ds.client.get(
+            "/data/-/execute-write/analyze",
+            actor={"id": "writer"},
+            params={"sql": sql},
+        )
+        analysis = analysis_response.json()
+        assert analysis["execute_disabled"] is False, analysis
+        assert {row["table"] for row in analysis["analysis_rows"]} == {"repos"}
+
+        response = await ds.client.post(
+            "/data/-/execute-write",
+            actor={"id": "writer"},
+            json={"sql": sql},
+        )
+        assert response.status_code == 200, response.text
+        assert await search(term) == expected
+
+    assert await search("datasette") == []
+
+
+@pytest.mark.asyncio
+async def test_execute_write_analysis_explains_rejected_operations():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_explains_rejections", name="data")
+    await db.execute_write("create virtual table docs using fts5(title, content='')")
+    await ds.invoke_startup()
+    sql = "insert into docs(docs) values('delete-all')"
+    expected_message = "Writes to virtual tables are not allowed in user-supplied SQL"
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    page_response = await ds.client.get(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+
+    data = analysis_response.json()
+    assert data["execute_disabled"] is True
+    assert data["execute_disabled_reason"] == expected_message
+    rejected_row = next(row for row in data["analysis_rows"] if row["table"] == "docs")
+    assert rejected_row["allowed"] is False
+    assert rejected_row["message"] == expected_message
+
+    assert (
+        f'<span class="execute-write-analysis-rejected">{expected_message}</span>'
+        in page_response.text
+    )
+    assert (
+        f'data-execute-write-disabled-reason aria-live="polite">{expected_message}</span>'
+        in page_response.text
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_write_analysis_shows_trigger_source():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_trigger_source", name="data")
+    await db.execute_write_script("""
+        create table dogs (id integer primary key, name text);
+        create table log (message text);
+        create trigger dogs_ai after insert on dogs begin
+            insert into log (message) values (new.name);
+        end;
+    """)
+    await ds.invoke_startup()
+    sql = "insert into dogs (name) values ('Cleo')"
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    page_response = await ds.client.get(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+
+    log_row = next(
+        row
+        for row in analysis_response.json()["analysis_rows"]
+        if row["table"] == "log"
+    )
+    assert log_row["source"] == "dogs_ai"
+    assert (
+        '<td><code>log</code> <span class="execute-write-analysis-source">'
+        "via <code>dogs_ai</code></span></td>"
+    ) in page_response.text
+
+
+@pytest.mark.asyncio
 async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3231,6 +3390,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
             "database": "data",
             "table": "foobar",
             "required_permission": "create-table",
+            "message": None,
             "source": None,
             "allowed": True,
         }

@@ -720,8 +720,8 @@ def test_other_types_of_facet_in_metadata():
         response = client.get("/fixtures/facetable")
         fragments = (
             "<strong>state\n",
-            "<strong>tags (array)\n",
-            "<strong>created (date)\n",
+            '<strong>tags <span class="facet-info-type">array</span>\n',
+            '<strong>created <span class="facet-info-type">date</span>\n',
         )
         for fragment in fragments:
             assert fragment in response.text

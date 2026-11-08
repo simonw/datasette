@@ -5,6 +5,9 @@ import pytest
 from asgiref.sync import async_to_sync
 from bs4 import BeautifulSoup as Soup
 
+from datasette.utils.asgi import Request
+from datasette.views.database import MagicParameters
+
 from .fixtures import make_app_client
 
 
@@ -341,6 +344,27 @@ def magic_parameters_client():
         },
     ) as client:
         yield client
+
+
+@pytest.mark.parametrize(
+    "actor,key",
+    [
+        (None, "id"),
+        (None, "name"),
+        ({}, "id"),
+        ({"id": "root"}, "name"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_magic_actor_missing_key(bare_ds, actor, key):
+    request = Request.fake("/")
+    request.scope["actor"] = actor
+    parameters = MagicParameters(f"select :_actor_{key}", {}, request, bare_ds)
+
+    with pytest.raises(KeyError) as exc_info:
+        await parameters.execute_params()
+
+    assert exc_info.value.args == (key,)
 
 
 @pytest.mark.parametrize(

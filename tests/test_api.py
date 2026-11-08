@@ -49,10 +49,15 @@ async def test_homepage_sort_by_relationships(ds_client):
     tables = [
         t["name"] for t in response.json()["databases"][0]["tables_and_views_truncated"]
     ]
-    assert tables == [
+    assert tables[:3] == [
         "simple_primary_key",
         "foreign_key_references",
         "complex_foreign_keys",
+    ]
+    # These two have two relationships each, so they are ordered by row count -
+    # unless counting takes longer than its 10ms limit, as it can on a busy CI
+    # machine, in which case the counts are skipped and they are ordered by name
+    assert sorted(tables[3:]) == [
         "roadside_attraction_characteristics",
         "searchable_tags",
     ]

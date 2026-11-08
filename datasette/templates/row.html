@@ -9,7 +9,7 @@
 {% if table_page_data.foreignKeys %}
 <script src="{{ static('autocomplete.js') }}" defer></script>
 {% endif %}
-<script src="{{ static('edit-tools.js') }}" defer></script>
+<script src="{{ static('edit-tools-loader.js') }}" data-edit-tools-src="{{ static('edit-tools.js') }}" defer></script>
 {% endif %}
 <style>
 @media only screen and (max-width: 576px) {
@@ -36,7 +36,14 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<p>This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}</p>
+<div class="table-tools">
+    {% include "_export_button.html" %}
+</div>
+{% set export_meta, export_scope = table, "This row" %}
+{% set export_scope_description %}where {% for column, value in zip(primary_keys or ["rowid"], primary_key_values) %}{{ " and " if not loop.first }}{{ column }} = {{ value if value.isdigit() else '"' ~ value ~ '"' }}{% endfor %}{% endset %}
+{#- Every format returns just this row, so there are no row counts to show -#}
+{% set export_single_row, export_rows = true, none %}
+{% include "_export_dialog.html" %}
 
 {% include custom_table_templates %}
 

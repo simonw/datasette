@@ -47,7 +47,7 @@ If the latest packaged release of Datasette has not yet been made available thro
 Using pip
 ---------
 
-Datasette requires Python 3.10 or higher. The `Python.org Python For Beginners <https://www.python.org/about/gettingstarted/>`__ page has instructions for getting started.
+Datasette requires Python 3.11 or higher. The `Python.org Python For Beginners <https://www.python.org/about/gettingstarted/>`__ page has instructions for getting started.
 
 You can install Datasette and its dependencies using ``pip``::
 
@@ -274,7 +274,7 @@ Use ``which datasette`` to confirm that ``datasette`` will run that version. The
 
     /usr/local/opt/datasette/bin/datasette
 
-If you get a different location here such as ``/Library/Frameworks/Python.framework/Versions/3.10/bin/datasette`` you can run the following command to cause ``datasette`` to execute the Homebrew version instead::
+If you get a different location here such as ``/Library/Frameworks/Python.framework/Versions/3.11/bin/datasette`` you can run the following command to cause ``datasette`` to execute the Homebrew version instead::
 
     alias datasette=$(echo $(brew --prefix datasette)/bin/datasette)
 

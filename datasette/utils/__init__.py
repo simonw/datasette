@@ -19,6 +19,7 @@ import urllib
 from collections import Counter, OrderedDict, namedtuple
 from collections.abc import Iterable
 from contextlib import contextmanager
+from shutil import copytree
 
 import aiofiles
 import click
@@ -26,7 +27,6 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
@@ -309,6 +309,29 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
         bits = [str(bit) for bit in bits]
 
     return ",".join(bits)
+
+
+def compound_keys_at_or_before_sql(pks, start_index=0):
+    # The inverse of compound_keys_after_sql(): rows up to and including the
+    # cursor. Written out directly, rather than as "not (...after...)", so
+    # SQLite can answer it with a range search on the primary key index.
+    # For pk1/pk2/pk3 returns:
+    #
+    # ([pk1] < :p0)
+    #   or
+    # ([pk1] = :p0 and [pk2] < :p1)
+    #   or
+    # ([pk1] = :p0 and [pk2] = :p1 and [pk3] <= :p2)
+    or_clauses = []
+    for i, pk in enumerate(pks):
+        and_clauses = [
+            f"{escape_sqlite(earlier)} = :p{j + start_index}"
+            for j, earlier in enumerate(pks[:i])
+        ]
+        op = "<=" if i == len(pks) - 1 else "<"
+        and_clauses.append(f"{escape_sqlite(pk)} {op} :p{i + start_index}")
+        or_clauses.append(f"({' and '.join(and_clauses)})")
+    return "({})".format("\n  or\n".join(or_clauses))
 
 
 def compound_keys_after_sql(pks, start_index=0):
@@ -957,7 +980,7 @@ def to_css_class(s):
     """
     if css_class_re.match(s):
         return s
-    md5_suffix = md5_not_usedforsecurity(s)[:6]
+    md5_suffix = hashlib.md5(s.encode("utf8"), usedforsecurity=False).hexdigest()[:6]
     # Strip leading _, -
     s = s.lstrip("_").lstrip("-")
     # Replace any whitespace with hyphens
@@ -1755,14 +1778,6 @@ def redact_keys(original: dict, key_patterns: Iterable) -> dict:
             return data
 
     return redact(original)
-
-
-def md5_not_usedforsecurity(s):
-    try:
-        return hashlib.md5(s.encode("utf8"), usedforsecurity=False).hexdigest()
-    except TypeError:
-        # For Python 3.8 which does not support usedforsecurity=False
-        return hashlib.md5(s.encode("utf8")).hexdigest()
 
 
 _etag_cache = {}

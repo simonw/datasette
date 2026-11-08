@@ -136,14 +136,26 @@ def test_database_list_respects_view_database():
         extra_databases={"data.db": "create table names (name text)"},
     ) as client:
         anon_response = client.get("/")
-        assert '<a href="/data">data</a></h2>' in anon_response.text
-        assert '<a href="/fixtures">fixtures</a>' not in anon_response.text
+        anon_links = homepage_item_links(anon_response.text)
+        assert "/data/names" in anon_links
+        assert not any(link.startswith("/fixtures/") for link in anon_links)
+        # Only one database is visible, so there is no database filter
+        assert 'href="/?database=fixtures"' not in anon_response.text
         auth_response = client.get(
             "/",
             cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
-        assert '<a href="/data">data</a></h2>' in auth_response.text
-        assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
+        auth_links = homepage_item_links(auth_response.text)
+        assert "/data/names" in auth_links
+        assert any(link.startswith("/fixtures/") for link in auth_links)
+        soup = Soup(auth_response.text, "html.parser")
+        fixtures_chip = soup.select_one('a.homepage-database[href="/?database=fixtures"]')
+        assert "🔒" in fixtures_chip.text
+
+
+def homepage_item_links(html):
+    soup = Soup(html, "html.parser")
+    return [a["href"] for a in soup.select("a.catalog-item-name")]
 
 
 def test_database_list_respects_view_table():
@@ -167,7 +179,8 @@ def test_database_list_respects_view_table():
             ">v</a> 🔒",
         ]
         anon_response_text = client.get("/").text
-        assert "0 rows in 0 tables" in anon_response_text
+        assert "/data/names" not in homepage_item_links(anon_response_text)
+        assert "/data/v" not in homepage_item_links(anon_response_text)
         for html_fragment in html_fragments:
             assert html_fragment not in anon_response_text
         auth_response_text = client.get(

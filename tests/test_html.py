@@ -16,7 +16,8 @@ from .utils import assert_footer_links, inner_html
 
 
 def test_homepage(app_client_two_attached_databases):
-    response = app_client_two_attached_databases.get("/")
+    client = app_client_two_attached_databases
+    response = client.get("/")
     assert response.status_code == 200
     assert "text/html; charset=utf-8" == response.headers["content-type"]
     # Should have a html lang="en" attribute
@@ -27,58 +28,73 @@ def test_homepage(app_client_two_attached_databases):
         "An example SQLite database demonstrating Datasette. Sign in as root user"
         == soup.select(".metadata-description")[0].text.strip()
     )
-    # Should be two attached databases
-    assert [
-        {"href": "/extra+database", "text": "extra database"},
-        {"href": "/fixtures", "text": "fixtures"},
-    ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
-    # Database should show count text and attached tables
-    h2 = soup.select("h2")[0]
-    assert "extra database" == h2.text.strip()
-    counts_p, links_p = h2.find_all_next("p")[:2]
-    # Shadow tables of the external-content index are denied, so they do not
-    # contribute to the table or row totals.
-    assert (
-        "2 rows in 1 table, 2 rows in 1 hidden table, 1 view" == counts_p.text.strip()
-    )
-    # We should only show visible, not hidden tables here:
-    table_links = [
-        {"href": a["href"], "text": a.text.strip()} for a in links_p.find_all("a")
+    # The database filter lists both databases, plus "All"
+    chips = soup.select("nav.homepage-databases a.homepage-database")
+    assert [a["href"] for a in chips] == [
+        "/",
+        "/?database=extra+database",
+        "/?database=fixtures",
     ]
-    assert [
-        {"href": r"/extra+database/searchable", "text": "searchable"},
-        {"href": r"/extra+database/searchable_view", "text": "searchable_view"},
-    ] == table_links
+    extra_color = client.ds.get_database("extra database").color
+    assert f"--db-color: #{extra_color}" in chips[1]["style"]
+    # Tables and views from every database are in one list, tagged with
+    # their database; hidden FTS tables are left out
+    item_links = [a["href"] for a in soup.select("a.catalog-item-name")]
+    assert "/extra+database/searchable" in item_links
+    assert "/extra+database/searchable_view" in item_links
+    assert not any("searchable_fts" in href for href in item_links)
+    view_item = next(
+        li
+        for li in soup.select("li.catalog-item")
+        if li.select_one("a.catalog-item-name")["href"]
+        == "/extra+database/searchable_view"
+    )
+    assert view_item.select_one(".type-tag-view").text == "view"
+    assert view_item.select_one(".db-tag").text == "extra database"
+
+
+def test_homepage_database_filter(app_client_two_attached_databases):
+    response = app_client_two_attached_databases.get("/?database=extra+database")
+    soup = Soup(response.content, "html.parser")
+    selected = soup.select_one("a.homepage-database.selected")
+    assert selected["href"] == "/?database=extra+database"
+    assert [a["href"] for a in soup.select("a.catalog-item-name")] == [
+        "/extra+database/searchable",
+        "/extra+database/searchable_view",
+    ]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sql,expected",
     (
-        (["create view one as select 1 as n"], "0 tables, 1 view"),
+        (["create view one as select 1 as n"], ["0 tables", "1 view"]),
         (
             ["create view one as select 1 as n", "create view two as select 2 as n"],
-            "0 tables, 2 views",
+            ["0 tables", "2 views"],
         ),
         (
             ["create table t (id integer primary key)", "create view v as select 1"],
-            "0 rows in 1 table, 1 view",
+            ["1 table", "1 view"],
         ),
     ),
 )
-async def test_homepage_database_summary_separators(sql, expected):
+async def test_homepage_summary_counts(sql, expected):
     # https://github.com/simonw/datasette/issues/2012
     ds = Datasette()
     await ds.invoke_startup()
-    db = ds.add_memory_database("summary_separators")
+    db = ds.add_memory_database("summary_counts")
     for statement in sql:
         await db.execute_write(statement)
-    response = await ds.client.get("/")
+    response = await ds.client.get("/?database=summary_counts")
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    h2 = next(h2 for h2 in soup.select("h2") if h2.text.strip() == "summary_separators")
-    counts_p = h2.find_next("p")
-    assert " ".join(counts_p.text.split()) == expected
+    spans = [
+        " ".join(span.text.split())
+        for span in soup.select(".homepage-summary span")
+        if "database" not in span.text
+    ]
+    assert spans == expected
 
 
 @pytest.mark.asyncio
@@ -1551,8 +1567,9 @@ async def test_database_color(ds_client):
         f"border-color: #{expected_color}",
     )
     assert len(expected_color) == 6
+    # The homepage only shows database colours when there are several
+    # databases - that is covered by test_homepage
     for path in (
-        "/",
         "/fixtures",
         "/fixtures/facetable",
         "/fixtures/paginated_view",

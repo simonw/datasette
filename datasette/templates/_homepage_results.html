@@ -41,7 +41,7 @@
 {% endset %}
 {% if not q %}{{ queries_section }}{% endif %}
 
-<section class="homepage-tables" aria-labelledby="homepage-tables-heading">
+<section class="homepage-tables" id="tables" aria-labelledby="homepage-tables-heading">
     <h2 id="homepage-tables-heading">
         {% if q %}{{ "{:,}".format(catalog.total) }} matching table{% if catalog.total != 1 %}s{% endif %} and views
         {% else %}Tables{% if catalog.totals.views %} and views{% endif %}{% endif %}
@@ -85,13 +85,13 @@
         <span class="page-position-text">Page <strong>{{ page }}</strong> of <strong>{{ page_count }}</strong></span>
         <span class="page-position-links">
             {% if previous_url %}
-            <a class="page-position-first" href="{{ previous_url }}" rel="prev">
+            <a class="page-position-first" href="{{ previous_url }}#tables" rel="prev">
                 <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 Previous
             </a>
             {% endif %}
             {% if next_url %}
-            <a class="page-position-next" href="{{ next_url }}" rel="next">
+            <a class="page-position-next" href="{{ next_url }}#tables" rel="next">
                 Next
                 <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </a>

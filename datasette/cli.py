@@ -3,7 +3,6 @@ import atexit
 import contextlib
 import functools
 import json
-import logging
 import os
 import pathlib
 import shutil
@@ -30,9 +29,13 @@ from .app import (
     pm,
 )
 from .database import Database
-from .imports.background import TerminalReporter, import_registry
+from .imports.background import (
+    ImportHooks,
+    ImportOptions,
+    import_registry,
+)
 from .imports.inserter import SQLITE_ERRORS
-from .imports.loaders import NOTE_LOG_ATTRIBUTE, get_loaders
+from .imports.loaders import get_loaders
 from .imports.scratch import (
     DEFAULT_BATCH_SIZE,
     SAVE_BATCH_SIZE,
@@ -52,17 +55,14 @@ from .imports.scratch import (
     sniff,
 )
 from .imports.sources import (
-    LARGE_DOWNLOAD_BYTES,
     Source,
     SourceError,
     StatusLine,
     assign_table_names,
     check_stdin_available,
-    download_progress,
     fetch,
     human_size,
     maybe_source,
-    one_line,
     parse_source,
     remove_temporary,
     remove_tree,
@@ -70,6 +70,13 @@ from .imports.sources import (
     spool,
     suggest_save_path,
     use_local_file,
+)
+from .imports.terminal import (
+    TerminalReporter,
+    describe_loaded,
+    download_status,
+    loading_text,
+    print_notes_once,
 )
 from .inspect import inspect_tables
 from .utils import (
@@ -1069,6 +1076,61 @@ def create_token(
         click.echo(json.dumps(ds.unsign(encoded, namespace="token"), indent=2))
 
 
+class _CommandLineHooks(ImportHooks):
+    """
+    What the background import of one command line input does for the
+    command line: keeps the --reload session's record of what is loaded up
+    to date, and scratch's list of the tables it loaded.
+    """
+
+    def __init__(self, data_import, source, old_table):
+        self.data_import = data_import
+        self.source = source
+        # The table an earlier --reload worker loaded from this input
+        self.old_table = old_table
+
+    async def before(self, job):
+        data_import = self.data_import
+        session = data_import.session
+        if self.old_table is not None:
+            # An earlier --reload worker loaded this input before it changed
+            await drop_table(data_import.db, self.old_table)
+            if session:
+                session.forget(data_import.target_path, self.old_table)
+        if session:
+            # Not complete until finished() says so: a worker that is
+            # restarted part way through leaves a table to load again
+            session.remember(data_import.target_path, self.source, complete=False)
+
+    def fetched(self, job):
+        session = self.data_import.session
+        if session:
+            # Keep the download or stdin copy for the next --reload worker
+            session.remember_copy(job.source)
+            job.source.temporary = False
+
+    def finished(self, job):
+        if job.state != "done":
+            return
+        data_import = self.data_import
+        if data_import.session:
+            data_import.session.remember(
+                data_import.target_path, job.source, complete=True, loader=job.loader
+            )
+        if is_scratch(data_import.db) and job.table_exists:
+            data_import.db.loaded.append(
+                LoadedTable(
+                    source=job.source,
+                    table=job.table,
+                    loader=job.loader,
+                    rows=job.rows,
+                    seconds=job.seconds or 0.0,
+                    widenings=list(job.widenings),
+                    notes=list(job.notes),
+                )
+            )
+
+
 class _DataImport:
     """
     Sources from the command line, made local and sniffed, waiting for
@@ -1103,19 +1165,13 @@ class _DataImport:
         session = self.session
         target_path = self.target_path
         registry = import_registry(ds)
-        # Only this command line's own inputs: an upload goes into a database
-        # of its own choosing, and is not one of the inputs the summary
-        # counts. The "queued" event fires inside registry.start()
-        ours = {id(source) for source in self.plan.load}
-        registry.add_listener(
-            TerminalReporter(
-                sys.stderr,
-                where=self.where,
-                warn_large=is_scratch(db),
-                accept=lambda job: id(job.source) in ours,
-            )
+        # For this command line's own inputs only: an upload goes into a
+        # database of its own choosing, and is not one of the inputs the
+        # summary counts
+        reporter = TerminalReporter(
+            sys.stderr, where=self.where, warn_large=is_scratch(db)
         )
-        _print_notes_once()
+        print_notes_once()
         for source in self.plan.reuse:
             loaded = LoadedTable(
                 source=source,
@@ -1127,19 +1183,21 @@ class _DataImport:
             )
             if is_scratch(db):
                 db.loaded.append(loaded)
-            click.echo(_describe_loaded(loaded, self.where), err=True)
+            click.echo(describe_loaded(loaded, self.where), err=True)
+        options = ImportOptions(
+            on_error="keep" if is_scratch(db) else "drop",
+            batch_size=DEFAULT_BATCH_SIZE if is_scratch(db) else SAVE_BATCH_SIZE,
+            fetch_dir=self.workdir,
+        )
         drops = {table.lower(): table for table in self.plan.drop}
         for source in self.plan.load:
             old_table = drops.pop(source.table.lower(), None)
             registry.start(
                 db,
                 source,
-                workdir=self.workdir,
-                on_error="keep" if is_scratch(db) else "drop",
-                batch_size=(DEFAULT_BATCH_SIZE if is_scratch(db) else SAVE_BATCH_SIZE),
-                before=functools.partial(self._before, source, old_table),
-                on_fetched=self._on_fetched,
-                on_finish=self._on_finish,
+                options,
+                hooks=_CommandLineHooks(self, source, old_table),
+                listeners=[reporter],
             )
         if drops:
             # Tables an earlier --reload worker loaded from inputs that are
@@ -1153,57 +1211,20 @@ class _DataImport:
 
             ds.add_background_task(drop_old, name=f"drop old tables {db.name}")
 
-    async def _before(self, source, old_table, job):
-        if old_table is not None:
-            # An earlier --reload worker loaded this input before it changed
-            await drop_table(self.db, old_table)
-            if self.session:
-                self.session.forget(self.target_path, old_table)
-        if self.session:
-            # Not complete until on_finish says so: a worker that is
-            # restarted part way through leaves a table to load again
-            self.session.remember(self.target_path, source, complete=False)
-
-    def _on_fetched(self, job):
-        if self.session:
-            # Keep the download or stdin copy for the next --reload worker
-            self.session.remember_copy(job.source)
-            job.source.temporary = False
-
-    def _on_finish(self, job):
-        if job.state != "done":
-            return
-        if self.session:
-            self.session.remember(
-                self.target_path, job.source, complete=True, loader=job.loader
-            )
-        if is_scratch(self.db) and job.table_exists:
-            self.db.loaded.append(
-                LoadedTable(
-                    source=job.source,
-                    table=job.table,
-                    loader=job.loader,
-                    rows=job.rows,
-                    seconds=job.seconds or 0.0,
-                    widenings=list(job.widenings),
-                    notes=list(job.notes),
-                )
-            )
-
     async def run(self):
         status = StatusLine(sys.stderr)
         start = time.perf_counter()
         where = self.where
-        _print_notes_once()
+        print_notes_once()
 
         def on_start(source):
             status.start(f"Loading {source.label}...")
 
         def on_progress(source, rows, import_status):
-            status.update(_loading_text(source, rows, import_status))
+            status.update(loading_text(source, rows, import_status))
 
         def on_loaded(loaded):
-            status.done(_describe_loaded(loaded, where))
+            status.done(describe_loaded(loaded, where))
 
         try:
             results = await load_sources(
@@ -1294,33 +1315,6 @@ def _sigterm_interrupts():
         yield
     finally:
         signal.signal(signal.SIGTERM, previous)
-
-
-def _describe_loaded(loaded, where=""):
-    # Names, notes and column names can come from the file: one line each,
-    # with no control characters, see one_line()
-    table = one_line(loaded.table)
-    label = one_line(loaded.source.label)
-    if loaded.reused:
-        return (
-            f"Kept table {table}{where} from the previous load: "
-            f"{label} has not changed"
-        )
-    notes = "".join(f"\n  note: {one_line(note)}" for note in loaded.notes)
-    if not loaded.created:
-        return f"{label} has no rows, so no table was created{notes}"
-    line = (
-        f"Loaded {loaded.rows:,} row{'' if loaded.rows == 1 else 's'} from "
-        f"{label} ({loaded.loader}) "
-        f"into table {table}{where} in {loaded.seconds:.2f}s"
-    )
-    for widening in loaded.widenings:
-        line += (
-            f"\n  column {one_line(widening.column)} changed from "
-            f"{widening.from_type} to {widening.to_type} at row "
-            f"{widening.at_row + 1:,}"
-        )
-    return line + notes
 
 
 def _prepare_import(
@@ -1419,7 +1413,7 @@ def _prepare_import(
             progress = None
             if source.kind == "url":
                 status.start(f"Downloading {source.label}")
-                progress = _download_progress(source, status, warn=not save)
+                progress = download_status(source, status, warn=not save)
             # asyncio.run() turns Ctrl+C into a cancellation, so the
             # download closes its connection and removes its partial file
             asyncio.run(fetch(source, workdir, progress=progress))
@@ -1527,55 +1521,12 @@ def _prepare_import(
     return data_import
 
 
-def _loading_text(source, rows, import_status):
-    "The --get status line while ``source`` loads."
-    if import_status.finishing and import_status.backlog:
-        # A column changed to text after the first rows: its stored numbers
-        # are being turned back into the text they came from
-        return f"Finishing {source.table}: {import_status.backlog:,} rows to convert"
-    return f"Loading {source.label}: {rows:,} rows"
-
-
-def _is_not_an_import_note(record):
-    return not getattr(record, NOTE_LOG_ATTRIBUTE, None)
-
-
-def _print_notes_once():
-    """
-    The summary lines on stderr show the loaders' notes. A loader logs each
-    one as a warning too, and with no logging configured Python's
-    last-resort handler would print it again: leave notes out of that
-    fallback. Handlers that are configured still get them.
-    """
-    if logging.lastResort is not None:
-        logging.lastResort.addFilter(_is_not_an_import_note)
-
-
 def _enable_wal(path):
     conn = sqlite3.connect(path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
     finally:
         conn.close()
-
-
-def _download_progress(source, status, warn):
-    progress = download_progress(source.label, status)
-    warned = False
-
-    def callback(done, total):
-        nonlocal warned
-        size = total or done
-        if warn and not warned and size > LARGE_DOWNLOAD_BYTES:
-            warned = True
-            status.done(
-                f"{source.label} is {human_size(size)}"
-                f"{'' if total else ' so far'}. The scratch database is deleted "
-                "when Datasette stops: add --save data.db to keep the data."
-            )
-        progress(done, total)
-
-    return callback
 
 
 pm.hook.register_commands(cli=cli)

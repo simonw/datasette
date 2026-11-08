@@ -55,6 +55,7 @@ import json
 import markupsafe
 
 from datasette import hookimpl
+from datasette.imports import ACTIVE_STATES
 
 # Actions that would change a database. set-column-type is not here: column
 # types live in the internal database, not in scratch.
@@ -347,7 +348,9 @@ _POLL_SCRIPT = (
 (function () {
   if (window.datasetteImportPolling) return;
   window.datasetteImportPolling = true;
-  var ACTIVE = ["queued", "downloading", "importing"];
+  var ACTIVE = """
+    + json.dumps(list(ACTIVE_STATES))
+    + """;
   var failures = 0;
   var reloading = false;
   document.addEventListener("submit", function (event) {
@@ -822,13 +825,9 @@ async def imports_view(datasette, request):
 
     await datasette.ensure_permission(action="view-instance", actor=request.actor)
     registry = _registry(datasette)
-    jobs = registry.imports() if registry is not None else []
     database = request.args.get("database")
     table = request.args.get("table")
-    if database is not None:
-        jobs = [job for job in jobs if job.database == database]
-    if table is not None:
-        jobs = [job for job in jobs if job.table.lower() == table.lower()]
+    jobs = registry.imports(database, table) if registry is not None else []
     jobs = await _visible(datasette, request.actor, jobs)
     if request.url_vars.get("format") == "json":
         headers = {"cache-control": "no-store"}

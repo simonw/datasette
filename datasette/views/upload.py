@@ -28,8 +28,8 @@ done.
 - At most :ref:`setting_max_upload_mb` megabytes.
 - Not where subprocesses cannot be started (Pyodide), for now.
 - Imports share the import worker slots
-  (:func:`~datasette.imports.subprocess_import.worker_slots`), so uploads
-  beyond those wait, queued, for a turn.
+  (:func:`~datasette.imports.background.worker_slots`), so uploads beyond
+  those wait, queued, for a turn.
 """
 
 from __future__ import annotations
@@ -316,27 +316,26 @@ class UploadEvents:
     shutting down cancelled it.
     """
 
-    def __init__(self, datasette, actor, job):
+    def __init__(self, datasette, actor):
         self.datasette = datasette
         self.actor = actor
-        self.job = job
+        #: The import, from the first event (``"queued"``, as it starts)
+        self.job = None
         self.created_schema = None
         self._created = False
-        self._finished = False
         self._tail = None
         # Strong references to the tasks firing events, until they are done
         self._tasks = set()
 
     def __call__(self, job, event):
-        if job is not self.job or self._finished:
-            return
+        # Given to registry.start() for this upload's import alone, so it
+        # hears only that import's events, until the one saying it finished
+        self.job = job
         if job.table_exists and not self._created:
             self._created = True
             self._schedule(self._fire_create)
         if job.active:
             return
-        self._finished = True
-        job.registry.remove_listener(self)
         if job.table_exists:
             self._schedule(self._fire_finished, job.rows)
         elif self._created:
@@ -543,11 +542,15 @@ class TableImportView(BaseView):
             raise UploadRefused("Permission denied: need insert-row", 403)
 
         registry = import_registry(self.ds)
-        running = registry.get(db.name, table)
-        if (running is not None and running.active) or is_reserved(db, table):
-            raise UploadRefused(
-                f"Table {table!r} is already being imported into {db.name}", 409
-            )
+        being_imported = f"Table {table!r} is already being imported into {db.name}"
+        # Refuse as registry.start() would, before the file is saved. An
+        # import holds its table's name in this Database object while it
+        # runs - and one cancelled again while it looks at its table holds
+        # it until that look is over, although it has finished - and is
+        # refused by the database's name too, for a database removed and
+        # added again
+        if is_reserved(db, table) or registry.active(db.name, table):
+            raise UploadRefused(being_imported, 409)
         taken_by = await _name_taken_by(db, table)
         if taken_by is not None:
             raise UploadRefused(
@@ -586,16 +589,16 @@ class TableImportView(BaseView):
                     source,
                     title=filename,
                     on_error="drop",
-                    on_finish=lambda _job: remove_tree(directory),
+                    # Removed when the import ends, however it ends
+                    remove_after=(directory,),
+                    listeners=[UploadEvents(self.ds, request.actor)],
                 )
-            except TableExists as ex:
-                raise UploadRefused(str(ex), 409) from None
+            except TableExists:
+                # Another import took the name while this file was saved
+                raise UploadRefused(being_imported, 409) from None
         except BaseException:
             await asyncio.to_thread(remove_tree, directory)
             raise
-        # Nothing can have happened to the import yet: its task has not had
-        # a chance to run
-        registry.add_listener(UploadEvents(self.ds, request.actor, job))
 
         table_path = self.ds.urls.table(db.name, table)
         imports_path = (

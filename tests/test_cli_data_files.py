@@ -22,7 +22,6 @@ import urllib.parse
 import pytest
 from click.testing import CliRunner
 
-from datasette import cli as cli_module
 from datasette.app import Datasette
 from datasette.cli import cli, serve
 from datasette.imports import scratch as scratch_module
@@ -46,6 +45,7 @@ from datasette.imports.sources import (
     suggested_table_name,
     table_name_for_url,
 )
+from datasette.imports.terminal import describe_loaded
 from datasette.utils import escape_sqlite
 from datasette.utils.asgi import Forbidden
 
@@ -1111,9 +1111,9 @@ async def test_load_sources_reports_the_conversion_backlog(
     # --get's status line says when a load is converting stored numbers to
     # text after a column widened in the last chunk
     from datasette.app import Datasette
-    from datasette.cli import _loading_text
     from datasette.imports.inserter import TypedInserter
     from datasette.imports.scratch import load_sources
+    from datasette.imports.terminal import loading_text
 
     monkeypatch.setattr(TypedInserter, "_convert_rows", 1_000)
     path = tmp_path / "late.csv"
@@ -1125,7 +1125,7 @@ async def test_load_sources_reports_the_conversion_backlog(
         seen = []
 
         def on_progress(source, rows, status):
-            text = _loading_text(source, rows, status)
+            text = loading_text(source, rows, status)
             seen.append((rows, status.finishing, status.backlog, text))
 
         sources = _sources(path)
@@ -1537,7 +1537,7 @@ def test_source_label_redacts_url_credentials():
     loaded = LoadedTable(
         source=source, table="a", loader="csv", rows=0, seconds=0, reused=True
     )
-    assert "pw" not in cli_module._describe_loaded(loaded)
+    assert "pw" not in describe_loaded(loaded)
 
 
 def _unused_port():

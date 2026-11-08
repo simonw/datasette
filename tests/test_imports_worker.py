@@ -23,17 +23,22 @@ from datasette.app import Datasette
 from datasette.database import Database
 from datasette.hookspecs import hookimpl
 from datasette.imports import worker as worker_module
+from datasette.imports.background import (
+    DEFAULT_MAX_WORKERS,
+    import_registry,
+    worker_slots,
+)
 from datasette.imports.inserter import TypedInserter, import_rows
 from datasette.imports.loaders import load_path
+from datasette.imports.scratch import ScratchDatabase
+from datasette.imports.sources import Source
 from datasette.imports.subprocess_import import (
-    DEFAULT_MAX_WORKERS,
     ProtocolDecoder,
     ProtocolError,
     WorkerImportError,
     import_file,
     import_file_in_process,
     import_file_via_worker,
-    worker_slots,
 )
 from datasette.plugins import pm
 from datasette.utils import module_from_path
@@ -974,7 +979,6 @@ async def test_cancelling_the_import_stops_the_worker(db, tmp_path):
             path,
             plugins_dir=plugins,
             progress=progress,
-            delete_input=True,
             stop_timeout=0.5,
         )
     )
@@ -983,8 +987,6 @@ async def test_cancelling_the_import_stops_the_worker(db, tmp_path):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert gone(pids[0])
-    # The input copy was deleted
-    assert not os.path.exists(path)
     # Rows committed before the cancellation stay
     assert (await db.execute("select count(*) from t")).single_value() >= 1000
 
@@ -1343,6 +1345,189 @@ async def test_stopping_the_worker_without_sigkill_or_process_groups(
     assert gone(pids[0])
 
 
+# A stand-in worker: the header, a column, and rows 0 to 4
+STAND_IN_ROWS = """
+    import json, sys, time
+    def send(message):
+        sys.stdout.write(json.dumps(message) + "\\n")
+    send({"type": "header", "protocol": 1, "loader": "fake", "size": 10})
+    send({"type": "columns", "add": ["a"]})
+    for i in range(5):
+        send([i])
+"""
+
+
+@pytest.mark.asyncio
+async def test_a_worker_that_floods_stderr_still_imports(db, tmp_path):
+    # 1MB on stderr before anything on stdout: far more than a pipe holds,
+    # so the worker would block on it, and the import wait for its rows
+    # forever, unless stderr is read all the time
+    script = write(
+        tmp_path / "chatty_worker.py",
+        textwrap.dedent("""
+            import sys
+            sys.stderr.write("x" * (1024 * 1024))
+            sys.stderr.flush()
+            """)
+        + textwrap.dedent(STAND_IN_ROWS)
+        + 'send({"type": "end", "rows": 5, "bytes": 10})\n',
+    )
+    result = await asyncio.wait_for(
+        import_file_via_worker(db, "t", "unused", _argv=[sys.executable, script]),
+        30,
+    )
+    assert result.complete
+    assert result.returncode == 0
+    assert await table_rows(db, "t") == [(i,) for i in range(5)]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_while_the_worker_exits(db, tmp_path, monkeypatch):
+    # The worker sends everything, then does not exit: the import waits for
+    # it in WorkerProcess.stop(), and is cancelled there. The worker must
+    # still be killed and reaped before the cancellation goes on
+    from datasette.imports import subprocess_import
+
+    script = write(
+        tmp_path / "lingering_worker.py",
+        textwrap.dedent(STAND_IN_ROWS) + textwrap.dedent("""
+            send({"type": "end", "rows": 5, "bytes": 10})
+            sys.stdout.flush()
+            sys.stdout.close()
+            time.sleep(60)
+            """),
+    )
+    stopping = []
+    entered = asyncio.Event()
+    real_stop = subprocess_import.WorkerProcess.stop
+
+    async def stop(self, timeout=None):
+        stopping.append(self)
+        entered.set()
+        return await real_stop(self, timeout)
+
+    monkeypatch.setattr(subprocess_import.WorkerProcess, "stop", stop)
+    task = asyncio.ensure_future(
+        import_file_via_worker(
+            db, "t", "unused", _argv=[sys.executable, script], stop_timeout=30
+        )
+    )
+    await asyncio.wait_for(entered.wait(), 30)
+    await asyncio.sleep(0.1)
+    assert not task.done()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 10)
+    worker = stopping[0]
+    # Killed and reaped by the time the cancellation reached the caller
+    assert worker.returncode == -signal.SIGKILL
+    assert gone(worker.pid)
+    # Every row was in before it was cancelled
+    assert await table_rows(db, "t") == [(i,) for i in range(5)]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_while_waiting_for_rows_the_worker_is_killed_at_once(
+    db, tmp_path
+):
+    # The worker has sent five rows and is still running, its output open:
+    # the import waits for more and is cancelled there. Nothing else stops
+    # the worker - no write failed, no progress callback raised - so the
+    # block's exit has to kill it. Waiting for it to exit, as at the end of
+    # a block that ended normally, would take stop_timeout and then a
+    # SIGTERM: a minute here
+    stop_timeout = 60
+    script = write(
+        tmp_path / "stuck_worker.py",
+        textwrap.dedent(STAND_IN_ROWS) + "sys.stdout.flush()\ntime.sleep(60)\n",
+    )
+    written = asyncio.Event()
+    pids = []
+
+    def progress(p):
+        pids.append(p.pid)
+        if p.rows_written == 5:
+            written.set()
+
+    task = asyncio.ensure_future(
+        import_file_via_worker(
+            db,
+            "t",
+            "unused",
+            _argv=[sys.executable, script],
+            # The five rows are the sample: committed before it waits
+            sample_size=5,
+            progress=progress,
+            stop_timeout=stop_timeout,
+        )
+    )
+    await asyncio.wait_for(written.wait(), 30)
+    await asyncio.sleep(0.1)
+    assert not task.done()
+    started = time.monotonic()
+    task.cancel()
+    # Far less than stop_timeout. If it has not ended by then, wait_for()
+    # cancels it again and raises TimeoutError
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 5)
+    assert time.monotonic() - started < 5
+    # Killed and reaped before the cancellation reached the caller
+    assert gone(pids[0])
+    assert await table_rows(db, "t") == [(i,) for i in range(5)]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_again_while_the_worker_is_reaped(tmp_path):
+    # A cancellation that reaches the block kills the worker and reaps it.
+    # Cancelled again during the reap, the block raises at once - but the
+    # reap carries on until the worker is gone, its stderr read and its
+    # pipes closed, rather than stopping half way
+    from datasette.imports.subprocess_import import WorkerProcess
+
+    reaping = asyncio.Event()
+    carry_on = asyncio.Event()
+    outcome = []
+
+    class SlowToReap(WorkerProcess):
+        async def stop(self, timeout=None):
+            reaping.set()
+            try:
+                # A reap that takes a while: long enough to be cancelled
+                await carry_on.wait()
+                await super().stop(timeout)
+            except asyncio.CancelledError:
+                outcome.append("interrupted")
+                raise
+            outcome.append("reaped")
+
+    worker = SlowToReap(
+        [sys.executable, "-c", "import time; time.sleep(60)"], stop_timeout=60
+    )
+    entered = asyncio.Event()
+
+    async def block():
+        async with worker:
+            entered.set()
+            await asyncio.sleep(60)
+
+    task = asyncio.ensure_future(block())
+    await asyncio.wait_for(entered.wait(), 30)
+    task.cancel()
+    await asyncio.wait_for(reaping.wait(), 10)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 5)
+    assert outcome == []
+    carry_on.set()
+    deadline = time.monotonic() + 10
+    while not outcome and time.monotonic() < deadline:
+        await asyncio.sleep(0.02)
+    assert outcome == ["reaped"]
+    # Killed by the first cancellation, not left to stop_timeout
+    assert worker.returncode == -signal.SIGKILL
+    assert gone(worker.pid)
+
+
 GEO_DOC = {
     "type": "FeatureCollection",
     "features": [
@@ -1376,7 +1561,15 @@ async def test_plugins_dir_defaults_to_the_datasette_instance(tmp_path):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
-async def test_slots_limit_concurrent_workers(db, tmp_path):
+@pytest.mark.parametrize("max_workers", (1, None))
+async def test_slots_limit_concurrent_workers(tmp_path, max_workers):
+    # Background imports take turns for the instance's worker slots
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    if max_workers is not None:
+        # The first call for an instance says how many slots it has
+        worker_slots(ds, max_workers=max_workers)
+    registry = import_registry(ds)
     paths = [events_csv(tmp_path / f"e{i}.csv", rows=10000) for i in range(4)]
     pids = set()
     most = []
@@ -1389,34 +1582,33 @@ async def test_slots_limit_concurrent_workers(db, tmp_path):
         except OSError:
             return False
 
-    def progress(p):
-        pids.add(p.pid)
-        most.append(sum(1 for pid in pids if running(pid)))
+    def listener(job, event):
+        if event == "progress" and job.pid is not None:
+            pids.add(job.pid)
+            most.append(sum(1 for pid in pids if running(pid)))
 
-    async def run(slots, prefix):
-        await asyncio.gather(
-            *(
-                import_file_via_worker(
-                    db, f"{prefix}{i}", path, progress=progress, slots=slots
-                )
-                for i, path in enumerate(paths)
-            )
-        )
-
-    await run(asyncio.Semaphore(1), "one")
-    assert max(most) == 1
-    pids.clear()
-    most.clear()
-    # The default: DEFAULT_MAX_WORKERS per Datasette instance
-    await run(None, "default")
-    assert max(most) <= DEFAULT_MAX_WORKERS
-    assert worker_slots(db.ds) is worker_slots(db.ds)
-    for prefix in ("one", "default"):
+    registry.add_listener(listener)
+    try:
+        jobs = []
+        for i, path in enumerate(paths):
+            source = Source(path, "file", path)
+            source.table = f"t{i}"
+            jobs.append(registry.start(db, source))
+        await ds.start_background_tasks()
+        assert await registry.wait(60)
+        assert [job.state for job in jobs] == ["done"] * 4
         for i in range(4):
-            count = (
-                await db.execute(f"select count(*) from {prefix}{i}")
-            ).single_value()
+            count = (await db.execute(f"select count(*) from t{i}")).single_value()
             assert count == 10000
+    finally:
+        await ds.invoke_shutdown()
+    assert len(pids) == 4
+    if max_workers == 1:
+        assert max(most) == 1
+    else:
+        # The default: DEFAULT_MAX_WORKERS per Datasette instance
+        assert max(most) <= DEFAULT_MAX_WORKERS
+    assert registry.slots is worker_slots(ds)
 
 
 @pytest.mark.asyncio

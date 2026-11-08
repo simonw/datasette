@@ -6,6 +6,7 @@ the progress notices and cancelling. See datasette/imports/background.py.
 
 import asyncio
 import contextlib
+import gc
 import http.server
 import io
 import json
@@ -20,16 +21,20 @@ import threading
 import time
 import unicodedata
 import urllib.request
+import weakref
 
 import markupsafe
 import pytest
 
+from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.cli import serve
 from datasette.database import Database
 from datasette.imports.background import (
+    ImportOptions,
     TerminalReporter,
     import_registry,
+    worker_slots,
 )
 from datasette.imports.inserter import TypedInserter
 from datasette.imports.scratch import (
@@ -37,9 +42,15 @@ from datasette.imports.scratch import (
     ScratchDatabase,
     TableExists,
     import_writes,
+    is_reserved,
 )
 from datasette.imports.sources import Source, assign_table_names, spool_in_thread
-from datasette.imports.subprocess_import import worker_slots
+from datasette.imports.subprocess_import import (
+    InProcessEngine,
+    WorkerEngine,
+    WorkerOptions,
+)
+from datasette.plugins import pm
 from datasette.tokens import TokenRestrictions
 from datasette.utils import escape_sqlite
 
@@ -71,6 +82,16 @@ def _scratch_ds():
     ds = Datasette()
     ds.root_enabled = True
     db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    return ds, db
+
+
+def _save_ds(tmp_path):
+    "A database file that Datasette can write to, as a --save file is."
+    sqlite3.connect(tmp_path / "save.db").execute("vacuum")
+    ds = Datasette()
+    db = ds.add_database(
+        Database(ds, path=str(tmp_path / "save.db"), is_mutable=True), name="save"
+    )
     return ds, db
 
 
@@ -124,8 +145,7 @@ async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep", note=N
         _source(path, table),
         sample_size=2,
         batch_size=2,
-        use_worker=True,
-        worker_options={"_argv": _stalling_worker(tmp_path, note=note)},
+        engine=WorkerEngine(WorkerOptions(argv=_stalling_worker(tmp_path, note=note))),
         on_error=on_error,
     )
     await ds.start_background_tasks()
@@ -184,6 +204,125 @@ async def test_registry_state_transitions(data_dir):
         assert "already exists" in again.error
         assert again.rows_kept == 0
         assert (await db.execute("select count(*) from dogs")).first()[0] == 3
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_start_checks_its_options(data_dir, tmp_path):
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    owned = tmp_path / "owned"
+    owned.mkdir()
+    try:
+        # A mistake fails in start(), before the table's name is claimed -
+        # not later, in the import's task
+        with pytest.raises(TypeError):
+            registry.start(db, _source(data_dir / "dogs.csv"), batchsize=5)
+        assert not is_reserved(db, "dogs")
+        with pytest.raises(ValueError):
+            registry.start(db, _source(data_dir / "dogs.csv"), on_error="remove")
+        assert not is_reserved(db, "dogs")
+        # One directory, not a tuple of them: it would be removed a
+        # character at a time
+        with pytest.raises(TypeError):
+            registry.start(db, _source(data_dir / "dogs.csv"), remove_after=str(owned))
+        assert not is_reserved(db, "dogs")
+        assert registry.imports() == []
+        # Options decided once, with fields changed for one import
+        options = ImportOptions(on_error="drop", batch_size=2)
+        job = registry.start(
+            db, _source(data_dir / "dogs.csv"), options, remove_after=[str(owned)]
+        )
+        assert options.remove_after == ()
+        assert job.on_error == "drop"
+        await ds.start_background_tasks()
+        assert await job.wait(10)
+        assert (job.state, job.rows) == ("done", 3)
+        # It owned the directory
+        assert not owned.exists()
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_listeners_given_to_start_hear_that_import_alone(data_dir):
+    # From the "queued" event, before start() returns, to the event it
+    # finished with. Then the registry lets go of them - even of those of an
+    # import that finished before start() returned - so that it does not
+    # keep every finished upload's listener, say, for as long as it runs
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+
+    class Listener:
+        def __init__(self, cancel_on=None):
+            self.events = []
+            self.cancel_on = cancel_on
+
+        def __call__(self, job, event):
+            self.events.append((job.id, event))
+            if event == self.cancel_on:
+                job.cancel()
+
+    try:
+        for_dogs, for_cities = Listener(), Listener()
+        dogs = registry.start(db, _source(data_dir / "dogs.csv"), listeners=[for_dogs])
+        assert for_dogs.events == [(dogs.id, "queued")]
+        cities = registry.start(
+            db, _source(data_dir / "cities.json"), listeners=[for_cities]
+        )
+        assert for_cities.events == [(cities.id, "queued")]
+        # Cancelled before background tasks have started: it finishes now
+        assert cities.cancel()
+        assert for_cities.events == [(cities.id, "queued"), (cities.id, "cancelled")]
+        # Cancelled by its listener as soon as it was queued: it has
+        # finished by the time start() returns
+        stopper = Listener(cancel_on="queued")
+        bad = registry.start(db, _source(data_dir / "bad.ndjson"), listeners=[stopper])
+        assert bad.state == "cancelled"
+        assert stopper.events == [(bad.id, "queued"), (bad.id, "cancelled")]
+        await ds.start_background_tasks()
+        assert await dogs.wait(10)
+        assert {job_id for job_id, _ in for_dogs.events} == {dogs.id}
+        events = [event for _, event in for_dogs.events]
+        assert events[0] == "queued" and events[-1] == "done"
+        assert "importing" in events
+        # Nothing holds on to them now that their imports have finished
+        refs = [weakref.ref(listener) for listener in (for_dogs, for_cities, stopper)]
+        del for_dogs, for_cities, stopper
+        gc.collect()
+        assert [ref() for ref in refs] == [None, None, None]
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_database_added_again_keeps_the_names_being_imported(
+    data_dir, tmp_path
+):
+    # The database is removed and added again under its name while an
+    # import into it runs: a new Database object for the same file, which
+    # must not let a second import create the same table
+    ds, db = _save_ds(tmp_path)
+    registry = import_registry(ds)
+    try:
+        job = registry.start(db, _source(data_dir / "dogs.csv"))
+        ds.remove_database("save")
+        again = ds.add_database(
+            Database(ds, path=str(tmp_path / "save.db"), is_mutable=True), name="save"
+        )
+        assert again is not db
+        with pytest.raises(TableExists) as raised:
+            registry.start(again, _source(data_dir / "dogs.csv", "DOGS"))
+        assert str(raised.value) == "Table 'DOGS' is already being imported into save"
+        assert registry.imports() == [job]
+        # Once that import has ended the name is free
+        job.cancel()
+        assert await job.wait(5)
+        other = registry.start(again, _source(data_dir / "dogs.csv"))
+        await ds.start_background_tasks()
+        assert await other.wait(10)
+        assert (other.state, other.rows) == ("done", 3)
     finally:
         await ds.invoke_shutdown()
 
@@ -341,7 +480,8 @@ async def test_loader_notes_reach_people(tmp_path, use_worker):
     stream = io.StringIO()
     registry.add_listener(TerminalReporter(stream))
     try:
-        job = registry.start(db, _source(path), use_worker=use_worker)
+        engine = WorkerEngine() if use_worker else InProcessEngine()
+        job = registry.start(db, _source(path), engine=engine)
         await ds.start_background_tasks()
         assert await job.wait(20)
         assert (job.state, job.rows, job.notes) == ("done", 2, [note])
@@ -412,6 +552,196 @@ async def test_drop_on_error(data_dir):
         await ds.invoke_shutdown()
 
 
+# What load_source() checked with exclusive=False, a write per chunk while
+# the loader runs in a thread: the in-process engine does the same
+
+
+def _many_rows(path, count=20_000):
+    path.write_text("".join(f'{{"id": {i}, "v": "row {i}"}}\n' for i in range(count)))
+    return path
+
+
+@pytest.mark.asyncio
+async def test_concurrent_imports_of_one_table_name(data_dir):
+    # Two imports that want the same table: the second is refused at once,
+    # while the first is queued and while it writes, and must not drop the
+    # first one's table
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    big = _many_rows(data_dir / "big.ndjson")
+    refused = []
+
+    def again(job, event):
+        if event == "progress" and job.rows and not refused:
+            # Names compare case-insensitively
+            with pytest.raises(TableExists) as raised:
+                registry.start(
+                    db, _source(data_dir / "dogs.csv", "Events"), engine=engine
+                )
+            refused.append((job.state, str(raised.value)))
+
+    engine = InProcessEngine()
+    try:
+        first = registry.start(
+            db, _source(big, "events"), engine=engine, listeners=[again]
+        )
+        with pytest.raises(TableExists, match="already being imported"):
+            registry.start(db, _source(data_dir / "dogs.csv", "EVENTS"), engine=engine)
+        await ds.start_background_tasks()
+        assert await first.wait(10)
+        assert refused == [
+            ("importing", "Table 'Events' is already being imported into scratch")
+        ]
+        assert (first.state, first.rows) == ("done", 20_000)
+        assert registry.imports() == [first]
+        assert await db.table_names() == ["events"]
+        count = await db.execute("select count(*) from events")
+        assert count.first()[0] == 20_000
+        # The name is free again once the import has finished
+        assert not is_reserved(db, "events")
+    finally:
+        await ds.invoke_shutdown()
+
+
+class _SneakyLoader:
+    """
+    Creates the target table through another connection once the import
+    has checked that it does not exist, then yields rows.
+    """
+
+    name = "sneaky"
+
+    def __init__(self, db_path, table):
+        self.db_path = db_path
+        self.table = table
+
+    def sniff(self, first_bytes):
+        return 0.0
+
+    def load(self, path):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(f"create table [{self.table}] (theirs text)")
+        conn.execute(f"insert into [{self.table}] values ('keep me')")
+        conn.commit()
+        conn.close()
+        for i in range(5000):
+            yield {"id": i}
+
+
+class _LoaderPlugin:
+    def __init__(self, *loaders):
+        self.loaders = loaders
+
+    @hookimpl
+    def register_import_loaders(self):
+        return list(self.loaders)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ("keep", "drop"))
+async def test_an_import_keeps_a_table_created_while_it_started(
+    data_dir, tmp_path, on_error
+):
+    # A writable --save database: someone else creates the table between
+    # the import's check and its first write. The import fails, and must
+    # leave their table alone
+    ds, db = _save_ds(tmp_path)
+    loader = _SneakyLoader(str(tmp_path / "save.db"), "dogs")
+    pm.register(_LoaderPlugin(loader), name="test-sneaky-loader")
+    try:
+        source = _source(data_dir / "dogs.csv")
+        source.path = source.location
+        source.loader = loader
+        job = import_registry(ds).start(
+            db, source, engine=InProcessEngine(), on_error=on_error
+        )
+        await ds.start_background_tasks()
+        assert await job.wait(10)
+        assert job.state == "failed" and "already exists" in job.error
+        assert job.reached_table and not job.created_table
+        assert not job.table_exists and job.rows_kept == 0
+        rows = (await db.execute("select * from dogs")).rows
+        assert [tuple(row) for row in rows] == [("keep me",)]
+    finally:
+        pm.unregister(name="test-sneaky-loader")
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_an_import_drops_the_table(data_dir, tmp_path):
+    # As for a --save file, with rows arriving: the table goes with it
+    path = data_dir / "many.ndjson"
+    path.write_text("".join(f'{{"id": {i}}}\n' for i in range(200_000)))
+    ds, db = _save_ds(tmp_path)
+    seen = []
+
+    def progress(job, event):
+        if event == "progress" and job.rows:
+            seen.append(job.rows)
+            if len(seen) == 2:
+                job.cancel()
+
+    try:
+        job = import_registry(ds).start(
+            db,
+            _source(path),
+            engine=InProcessEngine(),
+            on_error="drop",
+            listeners=[progress],
+        )
+        await ds.start_background_tasks()
+        assert await job.wait(10)
+        assert job.state == "cancelled"
+        assert 0 < seen[-1] < 200_000
+        assert not job.table_exists and job.rows_kept == 0
+        assert await db.table_names() == []
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_import_drops_the_table_without_converting(
+    data_dir, monkeypatch
+):
+    # A column widens to text late, leaving stored numbers to convert, then
+    # the loader fails. The table is dropped anyway, so it is dropped as it
+    # is (on_error="drop") rather than first completed - which would be
+    # seconds of converting for millions of rows
+    converted = []
+    original = TypedInserter._convert_slice
+
+    def convert_slice(self, conn, rows):
+        converted.append(rows)
+        return original(self, conn, rows)
+
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 10)
+    monkeypatch.setattr(TypedInserter, "_convert_slice", convert_slice)
+    lines = [json.dumps({"a": i}) for i in range(1999)] + ['{"a": "x"}', "{oops"]
+    bad = data_dir / "late.ndjson"
+    bad.write_text("\n".join(lines) + "\n")
+    ds, db = _scratch_ds()
+    try:
+        job = import_registry(ds).start(
+            db, _source(bad), engine=InProcessEngine(), on_error="drop"
+        )
+        await ds.start_background_tasks()
+        assert await job.wait(10)
+        assert job.state == "failed" and "Line 2001" in job.error
+        assert await db.table_names() == []
+        # The chunk that widened converted one slice; nothing after that
+        assert len(converted) == 1
+        # The kept spellings went with it, from the write connection
+        with import_writes():
+            temp = await db.execute_write_fn(
+                lambda conn: conn.execute(
+                    "select count(*) from temp.sqlite_master"
+                ).fetchone()[0]
+            )
+        assert temp == 0
+    finally:
+        await ds.invoke_shutdown()
+
+
 @pytest.mark.parametrize("background", (True, False))
 def test_scratch_page_hides_tables_the_actor_cannot_view(tmp_path, background):
     # The "Loaded:" list names only tables the actor may view, and the
@@ -465,7 +795,7 @@ async def test_shared_pages_list_the_newest_ten_finished_imports(tmp_path):
         for i in range(12):
             path = tmp_path / f"bad_{i}.ndjson"
             path.write_text('{"a": 1}\n{oops\n')
-            jobs.append(registry.start(db, _source(path), use_worker=False))
+            jobs.append(registry.start(db, _source(path), engine=InProcessEngine()))
         await ds.start_background_tasks()
         assert await registry.wait(20)
         assert {job.state for job in jobs} == {"failed"}
@@ -567,7 +897,8 @@ async def test_finishing_progress(tmp_path, monkeypatch, use_worker):
     stream = io.StringIO()
     registry.add_listener(TerminalReporter(stream, interval=3600))
     try:
-        job = registry.start(db, _source(path), use_worker=use_worker)
+        engine = WorkerEngine() if use_worker else InProcessEngine()
+        job = registry.start(db, _source(path), engine=engine)
         await ds.start_background_tasks()
         assert await job.wait(30)
         assert (job.state, job.rows) == ("done", 3000)
@@ -949,6 +1280,72 @@ async def test_cancel_with_drop_removes_the_partial_table(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_cancelled_while_the_worker_exits_the_table_is_still_dropped(tmp_path):
+    # on_error="drop" in a --save file: the worker sends every row and its
+    # end message, so import_rows() completes the table and returns, but
+    # the worker lingers instead of exiting, and the import is cancelled
+    # while it waits for it. import_rows() is no longer there to drop the
+    # table: the import has to drop it itself
+    ds, db = _save_ds(tmp_path)
+    script = tmp_path / "lingering_worker.py"
+    script.write_text(
+        "import json, sys, time\n"
+        "def send(m): sys.stdout.write(json.dumps(m) + '\\n')\n"
+        "send({'type': 'header', 'protocol': 1, 'loader': 'csv', 'size': 10})\n"
+        "send({'type': 'columns', 'add': ['n']})\n"
+        "for i in range(5): send([i])\n"
+        "send({'type': 'end', 'rows': 5, 'bytes': 10})\n"
+        "sys.stdout.flush()\n"
+        "sys.stdout.close()\n"
+        "time.sleep(60)\n"
+    )
+    path = tmp_path / "numbers.csv"
+    path.write_text("n\n1\n")
+    heard = []
+
+    def listener(job, event):
+        if event == "cancelled":
+            heard.append((job.table_exists, job.rows_kept, job.describe()))
+
+    stream = io.StringIO()
+    try:
+        job = import_registry(ds).start(
+            db,
+            _source(path, "numbers"),
+            on_error="drop",
+            # Long enough that the import cannot simply wait for it
+            engine=WorkerEngine(
+                WorkerOptions(argv=[sys.executable, str(script)], stop_timeout=30)
+            ),
+            listeners=[listener, TerminalReporter(stream)],
+        )
+        await ds.start_background_tasks()
+        # import_rows() has returned, with the table complete
+        await _wait_for(lambda: job.import_status.done)
+        assert job.table_exists and job.import_status.rows == 5
+        assert await db.table_names() == ["numbers"]
+        await asyncio.sleep(0.2)
+        assert job.state == "importing"
+        assert job.cancel()
+        assert await job.wait(10)
+        assert job.state == "cancelled" and job.created_table
+        assert job.import_status.dropped and not job.table_exists
+        assert job.rows == 5 and job.rows_kept == 0
+        assert job.status() == "import cancelled (the table was removed)"
+        assert await db.table_names() == []
+        # Already so when listeners heard that it was cancelled
+        assert heard == [
+            (False, 0, "import of numbers was cancelled (the table was removed)")
+        ]
+        assert stream.getvalue().splitlines()[-1] == (
+            f"Cancelled import of {job.title} into table numbers; "
+            "the 5 rows imported were removed"
+        )
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("table", ("a]b", 'a"b', "[x]"))
 async def test_cancel_counts_the_rows_kept_whatever_the_table_name(tmp_path, table):
     # [name] quoting has no escape for "]": the count after a cancellation
@@ -964,6 +1361,255 @@ async def test_cancel_counts_the_rows_kept_whatever_the_table_name(tmp_path, tab
         assert await job.wait(5)
         assert job.state == "cancelled"
         assert job.table_exists and job.rows_kept == 6
+    finally:
+        await ds.invoke_shutdown()
+
+
+async def _cancel_while_creating(ds, db, tmp_path, on_error, cancels=1):
+    """
+    An import cancelled while its first write - the chunk of 50 rows that
+    creates the table, made to take half a second - runs on the write
+    thread, before it has reported any progress. Cancelled with
+    ``job.cancel()``, then ``cancels - 1`` more times the way Datasette's
+    shutdown does, by cancelling its task. Returns it once it has finished.
+    """
+    path = tmp_path / "numbers.csv"
+    path.write_text("n\n" + "".join(f"{i}\n" for i in range(2000)))
+    real = db.execute_write_fn
+    writing = threading.Event()
+
+    async def slow_first_write(fn, *args, **kwargs):
+        db.execute_write_fn = real
+
+        def slow(conn):
+            writing.set()
+            time.sleep(0.5)
+            return fn(conn)
+
+        return await real(slow, *args, **kwargs)
+
+    db.execute_write_fn = slow_first_write
+    job = import_registry(ds).start(
+        db,
+        _source(path, "numbers"),
+        engine=InProcessEngine(),
+        on_error=on_error,
+        sample_size=50,
+        batch_size=50,
+    )
+    await ds.start_background_tasks()
+    await _wait_for(writing.is_set)
+    assert job.rows == 0
+    assert job.cancel()
+    for _ in range(cancels - 1):
+        await asyncio.sleep(0.05)
+        job.task.task.cancel()
+    assert await job.wait(5)
+    return job
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ["keep", "drop"])
+async def test_a_cancel_while_the_table_is_created_reports_it(tmp_path, on_error):
+    # Outside scratch, an import cancelled before it reported its first
+    # chunk said it had no table, and left those 50 rows in the database
+    # unlabelled (keep), or said no table was created when it had dropped
+    # one (drop): what import_rows() did is what counts
+    ds, db = _save_ds(tmp_path)
+    try:
+        job = await _cancel_while_creating(ds, db, tmp_path, on_error)
+        assert job.state == "cancelled" and job.created_table
+        if on_error == "keep":
+            assert job.table_exists and job.rows_kept == 50
+            count = (await db.execute("select count(*) from numbers")).first()[0]
+            assert count == 50
+        else:
+            assert not job.table_exists and job.rows_kept == 0
+            assert job.status() == "import cancelled (the table was removed)"
+            assert await db.table_names() == []
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_table_counts_the_rows_that_went_with_it(tmp_path):
+    # on_error="drop", cancelled while its third chunk is on the write
+    # thread: import_rows() lets that write commit before it drops the
+    # table, so 150 rows went with the table, not the 100 progress had
+    # reported when it was cancelled (what it said before import_status
+    # decided)
+    ds, db = _save_ds(tmp_path)
+    path = tmp_path / "numbers.csv"
+    path.write_text("n\n" + "".join(f"{i}\n" for i in range(2000)))
+    real = db.execute_write_fn
+    writes = 0
+    writing = threading.Event()
+
+    async def slow_third_write(fn, *args, **kwargs):
+        nonlocal writes
+        writes += 1
+        if writes != 3:
+            return await real(fn, *args, **kwargs)
+
+        def slow(conn):
+            writing.set()
+            time.sleep(0.5)
+            return fn(conn)
+
+        return await real(slow, *args, **kwargs)
+
+    db.execute_write_fn = slow_third_write
+    stream = io.StringIO()
+    try:
+        job = import_registry(ds).start(
+            db,
+            _source(path, "numbers"),
+            engine=InProcessEngine(),
+            on_error="drop",
+            sample_size=50,
+            batch_size=50,
+            listeners=[TerminalReporter(stream)],
+        )
+        await ds.start_background_tasks()
+        await _wait_for(writing.is_set)
+        await asyncio.sleep(0.1)
+        assert job.cancel()
+        assert await job.wait(5)
+        assert job.state == "cancelled" and job.rows == 150
+        assert not job.table_exists and job.rows_kept == 0
+        assert job.status() == "import cancelled (the table was removed)"
+        assert await db.table_names() == []
+        assert stream.getvalue().splitlines()[-1] == (
+            f"Cancelled import of {job.title} into table numbers; "
+            "the 150 rows imported were removed"
+        )
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ["keep", "drop"])
+async def test_cancelled_again_while_it_cleans_up(tmp_path, on_error):
+    # A cancel request, then Datasette shutting down, while the first
+    # chunk is being written: the second cancellation cuts import_rows()'s
+    # clean up short, and it carries on in the background. The import used
+    # to finish at once: in scratch it said it had no table and left the 50
+    # rows in it unlabelled (keep); in a --save file it let go of the
+    # table's name before the table had been dropped (drop)
+    if on_error == "keep":
+        ds, db = _scratch_ds()
+    else:
+        ds, db = _save_ds(tmp_path)
+    finished = []
+
+    def listener(job, event):
+        if event == "cancelled":
+            finished.append(
+                (
+                    job.table_exists,
+                    job.rows_kept,
+                    job.import_status.dropped,
+                    is_reserved(db, "numbers"),
+                )
+            )
+
+    import_registry(ds).add_listener(listener)
+    try:
+        job = await _cancel_while_creating(ds, db, tmp_path, on_error, cancels=2)
+        assert job.state == "cancelled" and job.created_table
+        if on_error == "keep":
+            assert finished == [(True, 50, False, False)]
+            count = (await db.execute("select count(*) from numbers")).first()[0]
+            assert count == 50
+        else:
+            assert finished == [(False, 0, True, False)]
+            assert await db.table_names() == []
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_a_third_time_it_keeps_the_name_until_it_is_done(tmp_path):
+    # Cancelled again while it waits for import_rows()'s clean up to drop
+    # the table: the import finishes at once with what it knows, but keeps
+    # the table's name until the table has gone, so that no other import
+    # can create one meanwhile
+    ds, db = _save_ds(tmp_path)
+    reserved = []
+    import_registry(ds).add_listener(
+        lambda job, event: event == "cancelled"
+        and reserved.append(is_reserved(db, "numbers"))
+    )
+    try:
+        job = await _cancel_while_creating(ds, db, tmp_path, "drop", cancels=3)
+        assert job.state == "cancelled"
+        assert reserved == [True]
+        await _wait_for(lambda: not is_reserved(db, "numbers"))
+        assert job.import_status.dropped and not job.table_exists
+        assert await db.table_names() == []
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ["keep", "drop"])
+async def test_cancelled_a_third_time_it_says_what_it_left_once_it_knows(
+    tmp_path, on_error
+):
+    # The import finishes at once with what it knows - no table yet, the
+    # first chunk is still being written - and once that write has settled
+    # says what is there. It used to go on saying the table had no rows
+    # (keep), while the table it said it had created had 50, or that no
+    # table was created (drop), when it had created one and dropped it
+    if on_error == "keep":
+        ds, db = _scratch_ds()
+    else:
+        ds, db = _save_ds(tmp_path)
+    finished = []
+    import_registry(ds).add_listener(
+        lambda job, event: event == "cancelled"
+        and finished.append((job.table_exists, job.rows_kept))
+    )
+    try:
+        job = await _cancel_while_creating(ds, db, tmp_path, on_error, cancels=3)
+        assert job.state == "cancelled"
+        assert finished == [(False, 0)]
+        await _wait_for(lambda: not is_reserved(db, "numbers"))
+        assert job.created_table and job.rows == 50
+        if on_error == "keep":
+            count = (await db.execute("select count(*) from numbers")).first()[0]
+            assert count == 50
+            assert job.table_exists and job.rows_kept == 50
+            assert job.status() == (
+                "import cancelled (the table has the first 50 rows)"
+            )
+            html = (await ds.client.get("/scratch/numbers")).text
+            assert "This table is incomplete." in html
+        else:
+            assert await db.table_names() == []
+            assert not job.table_exists and job.rows_kept == 0
+            assert job.status() == "import cancelled (the table was removed)"
+        # /-/tasks too
+        assert job.task.status == job.describe()
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_second_cancel_request_changes_nothing(tmp_path):
+    ds, db = _scratch_ds()
+    try:
+        job = await _start_stalled(ds, db, tmp_path)
+        assert job.cancel({"id": "first"})
+        assert job.cancel({"id": "second"})
+        # Its task was cancelled once: a second cancellation would cut the
+        # clean up short
+        assert job.task.task.cancelling() == 1
+        assert await job.wait(5)
+        assert job.state == "cancelled" and job.cancelled_by == {"id": "first"}
+        assert job.table_exists and job.rows_kept == 4
+        assert not job.cancel({"id": "third"})
+        assert job.cancelled_by == {"id": "first"}
     finally:
         await ds.invoke_shutdown()
 
@@ -985,6 +1631,117 @@ async def test_cancel_before_background_tasks_start(data_dir):
         assert again.state == "done"
     finally:
         await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_before_its_first_step_finishes_without_a_registry_read(
+    data_dir,
+):
+    # Shutdown cancels an import that has launched but not run any of its
+    # code yet: its coroutine never starts, so only its task's done callback
+    # can finish it. Nothing below reads the registry before the asserts:
+    # a registry read used to be what noticed such an import, which until
+    # then stayed queued and kept its table's name
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    events = []
+    registry.add_listener(lambda job, event: events.append((job.id, event)))
+    stream = io.StringIO()
+    registry.add_listener(TerminalReporter(stream))
+    try:
+        job = registry.start(db, _source(data_dir / "dogs.csv"))
+        await ds._background_tasks.launch_all()
+        job.task.task.cancel()
+        # Until the task has ended and its done callbacks have run
+        await asyncio.wait([job.task.task], timeout=5)
+        assert job.state == "cancelled" and job.rows_kept == 0
+        assert not is_reserved(db, "dogs")
+        assert events == [(job.id, "queued"), (job.id, "cancelled")]
+        assert stream.getvalue() == (
+            f"Cancelled import of {job.title} into table dogs\n"
+        )
+        assert await db.table_names() == []
+        again = registry.start(db, _source(data_dir / "dogs.csv"))
+        assert await again.wait(10)
+        assert again.state == "done"
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_an_import_whose_coroutine_is_closed_still_finishes(data_dir, tmp_path):
+    # A task garbage collected before it finished - after its loop has
+    # gone - has its coroutine closed: GeneratorExit where it waits. The
+    # import cannot wait for anything then, but must still end, give up its
+    # table's name and remove the files it owns
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    slots = worker_slots(ds)
+    events = []
+    upload = tmp_path / "upload"
+    upload.mkdir()
+    (upload / "dogs.csv").write_text(CSV)
+    source = _source(upload / "dogs.csv")
+    source.path, source.temporary = source.location, True
+    await slots.acquire()
+    await slots.acquire()
+    try:
+        job = registry.start(
+            db,
+            source,
+            remove_after=(str(upload),),
+            listeners=[lambda job, event: events.append(event)],
+        )
+        await ds.start_background_tasks()
+        await _wait_for(lambda: job.waiting_for == "worker")
+        # Raised "coroutine ignored GeneratorExit" when it waited for the
+        # table check instead, and left the import running
+        job.task.task.get_coro().close()
+        assert job.state == "cancelled" and job.rows_kept == 0
+        assert not job.active and job._done.is_set()
+        assert not is_reserved(db, "dogs")
+        assert not upload.exists()
+        assert events[-1] == "cancelled"
+    finally:
+        slots.release()
+        slots.release()
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.parametrize("exception", (SystemExit, KeyboardInterrupt))
+def test_an_import_that_raises_systemexit_ends_cancelled(data_dir, exception):
+    # A plugin hook calling sys.exit() inside an import's task, say. The
+    # import must still end - "cancelled", with its table's name given up -
+    # and the exception must still reach whoever runs the event loop, as
+    # asyncio does with SystemExit and KeyboardInterrupt
+    class RaisingEngine:
+        async def load(self, db, table, path, **kwargs):
+            raise exception()
+
+    loop = asyncio.new_event_loop()
+    try:
+        ds, db = _scratch_ds()
+        events = []
+        job = import_registry(ds).start(
+            db,
+            _source(data_dir / "dogs.csv"),
+            engine=RaisingEngine(),
+            listeners=[lambda job, event: events.append(event)],
+        )
+
+        async def run():
+            await ds.start_background_tasks()
+            await job.wait()
+
+        with pytest.raises(exception):
+            loop.run_until_complete(run())
+        assert job.state == "cancelled"
+        assert not job.active and job._done.is_set()
+        assert not is_reserved(db, "dogs")
+        assert events[-1] == "cancelled"
+    finally:
+        loop.run_until_complete(ds.invoke_shutdown())
+        loop.close()
 
 
 @pytest.mark.asyncio
@@ -1256,7 +2013,7 @@ async def test_url_downloads_in_the_task(http_server, tmp_path):
     try:
         source = Source(http_server + "/dogs.csv", "url", http_server + "/dogs.csv")
         assign_table_names([source])
-        job = registry.start(db, source, workdir=str(tmp_path))
+        job = registry.start(db, source, fetch_dir=str(tmp_path))
         await ds.start_background_tasks()
         assert await job.wait(10)
         assert job.state == "done" and job.rows == 3
@@ -1801,9 +2558,9 @@ async def test_terminal_lines_have_no_control_characters(tmp_path):
 
 
 def test_get_lines_have_no_control_characters():
-    from datasette.cli import _describe_loaded
     from datasette.imports.scratch import LoadedTable
     from datasette.imports.sources import StatusLine
+    from datasette.imports.terminal import describe_loaded
 
     source = _source("evil\x1b[2J.json", table="t\x1b]0;PWNED\x07")
     loaded = LoadedTable(
@@ -1817,7 +2574,7 @@ def test_get_lines_have_no_control_characters():
     stream = io.StringIO()
     status = StatusLine(stream)
     status.start(f"Loading {source.label}...")
-    status.done(_describe_loaded(loaded))
+    status.done(describe_loaded(loaded))
     output = stream.getvalue()
     assert _control_characters(output) == []
     assert len(output.splitlines()) == 3

@@ -417,14 +417,47 @@ def is_reserved(db, table: str) -> bool:
     return table.lower() in _loading.get(db, ())
 
 
+# Is there a table or view of this name, in any case? (Tables and views
+# share one namespace in SQLite)
+_TAKEN_SQL = (
+    "select 1 from sqlite_master where type in ('table', 'view') "
+    "and name = ? collate nocase"
+)
+
+
 def _table_exists(conn, table: str) -> bool:
-    return bool(
-        conn.execute(
-            "select 1 from sqlite_master where type in ('table', 'view') "
-            "and name = ? collate nocase",
-            [table],
-        ).fetchone()
-    )
+    return bool(conn.execute(_TAKEN_SQL, [table]).fetchone())
+
+
+async def table_taken(db, table: str) -> bool:
+    "Whether ``db`` has a table or view called ``table``, in any case."
+    return (await db.execute(_TAKEN_SQL, [table])).first() is not None
+
+
+class TableClaim:
+    """
+    ``table`` in ``db``, reserved for one import in this process until
+    :meth:`release`: no other import here can create it meanwhile. Taking
+    one raises :class:`TableExists` if another import holds that name (see
+    :func:`reserve_table`).
+    """
+
+    def __init__(self, db, table: str):
+        reserve_table(db, table)
+        self.db = db
+        self.table = table
+        self.held = True
+
+    async def check_free(self) -> None:
+        "Raise :class:`TableExists` if a table or view of that name is there."
+        if await table_taken(self.db, self.table):
+            raise TableExists(f"Table {self.table!r} already exists in {self.db.name}")
+
+    def release(self) -> None:
+        "Give up the name. Safe to call more than once."
+        if self.held:
+            self.held = False
+            release_table(self.db, self.table)
 
 
 async def load_source(
@@ -482,7 +515,7 @@ async def load_source(
     if not source.table:
         raise ValueError("source.table is not set: see assign_table_names()")
     loop = asyncio.get_running_loop()
-    reserve_table(db, source.table)
+    claim = TableClaim(db, source.table)
     fetched_here = source.path is None
     private_dir = None
     try:
@@ -494,18 +527,12 @@ async def load_source(
             await loop.run_in_executor(None, sniff, source, loaders)
         # Fail early, before parsing anything. The write that creates the
         # table checks again: see _load_new_table()
-        taken = await db.execute(
-            "select name from sqlite_master where type in ('table', 'view') "
-            "and name = ? collate nocase",
-            [source.table],
-        )
-        if taken.first():
-            raise TableExists(f"Table {source.table!r} already exists in {db.name}")
+        await claim.check_free()
         return await _load_new_table(
             db, source, batch_size, sample_size, progress, exclusive, status
         )
     finally:
-        release_table(db, source.table)
+        claim.release()
         if fetched_here and source.temporary:
             # The rows are in SQLite now (or never will be)
             remove_temporary([source])

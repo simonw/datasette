@@ -20,13 +20,20 @@ import pytest
 import pytest_asyncio
 
 from datasette.app import Datasette
-from datasette.imports import subprocess_import
-from datasette.imports.background import TerminalReporter, import_registry
+from datasette.database import Database
+from datasette.imports import background, subprocess_import
+from datasette.imports.background import (
+    TerminalReporter,
+    import_registry,
+    worker_slots,
+)
 from datasette.imports.loaders import get_loaders
-from datasette.imports.scratch import ScratchDatabase
-from datasette.imports.subprocess_import import worker_slots
+from datasette.imports.scratch import ScratchDatabase, is_reserved
+from datasette.imports.sources import Source
+from datasette.imports.subprocess_import import WorkerEngine, WorkerOptions
 from datasette.plugins import pm
 from datasette.tokens import TokenRestrictions
+from datasette.views import upload as upload_view
 from datasette.views.upload import (
     default_table_name,
     display_filename,
@@ -233,8 +240,7 @@ def stalling_imports(ds, tmp_path, monkeypatch):
         kwargs.update(
             sample_size=2,
             batch_size=2,
-            use_worker=True,
-            worker_options={"_argv": [sys.executable, str(script)]},
+            engine=WorkerEngine(WorkerOptions(argv=[sys.executable, str(script)])),
         )
         return start(*args, **kwargs)
 
@@ -670,6 +676,137 @@ async def test_table_being_imported(ds, temp_dir):
     # Once it has finished, the table exists
     response = await upload(ds)
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_table_imported_while_the_file_was_saved(
+    ds, temp_dir, tmp_path, monkeypatch
+):
+    # Another import takes the name after the upload checked it, while its
+    # file is saved: starting the upload's import is refused, with the same
+    # 409 the check gives
+    other_csv = tmp_path / "other.csv"
+    other_csv.write_bytes(CSV)
+    others = []
+    save = upload_view._save
+
+    async def save_while_another_import_starts(uploaded, path):
+        size = await save(uploaded, path)
+        source = Source(str(other_csv), "file", str(other_csv), table="dogs")
+        others.append(import_registry(ds).start(ds.get_database("data"), source))
+        return size
+
+    monkeypatch.setattr(upload_view, "_save", save_while_another_import_starts)
+    async with busy_workers(ds):
+        response = await upload(ds, table="DOGS")
+        assert response.status_code == 409
+        assert _errors(response) == ["Table 'DOGS' is already being imported into data"]
+        # The upload's file is gone; the import that took the name goes on
+        assert upload_dirs(temp_dir) == []
+        [other] = others
+        assert import_registry(ds).imports() == [other]
+        assert other.active
+    assert await other.wait(30)
+    assert (other.state, other.rows) == ("done", 3)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["queued", "importing"])
+async def test_table_being_imported_into_a_database_added_again(
+    ds, temp_dir, monkeypatch, stalling_imports, state
+):
+    # The database is removed and added again under its name while an
+    # upload into it is imported: a new Database object for the same file.
+    # A second upload of that table is refused before its file is saved,
+    # with the 409 for a table being imported - not after saving it, while
+    # the first import is queued, and not with "already exists" once that
+    # import has created the table
+    saved = []
+    save = upload_view._save
+
+    async def recording_save(uploaded, path):
+        saved.append(path)
+        return await save(uploaded, path)
+
+    monkeypatch.setattr(upload_view, "_save", recording_save)
+    registry = import_registry(ds)
+    async with contextlib.AsyncExitStack() as stack:
+        if state == "queued":
+            await stack.enter_async_context(busy_workers(ds))
+            first = await queued(ds, await upload(ds))
+        else:
+            response = await upload(ds)
+            assert response.status_code == 202, response.text
+            first = registry.get("data", "dogs")
+            await wait_for(lambda: first.state == "importing" and first.table_exists)
+        old = ds.get_database("data")
+        ds.remove_database("data")
+        again = ds.add_database(
+            Database(ds, path=old.path, is_mutable=True), name="data"
+        )
+        assert again is not old
+        saved.clear()
+        response = await upload(ds, table="DOGS")
+        assert response.status_code == 409
+        assert _errors(response) == ["Table 'DOGS' is already being imported into data"]
+        assert saved == []
+        assert registry.imports() == [first]
+        assert first.state == state
+        assert first.cancel()
+    assert await first.wait(10)
+    old.close()
+
+
+@pytest.mark.asyncio
+async def test_table_name_held_by_an_import_that_has_finished(
+    ds, temp_dir, monkeypatch
+):
+    # An upload is cancelled while it waits for a worker, then cancelled
+    # again - as Datasette shutting down does - while it looks for a table
+    # of that name in the way. It finishes at once, but holds the table's
+    # name until that look is over. A second upload of the table meanwhile
+    # is refused before its file is saved, with the 409 for a table being
+    # imported, although no import into it is running any more
+    saved = []
+    save = upload_view._save
+
+    async def recording_save(uploaded, path):
+        saved.append(path)
+        return await save(uploaded, path)
+
+    monkeypatch.setattr(upload_view, "_save", recording_save)
+    looking = asyncio.Event()
+    looked = asyncio.Event()
+    table_taken = background.table_taken
+
+    async def slow_table_taken(db, table):
+        looking.set()
+        await looked.wait()
+        return await table_taken(db, table)
+
+    monkeypatch.setattr(background, "table_taken", slow_table_taken)
+    registry = import_registry(ds)
+    db = ds.get_database("data")
+    async with busy_workers(ds):
+        first = await queued(ds, await upload(ds))
+        assert first.cancel()
+        await asyncio.wait_for(looking.wait(), 10)
+        first.task.task.cancel()
+        assert await first.wait(10)
+        assert first.state == "cancelled"
+        assert not registry.active()
+        assert is_reserved(db, "dogs")
+        saved.clear()
+        response = await upload(ds, table="DOGS")
+        assert response.status_code == 409
+        assert _errors(response) == ["Table 'DOGS' is already being imported into data"]
+        assert saved == []
+        assert registry.imports() == [first]
+        looked.set()
+        await wait_for(lambda: not is_reserved(db, "dogs"))
+    # Once the look is over, the name is free
+    job = await finished(ds, await upload(ds))
+    assert (job.state, job.rows) == ("done", 3)
 
 
 @pytest.mark.asyncio

@@ -17,8 +17,68 @@ GIL, for about 0.1s).
 
 :func:`import_file_in_process` does the same import in a thread of this
 process, with the same result and errors, for Pyodide (no subprocesses);
-:func:`import_file` picks one. At most ``DEFAULT_MAX_WORKERS`` workers run
-at once per Datasette instance (:func:`worker_slots`).
+:func:`import_file` picks one.
+
+The Engine boundary
+-------------------
+
+A background import (:class:`~datasette.imports.background.ImportRun`)
+does not know how the rows reach its table. Once it holds a worker slot
+and has checked that no table of that name exists, it calls ``load()`` on
+the :class:`Engine` in its options::
+
+    result = await engine.load(
+        db, table, path, loader="csv", status=job.import_status,
+        progress=on_progress, on_error="keep", sample_size=1000,
+        batch_size=1000,
+    )
+
+What crosses the boundary:
+
+- In: the database, the new table's name, a local file and the name of
+  the loader that sniffing picked (or ``None``: the engine sniffs). Also
+  ``status``, the import's own
+  :class:`~datasette.imports.inserter.ImportStatus`, which the engine
+  passes to :func:`~datasette.imports.inserter.import_rows` so that it
+  stays the one record of what this import created, committed and
+  dropped, even if ``load()`` raises or is cancelled. And ``progress``,
+  called (and awaited, if it returns an awaitable) with an
+  :class:`ImportProgress`.
+- Out: a :class:`WorkerImportResult` (loader, notes, widenings, size,
+  timings). If the loader or the worker failed, ``load()`` raises
+  :class:`WorkerImportError` instead, with the same result attached. Any
+  other exception - a failed write, a progress callback that raised - and
+  a cancellation go on as they are. Whichever way ``load()`` ends, the
+  write that was running has settled and ``on_error`` has been applied to
+  the table first, with one exception: cancelled a second time while
+  ``import_rows()`` cleans up after the first (a cancel request, then
+  Datasette shutting down), it raises at once, and the clean up carries on
+  in the background - a write still running may yet commit, and with
+  ``on_error="drop"`` the table be dropped.
+  :meth:`~datasette.imports.inserter.ImportStatus.wait_settled` on
+  ``status`` waits until it says what the clean up did, as a background
+  import does before it looks at its table.
+
+There are two engines:
+
+- :class:`WorkerEngine`, the default (:func:`default_engine`), starts
+  ``python -m datasette.imports.worker`` as its :class:`WorkerOptions` say
+  (plugins directory, memory limit, progress interval, how long it may
+  take to stop, environment). It runs the worker inside ``async with
+  WorkerProcess(...)``, which never lets the worker outlive the block: any
+  exception kills the worker's process group and reaps it.
+  ``_WorkerStream`` turns what the worker writes into rows for
+  ``import_rows()``, and says how the worker ended: an error it reported,
+  killed by a signal, crashed, truncated output or bad output.
+- :class:`InProcessEngine` loads the file in a thread of this process,
+  with the same results and errors, for Pyodide and anywhere else a
+  subprocess cannot be started.
+
+Neither engine waits for a worker slot: the background import holds one of
+:func:`~datasette.imports.background.worker_slots` around ``load()``. So
+:func:`import_file_via_worker`, :func:`import_file_in_process` and
+:func:`import_file`, thin wrappers over the two engines for direct callers,
+start their worker at once.
 
 What happens to rows when an import fails part way through
 ------------------------------------------------------------
@@ -72,7 +132,7 @@ import os
 import signal
 import sys
 import time
-import weakref
+from typing import Protocol
 
 from datasette.imports.inserter import (
     ON_ERROR,
@@ -101,12 +161,6 @@ _SCAN = json.scanner.make_scanner(json.decoder.JSONDecoder())
 # Windows has neither: WorkerProcess falls back to Process.kill()/terminate()
 _SIGKILL = getattr(signal, "SIGKILL", None)
 _PROCESS_GROUPS = hasattr(os, "killpg") and os.name == "posix"
-# Default number of workers that may run at once for one Datasette instance.
-# Measured on 4 CPUs: 32 files of 1,000 rows
-# took 8.1-8.6s with 1, 4.1-4.2s with 2, 2.4-2.5s with 4; 8 files of 100,000
-# rows went 81,000 -> 84,000-89,000 -> 91,000 rows/s (the parent's loop is
-# the limit) while loop lag p99 went 4.5-4.9 -> 5.6-5.7 -> 8.7-9.2ms
-DEFAULT_MAX_WORKERS = 2
 
 
 class ProtocolError(Exception):
@@ -225,6 +279,21 @@ class WorkerImportResult:
     #: Parent-side timings: decode_seconds (json.loads and building
     #: dicts), write_seconds (inside execute_write_fn), bytes_read
     stats: dict
+
+    @classmethod
+    def from_status(cls, status: ImportStatus, **fields) -> "WorkerImportResult":
+        """
+        The result of an import whose
+        :func:`~datasette.imports.inserter.import_rows` call kept ``status``
+        up to date: the rows in the table and committed, and whether the
+        table is there, are what it says. ``fields`` are the others.
+        """
+        return cls(
+            rows=status.rows if status.table_exists else 0,
+            rows_written=status.rows,
+            table_exists=status.table_exists,
+            **fields,
+        )
 
 
 class ProtocolDecoder:
@@ -531,12 +600,23 @@ class WorkerProcess:
     :class:`ProtocolDecoder` and keeps the last ``STDERR_TAIL`` bytes of its
     stderr, read concurrently so a chatty worker can never block on a full
     stderr pipe.
+
+    Use it with ``async with``: the worker never outlives the block. A block
+    that ends normally waits for the worker to exit, as it does after its
+    last message, and reaps it (:meth:`stop`). Any exception - a failed
+    insert, a progress callback that raised, a cancellation, including one
+    that lands while it waits for the worker to exit - kills the worker's
+    process group and reaps it, shielded from being cancelled again, before
+    the exception goes on.
     """
 
-    def __init__(self, argv, *, env=None, read_size=READ_SIZE):
+    def __init__(self, argv, *, env=None, read_size=READ_SIZE, stop_timeout=2.0):
         self.argv = list(argv)
         self.env = env
         self.read_size = read_size
+        #: Seconds :meth:`stop` waits for the worker to exit before
+        #: terminating it, and then before killing it
+        self.stop_timeout = stop_timeout
         self.process = None
         self.decoder = ProtocolDecoder()
         self.aborted = False
@@ -558,6 +638,33 @@ class WorkerProcess:
     @property
     def stderr(self):
         return self._stderr.decode("utf-8", "replace")
+
+    async def __aenter__(self):
+        try:
+            await self.start()
+        except BaseException:
+            await self._kill_and_reap()
+            raise
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            try:
+                # It has sent its last message: wait for it to exit
+                await self.stop()
+            except BaseException:
+                # Cancelled while it exited
+                await self._kill_and_reap()
+                raise
+            return False
+        # A failed insert, a progress callback that raised, a cancellation:
+        # import_rows() has cleaned up already, keeping or dropping the table
+        await self._kill_and_reap()
+        return False
+
+    async def _kill_and_reap(self):
+        self.abort()
+        await asyncio.shield(self.stop())
 
     async def start(self):
         self.process = await asyncio.create_subprocess_exec(
@@ -641,17 +748,20 @@ class WorkerProcess:
         self.aborted = True
         self._signal(kill=True)
 
-    def kill_now(self):
+    def kill(self):
         "Kill the worker now, but let the rows already decoded be used."
         self._signal(kill=True)
 
-    async def stop(self, timeout=2.0):
+    async def stop(self, timeout=None):
         """
         Make sure the worker is gone and reaped: wait ``timeout`` seconds
-        for it to exit, terminate it, wait again, then kill it.
+        (by default :attr:`stop_timeout`) for it to exit, terminate it, wait
+        again, then kill it.
         """
         if self.process is None:
             return
+        if timeout is None:
+            timeout = self.stop_timeout
         try:
             if self.process.returncode is None:
                 try:
@@ -672,13 +782,6 @@ class WorkerProcess:
             transport = getattr(self.process, "_transport", None)
             if transport is not None:
                 transport.close()
-
-    async def kill(self, timeout=2.0):
-        "Terminate the worker, then kill it if it is still there after ``timeout``."
-        if self.process is not None and self.process.returncode is None:
-            self.aborted = True
-            self._signal(kill=False)
-        await self.stop(timeout)
 
 
 class _WatchedDatabase:
@@ -717,13 +820,17 @@ class _WatchedDatabase:
 
 class _WorkerFailed(Exception):
     """
-    Raised by :meth:`_Import.rows` after the last row of a worker that
-    failed, so that import_rows() drops the table (``on_error="drop"``).
+    Raised by :meth:`_WorkerStream.rows` after the last row of a worker
+    that failed, so that import_rows() drops the table (``on_error="drop"``).
     """
 
 
-class _Import:
-    "The state of one import_file_via_worker() call."
+class _WorkerStream:
+    """
+    One worker's output, read into
+    :func:`~datasette.imports.inserter.import_rows` by :meth:`import_into`,
+    and how the worker ended (:meth:`failure`).
+    """
 
     def __init__(self, worker, table, progress, status, raise_on_failure):
         self.worker = worker
@@ -812,7 +919,7 @@ class _Import:
             messages = await self.worker.read_messages()
         except ProtocolError as ex:
             # Rows before the bad line are good: insert those
-            self.worker.kill_now()
+            self.worker.kill()
             self.protocol_error = ex
             self.done = True
             await self._handle(ex.messages)
@@ -838,6 +945,42 @@ class _Import:
             if not await self._read():
                 return
 
+    async def import_into(self, db, *, sample_size, batch_size, on_error):
+        """
+        Insert the rows into a new table with import_rows() as they arrive,
+        returning its :class:`~datasette.imports.inserter.ImportResult`:
+        ``None`` if the worker failed before its header, or failed with
+        ``raise_on_failure`` set (import_rows() then dropped the table).
+        """
+        await self.start()
+        if self.worker.decoder.header is None:
+            # An error (or nothing at all) before the header
+            while not self.done:
+                await self.fill()
+            return None
+        rows = self.rows()
+        try:
+            return await import_rows(
+                db,
+                self.table,
+                rows,
+                # The decoder's own list, which grows as columns are
+                # announced: rows are lists of values in this order
+                columns=self.worker.decoder.columns,
+                schema=self.schema,
+                sample_size=sample_size,
+                batch_size=batch_size,
+                progress=self.written,
+                on_error=on_error,
+                status=self.status,
+            )
+        except _WorkerFailed:
+            # import_rows() dropped the table, if there was one
+            return None
+        finally:
+            with contextlib.suppress(RuntimeError):
+                await rows.aclose()
+
     async def rows(self):
         """
         The rows as they arrive, positional (see :class:`ProtocolDecoder`).
@@ -855,7 +998,8 @@ class _Import:
             elif worker.aborted:
                 return
             elif self.done:
-                if self.raise_on_failure and self.failed():
+                # Whether it failed is known before its exit status is
+                if self.raise_on_failure and self.failure() is not None:
                     raise _WorkerFailed()
                 return
             else:
@@ -871,22 +1015,13 @@ class _Import:
             self.worker.abort()
             raise
 
-    def failed(self):
-        """
-        Whether the stream ended without a clean finish - known before the
-        worker's exit status is: :meth:`failure` says how it failed.
-        """
-        return (
-            self.protocol_error is not None
-            or self.error_message is not None
-            or self.trailer is None
-            or self.trailer.get("rows") != self.rows_read
-        )
-
-    def failure(self, returncode, memory_limit):
+    def failure(self, returncode=None, memory_limit=None):
         """
         ``(kind, message, error_type)`` describing how the worker failed,
-        or None if it finished cleanly and sent every row.
+        or None if it finished cleanly and sent every row. Whether it failed
+        is known once its output has ended; the kind of failure of a worker
+        that stopped without a word depends on its exit status,
+        ``returncode``.
         """
         worker = self.worker
         if self.protocol_error is not None:
@@ -931,33 +1066,158 @@ class _Import:
         return "truncated", message, None
 
 
-_WORKER_SLOTS = weakref.WeakKeyDictionary()
-
-
-def worker_slots(ds, max_workers=None):
-    """
-    The :class:`asyncio.Semaphore` that limits how many import workers run
-    at once for the Datasette instance ``ds`` (``DEFAULT_MAX_WORKERS``
-    unless ``max_workers`` is given the first time this is called for it).
-    Imports wait for a slot before their worker starts.
-    """
-    slots = _WORKER_SLOTS.get(ds)
-    if slots is None:
-        slots = asyncio.Semaphore(max_workers or DEFAULT_MAX_WORKERS)
-        _WORKER_SLOTS[ds] = slots
-    return slots
-
-
 def subprocesses_available():
     "False where a worker cannot be started: Pyodide (emscripten), WASI."
     return sys.platform not in ("emscripten", "wasi")
 
 
-def _remove(path):
-    try:
-        os.unlink(path)
-    except OSError:
-        pass
+# Engines ----------------------------------------------------------------------
+
+
+class Engine(Protocol):
+    """
+    How the rows of a file get into a new table: :class:`WorkerEngine`, in
+    a worker subprocess, or :class:`InProcessEngine`, in a thread of this
+    process. :func:`default_engine` picks one for this platform.
+    """
+
+    async def load(
+        self,
+        db,
+        table: str,
+        path: str,
+        *,
+        loader: str | None,
+        status: ImportStatus,
+        progress,
+        on_error: str,
+        sample_size: int,
+        batch_size: int,
+    ) -> WorkerImportResult:
+        """
+        Create ``table`` in ``db`` (``ValueError`` if it exists) and insert
+        the rows of the file at ``path``, read by the loader named
+        ``loader`` (or the one sniffing picks), keeping ``status`` up to
+        date. Returns a :class:`WorkerImportResult`; raises
+        :class:`WorkerImportError` if the loader or the worker fails. Once
+        it raises, for that or any other failure or a cancellation, the
+        write that was running has settled and ``on_error`` has been
+        applied to the table - unless it was cancelled again while
+        :func:`~datasette.imports.inserter.import_rows` cleaned up after
+        the first cancellation. That clean up then carries on in the
+        background, and
+        :meth:`~datasette.imports.inserter.ImportStatus.wait_settled` on
+        ``status`` waits for it. The other parameters are those of
+        :func:`import_file_via_worker`.
+        """
+        ...
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkerOptions:
+    """
+    How a :class:`WorkerEngine` starts its worker, all in one place: see
+    :func:`import_file_via_worker` for what each option does.
+    """
+
+    #: A directory of plugins for the worker to load: ``None`` for the
+    #: Datasette instance's own ``plugins_dir``, ``False`` for none
+    plugins_dir: str | bool | None = None
+    #: Address space limit (``RLIMIT_AS``) for the worker, in bytes
+    memory_limit: int | None = None
+    #: Seconds between the worker's progress messages
+    progress_interval: float | None = None
+    #: Seconds to wait for the worker to exit before terminating it, and
+    #: then before killing it
+    stop_timeout: float = 2.0
+    #: Environment variables for the worker
+    env: dict | None = None
+    #: Run this command instead of the worker - a test hook, for stand-ins
+    #: that misbehave in ways a real worker cannot be made to
+    argv: list | None = None
+
+    def command(self, path, *, format=None, ds=None) -> list:
+        "The command line that runs the worker for ``path``, for ``ds``."
+        if self.argv is not None:
+            return list(self.argv)
+        plugins_dir = self.plugins_dir
+        if plugins_dir is None:
+            plugins_dir = getattr(ds, "plugins_dir", None)
+        return worker_command(
+            path,
+            format=format,
+            plugins_dir=plugins_dir or None,
+            memory_limit=self.memory_limit,
+            progress_interval=self.progress_interval,
+        )
+
+    def environment(self) -> dict | None:
+        "The worker's environment variables (``None``: this process's)."
+        if (
+            self.memory_limit
+            and self.env is None
+            and "MALLOC_ARENA_MAX" not in os.environ
+        ):
+            # RLIMIT_AS counts address space glibc reserves but may never
+            # use: 64MB per thread for its own malloc arena. One arena is
+            # plenty for the worker's two threads
+            return {**os.environ, "MALLOC_ARENA_MAX": "1"}
+        return self.env
+
+
+class WorkerEngine:
+    """
+    Loads the file in a worker subprocess, started as ``options`` (a
+    :class:`WorkerOptions`) say: what :func:`import_file_via_worker` does.
+    The default where subprocesses can be started.
+    """
+
+    def __init__(self, options: WorkerOptions | None = None):
+        self.options = options if options is not None else WorkerOptions()
+
+    def __repr__(self):
+        return f"WorkerEngine({self.options!r})"
+
+    async def load(
+        self,
+        db,
+        table,
+        path,
+        *,
+        loader,
+        status,
+        progress,
+        on_error,
+        sample_size,
+        batch_size,
+    ):
+        "See :meth:`Engine.load`."
+        if on_error not in ON_ERROR:
+            raise ValueError(f"on_error must be one of {ON_ERROR}")
+        if await db.table_exists(table):
+            raise ValueError(f"Table {table!r} already exists")
+        options = self.options
+        return await _import_via_worker(
+            db,
+            table,
+            options.command(path, format=loader, ds=getattr(db, "ds", None)),
+            env=options.environment(),
+            status=status,
+            sample_size=sample_size,
+            batch_size=batch_size,
+            progress=progress,
+            on_error=on_error,
+            memory_limit=options.memory_limit,
+            stop_timeout=options.stop_timeout,
+        )
+
+
+def default_engine() -> Engine:
+    """
+    A :class:`WorkerEngine`, or where a worker cannot be started (Pyodide)
+    an :class:`InProcessEngine`.
+    """
+    return WorkerEngine() if subprocesses_available() else InProcessEngine()
 
 
 async def import_file_via_worker(
@@ -973,11 +1233,10 @@ async def import_file_via_worker(
     on_error="keep",
     memory_limit=None,
     progress_interval=None,
-    delete_input=False,
     stop_timeout=2.0,
-    slots=None,
     _argv=None,
     env=None,
+    status=None,
 ):
     """
     Import the file at ``path`` into a new ``table`` in ``db`` (a Datasette
@@ -1006,62 +1265,41 @@ async def import_file_via_worker(
         ``MALLOC_ARENA_MAX=1`` (unless ``env`` is given), because glibc's
         per-thread malloc arena reserves 64MB that the limit counts
     :param progress_interval: seconds between the worker's progress messages
-    :param delete_input: delete ``path`` afterwards, whatever happens - for
-        a temporary copy of stdin or a download
     :param stop_timeout: seconds to wait for the worker to exit before
         terminating it, and then before killing it
-    :param slots: an :class:`asyncio.Semaphore` (any async context manager)
-        to hold while the worker runs; by default :func:`worker_slots` for
-        ``db.ds``, so at most ``DEFAULT_MAX_WORKERS`` workers run at once.
-        ``contextlib.nullcontext()`` for no limit
     :param _argv: run this command instead of the worker - a test hook, for
         stand-ins that misbehave in ways a real worker cannot be made to
     :param env: environment variables for the worker
+    :param status: an :class:`~datasette.imports.inserter.ImportStatus` for
+        :func:`~datasette.imports.inserter.import_rows` to keep up to date,
+        to find out what the import created, committed and dropped even if
+        it raises or is cancelled
 
     Returns a :class:`WorkerImportResult`. Raises :class:`WorkerImportError`
     if the worker fails; see the module documentation for what happens to
     the rows imported before that.
     """
-    if on_error not in ON_ERROR:
-        raise ValueError(f"on_error must be one of {ON_ERROR}")
-    try:
-        if await db.table_exists(table):
-            raise ValueError(f"Table {table!r} already exists")
-        ds = getattr(db, "ds", None)
-        if plugins_dir is None:
-            plugins_dir = getattr(ds, "plugins_dir", None)
-        if slots is None:
-            slots = worker_slots(ds) if ds is not None else contextlib.nullcontext()
-        argv = _argv
-        if argv is None:
-            argv = worker_command(
-                path,
-                format=format,
-                plugins_dir=plugins_dir or None,
-                memory_limit=memory_limit,
-                progress_interval=progress_interval,
-            )
-        if memory_limit and env is None and "MALLOC_ARENA_MAX" not in os.environ:
-            # RLIMIT_AS counts address space glibc reserves but may never
-            # use: 64MB per thread for its own malloc arena. One arena is
-            # plenty for the worker's two threads
-            env = {**os.environ, "MALLOC_ARENA_MAX": "1"}
-        async with slots:
-            return await _import_via_worker(
-                db,
-                table,
-                argv,
-                env=env,
-                sample_size=sample_size,
-                batch_size=batch_size,
-                progress=progress,
-                on_error=on_error,
-                memory_limit=memory_limit,
-                stop_timeout=stop_timeout,
-            )
-    finally:
-        if delete_input:
-            _remove(path)
+    engine = WorkerEngine(
+        WorkerOptions(
+            plugins_dir=plugins_dir,
+            memory_limit=memory_limit,
+            progress_interval=progress_interval,
+            stop_timeout=stop_timeout,
+            env=env,
+            argv=_argv,
+        )
+    )
+    return await engine.load(
+        db,
+        table,
+        path,
+        loader=format,
+        status=status if status is not None else ImportStatus(),
+        progress=progress,
+        on_error=on_error,
+        sample_size=sample_size,
+        batch_size=batch_size,
+    )
 
 
 async def _import_via_worker(
@@ -1070,6 +1308,7 @@ async def _import_via_worker(
     argv,
     *,
     env,
+    status,
     sample_size,
     batch_size,
     progress,
@@ -1078,96 +1317,52 @@ async def _import_via_worker(
     stop_timeout,
 ):
     start = time.perf_counter()
-    worker = None
-    try:
-        worker = WorkerProcess(argv, env=env)
-        await worker.start()
-        status = ImportStatus()
+    async with WorkerProcess(argv, env=env, stop_timeout=stop_timeout) as worker:
         # With on_error="drop", rows() raises after the last row if the
         # worker failed, so that import_rows() drops the table. With "keep"
         # the import finishes normally: the table has every row received
-        state = _Import(
+        stream = _WorkerStream(
             worker, table, progress, status, raise_on_failure=on_error == "drop"
         )
-        await state.start()
+        # A write that fails or is cancelled kills the worker at once
         watched = _WatchedDatabase(db, on_failure=worker.abort)
-        import_result = None
-        if worker.decoder.header is not None:
-            rows = state.rows()
-            try:
-                import_result = await import_rows(
-                    watched,
-                    table,
-                    rows,
-                    # The decoder's own list, which grows as columns are
-                    # announced: rows are lists of values in this order
-                    columns=worker.decoder.columns,
-                    schema=state.schema,
-                    sample_size=sample_size,
-                    batch_size=batch_size,
-                    progress=state.written,
-                    on_error=on_error,
-                    status=status,
-                )
-            except _WorkerFailed:
-                # import_rows() dropped the table, if there was one
-                pass
-            finally:
-                try:
-                    await rows.aclose()
-                except RuntimeError:
-                    pass
-        else:
-            # An error (or nothing at all) before the header
-            while not state.done:
-                await state.fill()
-        # Wait for the worker to exit (it should, right after its last message)
-        await worker.stop(stop_timeout)
-        failure = state.failure(worker.returncode, memory_limit)
-        result = WorkerImportResult(
-            table=table,
-            loader=state.loader,
-            rows=status.rows if status.table_exists else 0,
-            rows_read=state.rows_read,
-            rows_written=status.rows,
-            complete=failure is None,
-            table_exists=status.table_exists,
-            schema=state.schema,
-            import_result=import_result,
-            size=state.size,
-            seconds=time.perf_counter() - start,
-            worker=state.trailer,
-            returncode=worker.returncode,
-            notes=state.notes,
-            warnings=state.warnings,
-            stats={
-                "decode_seconds": worker.decode_seconds,
-                "write_seconds": watched.write_seconds,
-                "writes": watched.writes,
-                "bytes_read": worker.bytes_read,
-            },
+        import_result = await stream.import_into(
+            watched, sample_size=sample_size, batch_size=batch_size, on_error=on_error
         )
-        if failure is not None:
-            kind, message, error_type = failure
-            raise WorkerImportError(
-                message,
-                kind=kind,
-                result=result,
-                error_type=error_type,
-                returncode=worker.returncode,
-                stderr=worker.stderr,
-            )
-        return result
-    except WorkerImportError:
-        raise
-    except BaseException:
-        # A failed insert, a progress callback that raised, cancellation:
-        # import_rows() has kept or dropped the table, as on_error says.
-        # Make sure the worker is gone
-        if worker is not None:
-            worker.abort()
-            await asyncio.shield(worker.stop(stop_timeout))
-        raise
+    # The worker has exited and been reaped: its exit status is known
+    failure = stream.failure(worker.returncode, memory_limit)
+    result = WorkerImportResult.from_status(
+        status,
+        table=table,
+        loader=stream.loader,
+        rows_read=stream.rows_read,
+        complete=failure is None,
+        schema=stream.schema,
+        import_result=import_result,
+        size=stream.size,
+        seconds=time.perf_counter() - start,
+        worker=stream.trailer,
+        returncode=worker.returncode,
+        notes=stream.notes,
+        warnings=stream.warnings,
+        stats={
+            "decode_seconds": worker.decode_seconds,
+            "write_seconds": watched.write_seconds,
+            "writes": watched.writes,
+            "bytes_read": worker.bytes_read,
+        },
+    )
+    if failure is not None:
+        kind, message, error_type = failure
+        raise WorkerImportError(
+            message,
+            kind=kind,
+            result=result,
+            error_type=error_type,
+            returncode=worker.returncode,
+            stderr=worker.stderr,
+        )
+    return result
 
 
 class _GuardedRows:
@@ -1216,24 +1411,14 @@ class _CollectWarnings(logging.Handler):
             self.messages.append(record.getMessage())
 
 
-async def import_file_in_process(
-    db,
-    table,
-    path,
-    *,
-    format=None,
-    sample_size=1000,
-    batch_size=1000,
-    progress=None,
-    on_error="keep",
-    delete_input=False,
-):
+class InProcessEngine:
     """
-    The same import as :func:`import_file_via_worker`, with the same result
-    and errors, but loading the file in a thread of this process: for
-    Pyodide and anywhere else a subprocess cannot be started. The loader
-    shares the server's memory and GIL (a JSON file is parsed whole while
-    holding it), and a loader that crashes takes the server with it.
+    Loads the file in a thread of this process, with the same result and
+    errors as :class:`WorkerEngine`: what :func:`import_file_in_process`
+    does, for Pyodide and anywhere else a subprocess cannot be started.
+    The loader shares the server's memory and GIL (a JSON file is parsed
+    whole while holding it), and a loader that crashes takes the server
+    with it.
 
     A loader error part way through keeps the rows before it, exactly as
     the worker does, and raises :class:`WorkerImportError` with
@@ -1242,6 +1427,49 @@ async def import_file_in_process(
     ``datasette.imports`` loggers, so an in-process import running at the
     same time may contribute some.
     """
+
+    def __repr__(self):
+        return "InProcessEngine()"
+
+    async def load(
+        self,
+        db,
+        table,
+        path,
+        *,
+        loader,
+        status,
+        progress,
+        on_error,
+        sample_size,
+        batch_size,
+    ):
+        "See :meth:`Engine.load`."
+        return await _import_in_process(
+            db,
+            table,
+            path,
+            loader=loader,
+            status=status,
+            sample_size=sample_size,
+            batch_size=batch_size,
+            progress=progress,
+            on_error=on_error,
+        )
+
+
+async def _import_in_process(
+    db,
+    table,
+    path,
+    *,
+    loader,
+    status,
+    sample_size,
+    batch_size,
+    progress,
+    on_error,
+):
     from datasette.imports import loaders as loaders_module
     from datasette.imports.worker import InputPosition
 
@@ -1254,20 +1482,17 @@ async def import_file_in_process(
     watched = None
     loaded = None
     size = None
-    status = ImportStatus()
     try:
         if await db.table_exists(table):
             raise ValueError(f"Table {table!r} already exists")
 
         def result(import_result, rows_read, complete):
-            return WorkerImportResult(
+            return WorkerImportResult.from_status(
+                status,
                 table=table,
                 loader=loaded.loader.name if loaded else None,
-                rows=status.rows if status.table_exists else 0,
                 rows_read=rows_read,
-                rows_written=status.rows,
                 complete=complete,
-                table_exists=status.table_exists,
                 schema=loaded.schema.columns if (loaded and loaded.schema) else None,
                 import_result=import_result,
                 size=size,
@@ -1287,7 +1512,7 @@ async def import_file_in_process(
             position = InputPosition(path)
             size = position.size
             loaded = await loop.run_in_executor(
-                None, functools.partial(loaders_module.load_path, path, format=format)
+                None, functools.partial(loaders_module.load_path, path, format=loader)
             )
         except Exception as ex:
             # Cannot read it, no loader recognizes it, or it failed at once
@@ -1349,8 +1574,36 @@ async def import_file_in_process(
         return outcome
     finally:
         loader_logger.removeHandler(warnings)
-        if delete_input:
-            _remove(path)
+
+
+async def import_file_in_process(
+    db,
+    table,
+    path,
+    *,
+    format=None,
+    sample_size=1000,
+    batch_size=1000,
+    progress=None,
+    on_error="keep",
+    status=None,
+):
+    """
+    The same import as :func:`import_file_via_worker`, with the same result
+    and errors, but loading the file in a thread of this process: see
+    :class:`InProcessEngine`.
+    """
+    return await InProcessEngine().load(
+        db,
+        table,
+        path,
+        loader=format,
+        status=status if status is not None else ImportStatus(),
+        progress=progress,
+        on_error=on_error,
+        sample_size=sample_size,
+        batch_size=batch_size,
+    )
 
 
 async def import_file(
@@ -1364,15 +1617,15 @@ async def import_file(
     batch_size=1000,
     progress=None,
     on_error="keep",
-    delete_input=False,
+    status=None,
     **worker_options,
 ):
     """
     Import ``path`` with :func:`import_file_via_worker` where subprocesses
     are available, otherwise (``use_worker=False``, Pyodide) with
     :func:`import_file_in_process`. Same result and errors either way.
-    ``worker_options`` (``plugins_dir``, ``memory_limit``, ``slots``...)
-    only apply to the worker.
+    ``worker_options`` (``plugins_dir``, ``memory_limit``...) only apply to
+    the worker.
     """
     if use_worker is None:
         use_worker = subprocesses_available()
@@ -1382,7 +1635,7 @@ async def import_file(
         "batch_size": batch_size,
         "progress": progress,
         "on_error": on_error,
-        "delete_input": delete_input,
+        "status": status,
     }
     if use_worker:
         return await import_file_via_worker(

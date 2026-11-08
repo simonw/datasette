@@ -27,7 +27,7 @@ Export data dialog and TSV
 Column statistics
 ~~~~~~~~~~~~~~~~~
 
-- The column action menu has a new **Column statistics** item, available to actors with the ``execute-sql`` permission. It opens a dialog showing counts of rows, nulls and distinct values, a breakdown of storage types, numeric statistics with a histogram, box plot and percentiles, text length statistics, a by-year or by-month chart for date columns, and the most common values. Each statistic includes the SQL query used to calculate it. (:pr:`3038`)
+- The column action menu has a new **Column statistics** item, available to actors with the ``execute-sql`` permission. It opens a dialog showing counts of rows, nulls and distinct values, a breakdown of storage types, numeric statistics with a histogram, box plot and percentiles, text length statistics, a chart of dates grouped by month, year or decade, and the most common values. Every query it runs is listed, with a link to open it in the SQL editor. (:pr:`3038`)
 - Column statistics are also available for the results of arbitrary SQL queries and stored queries.
 
 Table page redesign
@@ -63,7 +63,7 @@ Bug fixes
 
 - ``execute-write`` operations now work against tables with FTS index triggers, such as those created by sqlite-utils ``enable_fts(create_triggers=True)``. The SQL analysis table now shows why an operation was rejected.
 - The ``about`` and ``about_url`` metadata are now displayed even if no ``source`` or ``license`` is set. (:issue:`512`, :pr:`2985`)
-- The query page now shows the "returning more than N rows" message when results are truncated.
+- The query page heading now says "returning more than N rows" when results are truncated.
 - A stored query that references a missing ``:_actor_X`` key now raises a ``KeyError`` naming that key.
 
 .. _v1_0_a41:

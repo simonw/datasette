@@ -1931,10 +1931,18 @@ def test_ctrl_c_while_reading_stdin(tmp_path, sig):
         assert any(name.startswith("datasette-scratch-") for name in names)
         assert any(name.startswith("datasette-import-") for name in names)
         process.send_signal(sig)
-        _, stderr = process.communicate(timeout=15)
+        # Not communicate(): it closes stdin, and that end of the input
+        # would race the shutdown to finish the import. Standard input stays
+        # open until Datasette has exited; what it prints is far less than a
+        # pipe holds, so waiting first cannot block it
+        process.wait(timeout=15)
+        stderr = process.stderr.read()
     finally:
         if process.poll() is None:
             process.kill()
+        process.stdin.close()
+        process.stdout.close()
+        process.stderr.close()
     assert (
         b"Stopped importing standard input into table stdin, because Datasette "
         b"is shutting down" in stderr

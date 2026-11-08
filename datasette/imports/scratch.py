@@ -10,11 +10,10 @@ except the import itself: see ``datasette/imports/default_hooks.py``.
 
 :func:`load_sources` and :func:`load_source` are the ``--get`` path, which
 loads every input before answering: all or nothing, on the write thread
-(``exclusive=True``, one ``db.execute_write_fn()`` call per input). While
-Datasette serves, inputs and uploads load as background imports instead,
-through :mod:`datasette.imports.background` and the worker subprocess -
-not through these. (``exclusive=False``, a write per chunk while parsing
-runs in an executor thread, is only used by tests.)
+(one ``db.execute_write_fn()`` call per input). While Datasette serves,
+inputs and uploads load as background imports instead, through
+:mod:`datasette.imports.background` and the worker subprocess - not
+through these.
 """
 
 import asyncio
@@ -37,7 +36,6 @@ from datasette.imports import loaders as _loaders
 from datasette.imports.inserter import (
     SQLITE_ERRORS,
     ImportStatus,
-    import_rows,
     insert_rows,
 )
 from datasette.imports.sources import (
@@ -464,85 +462,58 @@ async def load_source(
     db,
     source: Source,
     *,
-    workdir: str | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     sample_size: int = 1000,
     progress=None,
-    loaders=None,
-    exclusive: bool = False,
     status: ImportStatus | None = None,
 ) -> LoadedTable:
     """
-    Load one source into a new table ``source.table`` in ``db``.
+    Load one source into a new table ``source.table`` in ``db``. The
+    source must have been fetched (:func:`~datasette.imports.sources.fetch`
+    sets ``source.path``) and sniffed (:func:`sniff` sets
+    ``source.loader``) already: ``ValueError`` otherwise.
 
-    Fetches the source first if :func:`~datasette.imports.sources.fetch`
-    has not run yet, and sniffs it if no loader has been picked. A copy
-    that this call downloads or spools itself (into ``workdir``, or a
-    private temporary directory) is deleted again when it returns, loaded
-    or not; copies made beforehand belong to the caller.
-
-    The table must not exist, and no other ``load_source()`` call in this
-    process may be loading a table of the same name (compared
-    case-insensitively): either raises :class:`TableExists` before
-    anything is fetched. If loading fails or is cancelled, the partly
-    loaded table is dropped - only if this call created it - and
-    :class:`ImportFailed` (or the cancellation) is raised.
-    ``progress(rows_written)`` is called after every chunk (and after each
-    slice of converting stored numbers to text after the last one, see
+    The table must not exist, and no other import in this process may be
+    loading a table of the same name (compared case-insensitively):
+    either raises :class:`TableExists` before anything is parsed. If
+    loading fails or is cancelled, the partly loaded table is dropped -
+    only if this call created it - and :class:`ImportFailed` (or the
+    cancellation) is raised. ``progress(rows_written)`` is called from the
+    write thread after every chunk (and after each slice of converting
+    stored numbers to text after the last one, see
     :func:`~datasette.imports.inserter.import_rows`). Pass an
     :class:`~datasette.imports.inserter.ImportStatus` as ``status`` to see
     when that conversion is under way (``status.finishing``) and how much
     of it is left (``status.backlog``).
 
-    This is how ``--get`` loads its inputs, through :func:`load_sources`,
-    with ``exclusive=True``: parsing and writing on the write thread in
-    one ``execute_write_fn()`` call (still committing every chunk), which
-    holds up every other write to ``db`` until it finishes, so it is only
-    for loading before the server starts. ``write_wrapper`` plugins see
-    one call for the whole load. Background imports - while Datasette
-    serves - use :mod:`datasette.imports.background` and the worker
-    subprocess instead.
-
-    With ``exclusive=False`` (only used by tests) every chunk is its own
-    ``db.execute_write_fn()`` call while the loader runs in an executor
-    thread, so other writes and reads can happen in between. That is
-    about 30% slower: the parsing and writing threads never actually run
-    in parallel (CPU time equals wall time) and splitting the work across
-    them costs extra CPU in every thread.
+    This is how ``--get`` loads its inputs, through :func:`load_sources`:
+    parsing and writing on the write thread in one ``execute_write_fn()``
+    call (still committing every chunk), which holds up every other write
+    to ``db`` until it finishes, so it is only for loading before the
+    server starts. ``write_wrapper`` plugins see one call for the whole
+    load. Background imports - while Datasette serves - use
+    :mod:`datasette.imports.background` and the worker subprocess
+    instead.
     """
-    from datasette.imports.sources import fetch, remove_temporary
-
     if not source.table:
         raise ValueError("source.table is not set: see assign_table_names()")
-    loop = asyncio.get_running_loop()
+    if source.path is None or source.loader is None:
+        raise ValueError(
+            f"{source.label} has not been fetched and sniffed: see fetch(), sniff()"
+        )
     claim = TableClaim(db, source.table)
-    fetched_here = source.path is None
-    private_dir = None
     try:
-        if fetched_here:
-            if workdir is None:
-                private_dir = workdir = tempfile.mkdtemp(prefix="datasette-import-")
-            await fetch(source, workdir)
-        if source.loader is None:
-            await loop.run_in_executor(None, sniff, source, loaders)
         # Fail early, before parsing anything. The write that creates the
-        # table checks again: see _load_new_table()
+        # table checks again: see _load_exclusive()
         await claim.check_free()
         return await _load_new_table(
-            db, source, batch_size, sample_size, progress, exclusive, status
+            db, source, batch_size, sample_size, progress, status
         )
     finally:
         claim.release()
-        if fetched_here and source.temporary:
-            # The rows are in SQLite now (or never will be)
-            remove_temporary([source])
-        if private_dir is not None:
-            remove_tree(private_dir)
 
 
-async def _load_new_table(
-    db, source, batch_size, sample_size, progress, exclusive, status
-):
+async def _load_new_table(db, source, batch_size, sample_size, progress, status):
     loop = asyncio.get_running_loop()
     loader = source.loader
     table = source.table
@@ -554,32 +525,16 @@ async def _load_new_table(
         )
         schema = dict(result.schema.columns) if result.schema else None
         with import_writes():
-            if exclusive:
-                imported = await _load_exclusive(
-                    db,
-                    table,
-                    result.rows,
-                    schema,
-                    sample_size,
-                    batch_size,
-                    progress,
-                    status,
-                )
-            else:
-                # on_error="drop": if loading fails or is cancelled, the table
-                # is dropped - if this import created it - without first
-                # converting what a late widening left to convert
-                imported = await import_rows(
-                    db,
-                    table,
-                    result.rows,
-                    schema=schema,
-                    sample_size=sample_size,
-                    batch_size=batch_size,
-                    progress=progress,
-                    on_error="drop",
-                    status=status,
-                )
+            imported = await _load_exclusive(
+                db,
+                table,
+                result.rows,
+                schema,
+                sample_size,
+                batch_size,
+                progress,
+                status,
+            )
     except _loaders.LoaderError as ex:
         raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
     except SQLITE_ERRORS as ex:
@@ -725,12 +680,10 @@ async def load_sources(
     *,
     session=None,
     target_path=None,
-    workdir=None,
     batch_size=DEFAULT_BATCH_SIZE,
     on_start=None,
     on_progress=None,
     on_loaded=None,
-    exclusive=False,
 ) -> list:
     """
     Carry out a :class:`LoadPlan`: drop, then load each source in turn.
@@ -745,9 +698,9 @@ async def load_sources(
     ``on_loaded(loaded_table)`` report progress: ``status`` is the
     source's :class:`~datasette.imports.inserter.ImportStatus`, which says
     when the rows are all in and stored numbers are being converted to
-    text (``status.finishing``, ``status.backlog``). ``exclusive`` is
-    passed to :func:`load_source` (``on_progress`` is then called from the
-    write thread).
+    text (``status.finishing``, ``status.backlog``). ``on_progress`` is
+    called from the write thread: see :func:`load_source`. Every source
+    must have been fetched and sniffed.
     """
     for table in plan.drop:
         await drop_table(db, table)
@@ -785,10 +738,8 @@ async def load_sources(
             result = await load_source(
                 db,
                 source,
-                workdir=workdir,
                 batch_size=batch_size,
                 progress=progress,
-                exclusive=exclusive,
                 status=status,
             )
             created.append(source.table)

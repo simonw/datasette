@@ -1062,6 +1062,13 @@ def _sources(*paths):
     return sources
 
 
+def _fetched(source):
+    "What _prepare_import() does to a local file before --get loads it."
+    source.path = source.location
+    scratch_module.sniff(source)
+    return source
+
+
 @pytest.mark.asyncio
 async def test_reload_session_keeps_unchanged_tables(data_dir, monkeypatch):
     from datasette.app import Datasette
@@ -1082,7 +1089,7 @@ async def test_reload_session_keeps_unchanged_tables(data_dir, monkeypatch):
             sources = _sources(csv_path, json_path)
             plan = plan_loads(session.scratch_path, sources, session=session)
             for source in plan.load:
-                source.path = source.location
+                _fetched(source)
             results = await load_sources(
                 db, plan, session=session, target_path=session.scratch_path
             )
@@ -1104,10 +1111,7 @@ async def test_reload_session_keeps_unchanged_tables(data_dir, monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exclusive", (True, False))
-async def test_load_sources_reports_the_conversion_backlog(
-    tmp_path, monkeypatch, exclusive
-):
+async def test_load_sources_reports_the_conversion_backlog(tmp_path, monkeypatch):
     # --get's status line says when a load is converting stored numbers to
     # text after a column widened in the last chunk
     from datasette.app import Datasette
@@ -1128,11 +1132,9 @@ async def test_load_sources_reports_the_conversion_backlog(
             text = loading_text(source, rows, status)
             seen.append((rows, status.finishing, status.backlog, text))
 
-        sources = _sources(path)
-        for source in sources:
-            source.path = source.location
+        sources = [_fetched(source) for source in _sources(path)]
         [loaded] = await load_sources(
-            db, plan_loads(None, sources), on_progress=on_progress, exclusive=exclusive
+            db, plan_loads(None, sources), on_progress=on_progress
         )
         assert loaded.types == {"id": "integer", "code": "text"}
         assert seen[0][3] == f"Loading {path}: 1,000 rows"
@@ -1156,27 +1158,45 @@ async def test_load_source_never_drops_a_table_it_did_not_create(data_dir):
         with scratch_module.import_writes():
             await db.execute_write("create table dogs (keep text)")
             await db.execute_write("insert into dogs values ('me')")
-        source = _sources(data_dir / "dogs.csv")[0]
-        source.path = source.location
+        source = _fetched(_sources(data_dir / "dogs.csv")[0])
         with pytest.raises(TableExists):
             await load_source(db, source)
         assert (await db.execute("select keep from dogs")).first()[0] == "me"
         # The import's own table is dropped when loading fails part way
         bad = data_dir / "bad.ndjson"
         bad.write_text('{"a": 1}\n' * 1500 + "{oops\n")
-        source = _sources(bad)[0]
+        source = _fetched(_sources(bad)[0])
         with pytest.raises(scratch_module.ImportFailed):
-            await load_source(db, source, workdir=str(data_dir))
+            await load_source(db, source)
         assert await db.table_names() == ["dogs"]
     finally:
         ds.close()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exclusive", (True, False))
-async def test_failed_load_drops_the_table_without_converting(
-    data_dir, monkeypatch, exclusive
-):
+async def test_load_source_needs_a_fetched_and_sniffed_source(data_dir):
+    # --get fetches and sniffs every input before it loads any
+    from datasette.app import Datasette
+    from datasette.imports.scratch import load_source
+
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        source = _sources(data_dir / "dogs.csv")[0]
+        with pytest.raises(ValueError, match="has not been fetched and sniffed"):
+            await load_source(db, source)
+        source.path = source.location
+        with pytest.raises(ValueError, match="has not been fetched and sniffed"):
+            await load_source(db, source)
+        assert not scratch_module.is_reserved(db, source.table)
+        assert await db.table_names() == []
+        assert (await load_source(db, _fetched(source))).rows == 3
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_load_drops_the_table_without_converting(data_dir, monkeypatch):
     # A column widens to text late, leaving stored numbers to convert, then
     # the loader fails. The table is dropped anyway, so it is dropped as it
     # is (on_error="drop") rather than first completed - which would be
@@ -1200,10 +1220,9 @@ async def test_failed_load_drops_the_table_without_converting(
     ds = Datasette()
     db = ds.add_database(ScratchDatabase(ds), name="scratch")
     try:
-        source = _sources(bad)[0]
-        source.path = source.location
+        source = _fetched(_sources(bad)[0])
         with pytest.raises(scratch_module.ImportFailed, match="Line 2001"):
-            await load_source(db, source, exclusive=exclusive)
+            await load_source(db, source)
         assert await db.table_names() == []
         # The chunk that widened converted one slice; nothing after that
         assert len(converted) == 1
@@ -1294,8 +1313,7 @@ def test_sigterm_interrupts_loading_then_handler_is_restored():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exclusive", (True, False))
-async def test_cancelling_a_load_drops_the_table(data_dir, exclusive):
+async def test_cancelling_a_load_drops_the_table(data_dir):
     import asyncio
 
     from datasette.app import Datasette
@@ -1307,24 +1325,16 @@ async def test_cancelling_a_load_drops_the_table(data_dir, exclusive):
     db = ds.add_database(ScratchDatabase(ds), name="scratch")
     loop = asyncio.get_running_loop()
     try:
-        source = _sources(path)[0]
+        source = _fetched(_sources(path)[0])
         seen = []
 
         def progress(rows):
-            # Called from the write thread when exclusive
+            # Called from the write thread
             seen.append(rows)
             if len(seen) == 2:
                 loop.call_soon_threadsafe(task.cancel)
 
-        task = asyncio.ensure_future(
-            load_source(
-                db,
-                source,
-                workdir=str(data_dir),
-                progress=progress,
-                exclusive=exclusive,
-            )
-        )
+        task = asyncio.ensure_future(load_source(db, source, progress=progress))
         with pytest.raises(asyncio.CancelledError):
             await task
         assert 0 < seen[-1] < 200_000
@@ -1342,10 +1352,9 @@ def _many_rows(path, count=20_000):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exclusive", (False, True))
-async def test_concurrent_loads_of_one_table_name(data_dir, exclusive):
-    # Two background imports that want the same table: the second is
-    # refused at once, and must not drop the first one's table
+async def test_concurrent_loads_of_one_table_name(data_dir):
+    # Two loads that want the same table: the second is refused at once,
+    # and must not drop the first one's table
     import asyncio
 
     from datasette.app import Datasette
@@ -1355,12 +1364,12 @@ async def test_concurrent_loads_of_one_table_name(data_dir, exclusive):
     db = ds.add_database(ScratchDatabase(ds), name="scratch")
     try:
         big = _many_rows(data_dir / "big.ndjson")
-        a = Source(str(big), "file", str(big), table="events")
+        a = _fetched(Source(str(big), "file", str(big), table="events"))
         b = Source(str(data_dir / "dogs.csv"), "file", str(data_dir / "dogs.csv"))
         b.table = "Events"  # names compare case-insensitively
         results = await asyncio.gather(
-            load_source(db, a, exclusive=exclusive),
-            load_source(db, b, exclusive=exclusive),
+            load_source(db, a),
+            load_source(db, _fetched(b)),
             return_exceptions=True,
         )
         assert results[0].rows == 20_000, results
@@ -1370,8 +1379,8 @@ async def test_concurrent_loads_of_one_table_name(data_dir, exclusive):
         count = await db.execute("select count(*) from events")
         assert count.first()[0] == 20_000
         # The name is free again once a load has finished
-        c = Source(str(big), "file", str(big), table="events_2")
-        assert (await load_source(db, c, exclusive=exclusive)).rows == 20_000
+        c = _fetched(Source(str(big), "file", str(big), table="events_2"))
+        assert (await load_source(db, c)).rows == 20_000
     finally:
         ds.close()
 
@@ -1402,8 +1411,7 @@ class _SneakyLoader:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("exclusive", (False, True))
-async def test_load_source_keeps_a_table_created_while_it_started(data_dir, exclusive):
+async def test_load_source_keeps_a_table_created_while_it_started(data_dir):
     # A writable --save database: someone else creates the table between
     # load_source()'s check and its first write. The import fails, and its
     # cleanup must leave their table alone
@@ -1421,58 +1429,10 @@ async def test_load_source_keeps_a_table_created_while_it_started(data_dir, excl
         source.path = source.location
         source.loader = _SneakyLoader(path, "dogs")
         with pytest.raises((ImportFailed, TableExists)):
-            await load_source(db, source, exclusive=exclusive)
+            await load_source(db, source)
         rows = (await db.execute("select * from dogs")).rows
         assert [tuple(row) for row in rows] == [("keep me",)]
     finally:
-        ds.close()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("workdir", ("given", None))
-async def test_load_source_removes_its_own_downloads(
-    http_server, tmp_path, monkeypatch, workdir
-):
-    import tempfile
-
-    from datasette.app import Datasette
-    from datasette.imports.scratch import ImportFailed, load_source
-    from datasette.imports.sources import fetch
-
-    ds = Datasette()
-    db = ds.add_database(ScratchDatabase(ds, str(tmp_path / "s.db")), name="scratch")
-    # Where load_source() puts downloads when it is given no workdir
-    system_tmp = tmp_path / "system-tmp"
-    system_tmp.mkdir()
-    monkeypatch.setattr(tempfile, "tempdir", str(system_tmp))
-    work = tmp_path / "work"
-    work.mkdir()
-    _Handler.routes["/garbage.json"] = (200, {}, b'[{"a": 1}, {"a": ')
-    try:
-        kwargs = {"workdir": str(work)} if workdir else {}
-        url = http_server + "/dogs.csv"
-        loaded = await load_source(db, Source(url, "url", url, table="dogs"), **kwargs)
-        assert loaded.rows == 3
-        assert list(work.iterdir()) == []
-        assert list(system_tmp.iterdir()) == []
-        # Also when downloading or loading fails
-        bad = http_server + "/broken"
-        with pytest.raises(SourceError):
-            await load_source(db, Source(bad, "url", bad, table="b"), **kwargs)
-        garbage = http_server + "/garbage.json"
-        with pytest.raises(ImportFailed):
-            await load_source(
-                db, Source(garbage, "url", garbage, table="g", format="json"), **kwargs
-            )
-        assert list(work.iterdir()) == []
-        assert list(system_tmp.iterdir()) == []
-        # A copy made before load_source() is the caller's to remove
-        source = Source(url, "url", url, table="kept")
-        await fetch(source, str(work))
-        await load_source(db, source)
-        assert os.path.exists(source.path)
-    finally:
-        _Handler.routes.pop("/garbage.json", None)
         ds.close()
 
 

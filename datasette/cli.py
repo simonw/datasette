@@ -1227,17 +1227,16 @@ class _DataImport:
             status.done(describe_loaded(loaded, where))
 
         try:
+            # On the write thread, which is fine: nothing else can be
+            # writing yet. _prepare_import() fetched and sniffed every input
             results = await load_sources(
                 self.db,
                 self.plan,
                 session=self.session,
                 target_path=self.target_path,
-                workdir=self.workdir,
                 on_start=on_start,
                 on_progress=on_progress,
                 on_loaded=on_loaded,
-                # Nothing else can be writing yet: load on the write thread
-                exclusive=True,
                 batch_size=(
                     DEFAULT_BATCH_SIZE if is_scratch(self.db) else SAVE_BATCH_SIZE
                 ),

@@ -195,7 +195,10 @@ def test_validate_sql_select_good(good_sql):
     utils.validate_sql_select(good_sql)
 
 
-@pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
+@pytest.mark.parametrize(
+    "open_quote,close_quote",
+    [('"', '"'), ("[", "]"), ("'", "'"), ("`", "`"), ("", "")],
+)
 def test_detect_fts(open_quote, close_quote):
     sql = f"""
     CREATE TABLE "Dumb_Table" (
@@ -220,6 +223,7 @@ def test_detect_fts(open_quote, close_quote):
     assert None is utils.detect_fts(conn, "Dumb_Table")
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
+    assert None is utils.detect_fts(conn, "Street_Tree")
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
     conn.close()
 

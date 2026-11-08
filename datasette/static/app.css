@@ -6156,8 +6156,44 @@ button.column-menu-trigger[aria-expanded="true"] {
     }
 }
 
+/* Narrow screens: match the stacked cards of the table page exactly (see
+   the max-width: 576px block under Overrides), with the copy button tucked
+   into the label line so values get the same width as on the table page. */
 @media (max-width: 576px) {
+    .row-fields {
+        max-width: none;
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+        color: #0f0f0f;
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
     .row-field {
-        grid-template-columns: minmax(0, 1fr);
+        display: block;
+        position: relative;
+        padding: 0.45rem 0.75rem 0.5rem;
+    }
+    .row-field:hover {
+        background: none;
+    }
+    .row-field:first-child {
+        background: #eef6ff;
+    }
+    .row-field dt {
+        margin: 0 0 1px;
+        padding-right: 1.75rem;
+    }
+    .row-field-name {
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+    .row-field dd {
+        display: block;
+    }
+    .row-field-copy {
+        position: absolute;
+        top: 0.2rem;
+        right: 0.35rem;
+        margin: 0;
     }
 }

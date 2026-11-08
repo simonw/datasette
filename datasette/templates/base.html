@@ -7,7 +7,9 @@
 {% for url in extra_css_urls %}
     <link rel="stylesheet" href="{{ url.url }}"{% if url.get("sri") %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}>
 {% endfor %}
-<script>window.datasetteVersion = '{{ datasette_version }}';</script>
+<script>window.datasetteVersion = '{{ datasette_version }}';
+window.datasetteRecentContext = {{ {"base": urls.path("/"), "actor": (actor or {}).get("id")}|tojson }};</script>
+<script src="{{ static('recent.js') }}" defer></script>
 <script src="{{ static('modal.js') }}" defer></script>
 <script src="{{ static('menus.js') }}" defer></script>
 <script src="{{ static('datasette-manager.js') }}" defer></script>
@@ -20,6 +22,7 @@
 {%- block extra_head %}{% endblock -%}
 </head>
 <body class="{% block body_class %}{% endblock %}">
+{% block recent_item %}{% endblock %}
 <div class="not-footer">
 <header class="hd app-header"><nav>{% block nav %}{% block crumbs %}{{ crumbs.nav(request=request) }}{% endblock %}
     {% include "_app_menu.html" %}

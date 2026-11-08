@@ -114,10 +114,12 @@ makeHomepageSections(context)
 
 This method should return a JavaScript array of objects defining additional sections to be shown on the Datasette homepage, between the search box and the list of queries, tables and views.
 
-It returns objects in the same shape as :ref:`javascript_plugins_makeJumpSections`:
+It returns objects in the same shape as :ref:`javascript_plugins_makeJumpSections`, plus an optional ``title``:
 
 ``id`` - string
     A unique string ID for the section, for example ``agent-chat``
+``title`` - string, optional
+    A heading for the section. Datasette renders it in the same style as the other homepage section headings, above the node passed to ``render()``.
 ``render(node, context)`` - function
     A function that will be called with a DOM node to render the section into
 
@@ -137,6 +139,7 @@ Plugins are responsible for deciding if a section should be shown - for example 
           return [
             {
               id: 'agent-chat',
+              title: 'Datasette Agent',
               render: (node, context) => {
                 node.innerHTML = '<a href="/-/agent">Ask a question about this data</a>';
               }

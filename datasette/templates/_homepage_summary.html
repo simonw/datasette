@@ -1,0 +1,8 @@
+{% set multiple_databases = databases|length > 1 %}
+<p class="homepage-summary">
+    {%- if multiple_databases %}<span>{{ catalog.totals.databases }} databases</span>{% endif -%}
+    <span>{{ "{:,}".format(catalog.totals.tables) }} table{% if catalog.totals.tables != 1 %}s{% endif %}</span>
+    {%- if catalog.totals.views %}<span>{{ "{:,}".format(catalog.totals.views) }} view{% if catalog.totals.views != 1 %}s{% endif %}</span>{% endif -%}
+    {%- if catalog.queries_total %}<span>{{ "{:,}".format(catalog.queries_total) }} quer{% if catalog.queries_total != 1 %}ies{% else %}y{% endif %}</span>{% endif -%}
+    {%- if q %}<span>matching “{{ q }}”</span>{% endif -%}
+</p>

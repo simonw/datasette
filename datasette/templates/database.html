@@ -18,6 +18,8 @@
 {{ crumbs.nav(request=request, database=database) }}
 {% endblock %}
 
+{% block recent_item %}{% with recent_type="database", recent_name=database, recent_title=metadata.title, recent_url=urls.database(database) %}{% include "_recent_item.html" %}{% endwith %}{% endblock %}
+
 {% block content %}
 <div class="page-header" style="border-color: #{{ database_color }}">
     <h1>{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>

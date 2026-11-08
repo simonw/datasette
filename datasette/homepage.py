@@ -16,7 +16,7 @@ from datasette.database import QueryInterrupted
 from datasette.utils import escape_sqlite, named_parameters
 
 PAGE_SIZE = 30
-QUERIES_LIMIT = 6
+QUERIES_LIMIT = 5
 COLUMNS_PREVIEW = 8
 # Time budget, in ms, for counting rows in each listed table
 COUNT_TIME_LIMIT_MS = 15
@@ -293,7 +293,7 @@ async def build_catalog(
     queries_cte = f"""
     WITH allowed AS ({query_sql}),
     matching AS (
-        SELECT queries.*, allowed.is_private AS allowed_private
+        SELECT queries.rowid AS rowid, queries.*, allowed.is_private AS allowed_private
         FROM allowed
         JOIN queries
           ON queries.database_name = allowed.parent
@@ -312,11 +312,19 @@ async def build_catalog(
     queries_total = (
         await internal.execute(queries_cte + "SELECT count(*) FROM matching", qparams)
     ).first()[0]
+    # Without a search, only show queries someone chose to put there: ones
+    # from config or plugins, in the order they were defined, then the
+    # current actor's own saved queries. Other people's saved queries can
+    # number in the hundreds, so they only appear in search results.
+    qparams["actor_id"] = (actor or {}).get("id")
     query_rows = (
         await internal.execute(
             queries_cte
             + f"""
         SELECT * FROM matching
+        WHERE :q != ''
+           OR source != 'user'
+           OR (owner_id IS NOT NULL AND owner_id = :actor_id)
         ORDER BY
             CASE
                 WHEN :q = '' THEN 0
@@ -324,7 +332,10 @@ async def build_catalog(
                 WHEN description LIKE :pattern THEN 1
                 ELSE 2
             END,
-            updated_at DESC, name
+            CASE WHEN source != 'user' THEN 0 ELSE 1 END,
+            CASE WHEN source != 'user' THEN rowid END,
+            updated_at DESC,
+            name
         LIMIT {QUERIES_LIMIT}
         """,
             qparams,
@@ -350,6 +361,9 @@ async def build_catalog(
                 "parameters": parameters,
                 "url": datasette.urls.query(row["database_name"], row["name"]),
                 "color": datasette.databases[row["database_name"]].color,
+                "mine": row["source"] == "user"
+                and row["owner_id"] is not None
+                and row["owner_id"] == qparams["actor_id"],
             }
         )
 

@@ -6218,13 +6218,6 @@ button.column-menu-trigger[aria-expanded="true"] {
     margin: 0.5rem 0 0;
     font-size: 0.875rem;
 }
-.homepage-pagination {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 0.75rem 0 0;
-    font-size: 0.9375rem;
-}
 @media (max-width: 600px) {
     .homepage-search-button {
         display: none;
@@ -6265,4 +6258,191 @@ button.column-menu-trigger[aria-expanded="true"] {
 }
 .homepage a.homepage-database.empty {
     opacity: 0.5;
+}
+
+/* Homepage: recently visited, from localStorage */
+.homepage-recent {
+    margin: 0 0 1.25rem;
+}
+.homepage-recent-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin: 0 0 0.5rem;
+}
+.homepage-recent-header h2 {
+    margin: 0;
+    font-size: 1.125rem;
+}
+.homepage-recent-clear {
+    color: var(--muted);
+    font-size: 0.8125rem;
+}
+.recent-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.recent-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid var(--rule);
+    border-radius: 0.5rem;
+    background: var(--card);
+}
+.homepage a.recent-item-name,
+.homepage a.recent-item-name:visited {
+    color: #1d4f7a;
+    font-weight: 600;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.homepage a.recent-item-name:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.type-tag-query {
+    color: #0f6b4f;
+    background: #e6f6ef;
+}
+.type-tag-database {
+    color: #4b5563;
+    background: #eef0f3;
+}
+
+/* Database filter: labelled row of rectangular chips */
+.homepage-databases-label {
+    margin-right: 0.25rem;
+    color: var(--muted);
+    font-weight: 600;
+}
+.homepage-database {
+    border-radius: 0.4rem;
+}
+.homepage-database.selected,
+.homepage a.homepage-database.selected {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.homepage-database.selected .homepage-database-count {
+    color: var(--muted);
+}
+
+/* Section header with a link on the right */
+.homepage-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    margin: 0 0 0.6rem;
+}
+.homepage-section-header h2 {
+    margin: 0;
+}
+.homepage-section-link {
+    font-size: 0.875rem;
+}
+
+/* Queries: compact rows */
+.query-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--rule);
+    border-radius: 0.5rem;
+    background: var(--card);
+    overflow: hidden;
+}
+.query-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.15rem 0.5rem;
+    padding: 0.5rem 0.9rem;
+}
+.query-row + .query-row {
+    border-top: 1px solid var(--rule);
+}
+.homepage a.query-row-name,
+.homepage a.query-row-name:visited {
+    color: #1d4f7a;
+    font-weight: 600;
+    text-decoration: none;
+}
+.homepage a.query-row-name:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.query-row-detail {
+    flex: 1 1 16rem;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.query-row-detail code {
+    font-size: 0.8125rem;
+}
+.type-tag-mine {
+    color: #1e40af;
+    background: #e8effd;
+}
+.homepage-database.selected,
+.homepage a.homepage-database.selected {
+    border-color: #a9c1ec;
+    background: var(--accent-light);
+    box-shadow: none;
+    font-weight: 600;
+}
+.homepage-recent-header {
+    justify-content: space-between;
+}
+.homepage .homepage-recent-clear {
+    padding: 0.1rem 0.4rem;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.8125rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+.homepage .homepage-recent-clear:hover,
+.homepage .homepage-recent-clear:focus-visible {
+    background: #eef0f3;
+    color: var(--ink);
+}
+
+/* While searching, results sit directly under the search box */
+.homepage-searching .homepage-sections,
+.homepage-searching .homepage-recent,
+.homepage-searching .homepage-databases {
+    display: none;
+}
+.homepage-searching .homepage-queries {
+    margin-top: 1.5rem;
+}
+
+/* Plugin sections: optional heading drawn by core, styled like Recently visited */
+.homepage-section + .homepage-section {
+    margin-top: 1.25rem;
+}
+.homepage-section-heading {
+    margin: 0 0 0.5rem;
+}
+.homepage-section-heading h2 {
+    margin: 0;
+    font-size: 1.125rem;
 }

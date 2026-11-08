@@ -202,6 +202,32 @@ class IndexView(BaseView):
                 "?" + urllib.parse.urlencode(args) if args else ""
             )
 
+        context = {
+            # Kept for custom index.html templates written against the
+            # old context; each entry is a summary of one database
+            "databases": catalog.databases,
+            "catalog": catalog,
+            "items": catalog.items,
+            "queries": catalog.queries,
+            "q": q,
+            "database_filter": database,
+            "database_url": database_url,
+            "page": page,
+            "page_count": page_count,
+            "page_size": PAGE_SIZE,
+            "previous_url": page_url(page - 1) if page > 1 else None,
+            "next_url": page_url(page + 1) if page < page_count else None,
+        }
+
+        # Live search on the homepage asks for just the summary line and the
+        # results, rendered by the same templates as the full page
+        if request.args.get("_fragment") == "results":
+            response = await self.render(
+                ["_homepage_fragment.html"], request=request, context=context
+            )
+            response.headers["X-Robots-Tag"] = "noindex"
+            return response
+
         homepage_actions = []
         for hook in pm.hook.homepage_actions(
             datasette=self.ds,
@@ -216,20 +242,7 @@ class IndexView(BaseView):
             ["default:index.html" if alternative_homepage else "index.html"],
             request=request,
             context={
-                # Kept for custom index.html templates written against the
-                # old context; each entry is a summary of one database
-                "databases": catalog.databases,
-                "catalog": catalog,
-                "items": catalog.items,
-                "queries": catalog.queries,
-                "q": q,
-                "database_filter": database,
-                "database_url": database_url,
-                "page": page,
-                "page_count": page_count,
-                "page_size": PAGE_SIZE,
-                "previous_url": page_url(page - 1) if page > 1 else None,
-                "next_url": page_url(page + 1) if page < page_count else None,
+                **context,
                 "metadata": await self.ds.get_instance_metadata(),
                 "datasette_version": __version__,
                 "private": not await self.ds.allowed(

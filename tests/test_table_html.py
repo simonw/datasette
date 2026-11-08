@@ -1855,7 +1855,7 @@ async def test_row_page_edit_delete_action_menu_buttons():
         assert any("edit-tools-loader.js" in src for src in script_srcs)
         assert not any("table.js" in src for src in script_srcs)
 
-        row = soup.select_one("table.rows-and-columns tbody tr")
+        row = soup.select_one("dl.row-fields")
         assert row["data-row"] == "1"
         assert row["data-row-label"] == "One"
 

@@ -5911,3 +5911,204 @@ button.column-menu-trigger[aria-expanded="true"] {
         font-size: 16px;
     }
 }
+
+/* Row page: one field per line, name on the left and value on the right.
+   Stacks name above value on narrow screens. See _row_fields.html. */
+.row-heading-label {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: #536978;
+}
+
+.row-referenced-by {
+    max-width: 60rem;
+    margin: 0 0 1.5rem;
+}
+.row-referenced-by h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+}
+.row-referenced-by ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.row-referenced-by li {
+    padding: 0.3rem 0;
+}
+.row-referenced-by-via {
+    color: #6b6b6b;
+    font-size: 0.8125rem;
+}
+
+.row-fields {
+    --rule: #d8e6f5;
+    --muted: #6b6b6b;
+    --link: #276890;
+    --link-visited: #2d7a62;
+    --accent: #1a56db;
+    box-sizing: border-box;
+    max-width: 60rem;
+    margin: 0 0 1.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
+    font-variant-numeric: tabular-nums;
+}
+.row-field {
+    display: grid;
+    grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+    gap: 0.25rem 1.25rem;
+    padding: 0.55rem 0.85rem;
+    border-top: 1px solid var(--rule);
+}
+.row-field:first-child {
+    border-top: none;
+}
+.row-field:hover {
+    background: rgba(0, 110, 255, 0.03);
+}
+.row-field dt {
+    margin: 0;
+    min-width: 0;
+}
+.row-field-name {
+    display: block;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #536978;
+    overflow-wrap: break-word;
+}
+.row-field-description {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.row-field dd {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0;
+    min-width: 0;
+}
+.row-field-value,
+.row-field-long {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.row-field[data-is-pk] .row-field-value {
+    font-weight: 600;
+}
+.row-field-value em {
+    color: var(--muted);
+    font-size: 0.8125em;
+    font-style: normal;
+}
+.row-field-value a:link {
+    color: var(--link);
+    text-decoration: none;
+}
+.row-field-value a:visited {
+    color: var(--link-visited);
+    text-decoration: none;
+}
+.row-field-value a:hover {
+    text-decoration: underline;
+}
+.row-field-empty {
+    flex: 1 1 auto;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-style: italic;
+}
+
+/* Long values show the first few lines, with a toggle to reveal the rest */
+.row-field-long:not(.is-expanded) > .row-field-value {
+    max-height: 6lh;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000 calc(100% - 2lh), transparent);
+    mask-image: linear-gradient(#000 calc(100% - 2lh), transparent);
+}
+.row-field-expand {
+    margin-top: 0.35rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--link);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.row-field-expand:hover {
+    text-decoration: underline;
+}
+
+/* Copy button: quiet until the field is hovered or the button focused */
+.row-field-copy {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin: -0.2rem -0.3rem -0.2rem 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+.row-field:hover .row-field-copy,
+.row-field-copy:focus-visible,
+.row-field-copy.is-copied {
+    opacity: 1;
+}
+.row-field-copy:hover {
+    background: #eef6ff;
+    border-color: var(--rule);
+    color: var(--accent);
+}
+.row-field-copy:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.row-field-copy .icon-copied,
+.row-field-copy.is-copied .icon-copy {
+    display: none;
+}
+.row-field-copy.is-copied .icon-copied {
+    display: block;
+}
+.row-field-copy.is-copied {
+    color: #1f7a4d;
+}
+.row-field-copy-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+@media (hover: none) {
+    .row-field-copy {
+        opacity: 0.7;
+    }
+}
+
+@media (max-width: 576px) {
+    .row-field {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

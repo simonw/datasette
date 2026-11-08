@@ -188,7 +188,7 @@ class FacetInstancesProvider(Provider):
                     context.request,
                     context.database_name,
                     sql=context.sql_no_order_no_limit,
-                    params=context.params,
+                    params=context.from_sql_params,
                     table=context.table_name,
                     table_config=context.table_metadata,
                     row_count=count,

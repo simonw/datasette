@@ -2500,9 +2500,7 @@ async def table_view_data(
         page_size = datasette.page_size
 
     # Facets are calculated against SQL without order by or limit
-    sql_no_order_no_limit = (
-        f"select {select_all_columns} from {escape_sqlite(table_name)} {where_clause}"
-    )
+    sql_no_order_no_limit = f"select {select_all_columns} {from_sql}"
 
     # This is the SQL that populates the main table on the page
     sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"

@@ -2858,7 +2858,7 @@ async def _next_value_and_url(
         if (sort or sort_desc) and not is_view:
             try:
                 prefix = rows[-2][sort or sort_desc]
-            except IndexError:
+            except (IndexError, KeyError):
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 # Tables with no primary key paginate on rowid
                 lookup_pks = pks or ["rowid"]

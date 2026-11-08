@@ -1669,6 +1669,25 @@ async def test_sort_excluded_column_rowid_table(query_string, expected_order):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/roadside_attraction_characteristics?_size=2&_sort=attraction_id&_nocol=attraction_id",
+        "/fixtures/roadside_attraction_characteristics?_size=2&_sort_desc=attraction_id&_nocol=attraction_id",
+        "/fixtures/roadside_attraction_characteristics.json?_size=2&_sort=attraction_id&_nocol=attraction_id&_labels=on",
+    ),
+)
+async def test_sort_excluded_column_with_expanded_labels(ds_client, path):
+    # Expanding foreign key labels turns rows into CustomRow objects, which
+    # raise KeyError rather than IndexError for a missing sort column
+    # https://github.com/simonw/datasette/issues/2974
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    if ".json" in path:
+        assert response.json()["next"] == "2,2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "extra,expected_json",
     (
         (

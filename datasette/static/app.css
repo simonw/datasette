@@ -3556,12 +3556,12 @@ dialog.row-delete-dialog {
     justify-content: flex-start;
 }
 
+/* The title is a question that wraps like a sentence */
 .row-delete-dialog .modal-title {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
     min-width: 0;
     max-width: 100%;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
 }
 
 .row-delete-message,
@@ -3575,15 +3575,25 @@ dialog.row-delete-dialog {
     font-size: 0.95rem;
 }
 
-.row-delete-id {
-    display: inline;
-    padding: 2px 5px;
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    background: var(--paper);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.92em;
+.row-delete-message p {
+    margin: 0;
+}
+
+/* The row's label, above the warning. Very long labels are cut to three
+   lines. */
+.row-delete-message .row-delete-label {
+    display: -webkit-box;
+    margin-bottom: 0.4rem;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    font-weight: 600;
     overflow-wrap: anywhere;
+}
+
+.row-delete-message .row-delete-label[hidden] {
+    display: none;
 }
 
 .row-delete-error {
@@ -3594,6 +3604,21 @@ dialog.row-delete-dialog {
 .row-delete-dialog .modal-footer {
     padding: 18px 20px 14px;
     margin-top: 18px;
+}
+
+.row-delete-dialog .modal-btn-danger {
+    background: #b91c1c;
+    color: #fff;
+}
+
+.row-delete-dialog .modal-btn-danger:hover {
+    background: #991b1b;
+}
+
+.row-delete-dialog .modal-btn-danger:disabled,
+.row-delete-dialog .modal-btn-danger:disabled:hover {
+    background: #d98c8c;
+    color: #fff;
 }
 
 dialog.row-edit-dialog {
@@ -3609,8 +3634,7 @@ dialog.row-edit-dialog {
     max-width: 100%;
 }
 
-.row-edit-dialog .modal-title .row-dialog-action,
-.row-delete-dialog .modal-title .row-dialog-action {
+.row-edit-dialog .modal-title .row-dialog-action {
     flex: 0 0 auto;
     white-space: nowrap;
 }
@@ -3628,8 +3652,7 @@ dialog.row-edit-dialog {
     overflow-wrap: anywhere;
 }
 
-.row-edit-dialog .modal-title .row-dialog-label,
-.row-delete-dialog .modal-title .row-dialog-label {
+.row-edit-dialog .modal-title .row-dialog-label {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

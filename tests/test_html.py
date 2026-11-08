@@ -537,12 +537,13 @@ def row_fields(html):
     soup = Soup(html, "html.parser")
     fields = []
     for field in soup.select("dl.row-fields > .row-field"):
-        value = field.select_one(".row-field-value, .row-field-empty")
+        value = field.select_one(".row-field-value")
+        empty = field.select_one(".row-field-empty")
         fields.append(
             (
                 field["data-column"],
                 " ".join(field["class"]),
-                value.decode_contents().strip(),
+                value.decode_contents().strip() if value else empty["data-label"],
             )
         )
     return fields
@@ -576,10 +577,30 @@ async def test_row_html_copy_buttons(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     soup = Soup(response.text, "html.parser")
     buttons = soup.select(".row-field .row-field-copy")
-    assert [(b["aria-label"], b["data-copy-value"]) for b in buttons] == [
-        ("Copy id", "1"),
-        ("Copy content", "hello"),
+    assert [(b["aria-label"], b["data-copy-value"], b["title"]) for b in buttons] == [
+        ("Copy id", "1", "Copy to clipboard"),
+        ("Copy content", "hello", "Copy to clipboard"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_row_html_long_value_toggle():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_row_html_long_value_toggle")
+    await db.execute_write(
+        "create table t (id integer primary key, short text, long text)"
+    )
+    await db.execute_write("insert into t values (1, 'hi', ?)", ["word " * 1000])
+    response = await ds.client.get("/test_row_html_long_value_toggle/t/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one(".row-field.col-short .row-field-expand") is None
+    button = soup.select_one(".row-field.col-long .row-field-expand")
+    # The label comes from CSS so it is left out when the page is copied
+    assert button["data-label"] == "Show all 5,000 characters"
+    assert button["aria-label"] == "Show all 5,000 characters"
+    assert button.text == ""
+    assert button["aria-expanded"] == "false"
 
 
 @pytest.mark.asyncio
@@ -593,7 +614,10 @@ async def test_row_html_null_values_have_no_copy_button(ds_client):
         "pk"
     ]
     nulls = [f.select_one(".row-field-empty") for f in fields[1:]]
-    assert [n.text for n in nulls] == ["null"] * (len(fields) - 1)
+    # The label comes from CSS so it is left out when the page is copied
+    assert [(n["data-label"], n.text) for n in nulls] == [("null", "")] * (
+        len(fields) - 1
+    )
 
 
 @pytest.mark.asyncio

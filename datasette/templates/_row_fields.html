@@ -9,6 +9,7 @@
     {% set is_empty = raw is none or (is_text and raw == "") %}
     {% set copyable = not is_empty and (is_text or raw is number) %}
     {% set is_long = is_text and (raw|length > 400 or raw.count("\n") > 6) %}
+    {% set expand_label = "Show all {:,} characters".format(raw|length) if is_long else "" %}
     <div class="row-field col-{{ column.name|to_css_class }} type-{{ cell.value_type }}" data-column="{{ column.name }}"{% if column.is_pk %} data-is-pk="1"{% endif %}>
         <dt>
             {#- <wbr> after underscores lets long snake_case names wrap between words #}
@@ -16,13 +17,14 @@
             {% if column.description %}<span class="row-field-description">{{ column.description }}</span>{% endif %}
         </dt>
         <dd>
-            {% if raw is none %}<span class="row-field-empty">null</span>
-            {% elif is_text and raw == "" %}<span class="row-field-empty">empty string</span>
-            {% elif is_long %}<div class="row-field-long"><div class="row-field-value" id="row-field-{{ loop.index }}">{{ cell.value }}</div><button type="button" class="row-field-expand" aria-expanded="false" aria-controls="row-field-{{ loop.index }}">Show all {{ "{:,}".format(raw|length) }} characters</button></div>
+            {#- Labels are CSS generated content so copying a section of the page leaves them out #}
+            {% if raw is none %}<span class="row-field-empty" data-label="null"></span>
+            {% elif is_text and raw == "" %}<span class="row-field-empty" data-label="empty string"></span>
+            {% elif is_long %}<div class="row-field-long"><div class="row-field-value" id="row-field-{{ loop.index }}">{{ cell.value }}</div><button type="button" class="row-field-expand" aria-expanded="false" aria-controls="row-field-{{ loop.index }}" data-label="{{ expand_label }}" aria-label="{{ expand_label }}"></button></div>
             {% else %}<div class="row-field-value">{{ cell.value }}</div>
             {% endif %}
             {% if copyable %}
-            <button type="button" class="row-field-copy" data-copy-value="{{ raw }}" aria-label="Copy {{ column.name }}" title="Copy value">
+            <button type="button" class="row-field-copy" data-copy-value="{{ raw }}" aria-label="Copy {{ column.name }}" title="Copy to clipboard">
                 <svg class="icon-copy" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                 <svg class="icon-copied" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
             </button>

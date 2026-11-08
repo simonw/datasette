@@ -56,7 +56,7 @@
           clearTimeout(copyButton._copiedTimer);
           copyButton._copiedTimer = setTimeout(function () {
             copyButton.classList.remove("is-copied");
-            copyButton.setAttribute("title", "Copy value");
+            copyButton.setAttribute("title", "Copy to clipboard");
           }, 1500);
         },
         function () {
@@ -70,15 +70,19 @@
       var wrap = expandButton.closest(".row-field-long");
       var expanded = wrap.classList.toggle("is-expanded");
       expandButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+      // The label is CSS generated content from data-label, so copying a
+      // section of the page leaves it out
       if (!expandButton.hasAttribute("data-collapsed-label")) {
         expandButton.setAttribute(
           "data-collapsed-label",
-          expandButton.textContent,
+          expandButton.getAttribute("data-label"),
         );
       }
-      expandButton.textContent = expanded
+      var label = expanded
         ? "Show less"
         : expandButton.getAttribute("data-collapsed-label");
+      expandButton.setAttribute("data-label", label);
+      expandButton.setAttribute("aria-label", label);
     }
   });
 })();

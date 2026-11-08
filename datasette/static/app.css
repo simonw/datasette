@@ -6026,6 +6026,12 @@ button.column-menu-trigger[aria-expanded="true"] {
     color: var(--muted);
     font-size: 0.8125rem;
     font-style: italic;
+    user-select: none;
+    -webkit-user-select: none;
+}
+/* Generated content is never included when the page is copied */
+.row-field-empty::before {
+    content: attr(data-label);
 }
 
 /* Long values show the first few lines, with a toggle to reveal the rest */
@@ -6048,6 +6054,14 @@ button.column-menu-trigger[aria-expanded="true"] {
 }
 .row-field-expand:hover {
     text-decoration: underline;
+}
+/* Generated content, like the null labels, so it is never copied */
+.row-field-expand {
+    user-select: none;
+    -webkit-user-select: none;
+}
+.row-field-expand::before {
+    content: attr(data-label);
 }
 
 /* Copy button: quiet until the field is hovered or the button focused */

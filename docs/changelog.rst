@@ -4,10 +4,10 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a42:
 
-Unreleased
-----------
+1.0a42 (2026-11-08)
+-------------------
 
 A redesigned homepage, redesigned table, row and query pages, a new "Export data" dialog with TSV support, a column statistics feature, and Python 3.11 is now the minimum supported version.
 

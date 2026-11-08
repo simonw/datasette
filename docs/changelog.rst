@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- The row page now shows the row as a list with one field per line, each with a button to copy its value, in place of a single-row table. Long values are clamped with a toggle to show them in full, and the tables that reference the row are listed below it. (:pr:`3052`)
+- **Backwards incompatible:** the row page now includes a new ``_row_fields.html`` template instead of ``_table.html``. A custom ``_table.html`` template that applies to every table no longer changes the row page - provide a ``_row_fields.html`` template instead. Templates for a specific table, ``_table-mydatabase-mytable.html`` and ``_table-row-mydatabase-mytable.html``, still apply to the row page. See :ref:`customization_custom_templates`.
+- The row page no longer contains a ``table.rows-and-columns`` element, so plugin JavaScript that looks for that table on row pages will not find it. The ``.above-table-panel`` element plugins can attach to is still present.
+
 .. _v1_0_a41:
 
 1.0a41 (2026-09-24)

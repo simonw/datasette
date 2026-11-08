@@ -356,6 +356,37 @@ async def test_validate_page_size(ds_client, path, expected_error):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "next_value",
+    (
+        "dog",
+        "1e3",
+        # A facet link whose "&sect" a client decoded as an HTML entity
+        "25%C2%A7or_name%3DOil",
+    ),
+)
+async def test_validate_view_next(ds_client, next_value):
+    # Views paginate by offset, so _next has to be an integer
+    response = await ds_client.get(f"/fixtures/paginated_view.json?_next={next_value}")
+    assert response.status_code == 400
+    assert response.json()["error"] == "_next must be an integer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("next_value", ("-2", "-5", "-10"))
+async def test_view_negative_next_starts_from_first_row(ds_client, next_value):
+    # As for a table, a negative _next starts from the first row and the
+    # next link continues the pagination from there
+    negative = await ds_client.get(
+        f"/fixtures/paginated_view.json?_size=5&_next={next_value}"
+    )
+    first = await ds_client.get("/fixtures/paginated_view.json?_size=5")
+    assert negative.status_code == 200
+    assert negative.json()["rows"] == first.json()["rows"]
+    assert negative.json()["next"] == first.json()["next"] == "5"
+
+
+@pytest.mark.asyncio
 async def test_page_size_zero(ds_client):
     """For _size=0 we return the counts, empty rows and no continuation token"""
     response = await ds_client.get("/fixtures/no_primary_key.json?_size=0&_extra=count")

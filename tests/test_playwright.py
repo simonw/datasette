@@ -2433,9 +2433,8 @@ def test_long_values_are_clamped_and_expand(page, datasette_server):
         > 200
     )
 
-    # The column's gear menu can collapse every long value
-    page.locator('th[data-column="body"] .column-menu-trigger').click()
-    page.locator(".column-actions-menu").get_by_text("Collapse long values").click()
+    # The column header toggle collapses every long value
+    column_toggle.click()
     expect(toggle).to_have_text("expand")
     expect(column_toggle).to_have_text("expand all")
 

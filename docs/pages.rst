@@ -11,10 +11,34 @@ The Datasette web application offers a number of different pages that can be acc
 Top-level index
 ===============
 
-The root page of any Datasette installation is an index page that lists all of the currently attached databases. Some examples:
+The root page of any Datasette installation is a homepage that helps people see at a glance what the instance contains, and jump to the data they want. Some examples:
 
 * `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/>`_
 * `register-of-members-interests.datasettes.com <https://register-of-members-interests.datasettes.com/>`_
+
+The homepage shows:
+
+- A search box, which is focused when the page loads. It searches table and view names, column names, table descriptions from :ref:`metadata <metadata>`, and the names, titles, descriptions and SQL of stored queries. Results update as you type; use the up and down arrow keys to highlight a result and Enter to open it. Pressing ``/`` in the empty search box opens the "Jump to" menu (see :ref:`JumpView`), as it does on every other page.
+- Any sections added by plugins using the :ref:`makeHomepageSections() <javascript_plugins_makeHomepageSections>` JavaScript plugin hook.
+- **Recently visited** tables, views, queries and databases. These are recorded in the browser's ``localStorage`` as you visit those pages, separately for each signed-in actor, and are never sent to the server. The same history provides the "Recent" list in the Jump to menu.
+- When more than one database is attached, a row of database buttons for filtering the list to a single database.
+- **Queries**: stored queries defined in configuration or by plugins, followed by your own saved queries, up to five in total, with a link to the full list at ``/-/queries``. Other people's saved queries appear only in search results.
+- **Tables and views** from every database in a single list, 30 to a page, with the most connected tables (by foreign key relationships) first. Each shows its row count, description, first few columns, and whether it has full-text search. :ref:`Hidden tables <DatabaseView_hidden>` are not included.
+
+While searching, everything except the results is hidden. Matching tables and views come first, followed by matching queries and then anything else plugins have added to the Jump to menu using the :ref:`plugin_hook_jump_items_sql` plugin hook, such as apps.
+
+The homepage accepts these query string parameters:
+
+``?q=``
+    Search for tables, views, columns and queries.
+``?database=``
+    Only show tables, views and queries from the named database.
+``?page=``
+    The page of tables and views to show, starting at 1.
+``?_fragment=results``
+    Return only the HTML for the summary line and search results, without the rest of the page. The search box uses this to update results as you type.
+
+Results only include tables, views and queries that the current actor has permission to see.
 
 Add ``/.json`` to the end of the URL for the JSON version of the underlying data:
 

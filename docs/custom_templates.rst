@@ -234,6 +234,11 @@ The lookup rules Datasette uses are as follows::
     Index page (/):
         index.html
 
+    Summary line and search results on the index page, also returned by
+    /?_fragment=results:
+        _homepage_summary.html
+        _homepage_results.html
+
     Database page (/mydatabase):
         database-mydatabase.html
         database.html

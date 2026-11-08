@@ -6471,3 +6471,26 @@ button.column-menu-trigger[aria-expanded="true"] {
     color: var(--accent);
     text-decoration: underline;
 }
+
+/* Search results contributed by plugins through jump_items_sql */
+.homepage-other {
+    margin-top: 1.5rem;
+}
+.homepage-other h2 {
+    margin: 0 0 0.6rem;
+    font-size: 1.125rem;
+}
+.type-tag-other {
+    color: #4b5563;
+    background: #eef0f3;
+}
+/* Homepage actions sit below the title rather than beside it */
+.homepage-header {
+    display: block;
+}
+.homepage-header .page-action-menu {
+    margin-top: 0.5rem;
+}
+.homepage-recent[hidden] {
+    display: none;
+}

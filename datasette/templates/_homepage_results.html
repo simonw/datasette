@@ -103,3 +103,18 @@
 
 {# While searching, matching queries come after the matching tables #}
 {% if q %}{{ queries_section }}{% endif %}
+
+{% if other_results %}
+<section class="homepage-other" aria-labelledby="homepage-other-heading">
+    <h2 id="homepage-other-heading">Other matches</h2>
+    <ul class="query-list">
+    {% for result in other_results %}
+        <li class="query-row">
+            <a class="query-row-name other-result-name" href="{{ result.url }}">{{ result.display_name or result.name }}</a>
+            <span class="type-tag type-tag-other">{{ result.type }}</span>
+            {% if result.description %}<span class="query-row-detail">{{ result.description }}</span>{% endif %}
+        </li>
+    {% endfor %}
+    </ul>
+</section>
+{% endif %}

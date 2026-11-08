@@ -52,10 +52,13 @@ async def _count_rows(datasette, items):
         db = datasette.databases.get(item["database"])
         if db is None:
             continue
-        if not db.is_mutable and db.cached_table_counts is not None:
-            if item["name"] in db.cached_table_counts:
-                item["count"] = db.cached_table_counts[item["name"]]
-                continue
+        if (
+            not db.is_mutable
+            and db.cached_table_counts is not None
+            and item["name"] in db.cached_table_counts
+        ):
+            item["count"] = db.cached_table_counts[item["name"]]
+            continue
         if time.monotonic() - start > COUNT_TOTAL_BUDGET_S:
             break
         try:
@@ -86,7 +89,9 @@ async def build_catalog(
         action="view-database", actor=actor, include_is_private=True
     )
     database_rows = (await internal.execute(db_sql, db_params)).rows
-    allowed_databases = {row["parent"]: bool(row["is_private"]) for row in database_rows}
+    allowed_databases = {
+        row["parent"]: bool(row["is_private"]) for row in database_rows
+    }
     # Keep attach order, which is how Datasette lists databases elsewhere
     database_names = [n for n in datasette.databases if n in allowed_databases]
     if database not in allowed_databases:
@@ -150,8 +155,7 @@ async def build_catalog(
     # Per-database totals for the summary line and the database filter
     summary_rows = (
         await internal.execute(
-            items_cte
-            + """
+            items_cte + """
         SELECT database_name, type, count(*) AS n FROM matching
         GROUP BY database_name, type
         """,
@@ -174,8 +178,7 @@ async def build_catalog(
     filtered_params.update({"limit": page_size, "offset": offset})
     rows = (
         await internal.execute(
-            items_cte
-            + f"""
+            items_cte + f"""
         SELECT
             matching.*,
             (SELECT count(*) FROM catalog_columns c
@@ -231,7 +234,8 @@ async def build_catalog(
             db = datasette.databases[row["database_name"]]
             try:
                 view_columns = await db.table_columns(row["name"])
-            except Exception:
+            except sqlite3.DatabaseError:
+                # A broken view, for example one referencing a missing table
                 view_columns = []
             column_count = len(view_columns)
             columns = view_columns[:COLUMNS_PREVIEW]
@@ -303,8 +307,7 @@ async def build_catalog(
     qparams["actor_id"] = (actor or {}).get("id")
     query_rows = (
         await internal.execute(
-            queries_cte
-            + f"""
+            queries_cte + f"""
         SELECT * FROM matching
         WHERE :q != ''
            OR source != 'user'

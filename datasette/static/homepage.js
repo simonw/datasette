@@ -30,7 +30,9 @@
       results
         .querySelectorAll(".is-active")
         .forEach((el) => el.classList.remove("is-active"));
-      active = links.length ? Math.max(-1, Math.min(index, links.length - 1)) : -1;
+      active = links.length
+        ? Math.max(-1, Math.min(index, links.length - 1))
+        : -1;
       if (active >= 0) {
         const row = links[active].closest("li") || links[active];
         row.classList.add("is-active");

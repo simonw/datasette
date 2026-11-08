@@ -356,6 +356,25 @@ document.addEventListener("datasette_init", function (event) {
     },
   });
 
+  event.detail.registerPlugin("playwright-homepage-section", {
+    version: "0.1",
+    makeHomepageSections(context) {
+      if (!context.container) {
+        throw new Error("Expected homepage section context");
+      }
+      return [
+        {
+          id: "playwright-homepage",
+          title: "Playwright section",
+          render(node) {
+            node.innerHTML =
+              '<p data-playwright-homepage-section>Hello from a plugin</p>';
+          },
+        },
+      ];
+    },
+  });
+
   event.detail.registerPlugin("playwright-asset-field", {
     version: "0.1",
     makeColumnField(context) {
@@ -3831,3 +3850,99 @@ def test_column_statistics_script_loads_on_first_open(
     expect(dialog).to_be_visible()
     assert len(script_requests) == 1
     assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_homepage_recently_visited(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    recent = page.locator("[data-homepage-recent]")
+    expect(recent).to_be_hidden()
+    page.goto(datasette_server + "data/projects")
+    page.goto(datasette_server + "data")
+    page.goto(datasette_server + "data/projects")
+    page.goto(datasette_server)
+    expect(recent).to_be_visible()
+    names = recent.locator(".recent-item-name")
+    # Visited twice, so it ranks above the database page
+    expect(names.first).to_have_text("projects")
+    expect(names.nth(1)).to_have_text("data")
+    expect(recent.locator(".recent-item").nth(1).locator(".type-tag")).to_have_text(
+        "database"
+    )
+    # Jump to's Recent list reads the same visit history
+    page.keyboard.press("/")
+    results = page.locator("navigation-search .results-container")
+    results.locator(".results-heading", has_text="Recent").wait_for()
+    assert "data: projects" in results.inner_text()
+    page.keyboard.press("Escape")
+    recent.get_by_role("button", name="Clear").click()
+    expect(recent).to_be_hidden()
+
+
+@pytest.mark.playwright
+def test_homepage_search_keyboard_navigation(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    search = page.locator("#homepage-search-input")
+    # Focused on load, so typing searches straight away
+    expect(search).to_be_focused()
+    page.keyboard.type("proj")
+    page.wait_for_url("**/?q=proj")
+    root = page.locator("[data-homepage]")
+    expect(root).to_have_class(re.compile("homepage-searching"))
+    expect(page.locator(".homepage-sections")).to_be_hidden()
+    links = page.locator(
+        "[data-homepage-results] .catalog-item-name, [data-homepage-results] .query-row-name"
+    )
+    expect(links.first).to_be_visible()
+    active = page.locator("[data-homepage-results] .is-active")
+    # The top hit is highlighted first
+    expect(active).to_have_count(1)
+    first_href = links.first.get_attribute("href")
+    expect(active.locator("a").first).to_have_attribute("href", first_href)
+    if links.count() > 1:
+        page.keyboard.press("ArrowDown")
+        expect(active.locator("a").first).to_have_attribute(
+            "href", links.nth(1).get_attribute("href")
+        )
+        page.keyboard.press("ArrowUp")
+        expect(active.locator("a").first).to_have_attribute("href", first_href)
+    # Escape clears the search and brings the other sections back
+    page.keyboard.press("Escape")
+    expect(search).to_have_value("")
+    expect(root).not_to_have_class(re.compile("homepage-searching"))
+    # Enter opens the highlighted result
+    page.keyboard.type("proj")
+    page.wait_for_url("**/?q=proj")
+    expect(active).to_have_count(1)
+    page.keyboard.press("Enter")
+    page.wait_for_url("**" + first_href)
+
+
+@pytest.mark.playwright
+def test_homepage_slash_opens_jump_menu(page, datasette_server):
+    page.goto(datasette_server)
+    open_jump_menu(page)
+    assert page.locator("#homepage-search-input").input_value() == ""
+
+
+@pytest.mark.playwright
+def test_homepage_sections_from_javascript_plugins(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    section = page.locator(
+        '.homepage-section[data-homepage-section-id="playwright-homepage"]'
+    )
+    expect(section.locator(".homepage-section-heading h2")).to_have_text(
+        "Playwright section"
+    )
+    expect(section.locator("[data-playwright-homepage-section]")).to_have_text(
+        "Hello from a plugin"
+    )
+    # Hidden while searching
+    page.keyboard.type("proj")
+    expect(section).to_be_hidden()

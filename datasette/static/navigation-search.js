@@ -502,7 +502,6 @@ class NavigationSearch extends HTMLElement {
     const matches = this.renderedMatches || this.matches;
     const match = matches[index];
     if (match) {
-
       // Dispatch custom event
       this.dispatchEvent(
         new CustomEvent("select", {

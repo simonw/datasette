@@ -149,7 +149,9 @@ def test_database_list_respects_view_database():
         assert "/data/names" in auth_links
         assert any(link.startswith("/fixtures/") for link in auth_links)
         soup = Soup(auth_response.text, "html.parser")
-        fixtures_chip = soup.select_one('a.homepage-database[href="/?database=fixtures"]')
+        fixtures_chip = soup.select_one(
+            'a.homepage-database[href="/?database=fixtures"]'
+        )
         assert "🔒" in fixtures_chip.text
 
 

@@ -2533,7 +2533,7 @@ async def test_row_export_dialog(ds_client):
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     assert "This data as" not in response.text
-    button = soup.select_one(".table-tools button.export-data-button")
+    button = soup.select_one(".row-page-actions button.export-data-button")
     assert button["commandfor"] == "export-dialog"
     dialog = soup.select_one("datasette-modal > dialog#export-dialog")
     assert dialog.select_one(".modal-meta").text == "simple_primary_key"

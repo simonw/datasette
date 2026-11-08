@@ -25,16 +25,16 @@
 <h1 class="row-heading" style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ table }}: {{ ', '.join(primary_key_values) }}{% if private %} 🔒{% endif %}
     {%- if row_label and row_label != ', '.join(primary_key_values) %}<span class="row-heading-label">{{ row_label }}</span>{% endif %}</h1>
 
-{% set action_links, action_title = row_actions, "Row actions" %}
-{% include "_action_menu.html" %}
+<div class="row-page-actions">
+    {% set action_links, action_title = row_actions, "Row actions" %}
+    {% include "_action_menu.html" %}
+    {% include "_export_button.html" %}
+</div>
 
 {{ top_row() }}
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<div class="table-tools">
-    {% include "_export_button.html" %}
-</div>
 {% set export_meta, export_scope = table, "This row" %}
 {% set export_scope_description %}where {% for column, value in zip(primary_keys or ["rowid"], primary_key_values) %}{{ " and " if not loop.first }}{{ column }} = {{ value if value.isdigit() else '"' ~ value ~ '"' }}{% endfor %}{% endset %}
 {#- Every format returns just this row, so there are no row counts to show -#}

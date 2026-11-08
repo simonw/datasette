@@ -3529,10 +3529,18 @@ dialog.column-stats-dialog {
     margin: 0 0 0.75rem;
 }
 
-button.table-insert-row {
+/* Same box as .quiet-button and the actions menu trigger. Needs .core
+   to outrank the button.core[type=button] defaults. */
+button.core.table-insert-row {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 5px;
+    font-size: 0.875rem;
+    line-height: 1.2;
 }
 
 button.table-insert-row svg {
@@ -5615,28 +5623,32 @@ dl.column-descriptions dd {
 .actions-menu-links {
     display: inline;
 }
+/* The "Table actions" / "Row actions" trigger shares its box with
+   .quiet-button (height, border, font size, line height, radius, icon gap)
+   so the two line up exactly when they sit side by side. */
 .page-action-menu .icon-text {
     display: inline-flex;
     align-items: center;
-    border-radius: .25rem;
-    padding: 5px 12px 3px 7px;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem 0.2rem 0.5rem;
+    border: 1px solid var(--accent, #1a56db);
+    border-radius: 5px;
     color: #fff;
     font-weight: 400;
-    font-size: 0.8em;
+    font-size: 0.875rem;
+    line-height: 1.2;
     background: var(--accent, #1a56db);
-}
-.page-action-menu .icon-text span {
-    /* Nudge text up a bit */
-    position: relative;
-    top: -2px;
 }
 .page-action-menu .icon-text:hover {
     cursor: pointer;
 }
 .page-action-menu .icon {
-    width: 18px;
-    height: 18px;
-    margin-right: 4px;
+    display: block;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
 }
 
 header.app-header {
@@ -5688,7 +5700,10 @@ header.app-header .actor {
 }
 .page-action-menu .datasette-menu-trigger {
     display: inline-flex;
-    border-radius: .25rem;
+    /* Top-aligned so the inline <details> adds no space below the
+       baseline, keeping the menu exactly the trigger's height */
+    vertical-align: top;
+    border-radius: 5px;
 }
 button.column-menu-trigger {
     display: inline-flex;
@@ -5920,6 +5935,26 @@ button.column-menu-trigger[aria-expanded="true"] {
     font-size: 1.05rem;
     font-weight: 500;
     color: #536978;
+}
+
+/* Row actions menu and Export data button side by side */
+.row-page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+}
+/* Flex all the way down so the menu trigger is never laid out on a text
+   line (which browsers snap to whole pixels differently from flex items)
+   and lines up exactly with the Export data button beside it */
+.row-page-actions .page-action-menu,
+.row-page-actions .actions-menu-links,
+.row-page-actions .datasette-menu-trigger {
+    display: flex;
+}
+.row-page-actions .page-action-menu {
+    margin-bottom: 0;
 }
 
 .row-referenced-by {

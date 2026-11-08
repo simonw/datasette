@@ -214,6 +214,7 @@ async def test_database_page(ds_client):
     views_ul = soup.find("h2", string="Views").find_next_sibling("ul")
     assert views_ul is not None
     assert [
+        ("/fixtures/binary_data_view", "binary_data_view"),
         ("/fixtures/paginated_view", "paginated_view"),
         ("/fixtures/searchable_view", "searchable_view"),
         (

@@ -3017,6 +3017,26 @@ async def test_format_of_binary_links(size, title, length_bytes):
 
 
 @pytest.mark.asyncio
+async def test_binary_links_for_views_without_rowid(ds_client):
+    # https://github.com/simonw/datasette/issues/2601
+    response = await ds_client.get("/fixtures/binary_data_view")
+    assert response.status_code == 200
+    links = Soup(response.text, "html.parser").select("a.blob-download")
+    assert [link.text for link in links] == ["<Binary:\xa07\xa0bytes>"] * 2
+    # Views have no rowid, so each link finds its blob by content hash
+    for link, expected in zip(
+        links, (b"\x15\x1c\x02\xc7\xad\x05\xfe", b"\x15\x1c\x03\xc7\xad\x05\xfe")
+    ):
+        href = link["href"]
+        assert href.startswith(
+            "/fixtures/binary_data_view.blob?_blob_column=data&_blob_hash="
+        )
+        blob_response = await ds_client.get(href)
+        assert blob_response.status_code == 200
+        assert blob_response.content == expected
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config",
     (

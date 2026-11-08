@@ -142,6 +142,19 @@ async def test_table_csv_blob_columns(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_view_csv_blob_columns(ds_client):
+    # https://github.com/simonw/datasette/issues/2601
+    response = await ds_client.get("/fixtures/binary_data_view.csv")
+    assert response.status_code == 200
+    assert response.text == (
+        "data\r\n"
+        "http://localhost/fixtures/binary_data_view.blob?_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d\r\n"
+        "http://localhost/fixtures/binary_data_view.blob?_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724\r\n"
+        '""\r\n'
+    )
+
+
+@pytest.mark.asyncio
 async def test_custom_sql_csv_blob_columns(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.csv?sql=select+rowid,+data+from+binary_data"

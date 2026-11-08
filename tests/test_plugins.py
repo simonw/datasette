@@ -302,6 +302,20 @@ async def test_plugin_config(ds_client):
     assert None is ds_client.ds.plugin_config("unknown-plugin")
 
 
+def test_plugin_config_database_without_plugins_falls_back_to_top():
+    ds = Datasette(
+        memory=True,
+        config={
+            "plugins": {"name-of-plugin": {"depth": "root"}},
+            "databases": {"fixtures": {"tables": {"t": {"allow": True}}}},
+        },
+    )
+    assert {"depth": "root"} == ds.plugin_config("name-of-plugin", database="fixtures")
+    assert None is ds.plugin_config(
+        "name-of-plugin", database="fixtures", fallback=False
+    )
+
+
 @pytest.mark.asyncio
 async def test_plugin_config_env(ds_client, monkeypatch):
     monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")

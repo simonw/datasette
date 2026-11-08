@@ -52,7 +52,11 @@ async def ds():
             price real,
             author_id integer references authors(id)
         );
-        create table secret (id integer primary key, password_hint text);
+        create table secret (
+            id integer primary key,
+            password_hint text,
+            author_id integer references authors(id)
+        );
         create view expensive_books as select * from books where price > 20;
         insert into authors (name) values ('Ann'), ('Bo');
         insert into books (title, price, author_id) values
@@ -115,6 +119,38 @@ async def test_homepage_lists_tables_and_views_from_all_databases(ds):
         'a.catalog-item-name[href="/books/expensive_books"]'
     ).find_parent("li")
     assert view_item.select_one(".type-tag-view").text == "view"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "actor_id,expected_links,expected_title",
+    (
+        # secret also links to authors, but anonymous users cannot see it
+        (None, "links to 1 table", "authors"),
+        ("root", "links to 2 tables", "books, secret"),
+    ),
+)
+async def test_homepage_linked_tables(ds, actor_id, expected_links, expected_title):
+    response = await ds.client.get(
+        "/", cookies=cookies(ds, actor_id) if actor_id else None
+    )
+    soup = Soup(response.text, "html.parser")
+
+    def links(href):
+        item = soup.select_one(f'a.catalog-item-name[href="{href}"]').find_parent("li")
+        return item.select_one(".catalog-item-links")
+
+    if actor_id is None:
+        books = links("/books/books")
+        assert books.text == expected_links
+        assert books["title"] == "Linked by foreign keys to: " + expected_title
+        assert "secret" not in links("/books/authors")["title"]
+    else:
+        authors = links("/books/authors")
+        assert authors.text == expected_links
+        assert authors["title"] == "Linked by foreign keys to: " + expected_title
+    # Tables with no foreign keys show nothing
+    assert links("/music/albums") is None
 
 
 @pytest.mark.asyncio

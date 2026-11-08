@@ -6175,7 +6175,7 @@ button.column-menu-trigger[aria-expanded="true"] {
     font-weight: 600;
     overflow-wrap: anywhere;
 }
-.catalog-item-count {
+.catalog-item-links {
     margin-left: auto;
     color: var(--muted);
     font-size: 0.875rem;
@@ -6222,7 +6222,7 @@ button.column-menu-trigger[aria-expanded="true"] {
     .homepage-search-button {
         display: none;
     }
-    .catalog-item-count {
+    .catalog-item-links {
         margin-left: 0;
         flex-basis: 100%;
     }

@@ -55,19 +55,17 @@
                 {%- if item.private %} 🔒{% endif %}
                 {% if item.type == "view" %}<span class="type-tag type-tag-view" title="A SQL view">view</span>{% endif %}
                 {% if multiple_databases and not database_filter %}<span class="db-tag" style="--db-color: #{{ item.color }}">{{ item.database }}</span>{% endif %}
-                <span class="catalog-item-count">
-                    {%- if item.count is not none %}{{ "{:,}".format(item.count) }}{% if item.count_truncated %}+{% endif %} row{% if item.count != 1 %}s{% endif %}{% endif -%}
-                </span>
+                {% if item.linked_tables %}<span class="catalog-item-links" title="Linked by foreign keys to: {{ item.linked_tables|join(', ') }}">links to {{ item.linked_tables|length }} table{% if item.linked_tables|length != 1 %}s{% endif %}</span>{% endif %}
             </div>
             {% if item.description %}<p class="catalog-item-description">{{ item.description }}</p>{% endif %}
             <p class="catalog-item-columns">
                 {%- for column in item.columns %}{% if column in item.matched_columns %}<mark class="catalog-column catalog-column-match">{{ column }}</mark>{% else %}<span class="catalog-column">{{ column }}</span>{% endif %}{% endfor -%}
                 {%- if item.column_count > item.columns|length %}<span class="catalog-column-more">+{{ item.column_count - item.columns|length }} more</span>{% endif -%}
             </p>
-            {% if item.relationships or item.has_fts or (item.title and item.title != item.name) %}
+            {% if item.count is not none or item.has_fts or (item.title and item.title != item.name) %}
             <p class="catalog-item-meta">
                 {%- if item.title and item.title != item.name %}<span><code>{{ item.name }}</code></span>{% endif -%}
-                {%- if item.relationships %}<span>{{ item.relationships }} relationship{% if item.relationships != 1 %}s{% endif %}</span>{% endif -%}
+                {%- if item.count is not none %}<span>{{ "{:,}".format(item.count) }}{% if item.count_truncated %}+{% endif %} row{% if item.count != 1 %}s{% endif %}</span>{% endif -%}
                 {%- if item.has_fts %}<span>full-text search</span>{% endif -%}
             </p>
             {% endif %}

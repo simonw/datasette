@@ -23,7 +23,7 @@ The homepage shows:
 - **Recently visited** tables, views, queries and databases. These are recorded in the browser's ``localStorage`` as you visit those pages, separately for each signed-in actor, and are never sent to the server. The same history provides the "Recent" list in the Jump to menu.
 - When more than one database is attached, a row of database buttons for filtering the list to a single database.
 - **Queries**: stored queries defined in configuration or by plugins, followed by your own saved queries, up to five in total, with a link to the full list at ``/-/queries``. Other people's saved queries appear only in search results.
-- **Tables and views** from every database in a single list, 30 to a page, with the most connected tables (by foreign key relationships) first. Each shows its row count, description, first few columns, and whether it has full-text search. :ref:`Hidden tables <DatabaseView_hidden>` are not included.
+- **Tables and views** from every database in a single list, 30 to a page, with the most connected tables (linked to the most other tables by foreign keys) first. Each shows its row count, how many tables it links to, description, first few columns, and whether it has full-text search. :ref:`Hidden tables <DatabaseView_hidden>` are not included.
 
 While searching, everything except the results is hidden. Matching tables and views come first, followed by matching queries and then anything else plugins have added to the Jump to menu using the :ref:`plugin_hook_jump_items_sql` plugin hook, such as apps.
 

@@ -95,7 +95,7 @@ The homepage, listing the tables, views and queries across every database. Rende
     Links for the homepage actions menu, from plugins implementing :ref:`plugin_hook_homepage_actions`
 
 ``items`` - ``list[dict]``
-    The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``matched_columns`` (those matching the search), ``column_count``, ``relationships`` (foreign keys in and out), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long
+    The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long
 
 ``metadata`` - ``dict``
     Instance metadata, such as ``title``, ``description`` and ``license``

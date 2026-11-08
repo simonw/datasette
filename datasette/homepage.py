@@ -198,11 +198,26 @@ async def build_catalog(
                   AND c.name LIKE :pattern
                 ORDER BY cid LIMIT {COLUMNS_PREVIEW}
             )) AS matched_columns,
-            (SELECT count(*) FROM (
-                SELECT DISTINCT table_name, id FROM catalog_foreign_keys f
-                WHERE f.database_name = matching.database_name
-                  AND (f.table_name = matching.name OR f."table" = matching.name)
-            )) AS relationships,
+            -- Other tables this one links to or is linked from by a foreign
+            -- key, limited to the ones this actor can see
+            (SELECT json_group_array(other) FROM (
+                SELECT DISTINCT other FROM (
+                    SELECT f."table" AS other FROM catalog_foreign_keys f
+                    WHERE f.database_name = matching.database_name
+                      AND f.table_name = matching.name
+                    UNION
+                    SELECT f.table_name AS other FROM catalog_foreign_keys f
+                    WHERE f.database_name = matching.database_name
+                      AND f."table" = matching.name
+                )
+                WHERE other != matching.name
+                  AND EXISTS (
+                    SELECT 1 FROM allowed
+                    WHERE allowed.parent = matching.database_name
+                      AND allowed.child = other
+                  )
+                ORDER BY other
+            )) AS linked_tables,
             EXISTS (
                 SELECT 1 FROM catalog_tables t
                 WHERE t.database_name = matching.database_name
@@ -218,7 +233,7 @@ async def build_catalog(
             END AS relevance
         FROM matching
         {where_db}
-        ORDER BY relevance, relationships DESC, column_count DESC, name
+        ORDER BY relevance, json_array_length(linked_tables) DESC, column_count DESC, name
         LIMIT :limit OFFSET :offset
         """,
             filtered_params,
@@ -255,7 +270,7 @@ async def build_catalog(
                 "columns": columns,
                 "matched_columns": matched_columns,
                 "column_count": column_count,
-                "relationships": row["relationships"],
+                "linked_tables": json.loads(row["linked_tables"] or "[]"),
                 "has_fts": bool(row["has_fts"]),
                 "count": None,
                 "count_truncated": False,

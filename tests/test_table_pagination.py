@@ -159,20 +159,19 @@ async def test_no_bar_when_results_fit_on_one_page(pages_ds):
 async def test_bar_on_first_page(pages_ds):
     response = await pages_ds.client.get(f"/pages/items?_size={PAGE_SIZE}")
     soup, header, footer = bars(response.text)
-    # The row count moves from the heading into the bar
-    assert soup.select_one("h3.table-summary") is None
+    # The heading keeps the total row count, the bar repeats it
+    assert soup.select_one("h3.table-summary").get_text(strip=True) == "19 rows"
     assert header.select_one(".page-position-text").get_text(" ", strip=True) == (
         "Rows 1–4 of 19"
     )
     # The first page already knows its position, so there is nothing to fetch
     assert "data-count-before-url" not in header.attrs
     assert link_text(header) == ["Next page"]
-    assert link_text(footer) == ["Next page"]
+    # Fewer than 5 rows on the page, so no second bar below the table
+    assert footer is None
     assert header.select_one("a.page-position-next")["href"] == (
         f"http://localhost/pages/items?_size={PAGE_SIZE}&_next=4"
     )
-    # The footer has the buttons but not the row count
-    assert footer.select_one(".page-position-text") is None
 
 
 @pytest.mark.asyncio
@@ -181,9 +180,9 @@ async def test_bar_on_later_page(pages_ds):
         f"/pages/items?_size={PAGE_SIZE}&score__gte=2&_sort=score&_next=3,7"
     )
     soup, header, footer = bars(response.text)
-    # The heading keeps the filter description but loses the count
+    # The heading shows the count and the filter description
     assert soup.select_one("h3.table-summary").get_text(" ", strip=True) == (
-        "where score ≥ 2 sorted by score"
+        "12 rows where score ≥ 2 sorted by score"
     )
     # Fallback text shown until JavaScript fills in the row numbers
     assert header.select_one(".page-position-text").get_text(" ", strip=True) == (
@@ -196,7 +195,7 @@ async def test_bar_on_later_page(pages_ds):
         "&_count=before"
     )
     assert link_text(header) == ["Back to first page", "Next page"]
-    assert link_text(footer) == ["Back to first page", "Next page"]
+    assert footer is None
     # Back to first page keeps the filters and sort but drops the cursor
     assert header.select_one("a.page-position-first")["href"] == (
         "/pages/items?_size=4&score__gte=2&_sort=score"
@@ -226,7 +225,26 @@ async def test_bar_on_last_page(pages_ds):
     response = await pages_ds.client.get(f"/pages/items?_size={PAGE_SIZE}&_next=16")
     _, header, footer = bars(response.text)
     assert link_text(header) == ["Back to first page"]
-    assert link_text(footer) == ["Back to first page"]
+    assert footer is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query,expected_links",
+    [
+        ("_size=5", ["Next page"]),
+        ("_size=5&_next=5", ["Back to first page", "Next page"]),
+    ],
+)
+async def test_footer_bar_on_pages_with_five_or_more_rows(
+    pages_ds, query, expected_links
+):
+    response = await pages_ds.client.get(f"/pages/items?{query}")
+    _, header, footer = bars(response.text)
+    assert link_text(header) == expected_links
+    assert link_text(footer) == expected_links
+    # The footer has the buttons but not the row count
+    assert footer.select_one(".page-position-text") is None
 
 
 @pytest.mark.asyncio

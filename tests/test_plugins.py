@@ -1543,7 +1543,8 @@ async def test_hook_register_actions_no_duplicates(duplicate):
     # This should error:
     with pytest.raises(StartupError) as ex:
         await ds.invoke_startup()
-        assert f"Duplicate action {duplicate}" in str(ex.value)
+
+    assert f"Duplicate action {duplicate}" in str(ex.value)
 
 
 @pytest.mark.asyncio

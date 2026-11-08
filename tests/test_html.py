@@ -279,12 +279,10 @@ def test_row_page_does_not_truncate():
     with make_app_client(settings={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable/1")
         assert response.status_code == 200
-        table = Soup(response.content, "html.parser").find("table")
-        assert table["class"] == ["rows-and-columns"]
-        assert ["Mission"] == [
-            td.string
-            for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
-        ]
+        value = Soup(response.content, "html.parser").select_one(
+            ".row-field.col-neighborhood-b352a7 .row-field-value"
+        )
+        assert value.string == "Mission"
 
 
 def test_query_page_truncates():
@@ -534,40 +532,92 @@ async def test_database_page_sql_parameter_refresh_markup(ds_client):
     assert "setupSqlParameterRefresh" in response.text
 
 
+def row_fields(html):
+    "Return [(column, field classes, value inner HTML)] for a row page"
+    soup = Soup(html, "html.parser")
+    fields = []
+    for field in soup.select("dl.row-fields > .row-field"):
+        value = field.select_one(".row-field-value")
+        empty = field.select_one(".row-field-empty")
+        fields.append(
+            (
+                field["data-column"],
+                " ".join(field["class"]),
+                value.decode_contents().strip() if value else empty["data-label"],
+            )
+        )
+    return fields
+
+
 @pytest.mark.asyncio
 async def test_row_html_simple_primary_key(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     assert response.status_code == 200
-    table = Soup(response.content, "html.parser").find("table")
-    assert ["id", "content"] == [th.string.strip() for th in table.select("thead th")]
-    assert [
-        [
-            '<td class="col-id type-int"><strong>1</strong></td>',
-            '<td class="col-content type-str">hello</td>',
-        ]
-    ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert row_fields(response.text) == [
+        ("id", "row-field col-id type-int", "<strong>1</strong>"),
+        ("content", "row-field col-content type-str", "hello"),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_row_html_no_primary_key(ds_client):
     response = await ds_client.get("/fixtures/no_primary_key/1")
     assert response.status_code == 200
-    table = Soup(response.text, "html.parser").find("table")
-    assert ["rowid", "content", "a", "b", "c"] == [
-        th.string.strip() for th in table.select("thead th")
+    assert row_fields(response.text) == [
+        ("rowid", "row-field col-rowid type-int", "<strong>1</strong>"),
+        ("content", "row-field col-content type-str", "1"),
+        ("a", "row-field col-a type-str", "a1"),
+        ("b", "row-field col-b type-str", "b1"),
+        ("c", "row-field col-c type-str", "c1"),
     ]
-    expected = [
-        [
-            '<td class="col-rowid type-int"><strong>1</strong></td>',
-            '<td class="col-content type-str">1</td>',
-            '<td class="col-a type-str">a1</td>',
-            '<td class="col-b type-str">b1</td>',
-            '<td class="col-c type-str">c1</td>',
-        ]
+
+
+@pytest.mark.asyncio
+async def test_row_html_copy_buttons(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1")
+    soup = Soup(response.text, "html.parser")
+    buttons = soup.select(".row-field .row-field-copy")
+    assert [(b["aria-label"], b["data-copy-value"], b["title"]) for b in buttons] == [
+        ("Copy id", "1", "Copy to clipboard"),
+        ("Copy content", "hello", "Copy to clipboard"),
     ]
-    assert expected == [
-        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+
+
+@pytest.mark.asyncio
+async def test_row_html_long_value_toggle():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_row_html_long_value_toggle")
+    await db.execute_write(
+        "create table t (id integer primary key, short text, long text)"
+    )
+    await db.execute_write("insert into t values (1, 'hi', ?)", ["word " * 1000])
+    response = await ds.client.get("/test_row_html_long_value_toggle/t/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one(".row-field.col-short .row-field-expand") is None
+    button = soup.select_one(".row-field.col-long .row-field-expand")
+    # The label comes from CSS so it is left out when the page is copied
+    assert button["data-label"] == "Show all 5,000 characters"
+    assert button["aria-label"] == "Show all 5,000 characters"
+    assert button.text == ""
+    assert button["aria-expanded"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_row_html_null_values_have_no_copy_button(ds_client):
+    # Row 2 has a primary key and nulls in every other column
+    response = await ds_client.get("/fixtures/foreign_key_references/2")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    fields = soup.select(".row-field")
+    assert [f["data-column"] for f in fields if f.select_one(".row-field-copy")] == [
+        "pk"
     ]
+    nulls = [f.select_one(".row-field-empty") for f in fields[1:]]
+    # The label comes from CSS so it is left out when the page is copied
+    assert [(n["data-label"], n.text) for n in nulls] == [("null", "")] * (
+        len(fields) - 1
+    )
 
 
 @pytest.mark.asyncio
@@ -576,12 +626,12 @@ async def test_row_html_no_primary_key(ds_client):
     (
         (
             "/fixtures/facet_cities/1",
-            "6 rows from _city_id in facetable",
+            "6 facetable rows via _city_id",
             "/fixtures/facetable?_city_id__exact=1",
         ),
         (
             "/fixtures/attraction_characteristic/2",
-            "3 rows from characteristic_id in roadside_attraction_characteristics",
+            "3 roadside_attraction_characteristics rows via characteristic_id",
             "/fixtures/roadside_attraction_characteristics?characteristic_id=2",
         ),
     ),
@@ -592,10 +642,7 @@ async def test_row_links_from_other_tables(
     response = await ds_client.get(path)
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    # Not the first h2: that is the export dialog's title
-    h2 = soup.find("h2", string="Links from other tables")
-    assert h2 is not None
-    li = h2.find_next("ul").find("li")
+    li = soup.select_one(".row-referenced-by li")
     text = re.sub(r"\s+", " ", li.text.strip())
     assert text == expected_text
     link = li.find("a")["href"]
@@ -609,54 +656,33 @@ async def test_row_foreign_key_links(ds_client):
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     # foreign_key_with_label=1 references simple_primary_key(id=1, content="hello")
-    td = soup.find("td", {"class": "col-foreign_key_with_label"})
+    td = soup.select_one(".row-field.col-foreign_key_with_label .row-field-value")
     a = td.find("a")
     assert a is not None, "Expected foreign key value to be a hyperlink"
     assert a["href"] == "/fixtures/simple_primary_key/1"
     assert a.text == "hello"
     # Primary key column should be first and bold
-    table = soup.find("table")
-    headers = [th.text.strip() for th in table.select("thead th")]
-    assert headers[0] == "pk"
-    first_td = table.select("tbody tr td")[0]
-    assert first_td.find("strong") is not None, "PK value should be bold"
+    first_field = soup.select_one("dl.row-fields > .row-field")
+    assert first_field["data-column"] == "pk"
+    assert first_field.find("strong") is not None, "PK value should be bold"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
-        (
-            "/fixtures/compound_primary_key/a,b",
-            [
-                [
-                    '<td class="col-pk1 type-str"><strong>a</strong></td>',
-                    '<td class="col-pk2 type-str"><strong>b</strong></td>',
-                    '<td class="col-content type-str">c</td>',
-                ]
-            ],
-        ),
-        (
-            "/fixtures/compound_primary_key/a~2Fb,~2Ec~2Dd",
-            [
-                [
-                    '<td class="col-pk1 type-str"><strong>a/b</strong></td>',
-                    '<td class="col-pk2 type-str"><strong>.c-d</strong></td>',
-                    '<td class="col-content type-str">c</td>',
-                ]
-            ],
-        ),
+        ("/fixtures/compound_primary_key/a,b", ("a", "b")),
+        ("/fixtures/compound_primary_key/a~2Fb,~2Ec~2Dd", ("a/b", ".c-d")),
     ),
 )
 async def test_row_html_compound_primary_key(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
-    table = Soup(response.text, "html.parser").find("table")
-    assert ["pk1", "pk2", "content"] == [
-        th.string.strip() for th in table.select("thead th")
-    ]
-    assert expected == [
-        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    pk1, pk2 = expected
+    assert row_fields(response.text) == [
+        ("pk1", "row-field col-pk1 type-str", f"<strong>{pk1}</strong>"),
+        ("pk2", "row-field col-pk2 type-str", f"<strong>{pk2}</strong>"),
+        ("content", "row-field col-content type-str", "c"),
     ]
 
 

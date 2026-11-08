@@ -603,7 +603,7 @@ class RowView(BaseView):
                 "custom_table_templates": [
                     f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
                     f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
-                    "_table.html",
+                    "_row_fields.html",
                 ],
                 "row_mutation_ui": any(row_action_permissions.values()),
                 "table_page_data": await _table_page_data(

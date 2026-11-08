@@ -260,10 +260,10 @@ The lookup rules Datasette uses are as follows::
         _table-mydatabase-mytable.html
         _table.html
 
-    Table of rows and columns include on row page:
+    List of fields include on row page:
         _table-row-mydatabase-mytable.html
         _table-mydatabase-mytable.html
-        _table.html
+        _row_fields.html
 
 If a table name has spaces or other unexpected characters in it, the template
 filename will follow the same rules as our custom ``<body>`` CSS classes - for
@@ -310,9 +310,14 @@ The default ``base.html`` template provides a ``crumbs`` block inside its naviga
     {{ crumbs.nav(request=request, database=database, table=table) }}
     {% endblock %}
 
-The ``_table.html`` template is included by both the row and the table pages,
-and a list of rows. The default ``_table.html`` template renders them as an
-HTML template and `can be seen here <https://github.com/simonw/datasette/blob/main/datasette/templates/_table.html>`_.
+The ``_table.html`` template is included by the table page, and is passed a
+list of rows. The default ``_table.html`` template renders them as an
+HTML table and `can be seen here <https://github.com/simonw/datasette/blob/main/datasette/templates/_table.html>`_.
+
+The row page instead includes ``_row_fields.html``, which renders the single
+row as a list with one field per line, each with a button to copy its value.
+A ``_table-mydatabase-mytable.html`` template still applies to both pages, so
+it overrides the row page's field list as well as the table page's table.
 
 You can provide a custom template that applies to all of your databases and
 tables, or you can provide custom templates for specific tables using the

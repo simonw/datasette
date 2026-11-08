@@ -766,96 +766,72 @@ async def test_query_list_search_filter_and_html():
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
     assert "Demo query 01" not in html_response.text
-    assert 'class="query-list-results"' in html_response.text
-    assert 'class="query-list-facets"' in html_response.text
-    assert 'type="radio"' not in html_response.text
-    assert "Only the owning actor can view this query." not in html_response.text
-    assert (
-        "Execution skips the usual SQL and write permission checks"
-        not in html_response.text
-    )
+    soup = Soup(html_response.text, "html.parser")
+    assert soup.select_one("form[data-homepage-search] input#query-search")
+    assert [a.text for a in soup.select("a.query-row-name")] == ["Demo query 02"]
+    assert [span.text for span in soup.select(".homepage-summary span")] == [
+        "1 query",
+        "matching “02”",
+    ]
+
+    def row(response, title):
+        soup = Soup(response.text, "html.parser")
+        link = soup.find("a", class_="query-row-name", string=title)
+        return link.find_parent("li")
+
+    def tags(response, title):
+        return [t.text for t in row(response, title).select(".type-tag")]
+
+    def facet_chips(response):
+        soup = Soup(response.text, "html.parser")
+        nav = soup.select_one("nav.query-list-facets")
+        if nav is None:
+            return []
+        return [
+            (
+                " ".join(chip.text.split()),
+                chip.get("href"),
+                "selected" in chip["class"],
+            )
+            for chip in nav.select(".homepage-database")
+        ]
+
     assert flags_response.status_code == 200
-    assert '<th scope="col">Owner</th>' in flags_response.text
-    assert '<th scope="col">Flags</th>' in flags_response.text
-    assert '<th scope="col">Mode</th>' not in flags_response.text
-    assert 'class="query-list-owner">root</td>' in flags_response.text
-    assert 'class="query-list-pill">Read-only</span>' in flags_response.text
-    assert (
-        'class="query-list-pill query-list-pill-write">Writable</span>'
-        in flags_response.text
+    # Your own queries are tagged, private and writable queries flagged
+    assert tags(flags_response, "Private query") == ["yours", "private"]
+    assert tags(flags_response, "Writable query") == ["yours", "writes"]
+    # Config queries are trusted by default, so that is not called out
+    assert tags(flags_response, "Trusted query") == []
+    assert "inputs: name" in " ".join(
+        row(flags_response, "Writable query").text.split()
     )
-    assert (
-        'class="query-list-pill query-list-pill-private">Private</span>'
-        in flags_response.text
-    )
-    assert (
-        'class="query-list-pill query-list-pill-trusted">Trusted</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=0"><span>Read-only</span><span class="query-list-facet-count">5</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=1"><span>Writable</span><span class="query-list-facet-count">1</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_private=0"><span>Not private</span><span class="query-list-facet-count">5</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_private=1"><span>Private</span><span class="query-list-facet-count">1</span>'
-        in flags_response.text
-    )
-    assert "Only the owning actor can view this query." in flags_response.text
-    assert (
-        "Execution skips the usual SQL and write permission checks"
-        in flags_response.text
-    )
+    assert facet_chips(flags_response) == [
+        ("Read-only 5", "/data/-/queries?is_write=0", False),
+        ("Writable 1", "/data/-/queries?is_write=1", False),
+        ("Not private 5", "/data/-/queries?is_private=0", False),
+        ("Private 1", "/data/-/queries?is_private=1", False),
+    ]
     assert json_response.json()["queries"][0]["name"] == "demo_query_02"
     assert [query["name"] for query in filtered_response.json()["queries"]] == [
         "private_query"
     ]
     assert "Writable query" in filtered_write_response.text
     assert "Demo query 01" not in filtered_write_response.text
-    assert (
-        'query-list-facet-link query-list-facet-link-active" href="/data/-/queries"'
-        in filtered_write_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Read-only</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_write_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=1&amp;is_private=0"><span>Not private</span><span class="query-list-facet-count">1</span>'
-        in filtered_write_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Private</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_write_response.text
-    )
+    # The active filter links back to the unfiltered list; groups with a
+    # single choice are left out
+    assert facet_chips(filtered_write_response) == [
+        ("Writable 1", "/data/-/queries", True),
+    ]
     assert "Private query" in filtered_private_response.text
     assert "Demo query 01" not in filtered_private_response.text
-    assert (
-        'href="/data/-/queries?is_private=1&amp;is_write=0"><span>Read-only</span><span class="query-list-facet-count">1</span>'
-        in filtered_private_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Writable</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_private_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Not private</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_private_response.text
-    )
+    assert facet_chips(filtered_private_response) == [
+        ("Private 1", "/data/-/queries", True),
+    ]
     assert no_results_response.status_code == 200
-    assert "No queries found." in no_results_response.text
-    assert 'class="query-list-filters core"' not in no_results_response.text
-    assert 'id="query-search"' not in no_results_response.text
-    assert 'class="query-list-facets"' not in no_results_response.text
-    assert "<h2>Mode</h2>" not in no_results_response.text
-    assert "<h2>Visibility</h2>" not in no_results_response.text
+    assert "No queries match “nope”" in no_results_response.text
+    # The search box stays, so the search can be changed
+    assert 'id="query-search"' in no_results_response.text
+    assert "query-list-facets" not in no_results_response.text
 
 
 @pytest.mark.asyncio
@@ -936,10 +912,22 @@ async def test_global_query_list_api_and_html():
         ("beta", "beta_first"),
     ]
     assert html_response.status_code == 200
-    assert '<th scope="col">Database</th>' in html_response.text
-    assert 'class="query-list-database" href="/beta">beta</a>' in html_response.text
-    assert "Beta first" in html_response.text
+    soup = Soup(html_response.text, "html.parser")
+    beta_row = soup.find("a", class_="query-row-name", string="Beta first").find_parent(
+        "li"
+    )
+    assert beta_row.select_one(".db-tag").text == "beta"
     assert "Alpha first" not in html_response.text
+    # Database chips keep the search, and show how many match in each
+    chips = [
+        (" ".join(a.text.split()), a["href"], "empty" in a["class"])
+        for a in soup.select("nav.homepage-databases a.homepage-database")
+    ]
+    assert chips == [
+        ("All", "/-/queries?q=Beta", False),
+        ("alpha 0", "/alpha/-/queries?q=Beta", True),
+        ("beta 1", "/beta/-/queries?q=Beta", False),
+    ]
 
 
 @pytest.mark.asyncio
@@ -3946,3 +3934,36 @@ async def test_stored_query_json_uses_parameters_not_params():
     query = next(q for q in listing["queries"] if q["name"] == "with_params")
     assert query["parameters"] == ["name", "age"]
     assert "params" not in query
+
+
+@pytest.mark.asyncio
+async def test_query_list_fragment_and_pagination():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("query_list_fragment", name="data")
+    await ds.invoke_startup()
+    await add_numbered_queries(ds, "data", 25)
+    response = await ds.client.get("/data/-/queries?q=Demo", actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    assert len(soup.select("li.query-row")) == 20
+    nav = soup.select_one("nav.page-position-footer")
+    assert " ".join(nav.select_one(".page-position-text").text.split()) == (
+        "Showing 20 of 25"
+    )
+    next_href = nav.select_one("a.page-position-next")["href"]
+    assert "q=Demo" in next_href
+    assert "_next=" in next_href
+
+    # The live search fetches just the summary and results
+    response = await ds.client.get(
+        "/data/-/queries?q=Demo&_fragment=results", actor={"id": "root"}
+    )
+    assert response.status_code == 200
+    assert response.headers["x-robots-tag"] == "noindex"
+    assert "<html" not in response.text
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("p.homepage-summary span").text == "25 queries"
+    results = soup.select_one("div[data-homepage-results]")
+    assert len(results.select("li.query-row")) == 20
+    # Links in the fragment point at the full page
+    next_href = results.select_one("a.page-position-next")["href"]
+    assert "_fragment" not in next_href

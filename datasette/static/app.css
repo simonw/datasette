@@ -6573,7 +6573,8 @@ button.column-menu-trigger[aria-expanded="true"] {
     background: #fff3b0;
     color: var(--ink);
 }
-.homepage a.homepage-database.empty {
+.homepage a.homepage-database.empty,
+.homepage span.homepage-database.empty {
     opacity: 0.5;
 }
 
@@ -6810,4 +6811,46 @@ button.column-menu-trigger[aria-expanded="true"] {
 }
 .homepage-recent[hidden] {
     display: none;
+}
+
+/* Query list (/-/queries): the homepage's search, chips and query rows */
+.query-list-filters {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+}
+.query-list-filters .homepage-databases {
+    flex-wrap: wrap;
+    margin: 0;
+}
+.query-list-facets .homepage-databases-label + .homepage-database {
+    margin-left: 0;
+}
+.query-list-facets .homepage-database + .homepage-databases-label {
+    margin-left: 0.75rem;
+}
+.homepage-searching.query-list-page .homepage-databases {
+    display: inline-flex;
+}
+.query-list-heading-db {
+    vertical-align: middle;
+    font-size: 0.875rem;
+}
+.type-tag-private {
+    color: #8a3b52;
+    background: #f7edf0;
+}
+.type-tag-trusted {
+    color: #1f7a4d;
+    background: #e7f5ec;
+}
+.query-row-owner {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8125rem;
+}
+.query-list-page .homepage-queries,
+.homepage-searching.query-list-page .homepage-queries {
+    margin-top: 0;
 }

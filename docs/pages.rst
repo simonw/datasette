@@ -123,6 +123,10 @@ The ``/-/queries`` page lists stored queries across every database visible to th
 
 These pages support search, pagination and filters for read-only or writable queries and private or public queries. Adding a ``.json`` extension to either URL returns the same list as JSON.
 
+They share the look of the :ref:`homepage <IndexView>`: the search box updates the list as you type, with the up and down arrow keys and Enter to pick a query, and a row of database buttons shows how many matching queries each database has. Each query shows its title, its database, a description or the start of its SQL, its inputs and its owner, tagged if it is yours, writes to the database, is private, or is a trusted query that is not from configuration.
+
+Add ``?_fragment=results`` to get just the summary line and the list as an HTML fragment, as used by the live search.
+
 .. _TableView:
 
 Table

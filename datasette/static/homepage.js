@@ -1,4 +1,5 @@
 // Homepage: live search over the catalog, and plugin-provided sections.
+// The /-/queries pages use the same live search and keyboard navigation.
 (function () {
   const form = document.querySelector("[data-homepage-search]");
   const results = document.querySelector("[data-homepage-results]");
@@ -23,6 +24,11 @@
     // a highlight through the result links in page order (tables, then
     // matching queries) and Enter opens the highlighted one.
     const RESULT_LINKS = ".catalog-item-name, .query-row-name";
+    // On /-/queries the list is the whole page, so the arrow keys move
+    // through it even before anything has been typed
+    const browseWhenEmpty = !!(
+      root && root.hasAttribute("data-browse-when-empty")
+    );
     let active = -1;
     const resultLinks = () => [...results.querySelectorAll(RESULT_LINKS)];
     const setActive = (index) => {
@@ -47,7 +53,9 @@
       } else {
         params.set("q", q);
       }
+      // A new search starts again from the first page
       params.delete("page");
+      params.delete("_next");
       const qs = params.toString();
       return form.action + (qs ? "?" + qs : "");
     };
@@ -127,14 +135,17 @@
         update("");
       } else if (
         (event.key === "ArrowDown" || event.key === "ArrowUp") &&
-        input.value.trim()
+        (input.value.trim() || browseWhenEmpty)
       ) {
         event.preventDefault();
         setActive(active + (event.key === "ArrowDown" ? 1 : -1));
         if (active < 0) {
           setActive(0);
         }
-      } else if (event.key === "Enter" && input.value.trim()) {
+      } else if (
+        event.key === "Enter" &&
+        (input.value.trim() || (browseWhenEmpty && active >= 0))
+      ) {
         event.preventDefault();
         const openActive = () => {
           const link = resultLinks()[active];

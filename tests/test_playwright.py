@@ -223,6 +223,16 @@ def write_playwright_config(config_path):
             {
                 "databases": {
                     "data": {
+                        "queries": {
+                            "project_titles": {
+                                "title": "Project titles",
+                                "sql": "select title from projects",
+                            },
+                            "project_by_title": {
+                                "title": "Project by title",
+                                "sql": "select * from projects where title = :title",
+                            },
+                        },
                         "permissions": {
                             "create-table": True,
                             "execute-write-sql": True,
@@ -3920,6 +3930,46 @@ def test_homepage_search_keyboard_navigation(page, datasette_server):
     expect(active).to_have_count(1)
     page.keyboard.press("Enter")
     page.wait_for_url("**" + first_href)
+
+
+@pytest.mark.playwright
+def test_query_list_live_search_keyboard_navigation(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "-/queries")
+    search = page.locator("#query-search")
+    expect(search).to_be_focused()
+    links = page.locator("[data-homepage-results] .query-row-name")
+    expect(links).to_have_count(2)
+    active = page.locator("[data-homepage-results] .is-active")
+    # Nothing is highlighted until an arrow key is pressed, which works even
+    # with an empty search box
+    expect(active).to_have_count(0)
+    page.keyboard.press("ArrowDown")
+    expect(active.locator("a")).to_have_text(links.first.inner_text())
+    page.keyboard.press("ArrowDown")
+    expect(active.locator("a")).to_have_text(links.nth(1).inner_text())
+    page.keyboard.press("ArrowUp")
+    expect(active.locator("a")).to_have_text(links.first.inner_text())
+    page.keyboard.type("project by")
+    page.wait_for_url("**/-/queries?q=project+by")
+    expect(links).to_have_count(1)
+    expect(page.locator(".homepage-summary")).to_contain_text("1 query")
+    expect(active).to_have_count(1)
+    expect(active.locator("a")).to_have_text("Project by title")
+    # Escape clears the search and shows every query again
+    page.keyboard.press("Escape")
+    expect(search).to_have_value("")
+    expect(links).to_have_count(2)
+    # Down moves the highlight, Enter opens it
+    page.keyboard.type("project")
+    page.wait_for_url("**/-/queries?q=project")
+    expect(active.locator("a")).to_have_text(links.first.inner_text())
+    page.keyboard.press("ArrowDown")
+    second_href = links.nth(1).get_attribute("href")
+    expect(active.locator("a")).to_have_attribute("href", second_href)
+    page.keyboard.press("Enter")
+    page.wait_for_url("**" + second_href)
 
 
 @pytest.mark.playwright

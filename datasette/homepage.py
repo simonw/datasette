@@ -350,7 +350,8 @@ async def build_catalog(
         except ValueError:
             parameters = []
         if not parameters:
-            parameters = named_parameters(row["sql"])
+            # A parameter used twice in the SQL is still one input
+            parameters = list(dict.fromkeys(named_parameters(row["sql"])))
         queries.append(
             {
                 "database": row["database_name"],

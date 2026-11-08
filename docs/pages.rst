@@ -11,10 +11,7 @@ The Datasette web application offers a number of different pages that can be acc
 Homepage
 ========
 
-The root page of any Datasette installation is a homepage that helps people see at a glance what the instance contains, and jump to the data they want. Some examples:
-
-* `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/>`_
-* `register-of-members-interests.datasettes.com <https://register-of-members-interests.datasettes.com/>`_
+The root page of any Datasette installation is a homepage that helps people see at a glance what the instance contains, and jump to the data they want. For an example, see `latest.datasette.io <https://latest.datasette.io/>`_.
 
 The homepage shows:
 

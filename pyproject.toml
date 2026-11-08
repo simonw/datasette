@@ -73,7 +73,7 @@ dev = [
     "ruff>=0.16.0",
     "opentelemetry-sdk>=1.37",
     # docs
-    "Sphinx==7.4.7",
+    "Sphinx==9.0.4",
     "furo==2025.12.19",
     "sphinx-autobuild",
     "codespell>=2.2.5",

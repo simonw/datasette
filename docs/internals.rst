@@ -2784,7 +2784,7 @@ You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this
     export DATASETTE_INTERNAL=/path/to/internal.db
     datasette mydatabase.db
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. The ``hidden`` column on ``catalog_tables`` is ``1`` for :ref:`hidden tables <DatabaseView_hidden>`. These tables should not be considered a stable API - they may change between Datasette releases.
 
 Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
@@ -2832,6 +2832,7 @@ The internal database schema is as follows:
         table_name TEXT,
         rootpage INTEGER,
         sql TEXT,
+        hidden INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );

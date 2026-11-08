@@ -71,39 +71,18 @@
     </span>
 {% endmacro %}
 
-{# The position strip appears whenever results span more than one page, and
-   carries the total row count - so the heading only shows the count when there
-   is no strip, or when the count is truncated and needs its "count all" button #}
+{# The heading always carries the total row count; the position strip above
+   the table repeats it alongside the page position #}
 {% set paginated = page_position or next_url %}
 {% set count_in_strip = paginated and count is not none and not count_truncated %}
-{% if (count and not count_in_strip) or human_description_en %}
+{% if count or count == 0 or human_description_en %}
     <h3 class="table-summary">
-        {% if count_in_strip %}
-        {% elif count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
+        {% if count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
         <button type="button" class="count-all" data-count-url="{{ urls.table(database, table) }}/-/count">count all</button>
         <span class="count-error" role="alert"></span>
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}<span class="table-summary-description">{{ human_description_en }}</span>{% endif %}
     </h3>
-{% endif %}
-
-{% if paginated %}
-<nav class="page-position" aria-label="Pagination"
-    {% if page_position %}data-count-before-url="{{ page_position.count_before_url }}"{% endif %}
-    data-page-rows="{{ display_rows|length }}"
-    {% if count_in_strip %}data-total="{{ count }}"{% endif %}>
-    <span class="page-position-text" aria-live="polite">
-        {% if not page_position %}Rows <strong>1–{{ "{:,}".format(display_rows|length) }}</strong>{% if count_in_strip %} of <strong>{{ "{:,}".format(count) }}</strong>{% endif %}
-        {% else %}
-            {% if page_position.after_column %}Continuing after
-                <code>{{ page_position.after_column }}</code> =
-                {% if page_position.after_value is none %}<em>null</em>{% else %}<code>{{ page_position.after_value|truncate(40) }}</code>{% endif %}
-            {% else %}Not the first page{% endif %}
-            {% if count_in_strip %} · {{ "{:,}".format(count) }} row{% if count != 1 %}s{% endif %}{% endif %}
-        {% endif %}
-    </span>
-    {{ pagination_links() }}
-</nav>
 {% endif %}
 
 <form class="core filters" action="{{ urls.table(database, table) }}" method="get">
@@ -249,9 +228,29 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 </div>
 {% endif %}
 
+{% if paginated %}
+<nav class="page-position" aria-label="Pagination"
+    {% if page_position %}data-count-before-url="{{ page_position.count_before_url }}"{% endif %}
+    data-page-rows="{{ display_rows|length }}"
+    {% if count_in_strip %}data-total="{{ count }}"{% endif %}>
+    <span class="page-position-text" aria-live="polite">
+        {% if not page_position %}Rows <strong>1–{{ "{:,}".format(display_rows|length) }}</strong>{% if count_in_strip %} of <strong>{{ "{:,}".format(count) }}</strong>{% endif %}
+        {% else %}
+            {% if page_position.after_column %}Continuing after
+                <code>{{ page_position.after_column }}</code> =
+                {% if page_position.after_value is none %}<em>null</em>{% else %}<code>{{ page_position.after_value|truncate(40) }}</code>{% endif %}
+            {% else %}Not the first page{% endif %}
+            {% if count_in_strip %} · {{ "{:,}".format(count) }} row{% if count != 1 %}s{% endif %}{% endif %}
+        {% endif %}
+    </span>
+    {{ pagination_links() }}
+</nav>
+{% endif %}
+
 {% include custom_table_templates %}
 
-{% if paginated %}
+{# A second set of buttons below the table is only worth it on a longer page #}
+{% if paginated and display_rows|length >= 5 %}
 <nav class="page-position page-position-footer" aria-label="Pagination">
     {{ pagination_links() }}
 </nav>

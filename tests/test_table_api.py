@@ -1491,6 +1491,10 @@ async def test_paginate_using_link_header(ds_client, qs):
         response = await ds_client.get(path)
         assert response.status_code == 200
         num_pages += 1
+        # The equivalent HTML page should not have a rel="next" link header
+        html_response = await ds_client.get(path.replace(".json", "", 1))
+        assert html_response.status_code == 200
+        assert 'rel="next"' not in html_response.headers.get("link", "")
         link = response.headers.get("link")
         if link:
             assert link.startswith("<")

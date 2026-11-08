@@ -290,9 +290,11 @@ async def stream_csv(datasette, fetch_data, request, database, format_="csv"):
                         new_row = []
                         for column, cell in zip(headings, row):
                             if isinstance(cell, bytes):
-                                # If this is a table page, use .urls.row_blob()
-                                if data.get("table"):
-                                    pks = data.get("primary_keys") or []
+                                pks = data.get("primary_keys") or []
+                                # If this is a table page with a way to identify
+                                # the row, use .urls.row_blob(). Views usually
+                                # have no rowid, so they use the content hash.
+                                if data.get("table") and (pks or "rowid" in headings):
                                     cell = datasette.absolute_url(
                                         request,
                                         datasette.urls.row_blob(
@@ -318,9 +320,10 @@ async def stream_csv(datasette, fetch_data, request, database, format_="csv"):
                                             replace_format=format_,
                                         ),
                                     )
-                                    cell = url.replace("&_nocount=1", "").replace(
-                                        "&_nofacet=1", ""
-                                    )
+                                    for internal_arg in ("_nocount=1", "_nofacet=1"):
+                                        url = url.replace("&" + internal_arg, "")
+                                        url = url.replace("?" + internal_arg + "&", "?")
+                                    cell = url
                             new_row.append(cell)
                         row = new_row
                     if not expanded_columns:

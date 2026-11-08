@@ -1804,7 +1804,8 @@ def test_delete_row_flow_removes_row(page, datasette_server):
 
     dialog = page.locator("#row-delete-dialog")
     dialog.wait_for()
-    assert "Delete row 1" in dialog.inner_text()
+    assert dialog.locator(".modal-title").inner_text() == "Delete row 1 from projects?"
+    assert dialog.locator(".row-delete-label").inner_text() == "Build Datasette"
     dialog.locator(".row-delete-confirm").press("Enter")
 
     page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
@@ -2452,9 +2453,8 @@ def test_long_values_are_clamped_and_expand(page, datasette_server):
         > 200
     )
 
-    # The column's gear menu can collapse every long value
-    page.locator('th[data-column="body"] .column-menu-trigger').click()
-    page.locator(".column-actions-menu").get_by_text("Collapse long values").click()
+    # The column header toggle collapses every long value
+    column_toggle.click()
     expect(toggle).to_have_text("expand")
     expect(column_toggle).to_have_text("expand all")
 

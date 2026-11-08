@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import itertools
 import json
 import time
@@ -44,6 +45,7 @@ from datasette.utils import (
     path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
+    request_route_path,
     sqlite3,
     tilde_encode,
     to_css_class,
@@ -420,7 +422,11 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(path_with_added_args(request, redirect_params)),
+            datasette.urls.path(
+                path_with_added_args(
+                    request, redirect_params, path=request_route_path(request)
+                )
+            ),
             forward_querystring=False,
         )
 
@@ -437,6 +443,7 @@ async def _redirect_if_needed(datasette, request, resolved):
                         "_sort_by_desc": None,
                         "_sort": None,
                     },
+                    path=request_route_path(request),
                 )
             ),
             forward_querystring=False,
@@ -772,6 +779,7 @@ async def display_columns_and_rows(
         col.name: col for col in await db.table_column_details(table_name)
     }
     pks = await db.primary_keys(table_name)
+    has_rowid_column = any(d[0] == "rowid" for d in description)
     pks_for_display = pks
     if not pks_for_display and not await db.view_exists(table_name):
         pks_for_display = ["rowid"]
@@ -929,14 +937,27 @@ async def display_columns_and_rows(
                 display_value = plugin_display_value
             elif isinstance(value, bytes):
                 formatted = format_bytes(len(value))
+                if pks or has_rowid_column or request is None:
+                    blob_url = datasette.urls.row_blob(
+                        database_name,
+                        table_name,
+                        path_from_row_pks(row, pks, not pks),
+                        column,
+                    )
+                else:
+                    # Views usually have no rowid to link to a row by,
+                    # so find the blob by its content hash instead
+                    blob_url = path_with_format(
+                        request=request,
+                        format="blob",
+                        extra_qs={
+                            "_blob_column": column,
+                            "_blob_hash": hashlib.sha256(value).hexdigest(),
+                        },
+                    )
                 display_value = markupsafe.Markup(
                     '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
-                        datasette.urls.row_blob(
-                            database_name,
-                            table_name,
-                            path_from_row_pks(row, pks, not pks),
-                            column,
-                        ),
+                        blob_url,
                         (f' title="{formatted}"' if "bytes" not in formatted else ""),
                         len(value),
                         "" if len(value) == 1 else "s",
@@ -2500,9 +2521,7 @@ async def table_view_data(
         page_size = datasette.page_size
 
     # Facets are calculated against SQL without order by or limit
-    sql_no_order_no_limit = (
-        f"select {select_all_columns} from {escape_sqlite(table_name)} {where_clause}"
-    )
+    sql_no_order_no_limit = f"select {select_all_columns} {from_sql}"
 
     # This is the SQL that populates the main table on the page
     sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
@@ -2869,6 +2888,11 @@ async def _next_value_and_url(
         else:
             added_args = {"_next": next_value}
         next_url = datasette.absolute_url(
-            request, datasette.urls.path(path_with_replaced_args(request, added_args))
+            request,
+            datasette.urls.path(
+                path_with_replaced_args(
+                    request, added_args, path=request_route_path(request)
+                )
+            ),
         )
     return next_value, next_url

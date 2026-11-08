@@ -8,6 +8,7 @@ from datasette.utils import (
     escape_sqlite,
     path_with_added_args,
     path_with_removed_args,
+    request_route_path,
     sqlite3,
 )
 
@@ -62,6 +63,23 @@ def register_facet_classes():
     if detect_json1():
         classes.append(ArrayFacet)
     return classes
+
+
+# Facet URLs are passed through datasette.urls.path(), so build them from the
+# route path to avoid applying base_url twice, see #2347
+def _route_path_with_added_args(request, args):
+    return path_with_added_args(request, args, path=request_route_path(request))
+
+
+def _route_path_with_removed_args(request, args):
+    return path_with_removed_args(request, args, path=request_route_path(request))
+
+
+def _path_with_removed_args_and_next(request, args):
+    # Strip _next first: path_with_removed_args() reuses the request's args
+    # when given a path with no "?", which would restore the removed value
+    path = _route_path_with_removed_args(request, {"_next"})
+    return path_with_removed_args(request, args, path=path)
 
 
 class Facet:
@@ -190,7 +208,7 @@ class ColumnFacet(Facet):
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
                                 self.ds.urls.path(
-                                    path_with_added_args(
+                                    _route_path_with_added_args(
                                         self.request, {"_facet": column}
                                     )
                                 ),
@@ -245,7 +263,9 @@ class ColumnFacet(Facet):
                         "type": self.type,
                         "hideable": source != "metadata",
                         "toggle_url": self.ds.urls.path(
-                            path_with_removed_args(self.request, {"_facet": column})
+                            _route_path_with_removed_args(
+                                self.request, {"_facet": column}
+                            )
                         ),
                         "results": facet_results_values,
                         "truncated": len(facet_rows_results) > facet_size,
@@ -271,12 +291,13 @@ class ColumnFacet(Facet):
                     }
                     selected = bool(selected_args)
                     if selected:
-                        toggle_path = path_with_removed_args(
+                        toggle_path = _path_with_removed_args_and_next(
                             self.request, selected_args
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {column_qs: row["value"]}
+                        toggle_path = _route_path_with_added_args(
+                            self.request,
+                            {column_qs: row["value"], "_next": None},
                         )
                     facet_results_values.append(
                         {
@@ -367,7 +388,7 @@ class ArrayFacet(Facet):
                                 "toggle_url": self.ds.absolute_url(
                                     self.request,
                                     self.ds.urls.path(
-                                        path_with_added_args(
+                                        _route_path_with_added_args(
                                             self.request, {"_facet_array": column}
                                         )
                                     ),
@@ -425,7 +446,7 @@ class ArrayFacet(Facet):
                         "results": facet_results_values,
                         "hideable": source != "metadata",
                         "toggle_url": self.ds.urls.path(
-                            path_with_removed_args(
+                            _route_path_with_removed_args(
                                 self.request, {"_facet_array": column}
                             )
                         ),
@@ -438,12 +459,13 @@ class ArrayFacet(Facet):
                     value = str(row["value"])
                     selected = (f"{column}__arraycontains", value) in pairs
                     if selected:
-                        toggle_path = path_with_removed_args(
+                        toggle_path = _path_with_removed_args_and_next(
                             self.request, {f"{column}__arraycontains": value}
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {f"{column}__arraycontains": value}
+                        toggle_path = _route_path_with_added_args(
+                            self.request,
+                            {f"{column}__arraycontains": value, "_next": None},
                         )
                     facet_results_values.append(
                         {
@@ -451,7 +473,7 @@ class ArrayFacet(Facet):
                             "label": value,
                             "count": row["count"],
                             "toggle_url": self.ds.absolute_url(
-                                self.request, toggle_path
+                                self.request, self.ds.urls.path(toggle_path)
                             ),
                             "selected": selected,
                         }
@@ -496,7 +518,7 @@ class DateFacet(Facet):
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
                                 self.ds.urls.path(
-                                    path_with_added_args(
+                                    _route_path_with_added_args(
                                         self.request, {"_facet_date": column}
                                     )
                                 ),
@@ -539,8 +561,10 @@ class DateFacet(Facet):
                         "type": self.type,
                         "results": facet_results_values,
                         "hideable": source != "metadata",
-                        "toggle_url": path_with_removed_args(
-                            self.request, {"_facet_date": column}
+                        "toggle_url": self.ds.urls.path(
+                            _route_path_with_removed_args(
+                                self.request, {"_facet_date": column}
+                            )
                         ),
                         "truncated": len(facet_rows_results) > facet_size,
                     }
@@ -549,12 +573,13 @@ class DateFacet(Facet):
                 for row in facet_rows:
                     selected = str(args.get(f"{column}__date")) == str(row["value"])
                     if selected:
-                        toggle_path = path_with_removed_args(
+                        toggle_path = _path_with_removed_args_and_next(
                             self.request, {f"{column}__date": str(row["value"])}
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {f"{column}__date": row["value"]}
+                        toggle_path = _route_path_with_added_args(
+                            self.request,
+                            {f"{column}__date": row["value"], "_next": None},
                         )
                     facet_results_values.append(
                         {
@@ -562,7 +587,7 @@ class DateFacet(Facet):
                             "label": row["value"],
                             "count": row["count"],
                             "toggle_url": self.ds.absolute_url(
-                                self.request, toggle_path
+                                self.request, self.ds.urls.path(toggle_path)
                             ),
                             "selected": selected,
                         }

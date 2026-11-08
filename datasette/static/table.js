@@ -495,11 +495,6 @@ function buildColumnActionItems(manager, th, options) {
     });
   }
 
-  // "Expand long values" / "Collapse long values", from table-layout.js
-  if (manager.longValueColumnActions) {
-    columnActions = columnActions.concat(manager.longValueColumnActions(th));
-  }
-
   return columnActions.concat(manager.makeColumnActions(getColumnMeta(th)));
 }
 

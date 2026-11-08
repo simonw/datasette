@@ -3529,10 +3529,18 @@ dialog.column-stats-dialog {
     margin: 0 0 0.75rem;
 }
 
-button.table-insert-row {
+/* Same box as .quiet-button and the actions menu trigger. Needs .core
+   to outrank the button.core[type=button] defaults. */
+button.core.table-insert-row {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 5px;
+    font-size: 0.875rem;
+    line-height: 1.2;
 }
 
 button.table-insert-row svg {
@@ -3548,12 +3556,12 @@ dialog.row-delete-dialog {
     justify-content: flex-start;
 }
 
+/* The title is a question that wraps like a sentence */
 .row-delete-dialog .modal-title {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
     min-width: 0;
     max-width: 100%;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
 }
 
 .row-delete-message,
@@ -3567,15 +3575,25 @@ dialog.row-delete-dialog {
     font-size: 0.95rem;
 }
 
-.row-delete-id {
-    display: inline;
-    padding: 2px 5px;
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    background: var(--paper);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.92em;
+.row-delete-message p {
+    margin: 0;
+}
+
+/* The row's label, above the warning. Very long labels are cut to three
+   lines. */
+.row-delete-message .row-delete-label {
+    display: -webkit-box;
+    margin-bottom: 0.4rem;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    font-weight: 600;
     overflow-wrap: anywhere;
+}
+
+.row-delete-message .row-delete-label[hidden] {
+    display: none;
 }
 
 .row-delete-error {
@@ -3586,6 +3604,21 @@ dialog.row-delete-dialog {
 .row-delete-dialog .modal-footer {
     padding: 18px 20px 14px;
     margin-top: 18px;
+}
+
+.row-delete-dialog .modal-btn-danger {
+    background: #b91c1c;
+    color: #fff;
+}
+
+.row-delete-dialog .modal-btn-danger:hover {
+    background: #991b1b;
+}
+
+.row-delete-dialog .modal-btn-danger:disabled,
+.row-delete-dialog .modal-btn-danger:disabled:hover {
+    background: #d98c8c;
+    color: #fff;
 }
 
 dialog.row-edit-dialog {
@@ -3601,8 +3634,7 @@ dialog.row-edit-dialog {
     max-width: 100%;
 }
 
-.row-edit-dialog .modal-title .row-dialog-action,
-.row-delete-dialog .modal-title .row-dialog-action {
+.row-edit-dialog .modal-title .row-dialog-action {
     flex: 0 0 auto;
     white-space: nowrap;
 }
@@ -3620,8 +3652,7 @@ dialog.row-edit-dialog {
     overflow-wrap: anywhere;
 }
 
-.row-edit-dialog .modal-title .row-dialog-label,
-.row-delete-dialog .modal-title .row-dialog-label {
+.row-edit-dialog .modal-title .row-dialog-label {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -5615,28 +5646,32 @@ dl.column-descriptions dd {
 .actions-menu-links {
     display: inline;
 }
+/* The "Table actions" / "Row actions" trigger shares its box with
+   .quiet-button (height, border, font size, line height, radius, icon gap)
+   so the two line up exactly when they sit side by side. */
 .page-action-menu .icon-text {
     display: inline-flex;
     align-items: center;
-    border-radius: .25rem;
-    padding: 5px 12px 3px 7px;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem 0.2rem 0.5rem;
+    border: 1px solid var(--accent, #1a56db);
+    border-radius: 5px;
     color: #fff;
     font-weight: 400;
-    font-size: 0.8em;
+    font-size: 0.875rem;
+    line-height: 1.2;
     background: var(--accent, #1a56db);
-}
-.page-action-menu .icon-text span {
-    /* Nudge text up a bit */
-    position: relative;
-    top: -2px;
 }
 .page-action-menu .icon-text:hover {
     cursor: pointer;
 }
 .page-action-menu .icon {
-    width: 18px;
-    height: 18px;
-    margin-right: 4px;
+    display: block;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
 }
 
 header.app-header {
@@ -5688,7 +5723,10 @@ header.app-header .actor {
 }
 .page-action-menu .datasette-menu-trigger {
     display: inline-flex;
-    border-radius: .25rem;
+    /* Top-aligned so the inline <details> adds no space below the
+       baseline, keeping the menu exactly the trigger's height */
+    vertical-align: top;
+    border-radius: 5px;
 }
 button.column-menu-trigger {
     display: inline-flex;
@@ -5909,6 +5947,285 @@ button.column-menu-trigger[aria-expanded="true"] {
     .table-create-data-textarea,
     datasette-autocomplete input[type="text"] {
         font-size: 16px;
+    }
+}
+
+/* Row page: one field per line, name on the left and value on the right.
+   Stacks name above value on narrow screens. See _row_fields.html. */
+.row-heading-label {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: #536978;
+}
+
+/* Row actions menu and Export data button side by side */
+.row-page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+}
+/* Flex all the way down so the menu trigger is never laid out on a text
+   line (which browsers snap to whole pixels differently from flex items)
+   and lines up exactly with the Export data button beside it */
+.row-page-actions .page-action-menu,
+.row-page-actions .actions-menu-links,
+.row-page-actions .datasette-menu-trigger {
+    display: flex;
+}
+.row-page-actions .page-action-menu {
+    margin-bottom: 0;
+}
+
+.row-referenced-by {
+    max-width: 60rem;
+    margin: 0 0 1.5rem;
+}
+.row-referenced-by h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+}
+.row-referenced-by ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.row-referenced-by li {
+    padding: 0.3rem 0;
+}
+.row-referenced-by-via {
+    color: #6b6b6b;
+    font-size: 0.8125rem;
+}
+
+.row-fields {
+    --rule: #d8e6f5;
+    --muted: #6b6b6b;
+    --link: #276890;
+    --link-visited: #2d7a62;
+    --accent: #1a56db;
+    box-sizing: border-box;
+    max-width: 60rem;
+    margin: 0 0 1.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
+    font-variant-numeric: tabular-nums;
+}
+.row-field {
+    display: grid;
+    grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+    gap: 0.25rem 1.25rem;
+    padding: 0.55rem 0.85rem;
+    border-top: 1px solid var(--rule);
+}
+.row-field:first-child {
+    border-top: none;
+}
+.row-field:hover {
+    background: rgba(0, 110, 255, 0.03);
+}
+.row-field dt {
+    margin: 0;
+    min-width: 0;
+}
+.row-field-name {
+    display: block;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #536978;
+    overflow-wrap: break-word;
+}
+.row-field-description {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.row-field dd {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0;
+    min-width: 0;
+}
+.row-field-value,
+.row-field-long {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.row-field[data-is-pk] .row-field-value {
+    font-weight: 600;
+}
+.row-field-value em {
+    color: var(--muted);
+    font-size: 0.8125em;
+    font-style: normal;
+}
+.row-field-value a:link {
+    color: var(--link);
+    text-decoration: none;
+}
+.row-field-value a:visited {
+    color: var(--link-visited);
+    text-decoration: none;
+}
+.row-field-value a:hover {
+    text-decoration: underline;
+}
+.row-field-empty {
+    flex: 1 1 auto;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-style: italic;
+    user-select: none;
+    -webkit-user-select: none;
+}
+/* Generated content is never included when the page is copied */
+.row-field-empty::before {
+    content: attr(data-label);
+}
+
+/* Long values show the first few lines, with a toggle to reveal the rest */
+.row-field-long:not(.is-expanded) > .row-field-value {
+    max-height: 6lh;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000 calc(100% - 2lh), transparent);
+    mask-image: linear-gradient(#000 calc(100% - 2lh), transparent);
+}
+/* row-fields.js adds .fits when the whole value is visible within the clamp */
+.row-field-long.fits > .row-field-value {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+.row-field-long.fits > .row-field-expand {
+    display: none;
+}
+.row-field-expand {
+    margin-top: 0.35rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--link);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.row-field-expand:hover {
+    text-decoration: underline;
+}
+/* Generated content, like the null labels, so it is never copied */
+.row-field-expand {
+    user-select: none;
+    -webkit-user-select: none;
+}
+.row-field-expand::before {
+    content: attr(data-label);
+}
+
+/* Copy button: quiet until the field is hovered or the button focused */
+.row-field-copy {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin: -0.2rem -0.3rem -0.2rem 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+.row-field:hover .row-field-copy,
+.row-field-copy:focus-visible,
+.row-field-copy.is-copied {
+    opacity: 1;
+}
+.row-field-copy:hover {
+    background: #eef6ff;
+    border-color: var(--rule);
+    color: var(--accent);
+}
+.row-field-copy:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.row-field-copy .icon-copied,
+.row-field-copy.is-copied .icon-copy {
+    display: none;
+}
+.row-field-copy.is-copied .icon-copied {
+    display: block;
+}
+.row-field-copy.is-copied {
+    color: #1f7a4d;
+}
+.row-field-copy-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+@media (hover: none) {
+    .row-field-copy {
+        opacity: 0.7;
+    }
+}
+
+/* Narrow screens: match the stacked cards of the table page exactly (see
+   the max-width: 576px block under Overrides), with the copy button tucked
+   into the label line so values get the same width as on the table page. */
+@media (max-width: 576px) {
+    .row-fields {
+        max-width: none;
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+        color: #0f0f0f;
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
+    .row-field {
+        display: block;
+        position: relative;
+        padding: 0.45rem 0.75rem 0.5rem;
+    }
+    .row-field:hover {
+        background: none;
+    }
+    .row-field:first-child {
+        background: #eef6ff;
+    }
+    .row-field dt {
+        margin: 0 0 1px;
+        padding-right: 1.75rem;
+    }
+    .row-field-name {
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+    .row-field dd {
+        display: block;
+    }
+    .row-field-copy {
+        position: absolute;
+        top: 0.2rem;
+        right: 0.35rem;
+        margin: 0;
     }
 }
 

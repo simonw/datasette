@@ -2393,7 +2393,7 @@ function setRowDeleteDialogBusy(state, isBusy) {
   state.modal.busy = isBusy;
   state.confirmButton.disabled = isBusy;
   state.cancelButton.disabled = isBusy;
-  state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete row";
+  state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete";
 }
 
 function clearRowDeleteDialogError(state) {
@@ -4337,11 +4337,14 @@ function ensureRowDeleteDialog(manager) {
     <div class="modal-header">
       <span class="modal-title" id="row-delete-title">Delete row</span>
     </div>
-    <p class="row-delete-message" id="row-delete-message">Delete row <span class="row-delete-id"></span>?</p>
+    <div class="row-delete-message" id="row-delete-message">
+      <p class="row-delete-label" hidden></p>
+      <p>This can't be undone.</p>
+    </div>
     <p class="row-delete-error" role="alert" hidden></p>
     <div class="modal-footer">
       <button type="button" class="modal-btn modal-btn-ghost row-delete-cancel">Cancel</button>
-      <button type="button" class="modal-btn modal-btn-primary row-delete-confirm">Delete row</button>
+      <button type="button" class="modal-btn modal-btn-danger row-delete-confirm">Delete</button>
     </div>
   `;
   document.body.appendChild(modal);
@@ -4351,7 +4354,7 @@ function ensureRowDeleteDialog(manager) {
     dialog: dialog,
     title: dialog.querySelector(".modal-title"),
     message: dialog.querySelector(".row-delete-message"),
-    rowId: dialog.querySelector(".row-delete-id"),
+    label: dialog.querySelector(".row-delete-label"),
     error: dialog.querySelector(".row-delete-error"),
     cancelButton: dialog.querySelector(".row-delete-cancel"),
     confirmButton: dialog.querySelector(".row-delete-confirm"),
@@ -4438,6 +4441,24 @@ function ensureRowDeleteDialog(manager) {
   return rowDeleteDialogState;
 }
 
+// The title is the question: "Delete row 44171283 from releases?" The
+// row's label, if it has one, goes in the body above the warning.
+function setRowDeleteDialogTitle(title, rowId, tableName) {
+  title.textContent = "";
+  if (rowId) {
+    title.appendChild(document.createTextNode("Delete row "));
+    var code = document.createElement("code");
+    code.textContent = rowId;
+    title.appendChild(code);
+  } else {
+    title.appendChild(document.createTextNode("Delete this row"));
+  }
+  if (tableName) {
+    title.appendChild(document.createTextNode(" from " + tableName));
+  }
+  title.appendChild(document.createTextNode("?"));
+}
+
 function openRowDeleteDialog(button, manager) {
   var row = rowElementForActionButton(button);
   if (!row || !row.getAttribute("data-row")) {
@@ -4455,13 +4476,14 @@ function openRowDeleteDialog(button, manager) {
 
   clearRowDeleteDialogError(state);
   setRowDeleteDialogBusy(state, false);
-  setRowDialogTitle(
+  setRowDeleteDialogTitle(
     state.title,
-    "Delete row",
-    state.currentPkPath || "this row",
-    rowTitleLabel(row),
+    state.currentPkPath,
+    tablePageData().table,
   );
-  state.rowId.textContent = state.currentPkPath || "this row";
+  var rowLabel = rowTitleLabel(row);
+  state.label.textContent = rowLabel;
+  state.label.hidden = !rowLabel || rowLabel === state.currentPkPath;
 
   state.modal.show({ returnFocusTo: button });
   state.confirmButton.focus();

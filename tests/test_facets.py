@@ -46,6 +46,152 @@ async def test_facet_ignores_unrelated_prefixes(ds_client, query_string):
     assert facets["state"]["results"]
 
 
+# https://github.com/simonw/datasette/issues/3021
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_string,where_sql",
+    [
+        ("", ""),
+        ("&pk1__not=a", "where pk1 != 'a'"),
+        ("&_sort=sortable", ""),
+    ],
+)
+async def test_facet_counts_ignore_pagination(ds_client, query_string, where_sql):
+    def facet_counts(data):
+        return {
+            result["value"]: result["count"]
+            for result in data["facet_results"]["results"]["pk1"]["results"]
+        }
+
+    # Calculate the expected counts independently of the table view
+    expected_rows = await ds_client.ds.execute(
+        "fixtures",
+        f"select pk1, count(*) as count from sortable {where_sql} group by pk1",
+    )
+    expected = {row["pk1"]: row["count"] for row in expected_rows}
+    assert expected
+
+    response = await ds_client.get(
+        f"/fixtures/sortable.json?_size=30&_facet=pk1{query_string}"
+    )
+    assert response.status_code == 200
+    first_page = response.json()
+    assert first_page["next_url"]
+    assert facet_counts(first_page) == expected
+
+    response = await ds_client.get(
+        first_page["next_url"].replace("http://localhost", "")
+    )
+    assert response.status_code == 200
+    second_page = response.json()
+    assert second_page["rows"]
+    assert second_page["rows"] != first_page["rows"]
+    assert facet_counts(second_page) == expected
+
+
+@pytest.mark.asyncio
+async def test_facet_value_link_resets_pagination(ds_client):
+    response = await ds_client.get("/fixtures/sortable.json?_size=100&_facet=pk1")
+    assert response.status_code == 200
+    first_page = response.json()
+    assert first_page["next_url"]
+
+    response = await ds_client.get(
+        first_page["next_url"].replace("http://localhost", "")
+    )
+    assert response.status_code == 200
+    second_page = response.json()
+    assert second_page["rows"]
+    assert second_page["rows"] != first_page["rows"]
+
+    results = second_page["facet_results"]["results"]["pk1"]["results"]
+    # "d" rows span both pages, so keeping _next would skip those on page 1
+    toggle_url = next(r["toggle_url"] for r in results if r["value"] == "d")
+    assert parse_qsl(urlsplit(toggle_url).query) == [
+        ("_size", "100"),
+        ("_facet", "pk1"),
+        ("pk1", "d"),
+    ]
+
+    response = await ds_client.get(toggle_url.replace("http://localhost", ""))
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    expected = await ds_client.ds.execute(
+        "fixtures", "select count(*) from sortable where pk1 = 'd'"
+    )
+    assert len(rows) == expected.single_value()
+    assert all(row["pk1"] == "d" for row in rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "facet_class,facet_arg,sql,value_arg",
+    [
+        (ColumnFacet, ("_facet", "pk1"), "select 'd' as pk1", ("pk1", "d")),
+        pytest.param(
+            ArrayFacet,
+            ("_facet_array", "tags"),
+            """select '["d"]' as tags""",
+            ("tags__arraycontains", "d"),
+            marks=pytest.mark.skipif(
+                not detect_json1(), reason="Requires the SQLite json1 module"
+            ),
+        ),
+        (
+            DateFacet,
+            ("_facet_date", "created"),
+            "select '2019-01-14 08:00:00' as created",
+            ("created__date", "2019-01-14"),
+        ),
+    ],
+)
+@pytest.mark.parametrize("selected", [False, True])
+async def test_facet_value_toggle_url_drops_next(
+    ds_client, facet_class, facet_arg, sql, value_arg, selected
+):
+    # Repeated arguments must survive removing _next
+    preserved_args = [("_extra", "count"), ("_extra", "facet_results")]
+    request_path = f"/?{facet_arg[0]}={facet_arg[1]}"
+    if selected:
+        request_path += f"&{value_arg[0]}={value_arg[1]}"
+    request_path += "&_next=d,v&_extra=count&_extra=facet_results"
+
+    facet = facet_class(
+        ds_client.ds,
+        Request.fake(request_path),
+        database="fixtures",
+        sql=sql,
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert not timed_out
+    result = buckets[0]["results"][0]
+    assert result["selected"] is selected
+    assert parse_qsl(urlsplit(result["toggle_url"]).query) == [
+        facet_arg,
+        *preserved_args,
+        *([] if selected else [value_arg]),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_selected_metadata_facet_value_link_removes_only_argument(ds_client):
+    # Facets strip _next before removing the selected value. In the other order,
+    # removing pk1=d leaves "/" and the _next step falls back to the request's ?pk1=d
+    facet = ColumnFacet(
+        ds_client.ds,
+        Request.fake("/?pk1=d"),
+        database="fixtures",
+        sql="select 'd' as pk1",
+        table_config={"facets": ["pk1"]},
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert not timed_out
+
+    result = buckets[0]["results"][0]
+    assert result["selected"] is True
+    assert result["toggle_url"] == "http://localhost/"
+
+
 @pytest.mark.asyncio
 async def test_column_facet_suggest(ds_client):
     facet = ColumnFacet(

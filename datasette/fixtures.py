@@ -335,6 +335,10 @@ CREATE VIEW searchable_view AS
 CREATE VIEW searchable_view_configured_by_metadata AS
     SELECT * from searchable;
 
+-- A view with a BLOB column and no rowid, see #2601
+CREATE VIEW binary_data_view AS
+    SELECT data FROM binary_data;
+
 """
     + "\n".join(
         [

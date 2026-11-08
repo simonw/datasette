@@ -13,6 +13,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
+    request_route_path,
     to_css_class,
 )
 
@@ -188,7 +189,7 @@ class FacetInstancesProvider(Provider):
                     context.request,
                     context.database_name,
                     sql=context.sql_no_order_no_limit,
-                    params=context.params,
+                    params=context.from_sql_params,
                     table=context.table_name,
                     table_config=context.table_metadata,
                     row_count=count,
@@ -1256,9 +1257,17 @@ class ExtrasExtra(Extra):
                 "toggle_url": context.datasette.absolute_url(
                     context.request,
                     context.datasette.urls.path(
-                        path_with_added_args(context.request, {"_extra": name})
+                        path_with_added_args(
+                            context.request,
+                            {"_extra": name},
+                            path=request_route_path(context.request),
+                        )
                         if name not in context.extras
-                        else path_with_removed_args(context.request, {"_extra": name})
+                        else path_with_removed_args(
+                            context.request,
+                            {"_extra": name},
+                            path=request_route_path(context.request),
+                        )
                     ),
                 ),
                 "selected": name in context.extras,

@@ -4,6 +4,7 @@ import json
 import math
 import random
 import sqlite3
+import threading
 import time
 import uuid
 from unittest import mock
@@ -2345,6 +2346,77 @@ async def test_cancel_again_while_cleaning_up(slow_writes):
     await asyncio.wait_for(status.wait(), 10)
     assert status.done and status.created
     assert await _temp_tables(db) == []
+
+
+class _HeldFirstWrite:
+    "A Database whose first write waits on the write thread until released."
+
+    def __init__(self, db):
+        self.db = db
+        self.release = threading.Event()
+        self.writing = threading.Event()
+        self._first = True
+
+    def __getattr__(self, name):
+        return getattr(self.db, name)
+
+    async def execute_write_fn(self, fn, *args, **kwargs):
+        if self._first:
+            self._first = False
+
+            def held(conn):
+                self.writing.set()
+                self.release.wait(10)
+                return fn(conn)
+
+            return await self.db.execute_write_fn(held, *args, **kwargs)
+        return await self.db.execute_write_fn(fn, *args, **kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ("keep", "drop"))
+async def test_wait_settled_after_cancelling_again(on_error):
+    # Cancelled twice while the write that creates the table runs: the
+    # second cancellation cuts the clean up short, so the call raises before
+    # that write has committed and the status cannot say yet that the table
+    # is this call's. wait_settled() waits until it can
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    held = _HeldFirstWrite(db)
+    status = inserter_module.ImportStatus()
+    rows = [{"n": i} for i in range(1000)]
+    task = asyncio.ensure_future(
+        import_rows(
+            held,
+            "t",
+            rows,
+            sample_size=50,
+            batch_size=50,
+            on_error=on_error,
+            status=status,
+        )
+    )
+    try:
+        assert await asyncio.get_running_loop().run_in_executor(
+            None, held.writing.wait, 5
+        )
+        task.cancel()
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert (status.created, status.dropped, status.rows) == (False, False, 0)
+        assert not await status.wait_settled(timeout=0.1)
+    finally:
+        held.release.set()
+    assert await status.wait_settled(timeout=5)
+    assert status.created and status.rows == 50
+    if on_error == "keep":
+        assert status.table_exists
+        assert (await db.execute("select count(*) from t")).first()[0] == 50
+    else:
+        assert status.dropped and not await db.table_exists("t")
+    await asyncio.wait_for(status.wait(), 10)
 
 
 @pytest.mark.asyncio

@@ -1764,11 +1764,37 @@ class ImportStatus:
     _done_event: object = dataclasses.field(
         default=None, init=False, repr=False, compare=False
     )
+    # A future that import_rows() sets once the clean up of a failed or
+    # cancelled call has made created, dropped and rows final: wait_settled()
+    _settling: object = dataclasses.field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def table_exists(self):
         "Whether the table this call created is there."
         return self.created and not self.dropped
+
+    async def wait_settled(self, timeout: float | None = None) -> bool:
+        """
+        Wait until :attr:`created`, :attr:`dropped` and :attr:`rows` are
+        final. They are by the time :func:`import_rows` returns or raises,
+        except after a call that was cancelled again while it cleaned up:
+        that clean up carries on in the background, and a write of the
+        call's that was still running when it raised may yet commit (and,
+        with ``on_error="drop"``, the table be dropped). This never waits
+        for stored numbers to be converted to text, which can take seconds
+        after a cancellation: :meth:`wait` does. False if ``timeout`` ran
+        out first.
+        """
+        settling = self._settling
+        if settling is None or settling.done():
+            return True
+        try:
+            await asyncio.wait_for(asyncio.shield(settling), timeout)
+        except TimeoutError:
+            return False
+        return True
 
     async def wait(self):
         """
@@ -1996,7 +2022,10 @@ async def import_rows(
     ``on_error="drop"`` the table is dropped if this call created it. The
     clean up is shielded from cancellation. Then the exception is raised
     again. Pass an :class:`ImportStatus` as ``status`` to find out what
-    happened, in particular whether this call created the table.
+    happened, in particular whether this call created the table. If the
+    call is cancelled again while it cleans up, it raises at once and the
+    clean up carries on: :meth:`ImportStatus.wait_settled` waits until the
+    status says what it did.
 
     A cancelled call raises as soon as the write in progress (if any) is
     done and, with ``on_error="drop"``, the table dropped: a cancellation
@@ -2151,13 +2180,20 @@ async def import_rows(
             update_status()
             status._set_done()
 
-    async def clean_up(cancelled, caller):
+    async def clean_up(cancelled, caller, settled):
         """
         Returns once the caller can be told: after a cancellation that
         leaves stored numbers to convert, the rest carries on in the
         background (its task is returned) - a cancelled call must not wait
         seconds for that, nor keep a worker that feeds it alive meanwhile.
+        ``settled`` is set once created, dropped and rows are final: before
+        that conversion, or finishing the table.
         """
+
+        def mark_settled():
+            if not settled.done():
+                settled.set_result(None)
+
         handed_off = None
         try:
             await settle()
@@ -2167,7 +2203,10 @@ async def import_rows(
                 if on_error == "drop" and inserter.created:
                     await db.execute_write_fn(lambda conn: _drop_table(conn, inserter))
                     status.dropped = True
-                elif inserter.created:
+            # settle() has recorded the write that was running, if any
+            mark_settled()
+            with contextlib.suppress(Exception):
+                if on_error == "keep" and inserter.created:
                     if cancelled and inserter.backlog:
                         handed_off = asyncio.ensure_future(
                             complete_in_background(caller)
@@ -2180,6 +2219,7 @@ async def import_rows(
                 with contextlib.suppress(Exception):
                     await db.execute_write_fn(inserter.discard)
         finally:
+            mark_settled()
             if handed_off is None:
                 update_status()
                 status._set_done()
@@ -2213,8 +2253,14 @@ async def import_rows(
             # No more rows are wanted, and an async source (a worker) may
             # take a while to send them
             pending.cancel()
+        settled = asyncio.get_running_loop().create_future()
+        status._settling = settled
         cleaning = asyncio.ensure_future(
-            clean_up(isinstance(ex, asyncio.CancelledError), asyncio.current_task())
+            clean_up(
+                isinstance(ex, asyncio.CancelledError),
+                asyncio.current_task(),
+                settled,
+            )
         )
         try:
             await asyncio.shield(cleaning)

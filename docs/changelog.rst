@@ -9,7 +9,7 @@ Changelog
 Unreleased
 ----------
 
-Redesigned table, row and query pages, a new "Export data" dialog with TSV support, a column statistics feature, and Python 3.11 is now the minimum supported version.
+A redesigned homepage, redesigned table, row and query pages, a new "Export data" dialog with TSV support, a column statistics feature, and Python 3.11 is now the minimum supported version.
 
 Python 3.11 or higher
 ~~~~~~~~~~~~~~~~~~~~~
@@ -37,6 +37,7 @@ Table page redesign
 - Values taller than three lines are clamped to a preview with an "expand" button. Column headers offer an "expand all" toggle.
 - A pin in the primary key column header freezes the header row and primary key columns while scrolling. On query pages it freezes just the header row. The choice is remembered.
 - Tables that span more than one page now show a pagination bar, for example "Rows 101-150 of 1,761", with "Back to first page" and "Next page" buttons. This uses a new ``?_count=before`` option for the :ref:`count endpoint <TableCountView>`, which counts the rows before a ``?_next=`` cursor. (:pr:`3043`)
+- The row count is now shown in the table page heading, and the pagination bar sits directly above the table. (:pr:`3048`)
 - The ``CREATE TABLE`` or ``CREATE VIEW`` statement is now collapsed into a "Table schema" or "View definition" disclosure at the bottom of the page.
 - Facet values now show a faint bar indicating their share of the rows. Suggested facets and facet results have been restyled.
 - New **Clear filters** button next to "Apply filters", shown when column filters are applied.
@@ -47,6 +48,17 @@ Row page redesign
 - The row page now shows the row as a list with one field per line, each with a button to copy its value, in place of a single-row table. Long values are clamped with a toggle to show them in full, and the tables that reference the row are listed below it. (:pr:`3052`)
 - **Backwards incompatible:** the row page now includes a new ``_row_fields.html`` template instead of ``_table.html``. A custom ``_table.html`` template that applies to every table no longer changes the row page - provide a ``_row_fields.html`` template instead. Templates for a specific table, ``_table-mydatabase-mytable.html`` and ``_table-row-mydatabase-mytable.html``, still apply to the row page. See :ref:`customization_custom_templates`.
 - The row page no longer contains a ``table.rows-and-columns`` element, so plugin JavaScript that looks for that table on row pages will not find it. The ``.above-table-panel`` element plugins can attach to is still present.
+
+Homepage redesign
+~~~~~~~~~~~~~~~~~
+
+- The :ref:`homepage <IndexView>` now shows one searchable catalog of tables, views and stored queries across every database, instead of grouping them by database. (:pr:`3049`)
+- A search box, focused when the page loads, matches table and view names, column names, table descriptions and the names, titles, descriptions and SQL of stored queries. Results update as you type and can be navigated with the arrow keys and Enter.
+- Tables, views, queries and databases you visit are recorded in the browser's ``localStorage``, separately for each signed-in actor, and shown in a **Recently visited** section. The "Recent" list in the Jump to menu now uses the same history.
+- Database filter buttons (``?database=``) are shown when more than one database is attached. The table list is built from the internal ``catalog_*`` tables so it stays fast with thousands of tables, and is paginated 30 at a time.
+- New :ref:`makeHomepageSections() <javascript_plugins_makeHomepageSections>` JavaScript plugin hook for adding sections to the homepage. Items added to Jump to using the :ref:`plugin_hook_jump_items_sql` plugin hook are included in search results.
+- The :ref:`stored query browser <pages_stored_query_browser>` at ``/-/queries`` has been redesigned to match the new homepage.
+- **Backwards incompatible:** the ``index.html`` template context has changed and is now documented in :ref:`template_context`. Custom ``index.html`` templates that used keys such as ``tables_and_views_truncated`` or ``table_rows_sum`` will need to be updated. The ``/.json`` output is unchanged.
 
 Other changes
 ~~~~~~~~~~~~~
@@ -65,6 +77,13 @@ Bug fixes
 - The ``about`` and ``about_url`` metadata are now displayed even if no ``source`` or ``license`` is set. (:issue:`512`, :pr:`2985`)
 - The query page heading now says "returning more than N rows" when results are truncated.
 - A stored query that references a missing ``:_actor_X`` key now raises a ``KeyError`` naming that key.
+- Facet counts on the second and later pages of a table now count every matching row, and facet links no longer keep the ``?_next=`` pagination cursor. Thanks, `b6tang <https://github.com/b6tang>`__. (:issue:`3021`, :pr:`3026`)
+- The ``?_json=`` option now decodes JSON columns on table pages, no longer replaces row values when combined with ``?_extra=columns``, and works with ``?_shape=arrays`` and ``?_shape=arrayfirst``. Thanks, `IlyaKhalafi <https://github.com/IlyaKhalafi>`__. (:issue:`3003`, :pr:`3005`)
+- Views with a BLOB column no longer return a 500 error, and CSV exports of those views now include a link to download each value. (:issue:`2601`)
+- Fixed a bug where Datasette running with :ref:`setting_base_url` produced links and redirects that repeated the prefix, such as ``/prefix/prefix/``, when the prefix was included in the request path. This affected filter and sort redirects, column sort links, next page links, facet links and the query page. (:issue:`2347`, :issue:`1633`)
+- Sorting a table that has no primary key by a column hidden using ``?_nocol=`` or ``?_col=`` no longer returns a 500 error when the results span more than one page. Thanks, `feiiiiii5 <https://github.com/feiiiiii5>`__. (:issue:`2974`, :pr:`2975`)
+- Full-text search now works for FTS tables that declare their content table unquoted or with single quotes or backticks, for example ``content=documents``. Previously these tables showed no search box and ``?_search=`` was ignored. Thanks, `b84330808 <https://github.com/b84330808>`__. (:issue:`1991`, :pr:`3011`)
+- ``datasette.plugin_config(plugin_name, database=...)`` now falls back to the top-level plugin configuration for a database that has no configuration of its own for that plugin. Thanks, `pujitha24 <https://github.com/pujitha24>`__. (:issue:`2959`, :pr:`3041`)
 
 .. _v1_0_a41:
 

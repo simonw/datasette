@@ -1,6 +1,7 @@
 import json
 import re
 from html import unescape
+from urllib.parse import urlsplit
 
 import pytest
 import sqlite_utils
@@ -3947,11 +3948,28 @@ async def test_query_list_fragment_and_pagination():
     assert len(soup.select("li.query-row")) == 20
     nav = soup.select_one("nav.page-position-footer")
     assert " ".join(nav.select_one(".page-position-text").text.split()) == (
-        "Showing 20 of 25"
+        "Showing 1–20 of 25"
     )
     next_href = nav.select_one("a.page-position-next")["href"]
     assert "q=Demo" in next_href
     assert "_next=" in next_href
+    assert "_start=20" in next_href
+
+    # The second page knows where it is, and is the last page
+    path = urlsplit(next_href)
+    response = await ds.client.get(path.path + "?" + path.query, actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    assert len(soup.select("li.query-row")) == 5
+    nav = soup.select_one("nav.page-position-footer")
+    assert " ".join(nav.select_one(".page-position-text").text.split()) == (
+        "Showing 21–25 of 25"
+    )
+    assert nav.select_one("a.page-position-next") is None
+    # The JSON API's own next link is unchanged
+    data = (
+        await ds.client.get("/data/-/queries.json?_size=20", actor={"id": "root"})
+    ).json()
+    assert "_start" not in data["next_url"]
 
     # The live search fetches just the summary and results
     response = await ds.client.get(

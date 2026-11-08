@@ -69,7 +69,7 @@ class QueryParametersView(BaseView):
 def _query_list_url(path, query_string, *, set_args=None, remove_args=None):
     set_args = set_args or {}
     remove_args = set(remove_args or ())
-    skip = set(set_args) | remove_args | {"_next", "_fragment"}
+    skip = set(set_args) | remove_args | {"_next", "_fragment", "_start"}
     pairs = [
         (key, value)
         for key, value in parse_qsl(query_string, keep_blank_values=True)
@@ -117,6 +117,14 @@ class QueryListView(BaseView):
             include_private=True,
         )
         query_list_path = self.query_list_path(database)
+        # The cursor does not say how far into the list it is, so HTML pages
+        # carry the position in ?_start= for the "Showing 21-40 of 87" footer
+        try:
+            start = max(int(request.args.get("_start") or 0), 0)
+        except ValueError:
+            start = 0
+        if not request.args.get("_next"):
+            start = 0
         next_url = None
         if page.next:
             pairs = [
@@ -124,9 +132,11 @@ class QueryListView(BaseView):
                 for key, value in parse_qsl(
                     request.query_string, keep_blank_values=True
                 )
-                if key not in ("_next", "_fragment")
+                if key not in ("_next", "_fragment", "_start")
             ]
             pairs.append(("_next", page.next))
+            if format_ == "html":
+                pairs.append(("_start", str(start + len(page.queries))))
             next_url = self.ds.absolute_url(
                 request,
                 f"{request.path}?{urlencode(pairs)}",
@@ -270,6 +280,7 @@ class QueryListView(BaseView):
         data.update(
             {
                 "total": total,
+                "start": start,
                 "database_chips": database_chips,
                 "all_queries_href": all_queries_href,
                 "actor_id": actor_id,

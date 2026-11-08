@@ -56,6 +56,7 @@
       // A new search starts again from the first page
       params.delete("page");
       params.delete("_next");
+      params.delete("_start");
       const qs = params.toString();
       return form.action + (qs ? "?" + qs : "");
     };

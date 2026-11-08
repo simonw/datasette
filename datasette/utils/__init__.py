@@ -518,6 +518,17 @@ def append_querystring(url, querystring):
     return f"{url}{op}{querystring}"
 
 
+def request_route_path(request):
+    """
+    The request path with any ``base_url`` prefix removed by the router.
+
+    Pass this as ``path=`` to ``path_with_added_args()`` and friends when
+    the result will go through ``datasette.urls.path()``, so ``base_url`` is
+    applied exactly once whether or not a proxy stripped it from the request.
+    """
+    return request.scope.get("route_path") or request.path
+
+
 def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):

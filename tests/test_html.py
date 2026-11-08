@@ -1192,7 +1192,14 @@ def test_debug_context_includes_extra_template_vars():
         "/fixtures/paginated_view",
         "/fixtures/facetable",
         "/fixtures/facetable?_facet=state",
+        # https://github.com/simonw/datasette/issues/2347
+        "/fixtures/facetable?_facet=state&state=CA",
+        "/fixtures/facetable?_facet_date=created&_facet_array=tags",
+        "/fixtures/facetable?_where=pk>1&_size=2",
+        "/fixtures/facetable?_sort=state&_size=2",
+        "/fixtures/facetable?_facet=state&_facet_size=1",
         "/fixtures/-/query?sql=select+1",
+        "/fixtures/-/query?sql=select+1&_hide_sql=1",
         "/-/api",
         "/-/patterns",
         "/-/patterns/menus",
@@ -1219,7 +1226,9 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
                 default=repr,
             )
             continue
-        assert action.startswith("/prefix"), json.dumps(
+        assert action.startswith("/prefix") and not action.startswith(
+            "/prefix/prefix/"
+        ), json.dumps(
             {
                 "path": path,
                 "path_to_get": path_to_get,
@@ -1253,7 +1262,9 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
                 href = href[len("http://localhost") :]
             elif href.startswith(("http://", "https://")):
                 continue
-            assert href.startswith("/prefix/"), json.dumps(
+            assert href.startswith("/prefix/") and not href.startswith(
+                "/prefix/prefix/"
+            ), json.dumps(
                 {
                     "path": path,
                     "path_to_get": path_to_get,
@@ -1276,14 +1287,47 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
         )
 
 
-def test_base_url_affects_filter_redirects(app_client_base_url_prefix):
-    path = "/fixtures/binary_data?_filter_column=rowid&_filter_op=exact&_filter_value=1&_sort=rowid"
-    response = app_client_base_url_prefix.get(path)
+@pytest.mark.parametrize("prefix", ("", "/prefix"))
+@pytest.mark.parametrize(
+    "path,expected_location",
+    (
+        (
+            "/fixtures/binary_data?_filter_column=rowid&_filter_op=exact&_filter_value=1&_sort=rowid",
+            "/prefix/fixtures/binary_data?_sort=rowid&rowid__exact=1",
+        ),
+        (
+            "/fixtures/binary_data?_sort=rowid&_sort_by_desc=1",
+            "/prefix/fixtures/binary_data?_sort_desc=rowid",
+        ),
+    ),
+)
+def test_base_url_affects_filter_redirects(
+    app_client_base_url_prefix, prefix, path, expected_location
+):
+    # Works whether or not a proxy strips the prefix, see #2347 and #1633
+    response = app_client_base_url_prefix.get(prefix + path)
     assert response.status_code == 302
-    assert (
-        response.headers["location"]
-        == "/prefix/fixtures/binary_data?_sort=rowid&rowid__exact=1"
-    )
+    assert response.headers["location"] == expected_location
+
+
+@pytest.mark.parametrize("prefix", ("", "/prefix"))
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/facetable.json?_size=2&_facet=state&_extra=facet_results,suggested_facets,extras",
+        "/fixtures/facetable.json?_size=2&_facet=state&state=CA&_facet_date=created&_extra=facet_results",
+        "/fixtures/facetable.json?_size=2&_sort=state",
+        "/fixtures/paginated_view.json?_size=2",
+    ),
+)
+def test_base_url_json_urls_not_double_prefixed(
+    app_client_base_url_prefix, prefix, path
+):
+    # https://github.com/simonw/datasette/issues/2347
+    response = app_client_base_url_prefix.get(prefix + path)
+    assert response.status_code == 200
+    assert "/prefix/prefix/" not in response.text
+    assert response.json["next_url"].startswith("http://localhost/prefix/fixtures/")
 
 
 def test_base_url_affects_database_sql_redirect(app_client_base_url_prefix):

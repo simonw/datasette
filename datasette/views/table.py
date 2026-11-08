@@ -45,6 +45,7 @@ from datasette.utils import (
     path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
+    request_route_path,
     sqlite3,
     tilde_encode,
     to_css_class,
@@ -421,7 +422,11 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(path_with_added_args(request, redirect_params)),
+            datasette.urls.path(
+                path_with_added_args(
+                    request, redirect_params, path=request_route_path(request)
+                )
+            ),
             forward_querystring=False,
         )
 
@@ -438,6 +443,7 @@ async def _redirect_if_needed(datasette, request, resolved):
                         "_sort_by_desc": None,
                         "_sort": None,
                     },
+                    path=request_route_path(request),
                 )
             ),
             forward_querystring=False,
@@ -2882,6 +2888,11 @@ async def _next_value_and_url(
         else:
             added_args = {"_next": next_value}
         next_url = datasette.absolute_url(
-            request, datasette.urls.path(path_with_replaced_args(request, added_args))
+            request,
+            datasette.urls.path(
+                path_with_replaced_args(
+                    request, added_args, path=request_route_path(request)
+                )
+            ),
         )
     return next_value, next_url

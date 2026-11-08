@@ -39,17 +39,6 @@ def search_pattern(q):
     return "%" + "%".join(terms) + "%" if terms else "%"
 
 
-async def _hidden_pairs(datasette, database_names):
-    pairs = []
-    for name in database_names:
-        db = datasette.databases.get(name)
-        if db is None:
-            continue
-        for table in await db.hidden_table_names():
-            pairs.append([name, table])
-    return json.dumps(pairs)
-
-
 async def _count_rows(datasette, items):
     """Count rows for the given items, within a per-table and total time budget.
 
@@ -109,7 +98,6 @@ async def build_catalog(
     params = dict(table_params)
     params.update(
         {
-            "hidden": await _hidden_pairs(datasette, database_names),
             "allowed_dbs": json.dumps(database_names),
             "q": q,
             "pattern": pattern,
@@ -120,10 +108,6 @@ async def build_catalog(
     items_cte = f"""
     WITH allowed AS (
         {table_sql}
-    ),
-    hidden AS (
-        SELECT json_extract(value, '$[0]') AS database_name, json_extract(value, '$[1]') AS table_name
-        FROM json_each(:hidden)
     ),
     items AS (
         SELECT
@@ -141,12 +125,12 @@ async def build_catalog(
         LEFT JOIN catalog_views
             ON catalog_views.database_name = allowed.parent
            AND catalog_views.view_name = allowed.child
+        LEFT JOIN catalog_tables
+            ON catalog_tables.database_name = allowed.parent
+           AND catalog_tables.table_name = allowed.child
         WHERE allowed.parent IN (SELECT value FROM json_each(:allowed_dbs))
-          AND NOT EXISTS (
-            SELECT 1 FROM hidden
-            WHERE hidden.database_name = allowed.parent
-              AND hidden.table_name = allowed.child
-          )
+          -- FTS shadow tables, SpatiaLite internals and tables hidden in config
+          AND COALESCE(catalog_tables.hidden, 0) = 0
     ),
     matching AS (
         SELECT * FROM items

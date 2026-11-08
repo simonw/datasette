@@ -33,6 +33,8 @@
 {{ crumbs.nav(request=request, database=database, table=table) }}
 {% endblock %}
 
+{% block recent_item %}{% with recent_type=("view" if is_view else "table"), recent_name=table, recent_title=metadata.get("title"), recent_url=urls.table(database, table) %}{% include "_recent_item.html" %}{% endwith %}{% endblock %}
+
 {% block content %}
 <div class="page-header" style="border-color: #{{ database_color }}">
     <h1>{{ metadata.get("title") or table }}{% if is_view %} (view){% endif %}{% if private %} 🔒{% endif %}</h1>

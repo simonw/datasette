@@ -6,7 +6,8 @@ the documentation lives next to the code it describes:
 
 - Every page renders a Context dataclass defined in its view module
   (DatabaseContext, QueryContext in views/database.py, TableContext in
-  views/table.py, RowContext in views/row.py). Fields added by view code
+  views/table.py, RowContext in views/row.py, IndexContext in
+  views/index.py). Fields added by view code
   carry ``help`` metadata; fields declared with from_extra() take their
   documentation from the description on the matching Extra class in
   views/table_extras.py.
@@ -22,10 +23,12 @@ same classes.
 
 from datasette.app import TEMPLATE_BASE_CONTEXT
 from datasette.views.database import DatabaseContext, QueryContext
+from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
 from datasette.views.table import TableContext
 
 PAGES = {
+    "index": IndexContext,
     "database": DatabaseContext,
     "query": QueryContext,
     "table": TableContext,

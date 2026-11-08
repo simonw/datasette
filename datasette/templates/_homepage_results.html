@@ -1,0 +1,118 @@
+{% set multiple_databases = databases|length > 1 %}
+{% if multiple_databases %}
+<nav class="homepage-databases" aria-labelledby="homepage-databases-label">
+    <span class="homepage-databases-label" id="homepage-databases-label">Databases</span>
+    <a href="{{ database_url(None) }}" class="homepage-database{% if not database_filter %} selected{% endif %}"{% if not database_filter %} aria-current="true"{% endif %}>All <span class="homepage-database-count">{{ "{:,}".format(catalog.totals.tables + catalog.totals.views) }}</span></a>
+    {% for database in databases %}
+    <a href="{{ database_url(database.name) }}" class="homepage-database{% if database_filter == database.name %} selected{% endif %}{% if q and not (database.tables + database.views) %} empty{% endif %}" style="--db-color: #{{ database.color }}"{% if database_filter == database.name %} aria-current="true"{% endif %}{% if database.size %} title="{{ database.size|filesizeformat }}"{% endif %}>
+        <span class="db-swatch" aria-hidden="true"></span>{{ database.name }}{% if database.private %} 🔒{% endif %}
+        <span class="homepage-database-count">{{ "{:,}".format(database.tables + database.views) }}</span>
+    </a>
+    {% endfor %}
+    {% if database_filter %}<a class="homepage-database-open" href="{{ urls.database(database_filter) }}">Open {{ database_filter }} →</a>{% endif %}
+</nav>
+{% endif %}
+
+{% set queries_section %}
+{% if queries %}
+{% set all_queries_url = (urls.database(database_filter) ~ "/-/queries") if database_filter else urls.path("/-/queries") %}
+<section class="homepage-queries" aria-labelledby="homepage-queries-heading">
+    <div class="homepage-section-header">
+        <h2 id="homepage-queries-heading">{% if q %}Matching queries{% else %}Queries{% endif %}</h2>
+        <a class="homepage-section-link" href="{{ all_queries_url }}{% if q %}?{{ {"q": q}|urlencode }}{% endif %}">{% if q %}All {{ "{:,}".format(catalog.queries_total) }} matching{% else %}All {{ "{:,}".format(catalog.queries_total) }} quer{% if catalog.queries_total != 1 %}ies{% else %}y{% endif %}{% endif %} →</a>
+    </div>
+    <ul class="query-list">
+    {% for query in queries %}
+        <li class="query-row">
+            <a class="query-row-name" href="{{ query.url }}">{{ query.title or query.name }}</a>
+            {%- if query.private %} 🔒{% endif %}
+            {% if query.mine %}<span class="type-tag type-tag-mine">yours</span>{% endif %}
+            {% if query.is_write %}<span class="type-tag type-tag-write">writes</span>{% endif %}
+            {% if multiple_databases and not database_filter %}<span class="db-tag" style="--db-color: #{{ query.color }}">{{ query.database }}</span>{% endif %}
+            <span class="query-row-detail">
+                {%- if query.description %}{{ query.description }}{% else %}<code>{{ query.sql|truncate(120) }}</code>{% endif -%}
+                {%- if query.parameters %} · inputs: {% for p in query.parameters %}<code>{{ p.name if p is mapping else p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif -%}
+            </span>
+        </li>
+    {% endfor %}
+    </ul>
+</section>
+{% endif %}
+{% endset %}
+{% if not q %}{{ queries_section }}{% endif %}
+
+<section class="homepage-tables" id="tables" aria-labelledby="homepage-tables-heading">
+    <h2 id="homepage-tables-heading">
+        {% if q %}{{ "{:,}".format(catalog.total) }} matching table{% if catalog.total != 1 %}s{% endif %} and views
+        {% else %}Tables{% if catalog.totals.views %} and views{% endif %}{% endif %}
+    </h2>
+    {% if items %}
+    <ul class="catalog-list">
+    {% for item in items %}
+        <li class="catalog-item catalog-item-{{ item.type }}">
+            <div class="catalog-item-heading">
+                <a class="catalog-item-name" href="{{ item.url }}">{{ item.title or item.name }}</a>
+                {%- if item.private %} 🔒{% endif %}
+                {% if item.type == "view" %}<span class="type-tag type-tag-view" title="A SQL view">view</span>{% endif %}
+                {% if multiple_databases and not database_filter %}<span class="db-tag" style="--db-color: #{{ item.color }}">{{ item.database }}</span>{% endif %}
+                {% if item.linked_tables %}<span class="catalog-item-links" title="Linked by foreign keys to: {{ item.linked_tables|join(', ') }}">links to {{ item.linked_tables|length }} table{% if item.linked_tables|length != 1 %}s{% endif %}</span>{% endif %}
+            </div>
+            {% if item.description %}<p class="catalog-item-description">{{ item.description }}</p>{% endif %}
+            <p class="catalog-item-columns">
+                {%- for column in item.columns %}{% if column in item.matched_columns %}<mark class="catalog-column catalog-column-match">{{ column }}</mark>{% else %}<span class="catalog-column">{{ column }}</span>{% endif %}{% endfor -%}
+                {%- if item.column_count > item.columns|length %}<span class="catalog-column-more">+{{ item.column_count - item.columns|length }} more</span>{% endif -%}
+            </p>
+            {% if item.count is not none or item.has_fts or (item.title and item.title != item.name) %}
+            <p class="catalog-item-meta">
+                {%- if item.title and item.title != item.name %}<span><code>{{ item.name }}</code></span>{% endif -%}
+                {%- if item.count is not none %}<span>{{ "{:,}".format(item.count) }}{% if item.count_truncated %}+{% endif %} row{% if item.count != 1 %}s{% endif %}</span>{% endif -%}
+                {%- if item.has_fts %}<span>full-text search</span>{% endif -%}
+            </p>
+            {% endif %}
+        </li>
+    {% endfor %}
+    </ul>
+    {% elif q %}
+    <p class="homepage-empty">No tables or views match “{{ q }}”. <a href="{{ urls.instance() }}{% if database_filter %}?database={{ database_filter|urlencode }}{% endif %}">Clear search</a></p>
+    {% else %}
+    <p class="homepage-empty">No tables yet.</p>
+    {% endif %}
+
+    {% if page_count > 1 %}
+    <nav class="page-position page-position-footer" aria-label="Pagination">
+        <span class="page-position-text">Page <strong>{{ page }}</strong> of <strong>{{ page_count }}</strong></span>
+        <span class="page-position-links">
+            {% if previous_url %}
+            <a class="page-position-first" href="{{ previous_url }}#tables" rel="prev">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Previous
+            </a>
+            {% endif %}
+            {% if next_url %}
+            <a class="page-position-next" href="{{ next_url }}#tables" rel="next">
+                Next
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+            {% endif %}
+        </span>
+    </nav>
+    {% endif %}
+</section>
+
+{# While searching, matching queries come after the matching tables #}
+{% if q %}{{ queries_section }}{% endif %}
+
+{% if other_results %}
+<section class="homepage-other" aria-labelledby="homepage-other-heading">
+    <h2 id="homepage-other-heading">Other matches</h2>
+    <ul class="query-list">
+    {% for result in other_results %}
+        <li class="query-row">
+            <a class="query-row-name other-result-name" href="{{ result.url }}">{{ result.display_name or result.name }}</a>
+            <span class="type-tag type-tag-other">{{ result.type }}</span>
+            {% if result.description %}<span class="query-row-detail">{{ result.description }}</span>{% endif %}
+        </li>
+    {% endfor %}
+    </ul>
+</section>
+{% endif %}

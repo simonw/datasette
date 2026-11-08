@@ -29,6 +29,8 @@
 {{ crumbs.nav(request=request, database=database) }}
 {% endblock %}
 
+{% block recent_item %}{% if stored_query %}{% with recent_type="query", recent_name=stored_query, recent_title=metadata.title, recent_url=urls.query(database, stored_query) %}{% include "_recent_item.html" %}{% endwith %}{% endif %}{% endblock %}
+
 {% block content %}
 
 {% if stored_query_write and db_is_immutable %}

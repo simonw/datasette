@@ -1879,6 +1879,8 @@ jump_items_sql(datasette, actor, request)
 
 This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
 
+Items with a ``type`` other than ``database``, ``table``, ``view`` or ``query`` are also included in the results when someone searches on the :ref:`homepage <IndexView>`, under "Other matches".
+
 Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and stored query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
 
 ``JumpSQL`` queries run against Datasette's internal database by default. To run a query against another database, pass its name as the optional ``database=`` argument. For example, ``JumpSQL(database="content", sql="...")`` runs against the ``content`` database.

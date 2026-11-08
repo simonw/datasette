@@ -160,6 +160,8 @@ async def get_template_context(ds, path):
 @pytest.mark.parametrize(
     "page_name,path",
     (
+        ("index", "/"),
+        ("index", "/?q=facet"),
         ("database", "/fixtures"),
         ("table", "/fixtures/facetable"),
         ("table", "/fixtures/facetable?_city_id__exact=1"),

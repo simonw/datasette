@@ -9,27 +9,42 @@
 {% block body_class %}index{% endblock %}
 
 {% block content %}
-<h1>{{ metadata.title or "Datasette" }}{% if private %} 🔒{% endif %}</h1>
-
-{% set action_links, action_title = homepage_actions, "Homepage actions" %}
-{% include "_action_menu.html" %}
+{% set multiple_databases = databases|length > 1 %}
+<div class="homepage{% if q %} homepage-searching{% endif %}" data-homepage>
+<header class="homepage-header">
+    <h1>{{ metadata.title or "Datasette" }}{% if private %} 🔒{% endif %}</h1>
+    {% set action_links, action_title = homepage_actions, "Homepage actions" %}
+    {% include "_action_menu.html" %}
+</header>
 
 {{ top_homepage() }}
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-{% for database in databases %}
-    <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.color }}"><a href="{{ urls.database(database.name) }}">{{ database.name }}</a>{% if database.private %} 🔒{% endif %}</h2>
-    <p>
-        {% if database.show_table_row_counts %}{{ "{:,}".format(database.table_rows_sum) }} rows in {% endif %}{{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.hidden_tables_count %}, {% endif -%}
-        {% if database.hidden_tables_count -%}
-            {% if database.show_table_row_counts %}{{ "{:,}".format(database.hidden_table_rows_sum) }} rows in {% endif %}{{ database.hidden_tables_count }} hidden table{% if database.hidden_tables_count != 1 %}s{% endif -%}
-        {% endif -%}
-        {% if database.views_count -%}
-            , {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
-        {% endif %}
-    </p>
-    <p>{% for table in database.tables_and_views_truncated %}<a href="{{ urls.table(database.name, table.name) }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ urls.database(database.name) }}">...</a>{% endif %}</p>
-{% endfor %}
+{% include "_homepage_summary.html" %}
 
+<form class="homepage-search" action="{{ urls.instance() }}" method="get" role="search" data-homepage-search>
+    <label for="homepage-search-input" class="visually-hidden">Search tables, views, queries and columns</label>
+    <svg class="homepage-search-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <input id="homepage-search-input" type="search" name="q" value="{{ q }}" placeholder="Search tables, views, queries and columns" autocomplete="off">
+    {% if database_filter %}<input type="hidden" name="database" value="{{ database_filter }}">{% endif %}
+    <button type="submit" class="homepage-search-button">Search</button>
+</form>
+
+<div class="homepage-sections" data-homepage-sections></div>
+
+<section class="homepage-recent" aria-labelledby="homepage-recent-heading" data-homepage-recent hidden>
+    <div class="homepage-recent-header">
+        <h2 id="homepage-recent-heading">Recently visited</h2>
+        <button type="button" class="button-as-link homepage-recent-clear" data-homepage-recent-clear>Clear</button>
+    </div>
+    <ul class="recent-list" data-homepage-recent-list></ul>
+</section>
+
+<div class="homepage-results" data-homepage-results aria-live="polite">
+{% include "_homepage_results.html" %}
+</div>
+</div>
+
+<script src="{{ static('homepage.js') }}" defer></script>
 {% endblock %}

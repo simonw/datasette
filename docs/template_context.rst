@@ -71,6 +71,71 @@ These variables are available on every page rendered by Datasette, including pag
 ``datasette_version``
     The version of Datasette that is running
 
+Index page
+----------
+
+The homepage, listing the tables, views and queries across every database. Rendered using the ``index.html`` template.
+
+``alternate_url_json`` - ``str``
+    URL of the JSON version of this page, ``/.json``
+
+``catalog`` - ``Catalog``
+    The full catalog object: ``items`` and ``queries`` (see below), ``total`` (tables and views matching the search and database filter, across all pages), ``queries_total``, ``databases`` and ``totals`` (a dictionary of ``databases``, ``tables`` and ``views`` counts)
+
+``database_filter`` - ``str | None``
+    Name of the database the list is filtered to with ``?database=``, or None
+
+``database_url`` - ``Callable``
+    Function that takes a database name, or None for all databases, and returns the homepage URL filtered to that database, keeping the current search
+
+``databases`` - ``list[dict]``
+    One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url`` and ``size`` (bytes, or None for in-memory databases)
+
+``homepage_actions`` - ``list[dict]``
+    Links for the homepage actions menu, from plugins implementing :ref:`plugin_hook_homepage_actions`
+
+``items`` - ``list[dict]``
+    The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long
+
+``metadata`` - ``dict``
+    Instance metadata, such as ``title``, ``description`` and ``license``
+
+``next_url`` - ``str | None``
+    URL of the next page, or None on the last page
+
+``noindex`` - ``bool``
+    True for the ``/-/`` alternative homepage, which should not be indexed by search engines
+
+``other_results`` - ``list[dict]``
+    While searching, items added to the Jump to menu by plugins using :ref:`plugin_hook_jump_items_sql` that match the search, excluding databases, tables, views and queries. Each has ``name``, ``url``, ``type`` and ``description`` keys
+
+``page`` - ``int``
+    The current page of tables and views, from ``?page=``
+
+``page_count`` - ``int``
+    The total number of pages
+
+``page_size`` - ``int``
+    The number of tables and views per page
+
+``previous_url`` - ``str | None``
+    URL of the previous page, or None on the first page
+
+``private`` - ``bool``
+    True if anonymous users cannot view this instance
+
+``q`` - ``str``
+    The current search, from ``?q=``
+
+``queries`` - ``list[dict]``
+    Up to five stored queries. Without a search these are queries from configuration or plugins, then the actor's own saved queries; with a search, any matching query the actor can see. Each is a dictionary with ``database``, ``name``, ``title``, ``description``, ``sql``, ``is_write``, ``private``, ``parameters``, ``url``, ``color`` and ``mine``
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``top_homepage`` - ``Callable``
+    Function returning HTML from plugins that implement :ref:`plugin_hook_top_homepage`
+
 Database page
 -------------
 

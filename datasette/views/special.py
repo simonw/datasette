@@ -1166,7 +1166,13 @@ class JumpView(BaseView):
         return (relevance, type_sort, len(display_label), row["label"])
 
     async def _rows_for_database(
-        self, database_name, indexed_fragments, q, pattern, types=None
+        self,
+        database_name,
+        indexed_fragments,
+        q,
+        pattern,
+        types=None,
+        exclude_types=None,
     ):
         params = {"q": q, "pattern": pattern}
         union_parts = []
@@ -1193,6 +1199,9 @@ class JumpView(BaseView):
         if types:
             types_clause = "\n        AND type IN (SELECT value FROM json_each(:types))"
             params["types"] = json.dumps(types)
+        if exclude_types:
+            types_clause += "\n        AND type NOT IN (SELECT value FROM json_each(:exclude_types))"
+            params["exclude_types"] = json.dumps(exclude_types)
         sql = f"""
         WITH jump_items AS (
             {" UNION ALL ".join(union_parts)}
@@ -1234,11 +1243,16 @@ class JumpView(BaseView):
         result = await db.execute(sql, params)
         return list(result.rows)
 
-    async def get(self, request):
-        q = request.args.get("q", "").strip()
+    async def matches(self, request, q, *, types=None, exclude_types=None, limit=100):
+        """
+        Jump items matching q that request.actor can see, best first.
+
+        Returns (matches, truncated). Also used by the homepage search to
+        include items that plugins add with jump_items_sql.
+        """
+        q = (q or "").strip()
         terms = q.split()
         pattern = "%" + "%".join(terms) + "%" if terms else "%"
-        types = [t.strip() for t in request.args.getlist("type") if t.strip()]
         fragments = await self._fragments(request)
 
         fragments_by_database = {}
@@ -1251,7 +1265,7 @@ class JumpView(BaseView):
         truncated = False
         for database_name, indexed_fragments in fragments_by_database.items():
             database_rows = await self._rows_for_database(
-                database_name, indexed_fragments, q, pattern, types
+                database_name, indexed_fragments, q, pattern, types, exclude_types
             )
             if len(database_rows) > 100:
                 truncated = True
@@ -1259,9 +1273,9 @@ class JumpView(BaseView):
             rows.extend(database_rows)
         rows.sort(key=lambda row: self._sort_key(row, q))
 
-        if len(rows) > 100:
+        if len(rows) > limit:
             truncated = True
-            rows = rows[:100]
+            rows = rows[:limit]
 
         matches = []
         for row in rows:
@@ -1279,7 +1293,13 @@ class JumpView(BaseView):
                 if key not in match and key != "format":
                     match[key] = value
             matches.append(match)
+        return matches, truncated
 
+    async def get(self, request):
+        types = [t.strip() for t in request.args.getlist("type") if t.strip()]
+        matches, truncated = await self.matches(
+            request, request.args.get("q", ""), types=types
+        )
         return Response.json({"ok": True, "matches": matches, "truncated": truncated})
 
 

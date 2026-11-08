@@ -107,6 +107,48 @@ This example shows how a plugin might add a button for starting a new chat:
       });
     });
 
+.. _javascript_plugins_makeHomepageSections:
+
+makeHomepageSections(context)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This method should return a JavaScript array of objects defining additional sections to be shown on the Datasette homepage, between the search box and the list of queries, tables and views.
+
+It returns objects in the same shape as :ref:`javascript_plugins_makeJumpSections`, plus an optional ``title``:
+
+``id`` - string
+    A unique string ID for the section, for example ``agent-chat``
+``title`` - string, optional
+    A heading for the section. Datasette renders it in the same style as the other homepage section headings, above the node passed to ``render()``.
+``render(node, context)`` - function
+    A function that will be called with a DOM node to render the section into
+
+The ``context`` object passed to both functions has one key:
+
+``container``
+    The ``.homepage-sections`` element that the section nodes are added to.
+
+Plugins are responsible for deciding if a section should be shown - for example by only registering the plugin for users who have permission to use the feature. A plugin that already implements ``makeJumpSections`` can often reuse the same ``render()`` function here.
+
+.. code-block:: javascript
+
+    document.addEventListener('datasette_init', function(ev) {
+      ev.detail.registerPlugin('agent-plugin', {
+        version: 0.1,
+        makeHomepageSections: (context) => {
+          return [
+            {
+              id: 'agent-chat',
+              title: 'Datasette Agent',
+              render: (node, context) => {
+                node.innerHTML = '<a href="/-/agent">Ask a question about this data</a>';
+              }
+            }
+          ];
+        }
+      });
+    });
+
 .. _javascript_plugins_makeAboveTablePanelConfigs:
 
 makeAboveTablePanelConfigs()

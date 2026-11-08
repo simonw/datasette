@@ -169,7 +169,7 @@ from .views.table_create_alter import (
     TableCreateView,
     TableForeignKeySuggestionsView,
 )
-from .views.upload import DatabaseUploadView
+from .views.upload import TableImportView
 
 app_root = Path(__file__).parent.parent
 
@@ -2916,9 +2916,7 @@ ORDER BY allowed.parent, allowed.child
             r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
-        add_route(
-            DatabaseUploadView.as_view(self), r"/(?P<database>[^\/\.]+)/-/upload$"
-        )
+        add_route(TableImportView.as_view(self), r"/(?P<database>[^\/\.]+)/-/upload$")
         add_route(
             DatabaseForeignKeyTargetsView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/foreign-key-targets$",

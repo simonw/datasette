@@ -2310,7 +2310,7 @@ Pass ``"alter": true`` to automatically add any missing columns to the existing 
 
 .. _json_api_upload:
 
-.. _DatabaseUploadView:
+.. _TableImportView:
 
 Creating a table from a file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

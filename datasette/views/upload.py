@@ -428,8 +428,8 @@ def _error(message, status=400):
     return Response.error([message], status)
 
 
-class DatabaseUploadView(BaseView):
-    name = "database-upload"
+class TableImportView(BaseView):
+    name = "table-import"
 
     def __init__(self, datasette):
         self.ds = datasette

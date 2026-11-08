@@ -599,6 +599,34 @@ This will register ``render_demo`` to be called when paths with the extension ``
 
 ``can_render_demo`` is a Python function (or ``async def`` function) which accepts the same arguments as ``render_demo`` but just returns ``True`` or ``False``. It lets Datasette know if the current SQL query can be represented by the plugin - and hence influence if a link to this output format is displayed in the user interface. If you omit the ``"can_render"`` key from the dictionary every query will be treated as being supported by the plugin.
 
+The dictionary can also include these optional keys, which control how the format is shown in the :ref:`Export data dialog <csv_export>`:
+
+``label`` - string
+    The name to show for the format, such as ``"Markdown table"``. Defaults to the extension.
+
+``description`` - string
+    A short description shown under the name, such as ``"For pasting into GitHub issues"``.
+
+``is_binary`` - boolean
+    Set this to ``True`` if the format returns binary data, such as a spreadsheet or compressed file. The dialog then offers just **Download** and **Copy URL**, since binary data cannot be copied to the clipboard or usefully viewed in the browser.
+
+``is_webpage`` - boolean
+    Set this to ``True`` if the format returns an HTML page for people to use, rather than data. The dialog then offers just **View** and **Copy URL**.
+
+Formats that set neither option are offered with all four actions: **Copy**, **View**, **Download** and **Copy URL**. Setting both is an error. If a format that does not set ``is_webpage`` returns an HTML page, **Copy** reports that it is a web page rather than copying its HTML.
+
+.. code-block:: python
+
+    @hookimpl
+    def register_output_renderer(datasette):
+        return {
+            "extension": "xlsx",
+            "render": render_xlsx,
+            "label": "Excel spreadsheet",
+            "description": "An .xlsx file for Microsoft Excel",
+            "is_binary": True,
+        }
+
 When a request is received, the ``"render"`` callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
 
 ``datasette`` - :ref:`internals_datasette`
@@ -1869,7 +1897,7 @@ The SQL query must return these columns:
     Optional longer text describing this individual item, or ``NULL``. The jump menu displays this below the item's URL when it is present.
 
 ``url``
-    The URL to navigate to when the item is selected. This can be either a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods. For example, ``json_object('method', 'table', 'database', 'fixtures', 'table', 'facetable')`` calls ``datasette.urls.table(database='fixtures', table='facetable')``. Unknown methods or invalid named arguments will result in an error.
+    The URL to navigate to when the item is selected. This can be either a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods. For example, ``json_object('method', 'table', 'database', 'fixtures', 'table', 'facetable')`` calls ``datasette.urls.table(database='fixtures', table='facetable')``. Unknown methods or invalid named arguments will result in an error. The named arguments (other than ``format``) are also returned as fields on the item in the JSON API, for example ``"database": "fixtures", "table": "facetable"``.
 
 ``search_text``
     Text that should be searched by the ``?q=`` parameter.

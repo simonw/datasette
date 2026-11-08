@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 
 import httpx2
 import pytest
@@ -157,6 +158,39 @@ def write_playwright_database(db_path):
             title text,
             body text
         );
+        create table stats_demo (
+            id integer primary key,
+            score integer,
+            city text
+        );
+        with recursive sequence(n) as (
+            select 1 union all select n + 1 from sequence where n < 20
+        )
+        insert into stats_demo (score, city)
+        select
+            n,
+            case
+                when n <= 8 then 'London'
+                when n <= 13 then 'Paris'
+                when n <= 15 then ''
+                when n <= 17 then null
+                else 'Oslo'
+            end
+        from sequence;
+        -- score_expr has no type affinity, so filtering it on a string
+        -- parameter would compare integers against text
+        create view stats_demo_view as
+            select id, score + 0 as score_expr, city from stats_demo;
+        -- Table and column names that match names used inside the column
+        -- statistics queries
+        create table stats (id integer primary key, vals integer, bucket text);
+        insert into stats (vals, bucket) values
+            (0, '2020-01-01'), (1, '2020-02-01'), (2, '2020-03-01'),
+            (3, '2021-01-01'), (4, '2021-02-01'), (5, '2021-03-01'),
+            (6, '2022-01-01'), (7, '2022-02-01'), (8, '2022-03-01'),
+            (9, '2022-04-01');
+        create table positions (id integer primary key);
+        insert into positions (id) values (2), (3), (4), (5), (6), (7);
         """)
         conn.execute(
             "insert into long_notes (title, body) values (?, ?)",
@@ -191,6 +225,7 @@ def write_playwright_config(config_path):
                     "data": {
                         "permissions": {
                             "create-table": True,
+                            "execute-write-sql": True,
                             "insert-row": True,
                             "set-column-type": True,
                         },
@@ -259,6 +294,34 @@ class AssetColumnType(ColumnType):
 @hookimpl
 def register_column_types(datasette):
     return [AssetColumnType]
+
+
+@hookimpl
+def register_output_renderer(datasette):
+    from datasette.utils.asgi import Response
+
+    def page(rows):
+        return Response.html(f"<!DOCTYPE html><h1>{len(rows)} rows</h1>")
+
+    return [
+        # Returns a web page without saying so, like older plugins
+        {"extension": "htmlpage", "render": page},
+        {
+            "extension": "chart",
+            "render": page,
+            "label": "Chart",
+            "description": "Opens a chart of these rows",
+            "is_webpage": True,
+        },
+        {
+            "extension": "gz",
+            "render": lambda: Response(
+                body=b"\\x1f\\x8b", content_type="application/gzip"
+            ),
+            "label": "Gzipped data",
+            "is_binary": True,
+        },
+    ]
 
 
 @hookimpl
@@ -1181,6 +1244,26 @@ def test_column_chooser_selection_and_drag_in_document(page, datasette_server):
     dialog.get_by_role("button", name="Cancel", exact=True).click()
     expect(dialog).not_to_be_visible()
     assert page.evaluate("appliedColumns") == ["notes", "score", "title"]
+
+
+@pytest.mark.playwright
+def test_edit_tools_js_loaded_on_demand(page, datasette_server):
+    requested = []
+    page.on(
+        "request",
+        lambda request: (
+            requested.append(request.url) if "/edit-tools.js" in request.url else None
+        ),
+    )
+    page.goto(f"{datasette_server}data/projects")
+    page.wait_for_load_state("networkidle")
+    assert requested == []
+    assert page.evaluate("typeof window.datasetteEditTools") == "undefined"
+
+    page.locator('button[data-table-action="insert-row"]').click()
+    page.locator("#row-edit-dialog").wait_for()
+    assert len(requested) == 1
+    assert page.evaluate("typeof window.datasetteEditTools") == "object"
 
 
 @pytest.mark.playwright
@@ -2415,3 +2498,1336 @@ def test_freeze_pin_freezes_header_and_key_column(page, datasette_server):
     page.locator('th[data-column="id"] .freeze-toggle').click()
     expect(table).not_to_have_attribute("data-freeze", "1")
     assert page.evaluate("localStorage.getItem('datasette-table-freeze')") == "0"
+
+
+def open_column_statistics(page, column):
+    trigger = page.locator(f'th[data-column="{column}"] .column-menu-trigger')
+    trigger.click()
+    page.locator("#column-actions-menu").get_by_role(
+        "menuitem", name="Column statistics", exact=True
+    ).click()
+    dialog = page.locator("#column-stats-dialog")
+    dialog.wait_for()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    return trigger, dialog
+
+
+def column_stat(dialog, section, stat):
+    return dialog.locator(
+        f'[data-section="{section}"] [data-stat="{stat}"] .column-stats-tile-value'
+    ).inner_text()
+
+
+@pytest.mark.playwright
+def test_column_statistics_numeric_column(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.goto(datasette_server + "data/stats_demo")
+    trigger, dialog = open_column_statistics(page, "score")
+    # The pill for the current column is selected and focused
+    selected = dialog.get_by_role("tab", selected=True)
+    expect(selected).to_have_text("score integer")
+    expect(selected).to_be_focused()
+    assert column_stat(dialog, "overview", "rows") == "20"
+    assert column_stat(dialog, "overview", "null") == "0"
+    assert column_stat(dialog, "overview", "distinct") == "20"
+    assert column_stat(dialog, "numeric", "min") == "1"
+    assert column_stat(dialog, "numeric", "max") == "20"
+    assert column_stat(dialog, "numeric", "mean") == "10.5"
+    assert column_stat(dialog, "numeric", "median") == "10.5"
+    assert column_stat(dialog, "numeric", "sum") == "210"
+    # Sample standard deviation of 1..20
+    assert column_stat(dialog, "numeric", "stddev") == "5.9161"
+    percentiles = dialog.locator('[data-section="numeric"] .column-stats-percentile')
+    assert dict(
+        zip(
+            percentiles.locator("dt").all_inner_texts(),
+            percentiles.locator("dd").all_inner_texts(),
+        )
+    ) == {
+        "p1": "1.19",
+        "p5": "1.95",
+        "p10": "2.9",
+        "p25": "5.75",
+        "median": "10.5",
+        "p75": "15.25",
+        "p90": "18.1",
+        "p95": "19.05",
+        "p99": "19.81",
+    }
+    # Integer columns with a small range get one bucket per value
+    bars = dialog.locator('[data-section="numeric"] .column-stats-bar')
+    expect(bars).to_have_count(20)
+    assert bars.evaluate_all("bars => bars.map(bar => bar.dataset.count)") == (
+        ["1"] * 20
+    )
+    expect(dialog.locator(".column-stats-boxplot")).to_be_visible()
+    expect(dialog.locator(".column-stats-outliers")).to_contain_text("No outliers")
+    expect(dialog.locator('[data-section="top"]')).to_contain_text(
+        "All 20 non-null values are unique."
+    )
+    # Every query is listed with a link to the SQL editor
+    dialog.locator(".column-stats-sql summary").click()
+    links = dialog.locator(".column-stats-sql-list a")
+    expect(links).to_have_count(5)
+    assert all(
+        "/data/-/query?sql=" in href
+        for href in links.evaluate_all("links => links.map(link => link.href)")
+    )
+    expect(dialog.locator(".footer-info")).to_contain_text("5 queries in")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_text_column(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/stats_demo")
+    _, dialog = open_column_statistics(page, "city")
+    assert column_stat(dialog, "overview", "not_null") == "18"
+    assert column_stat(dialog, "overview", "null") == "2"
+    assert column_stat(dialog, "overview", "distinct") == "4"
+    # Categorical text columns lead with their most common values
+    assert dialog.locator(".column-stats-section h3").all_inner_texts() == [
+        "Overview",
+        "Most common values",
+        "Text",
+    ]
+    top_values = dialog.locator(".column-stats-top-values li")
+    assert top_values.locator(".column-stats-top-value").all_inner_texts() == [
+        "London",
+        "Paris",
+        "Oslo",
+        "<empty string>",
+    ]
+    assert top_values.locator(".column-stats-top-count").all_inner_texts() == [
+        "8 · 44%",
+        "5 · 28%",
+        "3 · 17%",
+        "2 · 11%",
+    ]
+    expect(top_values.first.locator("a")).to_have_attribute(
+        "href", "/data/stats_demo?city=London"
+    )
+    assert column_stat(dialog, "text", "min_length") == "0"
+    assert column_stat(dialog, "text", "max_length") == "6"
+    expect(dialog.locator('[data-pattern="blank"]')).to_contain_text("2 (11%)")
+    expect(dialog.locator('[data-range="first"] dd')).to_have_text("<empty string>")
+    expect(dialog.locator('[data-range="last"] dd')).to_have_text("Paris")
+    expect(dialog.locator('[data-section="numeric"]')).to_have_count(0)
+
+
+@pytest.mark.playwright
+def test_column_statistics_shows_query_errors(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/stats_demo")
+    page.route(
+        "**/data/-/query.json?*",
+        lambda route: route.fulfill(
+            status=400,
+            content_type="application/json",
+            body=json.dumps({"ok": False, "errors": ["SQL query took too long"]}),
+        ),
+    )
+    _, dialog = open_column_statistics(page, "score")
+    expect(
+        dialog.locator('[data-section="overview"] .column-stats-error')
+    ).to_have_text("SQL query took too long")
+    expect(dialog.locator(".footer-info")).to_contain_text("1 failed")
+    # The failed query can still be opened in the SQL editor
+    dialog.locator(".column-stats-sql summary").click()
+    expect(dialog.locator(".column-stats-sql-title")).to_have_count(1)
+    expect(dialog.locator(".column-stats-sql-title")).to_contain_text("Overview")
+
+
+@pytest.mark.playwright
+def test_column_statistics_percentiles_match_python(page, datasette_server):
+    import random
+    import statistics
+
+    page.goto(datasette_server + "data/stats_demo")
+    # column-stats.js is only loaded on demand
+    page.evaluate("DatasetteColumnStats.load()")
+    sql = page.evaluate("""() => DatasetteColumnStats.sql.percentiles(
+        DatasetteColumnStats.sql.source("t", "v", null),
+        '"v"',
+        `typeof("v") in ('integer', 'real')`
+    )""")
+    rng = random.Random(0)
+    values = [rng.gauss(50, 20) for _ in range(997)] + [
+        rng.randint(0, 9) for _ in range(5)
+    ]
+    conn = sqlite3.connect(":memory:")
+    conn.execute("create table t (v)")
+    conn.executemany("insert into t values (?)", [(v,) for v in values + [None, "x"]])
+    results = dict(conn.execute(sql).fetchall())
+    # statistics.quantiles(method="inclusive") uses the same linear interpolation
+    cuts = statistics.quantiles(values, n=100, method="inclusive")
+    for p, value in results.items():
+        if p == 0:
+            expected = min(values)
+        elif p == 1:
+            expected = max(values)
+        else:
+            expected = cuts[round(p * 100) - 1]
+        assert value == pytest.approx(expected), p
+
+
+@pytest.mark.playwright
+def test_column_statistics_use_current_filters(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/stats_demo?score__gt=10&_where=score+<=+18")
+    _, dialog = open_column_statistics(page, "score")
+    scope = dialog.locator(".column-stats-scope")
+    expect(scope).to_have_attribute("data-scope", "filtered")
+    expect(scope).to_contain_text("Filtered rows where score <= 18 and score > 10")
+    assert column_stat(dialog, "overview", "rows") == "8"
+    assert column_stat(dialog, "numeric", "min") == "11"
+    assert column_stat(dialog, "numeric", "max") == "18"
+    assert column_stat(dialog, "numeric", "median") == "14.5"
+    # The filter is inlined into every query, with numbers as numbers
+    dialog.locator(".column-stats-sql summary").click()
+    assert 'where "score" > 10 and score <= 18' in (
+        dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    )
+    # Switch to statistics for the whole table and back again
+    scope.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(scope).to_have_attribute("data-scope", "all")
+    expect(dialog.locator('[data-stat="rows"] .column-stats-tile-value')).to_have_text(
+        "20"
+    )
+    expect(scope.get_by_role("button", name="Use filtered rows")).to_be_focused()
+    scope.get_by_role("button", name="Use filtered rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator('[data-stat="rows"] .column-stats-tile-value')).to_have_text(
+        "8"
+    )
+
+
+@pytest.mark.playwright
+def test_column_statistics_filter_links_and_typed_params(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # A view column with no type affinity: a string parameter would match
+    # nothing, so the filter's numeric parameter must be used as a number
+    page.goto(datasette_server + "data/stats_demo_view?score_expr__gte=15")
+    expect(page.locator(".table-summary")).to_contain_text("6 rows")
+    _, dialog = open_column_statistics(page, "city")
+    assert column_stat(dialog, "overview", "rows") == "6"
+    top_values = dialog.locator(".column-stats-top-values li")
+    assert top_values.locator(".column-stats-top-value").all_inner_texts() == [
+        "Oslo",
+        "<empty string>",
+    ]
+    # Value links add to the current filters
+    expect(top_values.first.locator("a")).to_have_attribute(
+        "href", "/data/stats_demo_view?score_expr__gte=15&city=Oslo"
+    )
+
+
+@pytest.mark.playwright
+def test_column_statistics_inline_params(page, datasette_server):
+    page.goto(datasette_server + "data/stats_demo")
+    page.evaluate("DatasetteColumnStats.load()")
+    inline = """([sql, params]) => {
+        try {
+            return DatasetteColumnStats.sql.inlineParams(sql, params);
+        } catch (error) {
+            return "Error: " + error.message;
+        }
+    }"""
+    assert page.evaluate(
+        inline,
+        [
+            (
+                "\"a:p0\" = :p0 and [b:p1] = :p1 and ':p0' = `c:p0` -- :p1\n"
+                "and /* :p0 */ x in (:p0, :p1, :p2)"
+            ),
+            {"p0": "it's", "p1": 2.5, "p2": None},
+        ],
+    ) == (
+        "\"a:p0\" = 'it''s' and [b:p1] = 2.5 and ':p0' = `c:p0` -- :p1\n"
+        "and /* :p0 */ x in ('it''s', 2.5, null)"
+    )
+    assert page.evaluate(inline, ["'it''s :p0' = :p0", {"p0": 7}]) == "'it''s :p0' = 7"
+    assert (
+        page.evaluate(inline, ["x = :missing", {}])
+        == "Error: No value for parameter :missing in the filter"
+    )
+
+
+@pytest.mark.playwright
+def test_column_statistics_switch_columns(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    # city is hidden from the table but still has a pill
+    page.goto(datasette_server + "data/stats_demo?score__gt=10&_nocol=city")
+    trigger, dialog = open_column_statistics(page, "score")
+    tabs = dialog.get_by_role("tab")
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.textContent)") == [
+        "id integer",
+        "score integer",
+        "city text",
+    ]
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("score integer")
+    expect(dialog.locator(".modal-meta")).to_be_hidden()
+    # Switch to the hidden city column with a click; the filter still applies
+    dialog.get_by_role("tab", name="city text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog).to_have_attribute("data-column", "city")
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("city text")
+    expect(dialog.get_by_role("tab", name="city text")).to_be_focused()
+    assert column_stat(dialog, "overview", "rows") == "10"
+    expect(dialog.locator('[data-section="text"]')).to_be_visible()
+    expect(dialog.locator('[data-section="numeric"]')).to_have_count(0)
+    # Switching to all rows is remembered when switching column
+    dialog.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    # Arrow keys move between pills without switching; Enter switches
+    dialog.get_by_role("tab", name="city text").focus()
+    page.keyboard.press("ArrowLeft")
+    expect(dialog.get_by_role("tab", name="score integer")).to_be_focused()
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("city text")
+    page.keyboard.press("Home")
+    expect(dialog.get_by_role("tab", name="id integer")).to_be_focused()
+    page.keyboard.press("ArrowLeft")
+    expect(dialog.get_by_role("tab", name="city text")).to_be_focused()
+    page.keyboard.press("ArrowLeft")
+    page.keyboard.press("Enter")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog).to_have_attribute("data-column", "score")
+    expect(dialog.locator(".column-stats-scope")).to_have_attribute("data-scope", "all")
+    assert column_stat(dialog, "overview", "rows") == "20"
+    assert column_stat(dialog, "numeric", "median") == "10.5"
+    # Only one pill is a tab stop: the selected one
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.tabIndex)") == [-1, 0, -1]
+    # Closing returns focus to the column menu that first opened the dialog
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+CLIPBOARD_STUB = """
+(() => {
+    window.clipboardText = null;
+    Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        get: () => ({
+            writeText: async (text) => {
+                window.clipboardText = String(text);
+            },
+            write: async (items) => {
+                const blob = await items[0].getType("text/plain");
+                window.clipboardText = await blob.text();
+            },
+        }),
+    });
+})();
+"""
+
+
+@pytest.mark.playwright
+def test_export_data_dialog(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/facetable?state=CA")
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    expect(dialog).not_to_be_visible()
+
+    trigger.click()
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".modal-title")).to_have_text("Export data")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    trigger.click()
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    trigger.click()
+    # Copy comes first, and TSV is the first format
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    expect(tsv.get_by_role("button", name="Copy", exact=True)).to_be_focused()
+    array = dialog.get_by_role("group", name="JSON array", exact=True)
+    expect(array.get_by_role("link", name="View")).to_have_attribute(
+        "href", "/fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
+
+    # Copy URL copies the absolute URL
+    array.get_by_role("button", name="Copy URL").click()
+    expect(array.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
+    expect(array.get_by_role("button", name="Copy URL")).to_be_visible()
+
+    # ...including for plugin formats with no View (binary) or no Download
+    # (web pages)
+    for name, extension in (("Gzipped data", "gz"), ("Chart", "chart")):
+        group = dialog.get_by_role("group", name=name, exact=True)
+        group.get_by_role("button", name="Copy URL").click()
+        expect(group.locator('[data-export-action="copy-url"]')).to_have_attribute(
+            "data-state", "done"
+        )
+        assert page.evaluate("clipboardText") == (
+            datasette_server + f"fixtures/facetable.{extension}?state=CA&_labels=on"
+        )
+
+    # Copy fetches the data and copies it
+    array.get_by_role("button", name="Copy", exact=True).click()
+    expect(array.get_by_role("button", name="Copied")).to_be_visible()
+    copied = json.loads(page.evaluate("clipboardText"))
+    assert {row["state"] for row in copied} == {"CA"}
+    expect(array.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+    # Download is the browser's own download of the export URL
+    with page.expect_download() as download_info:
+        array.get_by_role("link", name="Download").click()
+    download = download_info.value
+    assert download.url == (
+        datasette_server + "fixtures/facetable.json?state=CA&_labels=on&_shape=array"
+    )
+    assert download.suggested_filename == "facetable.json"
+    assert json.loads(pathlib_read(download.path())) == copied
+    expect(dialog).to_be_visible()
+
+    # TSV and CSV build their URLs from the form they share, so its options
+    # apply to both
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    dialog.get_by_label("Expand labels").uncheck()
+    tsv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/facetable.tsv?state=CA&_size=max"
+    )
+    tsv.get_by_role("button", name="Copy", exact=True).click()
+    # Copy URL may still say "Copied", so wait for Copy itself
+    expect(tsv.locator('[data-export-action="copy"]')).to_have_attribute(
+        "data-state", "done"
+    )
+    tsv_lines = page.evaluate("clipboardText").split("\r\n")
+    assert tsv_lines[0].split("\t")[:5] == [
+        "pk",
+        "created",
+        "planet_int",
+        "on_earth",
+        "state",
+    ]
+    assert "_city_id_label" not in tsv_lines[0]
+    assert len([line for line in tsv_lines if line]) == 11
+    with page.expect_download() as download_info:
+        tsv.get_by_role("button", name="Download").click()
+    assert download_info.value.suggested_filename == "facetable.tsv"
+    assert pathlib_read(download_info.value.path()).startswith("pk\tcreated\t")
+    csv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/facetable.csv?state=CA&_size=max"
+    )
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    download = download_info.value
+    download_url = urllib.parse.urlsplit(download.url)
+    assert download_url.path == "/fixtures/facetable.csv"
+    assert sorted(urllib.parse.parse_qsl(download_url.query)) == [
+        ("_dl", "on"),
+        ("_size", "max"),
+        ("state", "CA"),
+    ]
+    assert download.suggested_filename == "facetable.csv"
+    assert pathlib_read(download.path()).startswith("pk,created,planet_int")
+    expect(dialog).to_be_visible()
+    csv.get_by_role("button", name="View").click()
+    page.wait_for_url(re.compile(r"/fixtures/facetable\.csv\?"))
+    assert "state=CA" in page.url
+    assert "_labels" not in page.url
+    assert "_dl" not in page.url
+
+    # Old links to the "Advanced export" box open the dialog, and closing it
+    # drops the #export so a reload doesn't reopen it
+    page.goto(datasette_server + "fixtures/facetable#export")
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    # The dialog's close event fires just after it is hidden
+    page.wait_for_function("location.hash === ''")
+    assert page.url == datasette_server + "fixtures/facetable"
+
+
+def pathlib_read(path):
+    with open(path, encoding="utf-8") as fp:
+        return fp.read()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_fetches_full_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # count_numbers has 10,002 rows, past the 10,000 row count limit
+    page.goto(datasette_server + "data/count_numbers?id__gt=1")
+    dialog = page.locator("#export-dialog")
+    assert dialog.get_attribute("data-count-url") == "/data/count_numbers/-/count"
+    stream = dialog.locator('input[name="_stream"]')
+    csv_rows = dialog.locator('[data-export-format="csv"] [data-export-rows]')
+    json_rows = dialog.locator('[data-export-format="json"] [data-export-rows]')
+    expect(json_rows).to_have_text("First 100 rows")
+    expect(csv_rows).to_have_text("Up to 1,000 rows")
+
+    with page.expect_request(
+        lambda request: "/-/count" in request.url and request.method == "POST"
+    ) as count_request:
+        page.get_by_role("button", name="Export data").click()
+    assert "id__gt=1" in count_request.value.url
+    expect(dialog.locator(".export-stream-label")).to_have_text(
+        "Include all 10,001 rows"
+    )
+    expect(json_rows).to_have_text("First 100 of 10,001 rows")
+    expect(json_rows).to_have_attribute("data-partial", "true")
+    expect(csv_rows).to_have_text("First 1,000 of 10,001 rows")
+
+    stream.check()
+    expect(csv_rows).to_have_text("All 10,001 rows")
+    expect(csv_rows).to_have_attribute("data-partial", "false")
+
+    # A streamed download goes straight to disk, with every row
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    download = download_info.value
+    assert "_stream=on" in download.url
+    assert "_dl=on" in download.url
+    assert download.suggested_filename == "count_numbers.csv"
+    assert len(pathlib_read(download.path()).splitlines()) == 10_002
+
+    stream.uncheck()
+    expect(csv_rows).to_have_text("First 1,000 of 10,001 rows")
+
+    # The count is only fetched once
+    page.keyboard.press("Escape")
+    requests = []
+    page.on("request", lambda request: requests.append(request.url))
+    page.get_by_role("button", name="Export data").click()
+    expect(dialog).to_be_visible()
+    assert not [url for url in requests if "/-/count" in url]
+
+
+@pytest.mark.playwright
+def test_count_all_and_export_dialog_share_one_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    count_requests = []
+    page.on(
+        "request",
+        lambda request: (
+            count_requests.append(request.url) if "/-/count" in request.url else None
+        ),
+    )
+    dialog = page.locator("#export-dialog")
+    stream_label = dialog.locator(".export-stream-label")
+
+    # "count all" in the page header first, then the export dialog
+    page.goto(datasette_server + "data/count_numbers")
+    expect(page.locator(".table-count")).to_have_text("10,000+ rows")
+    page.locator("button.count-all").click()
+    expect(page.locator(".table-count")).to_have_text("10,002 rows")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,002 rows")
+    assert len(count_requests) == 1
+
+    # The export dialog first: its count updates the page header too
+    count_requests.clear()
+    page.goto(datasette_server + "data/count_numbers?id__gt=1")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,001 rows")
+    expect(page.locator(".table-count")).to_have_text("10,001 rows")
+    expect(page.locator("button.count-all")).to_have_count(0)
+    assert len(count_requests) == 1
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_retries_a_failed_count(page, datasette_server):
+    from playwright.sync_api import expect
+
+    def time_out(route):
+        route.fulfill(
+            status=400,
+            content_type="application/json",
+            body='{"ok": false, "errors": ["Count query timed out"]}',
+        )
+
+    page.route("**/-/count*", time_out)
+    page.goto(datasette_server + "data/count_numbers")
+    dialog = page.locator("#export-dialog")
+    stream_label = dialog.locator(".export-stream-label")
+    with page.expect_request("**/-/count*"):
+        page.get_by_role("button", name="Export data").click()
+    expect(dialog).to_be_visible()
+    expect(stream_label).to_have_text("Include all rows")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+
+    # Opening the dialog again tries the count again
+    page.unroute("**/-/count*")
+    page.get_by_role("button", name="Export data").click()
+    expect(stream_label).to_have_text("Include all 10,002 rows")
+    expect(page.locator(".table-count")).to_have_text("10,002 rows")
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_hides_include_all_when_csv_has_every_row(
+    page, datasette_server
+):
+    from playwright.sync_api import expect
+
+    # 202 rows: more than a page, but fewer than max_returned_rows (1,000).
+    # With a count the option is never rendered.
+    page.goto(datasette_server + "data/count_numbers?id__gt=9800")
+    dialog = page.locator("#export-dialog")
+    expect(dialog.locator('input[name="_stream"]')).to_have_count(0)
+
+    # Without one it is hidden once the dialog has counted the rows
+    page.goto(datasette_server + "data/count_numbers?id__gt=9800&_nocount=1")
+    stream = dialog.locator('input[name="_stream"]')
+    expect(stream).to_be_attached()
+    csv_rows = dialog.locator('[data-export-format="csv"] [data-export-rows]')
+    expect(csv_rows).to_have_text("Up to 1,000 rows")
+    page.get_by_role("button", name="Export data").click()
+    expect(csv_rows).to_have_text("All 202 rows")
+    expect(stream).to_be_hidden()
+    expect(stream).to_be_disabled()
+    expect(dialog.locator(".export-csv-options")).to_be_hidden()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_on_a_later_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "data/count_numbers.json?_size=10")
+    next_token = page.evaluate("JSON.parse(document.body.innerText).next")
+    page.goto(datasette_server + f"data/count_numbers?_size=10&_next={next_token}")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog.locator("#export-page-note")).to_contain_text(
+        "These exports start from this page"
+    )
+    json_rows = dialog.locator('[data-export-format="json"] [data-export-rows]')
+    expect(json_rows).to_have_text("10 rows on this page")
+
+    # The exports are this page's rows: ids 11 to 20
+    json_group = dialog.get_by_role("group", name="JSON array", exact=True)
+    json_group.get_by_role("button", name="Copy", exact=True).click()
+    expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
+    assert [row["id"] for row in json.loads(page.evaluate("clipboardText"))] == list(
+        range(11, 21)
+    )
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy URL").click()
+    assert f"_next={next_token}" in page.evaluate("clipboardText")
+
+    # "Include all rows" drops the cursor and starts from the first row
+    stream = dialog.locator('input[name="_stream"]')
+    expect(dialog.locator(".export-stream-label")).to_have_text(
+        "Include all 10,002 rows from the first page"
+    )
+    stream.check()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "data/count_numbers.csv?_stream=on&_size=max"
+    )
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    lines = pathlib_read(download_info.value.path()).splitlines()
+    assert lines[:3] == ["id", "1", "2"]
+    assert len(lines) == 10_003
+    # Unchecking it puts the cursor back
+    stream.uncheck()
+    csv.get_by_role("button", name="Copy URL").click()
+    assert f"_next={next_token}" in page.evaluate("clipboardText")
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_long_table_name_on_a_phone(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog).to_be_visible()
+    long_name = "this_is_a_very_long_table_name_that_has_no_spaces_in_it_at_all"
+    layout = dialog.evaluate(
+        """(dialog, name) => {
+            const meta = dialog.querySelector(".modal-meta");
+            meta.textContent = name;
+            const title = dialog.querySelector(".modal-title");
+            const scope = dialog.querySelector(".export-scope");
+            return {
+                titleHeight: title.getBoundingClientRect().height,
+                metaTruncated: meta.scrollWidth > meta.clientWidth,
+                metaInside: meta.getBoundingClientRect().right
+                    <= dialog.querySelector(".modal-header").getBoundingClientRect().right,
+                scopeClipped: scope.scrollHeight > scope.clientHeight + 1,
+            };
+        }""",
+        long_name,
+    )
+    # The title stays on one line and the name is cut off with an ellipsis,
+    # rather than squeezing the title into a column of single letters
+    assert layout["titleHeight"] < 30
+    assert layout["metaTruncated"]
+    assert layout["metaInside"]
+    assert not layout["scopeClipped"]
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("width,display", [(320, "grid"), (375, "flex")])
+def test_export_data_dialog_actions_fit_narrow_screens(
+    page, datasette_server, width, display
+):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.set_viewport_size({"width": width, "height": 700})
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    expect(dialog).to_be_visible()
+    groups = dialog.evaluate(
+        """dialog => [...dialog.querySelectorAll(".export-option")].map(row => {
+            const group = row.querySelector(".export-actions");
+            const visible = [...group.children].filter(el => !el.hidden);
+            return {
+                name: row.querySelector(".export-option-name").textContent,
+                display: getComputedStyle(group).display,
+                clipped: group.scrollWidth - group.clientWidth,
+                visible: visible.map(el => el.dataset.exportAction),
+                firstBorder: getComputedStyle(visible[0]).borderLeftWidth,
+            };
+        })"""
+    )
+    # Four actions in a row where they fit, two by two where they don't,
+    # and never cut off
+    assert {group["display"] for group in groups} == {display}
+    assert {group["clipped"] for group in groups} == {0}
+    assert {group["firstBorder"] for group in groups} == {"0px"}
+    # Plugin formats can offer fewer actions
+    actions = {group["name"]: group["visible"] for group in groups}
+    assert actions.pop("Chart") == ["view", "copy-url"]
+    assert actions.pop("Gzipped data") == ["download", "copy-url"]
+    assert {tuple(visible) for visible in actions.values()} == {
+        ("copy", "view", "download", "copy-url")
+    }
+
+
+RECORD_FETCH_SIGNALS = """
+(() => {
+    window.fetchSignals = [];
+    const fetch = window.fetch;
+    window.fetch = (url, init = {}) => {
+        if (init.signal) window.fetchSignals.push(init.signal);
+        return fetch(url, init);
+    };
+})();
+"""
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_copy_refused_or_cancelled(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The export request never finishes
+    page.route("**/facetable.json?*_shape=array*", lambda route: None)
+    page.add_init_script(RECORD_FETCH_SIGNALS)
+    page.add_init_script("""
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            get: () => ({
+                write: async (items) => {
+                    if (window.refuseClipboard) {
+                        throw new DOMException(
+                            "Write permission denied.", "NotAllowedError"
+                        );
+                    }
+                    // Like a real clipboard, wait for the data
+                    await items[0].getType("text/plain");
+                },
+                writeText: async () => {},
+            }),
+        });
+    """)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    group = dialog.get_by_role("group", name="JSON array", exact=True)
+
+    # A clipboard that refuses straight away is reported straight away, and
+    # the stalled request for the data is cancelled
+    page.evaluate("window.refuseClipboard = true")
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy JSON array: Write permission denied."
+    )
+    assert page.evaluate("fetchSignals.map(signal => signal.aborted)") == [True]
+
+    # Closing the dialog cancels a copy that is still waiting for its data
+    page.evaluate("window.refuseClipboard = false")
+    group.get_by_role("button", name=re.compile("^(Copy|Failed)$")).click()
+    expect(group.get_by_role("button", name="Copying…")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    page.wait_for_function("fetchSignals.length === 2 && fetchSignals[1].aborted")
+    page.get_by_role("button", name="Export data").click()
+    expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_copy_failure(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    # A failed fetch shows "Failed", then resets
+    page.route(
+        "**/facetable.json?*_shape=array*", lambda route: route.fulfill(status=500)
+    )
+    group = dialog.get_by_role("group", name="JSON array", exact=True)
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy JSON array: HTTP 500"
+    )
+    # "Failed" stays, with the reason shown under the row
+    error = dialog.locator('[data-export-format="json-array"] .export-option-error')
+    expect(error).to_be_visible()
+    expect(error).to_have_text("Could not copy JSON array: HTTP 500")
+    page.wait_for_timeout(2000)
+    expect(group.get_by_role("button", name="Failed")).to_be_visible()
+    # Copy URL working in the same row leaves the Copy failure alone
+    group.get_by_role("button", name="Copy URL").click()
+    expect(group.get_by_role("button", name="Copied")).to_be_visible()
+    expect(error).to_be_visible()
+    # Trying again clears it
+    page.unroute("**/facetable.json?*_shape=array*")
+    group.get_by_role("button", name="Failed").click()
+    expect(group.get_by_role("button", name="Copied")).to_have_count(1)
+    expect(error).to_have_count(0)
+    # So does closing and reopening the dialog
+    page.route(
+        "**/facetable.json?*_shape=array*", lambda route: route.fulfill(status=500)
+    )
+    page.wait_for_timeout(1600)
+    group.get_by_role("button", name="Copy", exact=True).click()
+    expect(error).to_be_visible()
+    page.keyboard.press("Escape")
+    page.get_by_role("button", name="Export data").click()
+    expect(error).to_have_count(0)
+    expect(group.get_by_role("button", name="Copy", exact=True)).to_be_visible()
+
+    # Anything over 10 MB is left to Download, without reading all of it
+    clipboard_before = page.evaluate("clipboardText")
+    page.route(
+        "**/facetable.csv*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/csv; charset=utf-8",
+            body="x" * (11 * 1024 * 1024),
+        ),
+    )
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy", exact=True).click()
+    expect(csv.get_by_role("button", name="Failed")).to_be_visible()
+    expect(dialog.locator(".export-status")).to_have_text(
+        "Could not copy CSV: over 10 MB is too much to copy, use Download"
+    )
+    expect(
+        dialog.locator('[data-export-format="csv"] .export-option-error')
+    ).to_have_text("Could not copy CSV: over 10 MB is too much to copy, use Download")
+    assert page.evaluate("clipboardText") == clipboard_before
+
+    # A plugin format that returns a web page without saying so (with
+    # is_webpage) is not copied as HTML
+    htmlpage = dialog.get_by_role("group", name="htmlpage", exact=True)
+    htmlpage.get_by_role("button", name="Copy", exact=True).click()
+    expect(htmlpage.get_by_role("button", name="Failed")).to_be_visible()
+    expect(
+        dialog.locator('[data-export-format="format-1"] .export-option-error')
+    ).to_have_text("Could not copy htmlpage: this format is a web page, use View")
+    assert page.evaluate("clipboardText") == clipboard_before
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_on_query_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/-/query?sql=select+:name+as+n&name=hello")
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    trigger.click()
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".export-option-name").first).to_have_text("TSV")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    trigger.click()
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    csv.get_by_role("button", name="Copy", exact=True).click()
+    expect(csv.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText").splitlines() == ["n", "hello"]
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    tsv.get_by_role("button", name="Copy", exact=True).click()
+    expect(tsv.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText").splitlines() == ["n", "hello"]
+    csv.get_by_role("button", name="View").click()
+    page.wait_for_url(re.compile(r"/fixtures/-/query\.csv\?"))
+    assert "name=hello" in page.url
+    assert "hello" in page.locator("body").inner_text()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_on_row_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/simple_primary_key/1")
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    trigger.click()
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".export-scope")).to_have_text("This row where id = 1")
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    expect(tsv.get_by_role("button", name="Copy", exact=True)).to_be_focused()
+    tsv.get_by_role("button", name="Copy", exact=True).click()
+    expect(tsv.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("clipboardText") == "id\tcontent\r\n1\thello\r\n"
+    # A single row needs no _size=max, or any other arguments
+    tsv.get_by_role("button", name="Copy URL").click()
+    expect(tsv.locator('[data-export-action="copy-url"]')).to_have_attribute(
+        "data-state", "done"
+    )
+    assert page.evaluate("clipboardText") == (
+        datasette_server + "fixtures/simple_primary_key/1.tsv"
+    )
+    json_group = dialog.get_by_role("group", name="JSON", exact=True)
+    json_group.get_by_role("button", name="Copy", exact=True).click()
+    expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
+    assert json.loads(page.evaluate("clipboardText"))["rows"] == [
+        {"id": 1, "content": "hello"}
+    ]
+    csv = dialog.get_by_role("group", name="CSV", exact=True)
+    with page.expect_download() as download_info:
+        csv.get_by_role("button", name="Download").click()
+    assert download_info.value.suggested_filename == "simple_primary_key.csv"
+    assert download_info.value.url == (
+        datasette_server + "fixtures/simple_primary_key/1.csv?_dl=on"
+    )
+    assert pathlib_read(download_info.value.path()) == "id,content\n1,hello\n"
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_loads_its_script_on_first_open(page, datasette_server):
+    from playwright.sync_api import expect
+
+    requests = []
+    page.on(
+        "request",
+        lambda request: "export-dialog.js" in request.url and requests.append(request),
+    )
+    page.add_init_script(CLIPBOARD_STUB)
+    page.goto(datasette_server + "fixtures/facetable")
+    page.wait_for_load_state("networkidle")
+    assert requests == []
+    trigger = page.get_by_role("button", name="Export data")
+    dialog = page.locator("#export-dialog")
+    trigger.click()
+    expect(dialog).to_be_visible()
+    # The script has taken over: Copy is shown, and focused
+    tsv = dialog.get_by_role("group", name="TSV", exact=True)
+    expect(tsv.get_by_role("button", name="Copy", exact=True)).to_be_focused()
+    assert len(requests) == 1
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    trigger.click()
+    expect(dialog).to_be_visible()
+    assert len(requests) == 1
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_opens_if_its_script_fails(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.route("**/export-dialog.js*", lambda route: route.abort())
+    page.goto(datasette_server + "fixtures/facetable")
+    page.get_by_role("button", name="Export data").click()
+    dialog = page.locator("#export-dialog")
+    # The button's commandfor opens it instead, without the Copy actions
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_role("button", name="Copy", exact=True)).to_have_count(0)
+    dialog.get_by_role("button", name="Close").click()
+    expect(dialog).not_to_be_visible()
+
+
+@pytest.mark.playwright
+def test_export_data_dialog_without_javascript(browser, datasette_server):
+    from playwright.sync_api import expect
+
+    context = browser.new_context(java_script_enabled=False)
+    try:
+        page = context.new_page()
+        page.goto(datasette_server + "fixtures/facetable")
+        dialog = page.locator("#export-dialog")
+        page.get_by_role("button", name="Export data").click()
+        expect(dialog).to_be_visible()
+        # Copy needs JavaScript, so it stays hidden, and View is first with
+        # no divider before it
+        expect(dialog.get_by_role("button", name="Copy", exact=True)).to_have_count(0)
+        assert (
+            dialog.evaluate(
+                """dialog => [...dialog.querySelectorAll(".export-actions")].map(
+                group => getComputedStyle(
+                    group.querySelector(".export-action:not([hidden])")
+                ).borderLeftWidth
+            )"""
+            )
+            == ["0px"] * dialog.locator(".export-actions").count()
+        )
+        # Download is a link with a download attribute
+        group = dialog.get_by_role("group", name="JSON", exact=True)
+        with page.expect_download() as download_info:
+            group.get_by_role("link", name="Download").click()
+        assert download_info.value.suggested_filename == "facetable.json"
+        # TSV's View submits the shared form to .tsv
+        dialog.get_by_role("group", name="TSV", exact=True).get_by_role(
+            "button", name="View"
+        ).click()
+        page.wait_for_url(re.compile(r"/fixtures/facetable\.tsv\?"))
+        assert "_labels=on" in page.url
+        assert page.locator("body").inner_text().startswith("pk\tcreated")
+    finally:
+        context.close()
+
+
+TEXT_CONTROL_FONT_SIZES_JS = """
+() => {
+  const nonText = new Set([
+    "button", "checkbox", "color", "file", "hidden", "image",
+    "radio", "range", "reset", "submit",
+  ]);
+  return Array.from(document.querySelectorAll("input, select, textarea"))
+    .filter((el) => !(el.tagName === "INPUT" && nonText.has(el.type)))
+    .map((el) => ({
+      control: el.outerHTML.split(">")[0] + ">",
+      fontSize: parseFloat(getComputedStyle(el).fontSize),
+    }));
+}
+"""
+
+
+@pytest.fixture
+def touch_page(browser):
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True
+    )
+    page = context.new_page()
+    if not page.evaluate("matchMedia('(pointer: coarse)').matches"):
+        context.close()
+        pytest.skip("Browser does not emulate a coarse pointer")
+    yield page
+    context.close()
+
+
+def assert_text_controls_at_least_16px(page):
+    # Mobile Safari zooms the page when a text control with a font-size
+    # smaller than 16px is focused
+    controls = page.evaluate(TEXT_CONTROL_FONT_SIZES_JS)
+    assert controls
+    too_small = [control for control in controls if control["fontSize"] < 16]
+    assert too_small == []
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "path",
+    [
+        "fixtures/searchable?_filter_column_1=text1&_filter_op_1=contains&_filter_value_1=a",
+        "data/-/execute-write",
+        "-/api",
+        "-/messages",
+        "-/debug/autocomplete?database=fixtures&table=facetable",
+    ],
+)
+def test_text_controls_do_not_trigger_mobile_safari_zoom(
+    touch_page, datasette_server, path
+):
+    response = touch_page.goto(datasette_server + path)
+    assert response.ok
+    assert_text_controls_at_least_16px(touch_page)
+
+
+@pytest.mark.playwright
+def test_edit_dialog_text_controls_do_not_trigger_mobile_safari_zoom(
+    touch_page, datasette_server
+):
+    page = touch_page
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('button[data-table-action="insert-row"]').click()
+    dialog = page.locator("#row-edit-dialog")
+    dialog.locator('textarea[name="notes"]').wait_for()
+    assert_text_controls_at_least_16px(page)
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").wait_for()
+    assert_text_controls_at_least_16px(page)
+
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    page.locator(".table-create-from-data").click()
+    page.locator(".table-create-data-textarea").wait_for()
+    assert_text_controls_at_least_16px(page)
+
+
+@pytest.mark.playwright
+def test_column_statistics_names_do_not_collide_with_tables(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The filter mentions "vals" and a table called "positions", both of which
+    # are also names used inside the generated SQL, as is the "stats" table
+    page.goto(
+        datasette_server
+        + "data/stats?vals__gt=1&_where=id+in+(select+id+from+positions)"
+    )
+    _, dialog = open_column_statistics(page, "vals")
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "5"
+    assert column_stat(dialog, "numeric", "median") == "4"
+    expect(dialog.locator(".column-stats-outliers")).to_contain_text("No outliers")
+    dialog.locator(".column-stats-sql summary").click()
+    assert "with filtered_rows as" in (
+        dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    )
+    # Without the filter the "stats" table itself is the source
+    dialog.get_by_role("button", name="Use all rows").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "10"
+    assert column_stat(dialog, "numeric", "median") == "4.5"
+    # A column called "bucket" is grouped correctly in the dates chart
+    dialog.get_by_role("tab", name="bucket text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    bars = dialog.locator('[data-section="text"] .column-stats-bar')
+    expect(bars).to_have_count(3)
+    assert bars.evaluate_all("bars => bars.map(bar => bar.title)") == [
+        "2020: 3 values (30%)",
+        "2021: 3 values (30%)",
+        "2022: 4 values (40%)",
+    ]
+
+
+@pytest.mark.playwright
+def test_column_statistics_limits_concurrent_queries(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.goto(datasette_server + "data/stats_demo")
+    # Replace fetch so the test decides when each query finishes
+    page.evaluate("""() => {
+        window.queryCalls = [];
+        window.fetch = (url) => new Promise((resolve) => {
+            window.queryCalls.push({
+                sql: new URL(url, location.href).searchParams.get("sql"),
+                finish: (rows) => resolve(new Response(
+                    JSON.stringify({ok: true, rows: rows}),
+                    {headers: {"content-type": "application/json"}}
+                )),
+            });
+        });
+    }""")
+
+    def calls():
+        return page.evaluate("queryCalls.map(call => call.sql)")
+
+    page.evaluate(
+        "openColumnStatistics(document.querySelector('th[data-column=score]'))"
+    )
+    page.wait_for_function("queryCalls.length === 1")
+    assert "count(distinct" in calls()[0]
+    page.evaluate("""queryCalls[0].finish([{
+        total_rows: 20, not_null: 20, distinct_values: 20, integer_values: 20,
+        real_values: 0, text_values: 0, blob_values: 0,
+        min_number: 1, max_number: 20
+    }])""")
+    # Summary, percentiles and histogram are wanted; only two run at once
+    dialog = page.locator("#column-stats-dialog")
+    expect(dialog.locator(".column-stats-sql-list > li")).to_have_count(4)
+    page.wait_for_function("queryCalls.length === 3")
+    page.wait_for_timeout(100)
+    assert len(calls()) == 3
+    assert "avg(v) as mean" in calls()[1]
+    assert "row_number()" in calls()[2]
+    # Switching column drops the queued histogram query. The two queries
+    # already running are left to finish, so the new overview waits for a slot
+    dialog.get_by_role("tab", name="city text").click()
+    page.wait_for_timeout(100)
+    assert len(calls()) == 3
+    page.evaluate("queryCalls[1].finish([])")
+    page.wait_for_function("queryCalls.length === 4")
+    assert 'count(distinct "city")' in calls()[3]
+    page.evaluate("queryCalls[2].finish([])")
+    page.wait_for_timeout(100)
+    assert len(calls()) == 4
+    # The histogram query for score was never sent
+    assert not any("as bucket" in sql for sql in calls())
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_query_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    # A query with its own WITH clause, a parameter, duplicate "id" columns
+    # and a trailing comment and semicolon
+    sql = (
+        "with s as (select id, score, city from stats_demo where score > :min)\n"
+        "select s.id, s.score, t.id, s.city from s join stats_demo t on t.id = s.id\n"
+        "order by s.score desc limit 5 -- top five\n;"
+    )
+    page.goto(
+        datasette_server
+        + "data/-/query?"
+        + urllib.parse.urlencode({"sql": sql, "min": "10"})
+    )
+    trigger = (
+        page.locator("table.rows-and-columns th").nth(1).locator(".column-menu-trigger")
+    )
+    trigger.click()
+    page.locator("#column-actions-menu").get_by_role(
+        "menuitem", name="Column statistics", exact=True
+    ).click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.locator(".column-stats-error")).to_have_count(0)
+    tabs = dialog.get_by_role("tab")
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.textContent)") == [
+        "id integer",
+        "score integer",
+        "id_2 integer",
+        "city text",
+    ]
+    expect(dialog.get_by_role("tab", selected=True)).to_have_text("score integer")
+    expect(dialog.locator(".column-stats-scope")).to_have_count(0)
+    assert column_stat(dialog, "overview", "rows") == "5"
+    assert column_stat(dialog, "numeric", "min") == "16"
+    assert column_stat(dialog, "numeric", "max") == "20"
+    assert column_stat(dialog, "numeric", "median") == "18"
+    dialog.locator(".column-stats-sql summary").click()
+    first_sql = dialog.locator(".column-stats-sql-list pre").first.inner_text()
+    assert first_sql.startswith(
+        'with query_rows("id", "score", "id_2", "city") as (\n'
+        "with s as (select id, score, city from stats_demo where score > '10')"
+    )
+    # Most common values link to the query in the SQL editor, narrowed down
+    dialog.get_by_role("tab", name="city text").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    link = dialog.locator(".column-stats-top-values a").first
+    expect(link).to_have_text("Oslo")
+    href = link.get_attribute("href")
+    assert href.startswith("/data/-/query?sql=")
+    linked_sql = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)["sql"][0]
+    assert linked_sql.endswith("select * from query_rows\nwhere \"city\" = 'Oslo'")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_column_statistics_query_page_covers_all_rows(page, datasette_server):
+    from playwright.sync_api import expect
+
+    # The page shows max_returned_rows rows; the statistics use them all.
+    # On a narrow screen the dialog opens from a button above the results.
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(datasette_server + "data/-/query?sql=select+id+from+count_numbers")
+    page.get_by_role("button", name="Column statistics").click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    assert column_stat(dialog, "overview", "rows") == "10,002"
+    expect(dialog.locator(".column-stats-query-note")).to_have_text(
+        "Statistics cover all 10,002 rows returned by the query, not only the"
+        " 1,000 shown on the page."
+    )
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "path,trigger_selector,column",
+    (
+        ("data/stats_demo", 'th[data-column="score"] .column-menu-trigger', "score"),
+        (
+            "data/-/query?sql=select+score,+city+from+stats_demo",
+            "th:nth-child(2) .column-menu-trigger",
+            "city",
+        ),
+    ),
+)
+def test_column_statistics_script_loads_on_first_open(
+    page, datasette_server, path, trigger_selector, column
+):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    script_requests = []
+    page.on(
+        "request",
+        lambda request: (
+            script_requests.append(request.url)
+            if "/column-stats.js" in request.url
+            else None
+        ),
+    )
+    page.goto(datasette_server + path)
+    page.wait_for_load_state("networkidle")
+    # The column menus are ready, but the dialog's script is not loaded yet
+    assert page.evaluate("typeof DatasetteColumnStats.sql") == "undefined"
+    assert script_requests == []
+    trigger = page.locator(trigger_selector)
+    trigger.click()
+    page.get_by_role("menuitem", name="Column statistics", exact=True).click()
+    dialog = page.locator("#column-stats-dialog")
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog.get_by_role("tab", selected=True)).to_contain_text(column)
+    assert len(script_requests) == 1
+    # Opening it again does not load the script a second time
+    page.keyboard.press("Escape")
+    expect(trigger).to_be_focused()
+    trigger.click()
+    page.get_by_role("menuitem", name="Column statistics", exact=True).click()
+    expect(dialog).to_be_visible()
+    assert len(script_requests) == 1
+    assert page_errors == []

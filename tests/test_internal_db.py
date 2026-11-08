@@ -29,7 +29,8 @@ async def test_internal_migrations_recorded(ds_client):
         order by id
         """)
     assert [tuple(row) for row in migrations.rows] == [
-        ("datasette_internal", "0001_initial")
+        ("datasette_internal", "0001_initial"),
+        ("datasette_internal", "0002_catalog_tables_hidden"),
     ]
 
 
@@ -61,7 +62,8 @@ async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
         order by id
         """)
     assert [tuple(row) for row in migrations.rows] == [
-        ("datasette_internal", "0001_initial")
+        ("datasette_internal", "0001_initial"),
+        ("datasette_internal", "0002_catalog_tables_hidden"),
     ]
 
     ds.close()
@@ -73,7 +75,96 @@ async def test_internal_tables(ds_client):
     tables = await internal_db.execute("select * from catalog_tables")
     assert len(tables) > 5
     table = tables.rows[0]
-    assert set(table.keys()) == {"rootpage", "table_name", "database_name", "sql"}
+    assert set(table.keys()) == {
+        "rootpage",
+        "table_name",
+        "database_name",
+        "sql",
+        "hidden",
+    }
+
+
+@pytest.mark.asyncio
+async def test_internal_tables_hidden(tmp_path):
+    from datasette.app import Datasette
+
+    db_path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table visible (id integer primary key)")
+    conn.execute("create table hidden_by_config (id integer primary key)")
+    conn.commit()
+    conn.close()
+    ds = Datasette(
+        [db_path],
+        config={
+            "databases": {"data": {"tables": {"hidden_by_config": {"hidden": True}}}}
+        },
+    )
+    await ds.invoke_startup()
+    await ds.refresh_schemas(force=True)
+
+    async def hidden_values():
+        rows = await ds.get_internal_database().execute(
+            "select table_name, hidden from catalog_tables "
+            "where database_name = 'data' order by table_name"
+        )
+        return dict(tuple(row) for row in rows.rows)
+
+    assert await hidden_values() == {"hidden_by_config": 1, "visible": 0}
+
+    # Tables created at runtime are updated on the next schema refresh
+    await ds.get_database("data").execute_write(
+        "create virtual table docs_fts using fts5(body)"
+    )
+    await ds.refresh_schemas(force=True)
+    values = await hidden_values()
+    assert values["docs_fts"] == 0
+    assert values["docs_fts_data"] == 1
+    assert values["docs_fts_config"] == 1
+    assert values["visible"] == 0
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_internal_tables_hidden_added_to_existing_internal_db(tmp_path):
+    from datasette.app import Datasette
+
+    db_path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table _private (id integer primary key)")
+    conn.commit()
+    conn.close()
+
+    # Internal database created before catalog_tables.hidden existed
+    internal_db_path = str(tmp_path / "internal.db")
+    conn = sqlite3.connect(internal_db_path)
+    conn.executescript(
+        INTERNAL_DB_SCHEMA_SQL.replace("hidden INTEGER NOT NULL DEFAULT 0,", "")
+    )
+    schema_version = (
+        sqlite3.connect(db_path).execute("PRAGMA schema_version").fetchone()[0]
+    )
+    conn.execute(
+        "insert into catalog_databases (database_name, path, is_memory, schema_version) "
+        "values ('data', ?, 0, ?)",
+        [db_path, schema_version],
+    )
+    conn.execute(
+        "insert into catalog_tables (database_name, table_name, rootpage, sql) "
+        "values ('data', '_private', 2, 'create table _private (id integer primary key)')"
+    )
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([db_path], internal=internal_db_path)
+    await ds.invoke_startup()
+    await ds.refresh_schemas(force=True)
+    rows = await ds.get_internal_database().execute(
+        "select table_name, hidden from catalog_tables where database_name = 'data'"
+    )
+    # The catalog is repopulated on startup even though the schema version matches
+    assert [tuple(row) for row in rows.rows] == [("_private", 1)]
+    ds.close()
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,9 @@ dialog.datasette-modal {
     overflow: hidden;
     font-family: system-ui, -apple-system, sans-serif;
     background: var(--card);
+    /* Stop iOS Safari enlarging longer runs of text in landscape */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 dialog.datasette-modal[open] {
@@ -57,12 +60,21 @@ dialog.datasette-modal::backdrop {
 }
 
 :where(.datasette-modal) .modal-title {
+    /* Keep the title whole: a long modal-meta is what gets truncated */
+    flex-shrink: 0;
+    max-width: 100%;
+    /* A heading's margins would push it off centre from the modal-meta */
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
     color: var(--ink);
 }
 
 :where(.datasette-modal) .modal-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: ui-monospace, monospace;
     font-size: 0.7rem;
     color: var(--muted);
@@ -361,6 +373,74 @@ a:active  {
     margin-left: 0.5rem;
 }
 
+/* "You are not on the first page" strip, shown when ?_next= is set */
+.page-position {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    margin: 0 0 1rem;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid #c7d7f5;
+    border-radius: 0.4rem;
+    background: #e8effd;
+    color: #1d3461;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+.page-position-footer {
+    justify-content: flex-end;
+    margin: 1rem 0 1.5rem;
+}
+.page-position-text {
+    flex: 1 1 auto;
+}
+.page-position-text strong {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.page-position-text code {
+    font-size: 0.85em;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 0.05em 0.3em;
+    border-radius: 0.2rem;
+}
+.page-position-links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.page-position a.page-position-first,
+.page-position a.page-position-next {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid #1a56db;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #1a56db;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.page-position a.page-position-first:hover,
+.page-position a.page-position-first:focus {
+    background: #1a56db;
+    color: #fff;
+}
+.page-position a.page-position-next {
+    background: #1a56db;
+    color: #fff;
+}
+.page-position a.page-position-next:hover,
+.page-position a.page-position-next:focus {
+    background: #1646b3;
+    border-color: #1646b3;
+    color: #fff;
+}
+
 .table-summary .count-error:not(:empty) {
     display: block;
     margin-top: 0.25rem;
@@ -550,6 +630,28 @@ h2 em {
     white-space: pre-wrap;
     margin: 1rem 0;
     font-family: monospace;
+}
+
+/* Collapsed CREATE TABLE / CREATE VIEW at the bottom of the table page */
+.table-schema {
+    margin: 1.5rem 0 1rem;
+}
+.table-schema > summary {
+    cursor: pointer;
+    width: fit-content;
+    color: var(--muted, #6b6b6b);
+    font-weight: 600;
+}
+.table-schema > summary:hover {
+    color: var(--ink, #0f0f0f);
+}
+.table-schema .wrapped-sql {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem 1rem;
+    background: var(--card, #fff);
+    border: 1px solid var(--rule, #d8e6f5);
+    border-radius: 0.4rem;
+    font-size: 0.85rem;
 }
 
 /* Tables ==================================================================
@@ -1143,10 +1245,6 @@ form.sql textarea {
 form.sql label {
     width: 15%;
 }
-.advanced-export input[type=submit] {
-    font-size: 0.6em;
-    margin-left: 1em;
-}
 label.sort_by_desc {
     padding-right: 1em;
 }
@@ -1375,6 +1473,32 @@ button.core[type=button] {
 .filters input[type=submit]:focus {
     background: #1949b8;
     border-color: #1949b8;
+}
+
+/* Secondary action: same treatment as the filter row remove buttons */
+.filters a.filters-clear {
+    display: inline-block;
+    border: 1px solid var(--filter-rule);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--filter-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0.55rem 0.85rem;
+    text-decoration: none;
+}
+
+.filters a.filters-clear:hover,
+.filters a.filters-clear:focus {
+    border-color: #c9d5e3;
+    background: #f8fbff;
+    color: var(--filter-ink);
+}
+
+.filters a.filters-clear:focus-visible {
+    outline: 3px solid rgba(26, 86, 219, 0.14);
+    outline-offset: 2px;
 }
 
 .filters button.filter-row-icon {
@@ -1755,13 +1879,365 @@ button.core[type=button] {
     }
 }
 
-.advanced-export {
-    margin-top: 1em;
-    padding: 0.01em 2em 0.01em 1em;
-    width: auto;
-    display: inline-block;
-    box-shadow: 1px 2px 8px 2px rgba(0,0,0,0.08);
-	background-color: white;
+/* Quiet buttons: low-key secondary actions such as "Export data" and
+   "View and edit SQL", in the suggested facet chips' colours. Works on
+   both <button> and <a>. */
+.table-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 1rem;
+}
+
+.quiet-button,
+a.quiet-button:link,
+a.quiet-button:visited {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 5px;
+    background: #fff;
+    color: #24465d;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.quiet-button svg {
+    display: block;
+    flex-shrink: 0;
+    color: #6b6b6b;
+    transition: color 0.12s;
+}
+
+.quiet-button:hover,
+a.quiet-button:hover,
+.quiet-button:focus-visible {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.quiet-button:hover svg,
+.quiet-button:focus-visible svg {
+    color: currentColor;
+}
+
+.quiet-button:focus-visible {
+    outline: 2px solid #1a56db;
+    outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+    .quiet-button,
+    a.quiet-button:link,
+    a.quiet-button:visited {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quiet-button,
+    .quiet-button svg {
+        transition: none;
+    }
+}
+
+/* Export dialog, opened by the "Export data" quiet button. One row per
+   format: its name and description, then a group of Copy / View /
+   Download / Copy URL actions that wraps below the name on narrow screens. */
+dialog.export-dialog {
+    width: min(660px, calc(100vw - 32px));
+}
+
+.export-dialog .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+/* The body scrolls instead: without this the clamped scope box, which hides
+   its overflow, would be squashed when the list is taller than the dialog */
+.export-dialog .modal-body > * {
+    flex-shrink: 0;
+}
+
+/* Which rows the export covers, e.g. "Filtered rows where state = "CA"" */
+.export-dialog .export-scope {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    /* Long filters or query parameters: the full text is in the title */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+}
+
+/* Past the first page: the exports start from this page's rows */
+.export-dialog .export-page-note {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.export-dialog .export-option-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.15rem 0.5rem;
+}
+
+/* How many rows each format returns: amber when it is not every row */
+.export-dialog .export-rows {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.export-dialog .export-rows[data-partial="true"] {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Two boxes: TSV and CSV with the options they share, then the rest */
+.export-dialog .export-options {
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+}
+
+/* Keeps the options strip inside the rounded corners */
+.export-dialog .export-option-group {
+    overflow: hidden;
+}
+
+.export-dialog .export-options > li + li,
+.export-dialog .export-option + .export-option {
+    border-top: 1px solid var(--rule);
+}
+
+.export-dialog .export-option {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.export-dialog .export-option-text {
+    display: flex;
+    flex: 1 1 12rem;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.export-dialog .export-option-name {
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.export-dialog .export-option-description {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.export-dialog .export-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--card);
+    overflow: hidden;
+}
+
+.export-dialog .export-action {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--accent);
+    font: 500 0.8rem/1.2 system-ui, -apple-system, sans-serif;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.export-dialog .export-action[hidden] {
+    display: none;
+}
+
+/* Dividers between the visible actions: Copy, first, can be hidden */
+.export-dialog .export-action:not([hidden]) ~ .export-action:not([hidden]) {
+    border-left: 1px solid var(--rule);
+}
+
+/* Too narrow for four actions in a row (a 320px phone, or large text): two
+   by two instead, with the gaps showing through as the dividers */
+.export-dialog .export-options {
+    container: export-options / inline-size;
+}
+
+@container export-options (max-width: 18rem) {
+    .export-dialog .export-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--rule);
+    }
+    .export-dialog .export-action {
+        background: var(--card);
+        padding-inline: 0.3rem;
+    }
+    .export-dialog .export-action:not([hidden]) ~ .export-action:not([hidden]) {
+        border-left: 0;
+    }
+}
+
+.export-dialog .export-action:hover,
+.export-dialog .export-action:focus-visible {
+    background: var(--paper);
+    color: #1949b8;
+}
+
+.export-dialog .export-action:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* State labels added by export-dialog.js share one grid cell, so a
+   button keeps its width as "Copy" becomes "Copying…" and "Copied". */
+.export-dialog .export-action-label {
+    grid-area: 1 / 1;
+    visibility: hidden;
+}
+
+.export-dialog .export-action[data-state="idle"] > [data-state="idle"],
+.export-dialog .export-action[data-state="busy"] > [data-state="busy"],
+.export-dialog .export-action[data-state="done"] > [data-state="done"],
+.export-dialog .export-action[data-state="error"] > [data-state="error"] {
+    visibility: visible;
+}
+
+.export-dialog .export-action[data-state="busy"] {
+    color: var(--muted);
+    cursor: progress;
+}
+
+.export-dialog .export-action[data-state="done"] {
+    color: #1a7f37;
+}
+
+.export-dialog .export-action[data-state="error"] {
+    color: #b91c1c;
+}
+
+/* Why an action failed: stays until that action is tried again */
+.export-dialog .export-option-error {
+    flex: 1 0 100%;
+    margin: 0;
+    color: #b91c1c;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+/* Expand labels and Include all rows, under TSV and CSV: they apply to both */
+.export-dialog .export-csv-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.1rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
+}
+
+.export-dialog .export-csv-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--ink);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.export-dialog .export-csv-options[hidden],
+.export-dialog .export-csv-options label[hidden] {
+    display: none;
+}
+
+.export-dialog .export-csv-options input {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.export-dialog .export-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+    .export-dialog .export-actions {
+        flex: 1 0 100%;
+    }
+    .export-dialog .export-action {
+        flex: 1 1 auto;
+        padding-inline: 0.3rem;
+    }
+}
+
+@media (pointer: coarse) {
+    .export-dialog .export-action {
+        min-height: 2.25rem;
+    }
+    .export-dialog .export-csv-options label {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .export-dialog .export-action {
+        transition: none;
+    }
 }
 
 .download-sqlite em {
@@ -2533,6 +3009,503 @@ dialog.set-column-type-dialog {
 .set-column-type-option-description {
     color: var(--muted);
     font-size: 0.9rem;
+}
+
+/* Column statistics dialog (column-stats.js) */
+dialog.column-stats-dialog {
+    width: min(720px, calc(100vw - 32px));
+    max-height: min(860px, calc(100dvh - 32px));
+}
+
+.column-stats-dialog .modal-header {
+    justify-content: space-between;
+}
+
+.column-stats-dialog .modal-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* A pill for each column, to switch the dialog between columns */
+.column-stats-columns {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+    max-height: 5.6rem;
+    overflow-y: auto;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.column-stats-columns[hidden] {
+    display: none;
+}
+
+.column-stats-column {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    max-width: 16rem;
+    padding: 3px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.column-stats-column:hover {
+    border-color: var(--accent);
+}
+
+.column-stats-column:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.column-stats-column-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.column-stats-column-type {
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
+.column-stats-column[aria-selected="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    cursor: default;
+}
+
+.column-stats-column[aria-selected="true"] .column-stats-column-type {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.column-stats-body {
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.column-stats-section + .column-stats-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+}
+
+.column-stats-section h3 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.column-stats-subtitle {
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.column-stats-section h4 {
+    margin: 14px 0 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+
+.column-stats-loading,
+.column-stats-note {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.column-stats-error {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-left: 3px solid #b91c1c;
+    background: rgba(185, 28, 28, 0.06);
+    color: #b91c1c;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+/* Which rows the statistics cover: filtered rows or the whole table */
+.column-stats-scope {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    flex-wrap: wrap;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--paper);
+    font-size: 0.85rem;
+}
+
+.column-stats-scope p {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.column-stats-scope[data-scope="all"] .column-stats-scope-description {
+    color: var(--muted);
+}
+
+.column-stats-scope-toggle {
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--card);
+    color: var(--accent);
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.column-stats-scope-toggle:hover {
+    border-color: var(--accent);
+}
+
+/* Stat tiles */
+.column-stats-tiles {
+    display: grid;
+    grid-template-columns: repeat(var(--column-stats-tile-columns, 4), minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+}
+
+.column-stats-tile {
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #fbfdff;
+    min-width: 0;
+}
+
+.column-stats-tile dt {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-tile dd {
+    margin: 2px 0 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.column-stats-tile-value {
+    font-size: 1rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.column-stats-tile-detail {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+/* Storage type breakdown */
+.column-stats-types-bar {
+    display: flex;
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 4px;
+    overflow: hidden;
+    gap: 2px;
+}
+
+.column-stats-types-bar span {
+    flex-basis: 0;
+    min-width: 3px;
+}
+
+.column-stats-types-legend {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.column-stats-swatch {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    margin-right: 5px;
+}
+
+.column-stats-type-integer { background: #1a56db; }
+.column-stats-type-real { background: #0e9f6e; }
+.column-stats-type-text { background: #c27803; }
+.column-stats-type-blob { background: #7e3af2; }
+
+/* Bar charts */
+.column-stats-figure {
+    margin: 12px 0 0;
+}
+
+.column-stats-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 96px;
+    padding-bottom: 1px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.column-stats-bar {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+
+.column-stats-bar-fill {
+    display: block;
+    width: 100%;
+    background: rgba(26, 86, 219, 0.55);
+    border-radius: 2px 2px 0 0;
+}
+
+.column-stats-bar:hover .column-stats-bar-fill {
+    background: var(--accent);
+}
+
+.column-stats-axis {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 3px;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-chart-caption {
+    margin: 4px 0 0;
+    min-height: 1.2em;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* Box plot, on the same min to max scale as the histogram axis */
+.column-stats-boxplot {
+    position: relative;
+    height: 18px;
+    margin-top: 10px;
+}
+
+.column-stats-boxplot-whisker {
+    position: absolute;
+    top: 8px;
+    height: 2px;
+    background: var(--muted);
+}
+
+.column-stats-boxplot-box {
+    position: absolute;
+    top: 2px;
+    height: 14px;
+    box-sizing: border-box;
+    border: 1.5px solid var(--accent);
+    background: rgba(26, 86, 219, 0.12);
+    border-radius: 3px;
+}
+
+.column-stats-boxplot-median {
+    position: absolute;
+    top: 0;
+    height: 18px;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--ink);
+}
+
+/* Percentiles */
+.column-stats-percentiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 4px;
+    margin: 0;
+}
+
+.column-stats-percentile {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--paper);
+    font-size: 0.8rem;
+    min-width: 0;
+}
+
+.column-stats-percentile dt {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-percentile dd {
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* Text patterns and range */
+.column-stats-patterns {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.85rem;
+}
+
+.column-stats-patterns li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--rule);
+}
+
+.column-stats-range {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 12px 0 0;
+}
+
+.column-stats-range dt {
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.column-stats-range dd {
+    margin: 2px 0 0;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    max-height: 4.5em;
+    overflow: hidden;
+}
+
+/* Most common values */
+.column-stats-top-values {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.column-stats-top-values li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 5px 0;
+    font-size: 0.85rem;
+}
+
+.column-stats-top-value {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.column-stats-value-special {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.column-stats-top-count {
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.column-stats-top-bar {
+    grid-column: 1 / -1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--paper);
+    overflow: hidden;
+}
+
+.column-stats-top-bar span {
+    display: block;
+    height: 100%;
+    background: rgba(26, 86, 219, 0.55);
+}
+
+/* SQL used to calculate the statistics */
+.column-stats-sql {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    font-size: 0.85rem;
+}
+
+.column-stats-sql summary {
+    cursor: pointer;
+    color: var(--muted);
+}
+
+.column-stats-sql-list {
+    margin: 8px 0 0;
+    padding-left: 1.4em;
+}
+
+.column-stats-sql-list li + li {
+    margin-top: 10px;
+}
+
+.column-stats-sql-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.column-stats-sql-list pre {
+    margin: 4px 0 0;
+    padding: 8px 10px;
+    background: var(--paper);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+@media (max-width: 576px) {
+    .column-stats-dialog .modal-body {
+        padding: 12px 16px 20px;
+    }
+    .column-stats-columns {
+        padding: 8px 16px;
+    }
+    .column-stats-tiles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .column-stats-range {
+        grid-template-columns: 1fr;
+    }
 }
 
 .row-mutation-status {
@@ -4917,5 +5890,24 @@ button.column-menu-trigger[aria-expanded="true"] {
         width: max-content;
         min-width: min(14rem, calc(100vw - 24px));
         max-width: min(18rem, calc(100vw - 24px));
+    }
+}
+
+/* Mobile Safari zooms the page when a text input, select or textarea with
+   a font-size smaller than 16px receives focus. Bump the controls that use
+   a smaller size up to 16px on touch devices. */
+@media (pointer: coarse) {
+    .filters {
+        /* Taller filter controls so the 16px text fits */
+        --filter-control-height: 2.5rem;
+    }
+    .select-wrapper select,
+    .filters input.filter-value,
+    .filters #_search,
+    textarea.row-edit-input,
+    .row-edit-bulk-textarea,
+    .table-create-data-textarea,
+    datasette-autocomplete input[type="text"] {
+        font-size: 16px;
     }
 }

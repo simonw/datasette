@@ -2388,26 +2388,6 @@ function openTableCreateDialog(button, manager) {
   state.tableName.focus();
 }
 
-function initTableCreateActions(manager) {
-  if (
-    !window.fetch ||
-    !window.HTMLDialogElement ||
-    !databaseCreateTableData()
-  ) {
-    return;
-  }
-  document.addEventListener("click", function (ev) {
-    var button = ev.target.closest(
-      'button[data-database-action="create-table"]',
-    );
-    if (!button) {
-      return;
-    }
-    ev.preventDefault();
-    openTableCreateDialog(button, manager);
-  });
-}
-
 function setRowDeleteDialogBusy(state, isBusy) {
   state.isBusy = isBusy;
   state.modal.busy = isBusy;
@@ -4065,20 +4045,6 @@ function openTableAlterDialog(button, manager) {
   }
 }
 
-function initTableAlterActions(manager) {
-  if (!window.fetch || !window.HTMLDialogElement || !tableAlterData()) {
-    return;
-  }
-  document.addEventListener("click", function (ev) {
-    var button = ev.target.closest('button[data-table-action="alter-table"]');
-    if (!button) {
-      return;
-    }
-    ev.preventDefault();
-    openTableAlterDialog(button, manager);
-  });
-}
-
 function tableForeignKeys() {
   return tablePageData().foreignKeys || {};
 }
@@ -4499,20 +4465,6 @@ function openRowDeleteDialog(button, manager) {
 
   state.modal.show({ returnFocusTo: button });
   state.confirmButton.focus();
-}
-
-function initRowDeleteActions(manager) {
-  if (!window.fetch || !window.HTMLDialogElement) {
-    return;
-  }
-  document.addEventListener("click", function (ev) {
-    var button = ev.target.closest('button[data-row-action="delete"]');
-    if (!button) {
-      return;
-    }
-    ev.preventDefault();
-    openRowDeleteDialog(button, manager);
-  });
 }
 
 function isBase64JsonValue(value) {
@@ -5146,54 +5098,6 @@ function renderColumnField(pluginControl, fieldApi) {
   pluginWrap._datasetteColumnField = pluginControl;
   pluginWrap._datasetteColumnFormField = fieldApi;
   return pluginWrap;
-}
-
-function validateJsonColumnField(field) {
-  var value = field.input.value;
-  if (value.trim() === "") {
-    field.clearValidity();
-    return true;
-  }
-  try {
-    JSON.parse(value);
-    field.clearValidity();
-    return true;
-  } catch (error) {
-    field.setValidity(
-      "Invalid JSON" + (error && error.message ? ": " + error.message : ""),
-    );
-    return false;
-  }
-}
-
-function registerBuiltinColumnFieldPlugins(manager) {
-  if (!manager || !manager.registerPlugin) {
-    return;
-  }
-  manager.registerPlugin("datasette-json-column", {
-    version: "1.0",
-    makeColumnField: function (context) {
-      if (!context.columnType || context.columnType.type !== "json") {
-        return;
-      }
-      return {
-        useTextarea: true,
-        render: function (field) {
-          field.input.addEventListener("input", function () {
-            validateJsonColumnField(field);
-          });
-          field.input.addEventListener("change", function () {
-            validateJsonColumnField(field);
-          });
-          validateJsonColumnField(field);
-          return field.input;
-        },
-        focus: function (field) {
-          field.input.focus();
-        },
-      };
-    },
-  });
 }
 
 function focusRowEditPluginControl(field) {
@@ -7382,41 +7286,12 @@ function openRowInsertDialog(button, manager) {
   renderRowInsertFields(state, insertData);
 }
 
-function initRowEditActions(manager) {
-  if (!window.fetch || !window.HTMLDialogElement) {
-    return;
-  }
-  document.addEventListener("click", function (ev) {
-    var button = ev.target.closest('button[data-row-action="edit"]');
-    if (!button) {
-      return;
-    }
-    ev.preventDefault();
-    openRowEditDialog(button, manager);
-  });
-}
-
-function initRowInsertActions(manager) {
-  if (!window.fetch || !window.HTMLDialogElement || !tableInsertData()) {
-    return;
-  }
-  document.addEventListener("click", function (ev) {
-    var button = ev.target.closest('button[data-table-action="insert-row"]');
-    if (!button) {
-      return;
-    }
-    ev.preventDefault();
-    openRowInsertDialog(button, manager);
-  });
-}
-
-document.addEventListener("datasette_init", function (evt) {
-  const { detail: manager } = evt;
-
-  registerBuiltinColumnFieldPlugins(manager);
-  initTableCreateActions(manager);
-  initTableAlterActions(manager);
-  initRowInsertActions(manager);
-  initRowEditActions(manager);
-  initRowDeleteActions(manager);
-});
+// Loaded on demand by edit-tools-loader.js, which calls these when the
+// corresponding buttons are clicked.
+window.datasetteEditTools = {
+  openTableCreateDialog: openTableCreateDialog,
+  openTableAlterDialog: openTableAlterDialog,
+  openRowInsertDialog: openRowInsertDialog,
+  openRowEditDialog: openRowEditDialog,
+  openRowDeleteDialog: openRowDeleteDialog,
+};

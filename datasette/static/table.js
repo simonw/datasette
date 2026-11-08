@@ -344,6 +344,31 @@ function openSetColumnTypeDialog(th) {
   }
 }
 
+function canShowColumnStatistics(th) {
+  return !!(
+    window.DatasetteColumnStats &&
+    window.DatasetteColumnStats.isAvailable() &&
+    th.dataset.column &&
+    th.dataset.isLinkColumn !== "1"
+  );
+}
+
+function openColumnStatistics(th, returnFocusTo) {
+  if (!returnFocusTo) {
+    var active = document.activeElement;
+    returnFocusTo =
+      active && active !== document.body && active.isConnected
+        ? active
+        : document.querySelector(".column-actions-mobile") ||
+          th.querySelector(".column-menu-trigger");
+  }
+  window.DatasetteColumnStats.open({
+    column: th.dataset.column,
+    columnType: th.dataset.columnType || null,
+    returnFocusTo: returnFocusTo,
+  });
+}
+
 function canChooseColumns() {
   return !!(
     document.querySelector("column-chooser") && window._columnChooserData
@@ -401,6 +426,21 @@ function buildColumnActionItems(manager, th, options) {
     columnActions.push({
       label: "Facet by this",
       href: facetUrl(column),
+    });
+  }
+
+  if (canShowColumnStatistics(th)) {
+    columnActions.push({
+      label: "Column statistics",
+      href: "#",
+      onClick:
+        options.onColumnStatistics ||
+        function (ev) {
+          ev.preventDefault();
+          window.setTimeout(function () {
+            openColumnStatistics(th);
+          }, 0);
+        },
     });
   }
 
@@ -547,6 +587,13 @@ const initDatasetteTable = function (manager) {
         closeMenu();
         window.setTimeout(function () {
           openSetColumnTypeDialog(th);
+        }, 0);
+      },
+      onColumnStatistics: function (ev) {
+        ev.preventDefault();
+        closeMenu();
+        window.setTimeout(function () {
+          openColumnStatistics(th, trigger);
         }, 0);
       },
     });
@@ -853,32 +900,58 @@ function openColumnChooser() {
   });
 }
 
+var tableCount = null;
+
+/* Count the rows matching this page's filters. The "count all" button and the
+   export dialog (export-dialog.js) share this one request, and the count is
+   shown in the page header whichever of them asked for it. Failed counts are
+   forgotten so that they can be retried. */
+function countTableRows(countUrl) {
+  if (!tableCount) {
+    tableCount = fetch(countUrl + location.search, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+      },
+    }).then(async function (response) {
+      var data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error((data.errors || ["Count failed"]).join(" "));
+      }
+      return data.count;
+    });
+    tableCount.then(showTableCount, function () {
+      tableCount = null;
+    });
+  }
+  return tableCount;
+}
+
+function showTableCount(count) {
+  var countEl = document.querySelector(".table-count");
+  if (countEl) {
+    countEl.textContent =
+      count.toLocaleString("en-US") + (count === 1 ? " row" : " rows");
+  }
+  var button = document.querySelector(".count-all");
+  if (button) {
+    button.remove();
+  }
+}
+
 function initCountAll() {
   var button = document.querySelector(".count-all");
   if (!button) {
     return;
   }
   button.addEventListener("click", async function () {
-    var count = document.querySelector(".table-count");
     var error = document.querySelector(".count-error");
     button.disabled = true;
     button.textContent = "Counting…";
     error.textContent = "";
     try {
-      var response = await fetch(button.dataset.countUrl + location.search, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-      var data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error((data.errors || ["Count failed"]).join(" "));
-      }
-      count.textContent =
-        data.count.toLocaleString("en-US") +
-        (data.count === 1 ? " row" : " rows");
-      button.remove();
+      // showTableCount() updates the header and removes this button
+      await countTableRows(button.dataset.countUrl);
     } catch (ex) {
       error.textContent = ex.message || "Count failed";
       button.disabled = false;
@@ -887,11 +960,54 @@ function initCountAll() {
   });
 }
 
+/* On pages after the first (?_next=), ask how many rows come before this
+   page so the position strip can say "Rows 51–100 of 1,761". This runs after
+   page load so it never slows the page down; if it fails or times out the
+   strip keeps its server-rendered "Continuing after ..." text. */
+async function initPagePosition() {
+  var strip = document.querySelector(".page-position");
+  // No count-before URL on the first page: it already knows it starts at row 1
+  if (!strip || !strip.dataset.countBeforeUrl) {
+    return;
+  }
+  var pageRows = parseInt(strip.dataset.pageRows, 10);
+  if (!pageRows) {
+    return;
+  }
+  try {
+    var response = await fetch(strip.dataset.countBeforeUrl, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    var data = await response.json();
+    if (!response.ok || !data.ok) {
+      return;
+    }
+    var fmt = function (n) {
+      return n.toLocaleString("en-US");
+    };
+    var html =
+      "Rows <strong>" +
+      fmt(data.count + 1) +
+      "–" +
+      fmt(data.count + pageRows) +
+      "</strong>";
+    if (strip.dataset.total) {
+      html +=
+        " of <strong>" + fmt(parseInt(strip.dataset.total, 10)) + "</strong>";
+    }
+    strip.querySelector(".page-position-text").innerHTML = html;
+  } catch (ex) {
+    // Leave the fallback text in place
+  }
+}
+
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
   initCountAll();
+  initPagePosition();
   initializeColumnActions(manager);
 
   // Main table

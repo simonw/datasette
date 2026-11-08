@@ -588,6 +588,8 @@ class Datasette:
         # CLI settings should overwrite datasette.json settings
         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
+        # File extension -> label, description, is_binary and is_webpage
+        self._renderer_options = {}
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
             self.executor = None
@@ -727,7 +729,8 @@ class Datasette:
 
     async def _refresh_schemas(self):
         internal_db = self.get_internal_database()
-        if not self.internal_db_created:
+        first_refresh = not self.internal_db_created
+        if first_refresh:
             await init_internal_db(internal_db)
             await self.apply_metadata_json()
             self.internal_db_created = True
@@ -769,8 +772,12 @@ class Datasette:
             await internal_db.execute_write_fn(delete_stale_database_catalog)
         for database_name, db in self.databases.items():
             schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
-            # Compare schema versions to see if we should skip it
-            if schema_version == current_schema_versions.get(database_name):
+            # Compare schema versions to see if we should skip it. Always
+            # repopulate on the first refresh, since a persistent internal
+            # database may hold catalog rows calculated using older config.
+            if not first_refresh and schema_version == current_schema_versions.get(
+                database_name
+            ):
                 continue
             await populate_schema_tables(internal_db, db, schema_version)
 
@@ -2542,6 +2549,12 @@ ORDER BY allowed.parent, allowed.child
         """Register output renderers which output data in custom formats."""
         # Built-in renderers
         self.renderers["json"] = (json_renderer, lambda: True)
+        self._renderer_options["json"] = {
+            "label": "JSON",
+            "description": None,
+            "is_binary": False,
+            "is_webpage": False,
+        }
 
         # Hooks
         hook_renderers = []
@@ -2553,11 +2566,26 @@ ORDER BY allowed.parent, allowed.child
                 hook_renderers.append(hook)
 
         for renderer in hook_renderers:
-            self.renderers[renderer["extension"]] = (
+            extension = renderer["extension"]
+            self.renderers[extension] = (
                 # It used to be called "callback" - remove this in Datasette 1.0
                 renderer.get("render") or renderer["callback"],
                 renderer.get("can_render") or (lambda: True),
             )
+            # How the export dialog presents this format
+            is_binary = bool(renderer.get("is_binary"))
+            is_webpage = bool(renderer.get("is_webpage"))
+            if is_binary and is_webpage:
+                raise StartupError(
+                    f"Output renderer '{extension}' cannot set both is_binary "
+                    "and is_webpage"
+                )
+            self._renderer_options[extension] = {
+                "label": renderer.get("label") or extension,
+                "description": renderer.get("description"),
+                "is_binary": is_binary,
+                "is_webpage": is_webpage,
+            }
 
     async def render_template(
         self,

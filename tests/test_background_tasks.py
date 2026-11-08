@@ -379,3 +379,131 @@ async def test_cancel_all_logs_stragglers_that_outlive_the_grace_period(caplog):
     handle.task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await handle.task
+
+
+# Done callbacks ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_done_callback_after_the_task_completes():
+    ds = Datasette(memory=True)
+    await ds.start_background_tasks()
+    calls = []
+
+    async def quick(datasette):
+        return "done"
+
+    handle = ds.add_background_task(quick, name="quick")
+    handle.add_done_callback(lambda h: calls.append((h, h.state)))
+    assert calls == []
+    await asyncio.wait_for(asyncio.wait([handle.task]), timeout=5)
+    assert calls == [(handle, "completed")]
+
+
+@pytest.mark.asyncio
+async def test_done_callback_after_the_task_crashes():
+    ds = Datasette(memory=True)
+    await ds.start_background_tasks()
+    calls = []
+
+    async def crashing(datasette):
+        raise RuntimeError("kaboom")
+
+    handle = ds.add_background_task(crashing, name="crashing")
+    handle.add_done_callback(lambda h: calls.append((h.state, h.exception)))
+    await asyncio.wait_for(asyncio.wait([handle.task]), timeout=5)
+    [(state, exception)] = calls
+    assert state == "crashed"
+    assert isinstance(exception, RuntimeError)
+
+
+@pytest.mark.asyncio
+async def test_done_callback_when_cancelled_before_launch():
+    ds = Datasette(memory=True)
+    ran = []
+    calls = []
+
+    async def task(datasette):
+        ran.append(True)
+
+    handle = ds.add_background_task(task, name="never-runs")
+    handle.add_done_callback(lambda h: calls.append(h.state))
+    handle.cancel()
+    # At once, before cancel() returns: it will never run
+    assert calls == ["cancelled"]
+    assert handle.state == "cancelled"
+    assert handle not in ds._background_tasks.tasks()
+    await ds.start_background_tasks()
+    await asyncio.sleep(0)
+    handle.cancel()
+    # Called once only, and the task never ran
+    assert calls == ["cancelled"]
+    assert ran == []
+
+
+@pytest.mark.asyncio
+async def test_done_callback_when_cancelled_before_its_first_step():
+    # What shutdown does to a task that was launched but has not run yet:
+    # its coroutine never starts, so it cannot clean up after itself, and
+    # only a done callback hears that it ended
+    ds = Datasette(memory=True)
+    entered = []
+    calls = []
+
+    async def task(datasette):
+        entered.append(True)
+
+    handle = ds.add_background_task(task, name="cancelled-early")
+    handle.add_done_callback(lambda h: calls.append(h.state))
+    await ds._background_tasks.launch_all()
+    assert handle.state == "running"
+    await ds._background_tasks.cancel_all(grace=1.0)
+    # Called by the time cancel_all() returns, so before shutdown closes
+    # the databases
+    assert calls == ["cancelled"]
+    assert entered == []
+
+
+@pytest.mark.asyncio
+async def test_done_callback_added_after_the_end_is_called_at_once():
+    ds = Datasette(memory=True)
+    calls = []
+
+    async def quick(datasette):
+        pass
+
+    cancelled = ds.add_background_task(quick, name="cancelled")
+    cancelled.cancel()
+    cancelled.add_done_callback(lambda h: calls.append((h.name, h.state)))
+    assert calls == [("cancelled", "cancelled")]
+
+    completed = ds.add_background_task(quick, name="completed")
+    await ds.start_background_tasks()
+    await asyncio.wait_for(asyncio.wait([completed.task]), timeout=5)
+    completed.add_done_callback(lambda h: calls.append((h.name, h.state)))
+    assert calls[1:] == [("completed", "completed")]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_done_callback_is_logged_and_the_others_still_run(caplog):
+    ds = Datasette(memory=True)
+    calls = []
+
+    async def quick(datasette):
+        pass
+
+    def failing(handle):
+        raise ValueError("callback failed")
+
+    handle = ds.add_background_task(quick, name="with-callbacks")
+    handle.add_done_callback(failing)
+    handle.add_done_callback(lambda h: calls.append(h.state))
+    with caplog.at_level(logging.ERROR, logger="datasette.background_tasks"):
+        handle.cancel()
+        assert calls == ["cancelled"]
+        assert "with-callbacks" in caplog.text
+        assert "callback failed" in caplog.text
+        # The same for one added afterwards, called at once
+        caplog.clear()
+        handle.add_done_callback(failing)
+        assert "callback failed" in caplog.text

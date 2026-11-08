@@ -21,7 +21,10 @@ consumer, a scheduled job runner) register it with
   exception was never retrieved" warning nobody sees;
 - **cancellation**: :meth:`BackgroundTaskSupervisor.cancel_all` cancels
   every task still running and waits (with a grace period) for them to
-  actually stop.
+  actually stop;
+- **completion**: :meth:`BackgroundTask.add_done_callback` tells whoever
+  holds a handle that its work is over, however it ended - even a task
+  cancelled before its first step, whose coroutine never ran.
 """
 
 from __future__ import annotations
@@ -55,7 +58,8 @@ class BackgroundTask:
     one of ``completed`` (returned cleanly), ``crashed`` (raised an
     exception other than ``CancelledError`` - see ``.exception``), or
     ``cancelled`` (``.cancel()`` was called, or it was still running at
-    shutdown).
+    shutdown). ``.cancel()`` before launch goes straight from
+    ``registered`` to ``cancelled``.
     """
 
     def __init__(
@@ -75,6 +79,7 @@ class BackgroundTask:
         self.function = _function_path(func)
         self._func = func
         self._supervisor: BackgroundTaskSupervisor | None = None
+        self._done_callbacks: list[Callable[[BackgroundTask], None]] = []
 
     def cancel(self) -> None:
         """Cancel this task.
@@ -82,14 +87,42 @@ class BackgroundTask:
         If it has already been launched, cancels the underlying
         ``asyncio.Task`` - its state becomes ``cancelled`` once the
         cancellation is observed (asynchronously, via the task's done
-        callback). If it has not been launched yet, this is a no-op as
-        far as asyncio is concerned (there's no task to cancel) but it
-        deregisters the handle from its supervisor so it never runs.
+        callback). If it has not been launched yet, there is no
+        ``asyncio.Task`` to cancel: it is deregistered from its supervisor
+        so it never runs, its state becomes ``cancelled`` and its done
+        callbacks are called, all before this returns.
         """
         if self.task is not None:
             self.task.cancel()
         elif self._supervisor is not None:
             self._supervisor._deregister(self)
+            self.state = "cancelled"
+            # It will never run: it is over now
+            self._ended()
+
+    def add_done_callback(self, callback: Callable[[BackgroundTask], None]) -> None:
+        """Call ``callback(handle)`` once, when this work is over: its
+        ``asyncio.Task`` returned, crashed or was cancelled - even before
+        its first step, when its coroutine never started - or
+        :meth:`cancel` took it off the list before launch. ``.state`` says
+        which by then. Called at once if the work is over already.
+        Exceptions it raises are logged, and the other callbacks still run.
+        """
+        if self.state in ("completed", "crashed", "cancelled"):
+            self._call(callback)
+        else:
+            self._done_callbacks.append(callback)
+
+    def _ended(self) -> None:
+        callbacks, self._done_callbacks = self._done_callbacks, []
+        for callback in callbacks:
+            self._call(callback)
+
+    def _call(self, callback) -> None:
+        try:
+            callback(self)
+        except Exception:
+            logger.exception("Done callback of background task %r failed", self.name)
 
     def __repr__(self) -> str:
         return f"<BackgroundTask name={self.name!r} state={self.state!r}>"
@@ -219,13 +252,21 @@ class BackgroundTaskSupervisor:
 
 
 def _on_task_done(handle: BackgroundTask, task: asyncio.Task) -> None:
-    if task.cancelled():
-        handle.state = "cancelled"
-        return
-    exc = task.exception()
-    if exc is not None:
-        handle.state = "crashed"
-        handle.exception = exc
-        logger.error("Background task %r crashed", handle.name, exc_info=exc)
-        return
-    handle.state = "completed"
+    # Added when the task is launched, so before cancel_all()'s own wait:
+    # at shutdown the done callbacks of every task that stopped within the
+    # grace period have run by the time it returns. Those of a task still
+    # running then run if and when it stops, which may be after Datasette
+    # has closed its databases
+    try:
+        if task.cancelled():
+            handle.state = "cancelled"
+            return
+        exc = task.exception()
+        if exc is not None:
+            handle.state = "crashed"
+            handle.exception = exc
+            logger.error("Background task %r crashed", handle.name, exc_info=exc)
+            return
+        handle.state = "completed"
+    finally:
+        handle._ended()

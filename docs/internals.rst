@@ -1917,7 +1917,10 @@ BackgroundTask objects
     The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
 
 ``.cancel()``
-    Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.
+    Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs, and ``.state`` becomes ``cancelled`` at once.
+
+``.add_done_callback(callback)``
+    Call ``callback(handle)`` once, when the work is over: the task returned, crashed or was cancelled, or ``.cancel()`` removed it from the queue before it launched. ``.state`` is ``completed``, ``crashed`` or ``cancelled`` by then. If the work is over already, ``callback`` is called at once. A task cancelled before it runs any of its code, as one that has only just launched can be at shutdown, never gets to clean up after itself: a done callback is how the code that started it finds out. During shutdown, the callbacks of a task that stops within the five-second grace period run before Datasette closes its databases; those of a task still running after that run if and when it stops, which can be after the databases have been closed. An exception raised by ``callback`` is logged to the ``datasette.background_tasks`` logger.
 
 This is also the shape of each entry returned by the ``/-/tasks`` JSON introspection endpoint — see :ref:`JsonDataView_tasks`.
 

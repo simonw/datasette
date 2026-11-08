@@ -6076,6 +6076,14 @@ button.column-menu-trigger[aria-expanded="true"] {
     -webkit-mask-image: linear-gradient(#000 calc(100% - 2lh), transparent);
     mask-image: linear-gradient(#000 calc(100% - 2lh), transparent);
 }
+/* row-fields.js adds .fits when the whole value is visible within the clamp */
+.row-field-long.fits > .row-field-value {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+.row-field-long.fits > .row-field-expand {
+    display: none;
+}
 .row-field-expand {
     margin-top: 0.35rem;
     padding: 0;

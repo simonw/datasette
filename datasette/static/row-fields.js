@@ -43,6 +43,33 @@
     }, 50);
   }
 
+  // The template guesses which values are long from their length, but a
+  // value of a few hundred characters can fit within the clamp on a wide
+  // screen. Mark those as fitting so CSS drops the fade and the toggle.
+  // Re-checked whenever a value's size changes (window resize, font load).
+  function updateFits(value) {
+    var wrap = value.parentElement;
+    if (wrap.classList.contains("is-expanded")) {
+      return;
+    }
+    wrap.classList.toggle("fits", value.scrollHeight <= value.clientHeight + 1);
+  }
+  var longValues = document.querySelectorAll(
+    ".row-field-long > .row-field-value",
+  );
+  if (window.ResizeObserver) {
+    var observer = new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) {
+        updateFits(entry.target);
+      });
+    });
+    longValues.forEach(function (value) {
+      observer.observe(value);
+    });
+  } else {
+    longValues.forEach(updateFits);
+  }
+
   document.addEventListener("click", function (ev) {
     var copyButton = ev.target.closest(".row-field-copy");
     if (copyButton) {

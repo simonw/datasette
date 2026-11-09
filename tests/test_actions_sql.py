@@ -15,6 +15,7 @@ from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.resources import DatabaseResource, QueryResource, TableResource
+from datasette.utils.permissions import gather_permission_sql_from_hooks
 
 
 def test_resource_string_representations():
@@ -327,3 +328,66 @@ async def test_sql_does_filtering_not_python(test_ds):
 
     finally:
         test_ds.pm.unregister(plugin, name="test_plugin")
+
+
+@pytest.mark.asyncio
+async def test_gather_permission_sql_attributes_source_to_its_plugin(test_ds):
+    """Each rule's default source must be the plugin that returned it.
+
+    pluggy calls implementations in reverse registration order and drops the
+    ones that return None, so pairing results with get_hookimpls() by index
+    attributed rules to the wrong plugin.
+    """
+
+    class AlphaPlugin:
+        @hookimpl
+        def permission_resources_sql(self, datasette, actor, action):
+            if action == "view-table":
+                return PermissionSQL(
+                    sql="select 'a' as parent, 'x' as child, 1 as allow, 'from-alpha' as reason"
+                )
+            return None
+
+    class BetaPlugin:
+        @hookimpl
+        def permission_resources_sql(self, datasette, actor, action):
+            if action in ("view-table", "insert-row"):
+                return PermissionSQL(
+                    sql="select 'b' as parent, 'y' as child, 1 as allow, 'from-beta' as reason"
+                )
+            return None
+
+    test_ds.pm.register(AlphaPlugin(), name="alpha")
+    test_ds.pm.register(BetaPlugin(), name="beta")
+    try:
+        rules = await gather_permission_sql_from_hooks(
+            datasette=test_ds, actor=None, action="view-table"
+        )
+        sources = {rule.sql: rule.source for rule in rules}
+        assert (
+            sources[
+                "select 'a' as parent, 'x' as child, 1 as allow, 'from-alpha' as reason"
+            ]
+            == "alpha"
+        )
+        assert (
+            sources[
+                "select 'b' as parent, 'y' as child, 1 as allow, 'from-beta' as reason"
+            ]
+            == "beta"
+        )
+
+        # Alpha returns None here, so Beta's rule is the only result and must
+        # not be attributed to Alpha
+        rules = await gather_permission_sql_from_hooks(
+            datasette=test_ds, actor=None, action="insert-row"
+        )
+        assert [(rule.source, rule.sql) for rule in rules] == [
+            (
+                "beta",
+                "select 'b' as parent, 'y' as child, 1 as allow, 'from-beta' as reason",
+            )
+        ]
+    finally:
+        test_ds.pm.unregister(name="alpha")
+        test_ds.pm.unregister(name="beta")

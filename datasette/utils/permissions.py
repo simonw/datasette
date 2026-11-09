@@ -32,15 +32,20 @@ async def gather_permission_sql_from_hooks(
         return SKIP_PERMISSION_CHECKS
 
     hook_caller = pm.hook.permission_resources_sql
-    hookimpls = hook_caller.get_hookimpls()
-    hook_results = list(hook_caller(datasette=datasette, actor=actor, action=action))
+    hook_kwargs = {"datasette": datasette, "actor": actor, "action": action}
 
     collected: list[PermissionSQL] = []
     actor_json = json.dumps(actor) if actor is not None else None
     actor_id = actor.get("id") if isinstance(actor, dict) else None
 
-    for index, result in enumerate(hook_results):
-        hookimpl = hookimpls[index]
+    # Call each implementation directly so every result is paired with the
+    # plugin that produced it. Calling the hook as a whole would not allow
+    # that: pluggy runs implementations in reverse registration order and
+    # leaves out the ones that return None, so the results cannot be matched
+    # back to get_hookimpls() by position.
+    for hookimpl in _hookimpls_in_call_order(hook_caller):
+        args = [hook_kwargs[argname] for argname in hookimpl.argnames]
+        result = hookimpl.function(*args)
         resolved = await await_me_maybe(result)
         default_source = _plugin_name_from_hookimpl(hookimpl)
         for permission_sql in _iter_permission_sql_from_result(resolved, action=action):
@@ -53,6 +58,20 @@ async def gather_permission_sql_from_hooks(
             collected.append(permission_sql)
 
     return collected
+
+
+def _hookimpls_in_call_order(hook_caller) -> list:
+    """Non-wrapper implementations of a hook, in the order pluggy calls them.
+
+    pluggy keeps registered implementations in registration order (with
+    ``trylast`` ones first and ``tryfirst`` ones last) and calls them in
+    reverse. Hook wrappers never produce a result of their own.
+    """
+    return [
+        hookimpl
+        for hookimpl in reversed(hook_caller.get_hookimpls())
+        if not (hookimpl.hookwrapper or getattr(hookimpl, "wrapper", False))
+    ]
 
 
 def _plugin_name_from_hookimpl(hookimpl) -> str:

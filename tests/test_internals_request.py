@@ -226,17 +226,22 @@ async def test_request_post_body_limit_from_constructor():
 
 @pytest.mark.asyncio
 async def test_request_post_body_limit_disabled():
-    body = b"a" * (3 * 1024 * 1024)
+    body = b"a" * (11 * 1024 * 1024)
     request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=0)
     assert await request.post_body() == body
 
 
 @pytest.mark.asyncio
-async def test_request_post_body_default_limit():
-    # Bodies over 2MB are rejected by default
-    request = Request(_post_scope(), _receive_chunks([b"a" * (2 * 1024 * 1024 + 1)]))
-    with pytest.raises(PayloadTooLarge):
-        await request.post_body()
+@pytest.mark.parametrize("extra_byte", [0, 1])
+async def test_request_post_body_default_limit(extra_byte):
+    # Bodies up to 10MB are accepted by default
+    body = b"a" * (10 * 1024 * 1024 + extra_byte)
+    request = Request(_post_scope(), _receive_chunks([body]))
+    if extra_byte:
+        with pytest.raises(PayloadTooLarge):
+            await request.post_body()
+    else:
+        assert await request.post_body() == body
 
 
 @pytest.mark.asyncio

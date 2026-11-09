@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
+
 .. _v1_0_a42:
 
 1.0a42 (2026-11-08)

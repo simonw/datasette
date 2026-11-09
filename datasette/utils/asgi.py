@@ -80,7 +80,7 @@ SAMESITE_VALUES = ("strict", "lax", "none")
 # far below multipart's DEFAULT_MAX_REQUEST_SIZE: that parser streams to disk,
 # while these bodies are held in RAM and json.loads() can multiply their
 # footprint several times over.
-DEFAULT_MAX_POST_BODY_BYTES = 2 * 1024 * 1024  # 2MB
+DEFAULT_MAX_POST_BODY_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 class _RequestHeaders(dict):
@@ -173,7 +173,7 @@ class Request:
         Read the request body fully into memory.
 
         The body is capped at max_bytes - or self.max_post_body_bytes
-        (default 2MB, set from the max_post_body_bytes setting for requests
+        (default 10MB, set from the max_post_body_bytes setting for requests
         created by Datasette) if max_bytes is not provided. Pass max_bytes=0
         to disable the limit. Raises PayloadTooLarge (HTTP 413) if exceeded -
         oversized bodies are rejected as soon as the limit is passed, without

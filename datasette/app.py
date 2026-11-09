@@ -222,7 +222,7 @@ SETTINGS = (
     ),
     Setting(
         "max_post_body_bytes",
-        2 * 1024 * 1024,
+        10 * 1024 * 1024,
         "Maximum size in bytes for a POST body read into memory, e.g. JSON API requests - set 0 to disable this limit",
     ),
     Setting(

@@ -177,7 +177,7 @@ max_post_body_bytes
     setting_default(cog, "max_post_body_bytes")
 .. ]]]
 
-Default: ``2097152``
+Default: ``10485760``
 
 .. [[[end]]]
 
@@ -187,7 +187,7 @@ This limit exists to protect against memory exhaustion: unlike file uploads hand
 
 If you increase :ref:`setting_max_insert_rows` to support larger bulk inserts you may need to increase this limit as well::
 
-    datasette mydatabase.db --setting max_post_body_bytes 10485760
+    datasette mydatabase.db --setting max_post_body_bytes 20971520
 
 Set it to 0 to disable the limit entirely::
 

@@ -836,9 +836,11 @@ class QueryView(View):
         columns = []
 
         params_for_query = params
+        params_for_plugins = None
 
         if sql and not stored_query_write:
             try:
+                params_for_plugins = dict(params)
                 if not stored_query:
                     # For regular queries we only allow SELECT, plus other rules
                     validate_sql_select(sql)
@@ -880,6 +882,9 @@ class QueryView(View):
                 raise DatasetteError(str(ex), title="Invalid SQL", status=400)
             except DatasetteError:
                 raise
+
+            if isinstance(params_for_query, MagicParameters):
+                params_for_plugins = params_for_query.as_dict()
 
         async def query_metadata():
             if stored_query:
@@ -933,6 +938,7 @@ class QueryView(View):
                 columns=columns,
                 rows=rows,
                 sql=sql,
+                params=params_for_plugins,
                 query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
@@ -1006,6 +1012,7 @@ class QueryView(View):
                     columns=data.get("columns") or [],
                     rows=data.get("rows") or [],
                     sql=data.get("query", {}).get("sql", None),
+                    params=params_for_plugins,
                     query_name=data.get("query_name"),
                     database=database,
                     table=data.get("table"),
@@ -1217,6 +1224,10 @@ class QueryView(View):
                     ),
                     request=request,
                     view_name="database",
+                    plugin_context={
+                        "sql": sql if not stored_query_write else None,
+                        "params": params_for_plugins,
+                    },
                 ),
                 headers=headers,
             )
@@ -1240,6 +1251,7 @@ class MagicParameters(dict):
             )
         )
         self._prepared = {}
+        self._bound = {}
 
     async def execute_params(self):
         for key in derive_named_parameters(self._sql):
@@ -1251,12 +1263,22 @@ class MagicParameters(dict):
                     )
                     self._prepared[key] = result
 
+    def as_dict(self):
+        # Include the values actually bound by SQLite, without resolving magic
+        # parameters again or adding them to the query form's parameters.
+        return {**self, **self._bound}
+
     def __len__(self):
         # Workaround for 'Incorrect number of bindings' error
         # https://github.com/simonw/datasette/issues/967#issuecomment-692951144
         return super().__len__() or 1
 
     def __getitem__(self, key):
+        value = self._get_value(key)
+        self._bound[key] = value
+        return value
+
+    def _get_value(self, key):
         if key.startswith("_") and key.count("_") >= 2:
             if key in self._prepared:
                 return self._prepared[key]

@@ -312,7 +312,7 @@ To update these pages, run the following command::
 Documentation screenshots
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Screenshots in the documentation are defined in ``docs/shots.yml`` and taken using `shot-scraper <https://shot-scraper.datasette.io/>`__. That file starts a Datasette server that loads JavaScript from ``docs/shots/``, then saves each screenshot as a WebP image in ``docs/images/``.
+Screenshots in the documentation are defined in ``docs/shots.yml`` and taken using `shot-scraper <https://shot-scraper.datasette.io/en/stable/>`__. That file starts a Datasette server that loads JavaScript from ``docs/shots/``, then saves each screenshot as a WebP image in ``docs/images/``.
 
 To take any screenshots that do not exist yet, run::
 

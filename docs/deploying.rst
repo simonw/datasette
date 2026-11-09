@@ -123,7 +123,7 @@ These two files should be enough to deploy Datasette on any host that supports b
 
 If you want to build SQLite files or download them as part of the deployment process you can do so using a ``bin/post_compile`` file. For example, the following ``bin/post_compile`` will download an example database that will then be served by Datasette::
 
-    wget https://fivethirtyeight.datasettes.com/fivethirtyeight.db
+    wget https://latest.datasette.io/fixtures.db
 
 `simonw/buildpack-datasette-demo <https://github.com/simonw/buildpack-datasette-demo>`__ is an example GitHub repository showing a Datasette configuration that can be deployed to a buildpack-supporting host.
 

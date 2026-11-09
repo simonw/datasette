@@ -64,7 +64,7 @@ The quickest way to create views is with the SQLite command-line interface::
     sqlite> CREATE VIEW demo_view AS select qSpecies from Street_Tree_List;
     <CTRL+D>
 
-You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/>`__ tool to `create a view <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-views>`__::
+You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/en/stable/>`__ tool to `create a view <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-views>`__::
 
     sqlite-utils create-view sf-trees.db demo_view "select qSpecies from Street_Tree_List"
 
@@ -731,4 +731,4 @@ For example, this query will show a list of tables across both of the above data
     from
       [extra_database].sqlite_master
 
-`Try that out here <https://latest.datasette.io/_memory?sql=select%0D%0A++%27fixtures%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bfixtures%5D.sqlite_master%0D%0Aunion%0D%0Aselect%0D%0A++%27extra_database%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bextra_database%5D.sqlite_master>`__.
+`Try that out here <https://latest.datasette.io/_memory/-/query?sql=select%0D%0A++%27fixtures%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bfixtures%5D.sqlite_master%0D%0Aunion%0D%0Aselect%0D%0A++%27extra_database%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bextra_database%5D.sqlite_master>`__.

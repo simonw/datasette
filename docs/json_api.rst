@@ -300,7 +300,7 @@ query string arguments:
     With ``_shape=object``, the object keys still use the original database
     primary-key values, even when a primary-key column is decoded using ``_json``.
 
-    Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
+    Compare `this query without the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array>`_ to `this query using the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``
     If your data contains infinity or -infinity values, Datasette will replace

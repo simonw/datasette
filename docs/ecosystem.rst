@@ -16,7 +16,7 @@ The `Datasette project website <https://datasette.io/>`__ includes a directory o
 sqlite-utils
 ============
 
-`sqlite-utils <https://sqlite-utils.datasette.io/>`__ is a key building block for the wider Datasette ecosystem. It provides a collection of utilities for manipulating SQLite databases, both as a Python library and a command-line utility. Features include:
+`sqlite-utils <https://sqlite-utils.datasette.io/en/stable/>`__ is a key building block for the wider Datasette ecosystem. It provides a collection of utilities for manipulating SQLite databases, both as a Python library and a command-line utility. Features include:
 
 - Insert data into a SQLite database from JSON, CSV or TSV, automatically creating tables with the correct schema or altering existing tables to add missing columns.
 - Configure tables for use with SQLite full-text search, including creating triggers needed to keep the search index up-to-date.

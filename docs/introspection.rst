@@ -11,26 +11,6 @@ JSON responses that return an object include an ``"ok": true`` key, consistent w
 
 The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads``, ``/-/tasks`` and ``/-/actions``, whose shapes may change in future releases.
 
-.. _JsonDataView_metadata:
-
-/-/metadata
------------
-
-Shows the contents of the ``metadata.json`` file that was passed to ``datasette serve``, if any. `Metadata example <https://fivethirtyeight.datasettes.com/-/metadata>`_:
-
-.. code-block:: json
-
-    {
-        "license": "CC Attribution 4.0 License",
-        "license_url": "http://creativecommons.org/licenses/by/4.0/",
-        "source": "fivethirtyeight/data on GitHub",
-        "source_url": "https://github.com/fivethirtyeight/data",
-        "title": "Five Thirty Eight",
-        "databases": {
-
-        }
-    }
-
 .. _JsonDataView_versions:
 
 /-/versions
@@ -97,7 +77,7 @@ Add ``?all=1`` to include details of the default plugins baked into Datasette.
 /-/settings
 -----------
 
-Shows the :ref:`settings` for this instance of Datasette. `Settings example <https://fivethirtyeight.datasettes.com/-/settings>`_:
+Shows the :ref:`settings` for this instance of Datasette. `Settings example <https://latest.datasette.io/-/settings>`_:
 
 .. code-block:: json
 
@@ -262,7 +242,7 @@ Without those query string arguments, the page lists up to five tables with dete
 /-/threads
 ----------
 
-Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``permissions-debug`` permission, since it exposes runtime internals. `Threads example <https://latest.datasette.io/-/threads>`_:
+Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``permissions-debug`` permission, since it exposes runtime internals. Example output:
 
 .. code-block:: json
 

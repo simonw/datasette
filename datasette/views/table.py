@@ -2487,8 +2487,11 @@ async def table_view_data(
             where_clauses.extend(
                 _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params)
             )
-            if sort or sort_desc:
-                order_by = f"{order_by}, {order_by_pks}"
+
+    # The first page needs this tie-breaker too: the ?_next= cursor assumes that
+    # rows with the same sort value come back in primary key order
+    if (sort or sort_desc) and not is_view:
+        order_by = f"{order_by}, {order_by_pks}"
 
     where_clause = ""
     if where_clauses:

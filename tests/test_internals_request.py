@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -184,9 +185,27 @@ async def test_request_json_invalid():
 
 
 @pytest.mark.asyncio
-async def test_request_post_body_multiple_chunks():
-    request = Request(_post_scope(), _receive_chunks([b"hello ", b"world"]))
-    assert await request.post_body() == b"hello world"
+@pytest.mark.parametrize(
+    "chunks,expected",
+    [([b"hello ", b"world"], b"hello world"), ([b""], b"")],
+    ids=["multiple-chunks", "empty"],
+)
+async def test_request_post_body_can_be_read_twice(chunks, expected):
+    request = Request(_post_scope(), _receive_chunks(chunks))
+    assert await request.post_body() == expected
+    assert await request.post_body() == expected
+
+
+@pytest.mark.asyncio
+async def test_request_cached_body_respects_json_size_limit():
+    body = b'{"ok":true}'
+    request = Request(
+        _post_scope(), _receive_chunks([body]), max_post_body_bytes=len(body) - 1
+    )
+    assert await request.post_body(max_bytes=len(body)) == body
+    with pytest.raises(PayloadTooLarge):
+        await request.json()
+    assert await request.post_body(max_bytes=0) == body
 
 
 @pytest.mark.asyncio
@@ -213,6 +232,37 @@ async def test_request_post_body_streaming_too_large():
     request = Request(_post_scope(), _receive_chunks(chunks))
     with pytest.raises(PayloadTooLarge):
         await request.post_body(max_bytes=100)
+    # The third chunk is still in the stream and is not a complete request.
+    with pytest.raises(RuntimeError):
+        await request.post_body()
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_in_progress_and_cancelled():
+    receive_chunk = _receive_chunks([b"prefix", b"tail"])
+    waiting_for_tail = asyncio.Event()
+    calls = 0
+
+    async def receive():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            waiting_for_tail.set()
+            await asyncio.Future()  # Cancelled before the tail is delivered
+        return await receive_chunk()
+
+    request = Request(_post_scope(), receive)
+    reader = asyncio.create_task(request.post_body())
+    try:
+        await asyncio.wait_for(waiting_for_tail.wait(), timeout=5)
+        with pytest.raises(RuntimeError):
+            await asyncio.wait_for(request.post_body(), timeout=5)
+    finally:
+        reader.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await reader
+    with pytest.raises(RuntimeError):
+        await request.post_body()
 
 
 @pytest.mark.asyncio

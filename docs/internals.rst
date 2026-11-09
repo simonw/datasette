@@ -117,6 +117,8 @@ The object also has the following awaitable methods:
 
     The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 2MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
 
+    After a successful read, the ``Request`` keeps the body in memory. Later calls on the same request reuse those bytes and enforce the size limit for each call. Once a call starts consuming the stream, another call raises ``RuntimeError`` unless the first read completed successfully. ``request.form()`` reads the stream separately.
+
 And a class method that can be used to create fake request objects for use in tests:
 
 ``fake(path_with_query_string, method="GET", scheme="http", url_vars=None)``

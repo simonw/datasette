@@ -171,6 +171,7 @@ def test_metadata_yaml():
         nolock=False,
         open_browser=False,
         create=False,
+        create_wal=False,
         ssl_keyfile=None,
         ssl_certfile=None,
         return_instance=True,
@@ -460,6 +461,37 @@ def test_serve_create(tmpdir):
         "hash": None,
     }.items() <= databases[0].items()
     assert db_path.exists()
+
+
+def test_serve_create_wal(tmpdir):
+    runner = CliRunner()
+    db_path = tmpdir / "does_not_exist_yet.db"
+    assert not db_path.exists()
+    result = runner.invoke(
+        cli, [str(db_path), "--create-wal", "--get", "/-/databases.json"]
+    )
+    assert result.exit_code == 0, result.output
+    assert db_path.exists()
+    # The new database should be in WAL mode
+    conn = sqlite3.connect(str(db_path))
+    try:
+        assert conn.execute("pragma journal_mode").fetchone()[0] == "wal"
+    finally:
+        conn.close()
+
+
+def test_serve_create_does_not_set_wal(tmpdir):
+    runner = CliRunner()
+    db_path = tmpdir / "does_not_exist_yet.db"
+    result = runner.invoke(
+        cli, [str(db_path), "--create", "--get", "/-/databases.json"]
+    )
+    assert result.exit_code == 0, result.output
+    conn = sqlite3.connect(str(db_path))
+    try:
+        assert conn.execute("pragma journal_mode").fetchone()[0] != "wal"
+    finally:
+        conn.close()
 
 
 @pytest.mark.parametrize("argument", ("-c", "--config"))

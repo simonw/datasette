@@ -478,6 +478,11 @@ def uninstall(packages, yes):
     help="Create database files if they do not exist",
 )
 @click.option(
+    "--create-wal",
+    is_flag=True,
+    help="Create database files if they do not exist, in WAL mode",
+)
+@click.option(
     "--crossdb",
     is_flag=True,
     help="Enable cross-database joins using the /_memory database",
@@ -532,6 +537,7 @@ def serve(
     pdb,
     open_browser,
     create,
+    create_wal,
     crossdb,
     nolock,
     ssl_keyfile,
@@ -618,12 +624,14 @@ def serve(
     elif len(directories) == 1:
         kwargs["config_dir"] = pathlib.Path(directories[0])
 
-    # Verify list of files, create if needed (and --create)
+    # Verify list of files, create if needed (and --create / --create-wal)
     for file in file_paths:
         if not pathlib.Path(file).exists():
-            if create:
+            if create or create_wal:
                 conn = sqlite3.connect(file)
                 conn.execute("vacuum")
+                if create_wal:
+                    conn.execute("pragma journal_mode=wal")
                 conn.close()
             else:
                 raise click.ClickException(

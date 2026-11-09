@@ -222,6 +222,14 @@ def write_playwright_config(config_path):
         json.dumps(
             {
                 "databases": {
+                    "fixtures": {
+                        "queries": {
+                            "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
+                            "long_sql_token": "select\n  '{}' as value".format(
+                                "x" * 200
+                            ),
+                        },
+                    },
                     "data": {
                         "queries": {
                             "project_titles": {
@@ -2467,6 +2475,20 @@ def test_long_values_are_clamped_and_expand(page, datasette_server):
     column_toggle.click()
     expect(toggle).to_have_text("expand")
     expect(column_toggle).to_have_text("expand all")
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("width", (320, 390, 576, 1280))
+@pytest.mark.parametrize("query_name", ("𝐜𝐢𝐭𝐢𝐞𝐬", "long_sql_token"))
+def test_saved_query_sql_fits_viewport(page, datasette_server, width, query_name):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": width, "height": 844})
+    page.goto(datasette_server + "fixtures/" + query_name)
+    sql = page.locator("pre#sql-query")
+    expect(sql).to_be_visible()
+    assert sql.evaluate("el => el.scrollWidth <= el.clientWidth + 1")
+    assert page.evaluate("document.documentElement.scrollWidth") <= width + 1
 
 
 @pytest.mark.playwright

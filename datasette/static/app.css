@@ -1250,6 +1250,8 @@ label.sort_by_desc {
 }
 pre#sql-query {
     margin-bottom: 1em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .core label,

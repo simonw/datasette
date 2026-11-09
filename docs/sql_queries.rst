@@ -64,7 +64,7 @@ The quickest way to create views is with the SQLite command-line interface::
     sqlite> CREATE VIEW demo_view AS select qSpecies from Street_Tree_List;
     <CTRL+D>
 
-You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/en/stable/>`__ tool to `create a view <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-views>`__::
+You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/>`__ tool to `create a view <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-views>`__::
 
     sqlite-utils create-view sf-trees.db demo_view "select qSpecies from Street_Tree_List"
 

@@ -6671,7 +6671,7 @@ button.column-menu-trigger[aria-expanded="true"] {
 }
 
 /* Queries: compact rows */
-.query-list {
+ul.query-list {
     margin: 0;
     padding: 0;
     list-style: none;

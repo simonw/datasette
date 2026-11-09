@@ -3962,7 +3962,7 @@ def test_query_list_live_search_keyboard_navigation(page, datasette_server):
     search = page.locator("#query-search")
     expect(search).to_be_focused()
     links = page.locator("[data-homepage-results] .query-row-name")
-    expect(links).to_have_count(2)
+    expect(links).to_have_count(4)
     active = page.locator("[data-homepage-results] .is-active")
     # Nothing is highlighted until an arrow key is pressed, which works even
     # with an empty search box
@@ -3982,7 +3982,7 @@ def test_query_list_live_search_keyboard_navigation(page, datasette_server):
     # Escape clears the search and shows every query again
     page.keyboard.press("Escape")
     expect(search).to_have_value("")
-    expect(links).to_have_count(2)
+    expect(links).to_have_count(4)
     # Down moves the highlight, Enter opens it
     page.keyboard.type("project")
     page.wait_for_url("**/-/queries?q=project")

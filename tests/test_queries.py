@@ -1301,6 +1301,58 @@ async def test_private_query_edit_delete_restricted_to_owner():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path", ("/data/-/queries", "/-/queries"))
+async def test_owner_id_filter_does_not_reveal_private_queries(path):
+    # ?owner_id= filters the queries an actor can already see. It must not
+    # change which actor the private query rules are evaluated against.
+    ds = await _make_ds_with_user_query(
+        "query_owner_id_filter" + path.replace("/", "_").replace("-", ""),
+        is_private=True,
+        owner_id="owner",
+    )
+    await ds.add_query(
+        "data",
+        "shared",
+        "select 1",
+        title="Shared query",
+        source="user",
+        owner_id="owner",
+        is_private=False,
+    )
+    private_sql = "select * from dogs"
+
+    async def get_json(actor):
+        response = await ds.client.get(path + ".json?owner_id=owner", actor=actor)
+        assert response.status_code == 200
+        return response
+
+    def query_names(response):
+        return sorted(query["name"] for query in response.json()["queries"])
+
+    # The owner sees both of their queries, including the private one
+    owner = {"id": "owner"}
+    owner_json = await get_json(owner)
+    assert query_names(owner_json) == ["saved", "shared"]
+    assert private_sql in owner_json.text
+    assert await ds.count_queries("data", actor=owner, owner_id="owner") == 2
+    owner_html = await ds.client.get(path + "?owner_id=owner", actor=owner)
+    assert "Saved query" in owner_html.text
+
+    # Other actors and anonymous users only see the non-private one
+    for actor in (None, {"id": "intruder"}):
+        actor_json = await get_json(actor)
+        assert query_names(actor_json) == ["shared"]
+        assert private_sql not in actor_json.text
+        page = await ds.list_queries("data", actor=actor, owner_id="owner")
+        assert [query.name for query in page.queries] == ["shared"]
+        assert await ds.count_queries("data", actor=actor, owner_id="owner") == 1
+        html = await ds.client.get(path + "?owner_id=owner", actor=actor)
+        assert html.status_code == 200
+        assert "Shared query" in html.text
+        assert "Saved query" not in html.text
+
+
+@pytest.mark.asyncio
 async def test_non_private_query_editable_by_permitted_non_owner():
     ds = Datasette(
         memory=True,

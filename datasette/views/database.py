@@ -583,15 +583,23 @@ def _table_count_truncated(datasette, db, table, count):
 async def database_download(request, datasette):
     from datasette.resources import DatabaseResource
 
-    database = tilde_decode(request.url_vars["database"])
+    database_route = tilde_decode(request.url_vars["database"])
+    try:
+        db = datasette.get_database(route=database_route)
+    except KeyError:
+        db = None
+    # The URL contains the database's route, but permission rules refer to
+    # databases by name. Those differ for add_database(..., route=...).
+    # The check runs before the 404 for an unknown route, so an actor who is
+    # denied this action for the whole instance gets a 403 either way.
     await datasette.ensure_permission(
         action="view-database-download",
-        resource=DatabaseResource(database=database),
+        resource=DatabaseResource(
+            database=db.name if db is not None else database_route
+        ),
         actor=request.actor,
     )
-    try:
-        db = datasette.get_database(route=database)
-    except KeyError:
+    if db is None:
         raise DatasetteError("Invalid database", status=404)
 
     if db.is_memory:

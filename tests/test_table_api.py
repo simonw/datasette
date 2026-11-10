@@ -1683,7 +1683,7 @@ async def test_sort_excluded_column_with_expanded_labels(ds_client, path):
     response = await ds_client.get(path)
     assert response.status_code == 200
     if ".json" in path:
-        assert response.json()["next"] == "2,2"
+        assert response.json()["next"] == "i:2,2"
 
 
 @pytest.mark.asyncio

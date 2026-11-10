@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import itertools
 import json
+import math
 import time
 import urllib
 import urllib.parse
@@ -47,6 +48,7 @@ from datasette.utils import (
     path_with_replaced_args,
     request_route_path,
     sqlite3,
+    tilde_decode,
     tilde_encode,
     to_css_class,
     truncate_url,
@@ -2178,19 +2180,50 @@ async def table_view_traced(datasette, request):
     return r
 
 
+def _encode_sort_value(value):
+    if value is None:
+        return "$null"
+    # A raw colon cannot occur in a legacy tilde-encoded text component.
+    if isinstance(value, int):
+        return f"i:{value}"
+    if isinstance(value, float):
+        return f"f:{value.hex()}"
+    if isinstance(value, bytes):
+        return f"b:{value.hex()}"
+    return tilde_encode(str(value))
+
+
+def _decode_sort_value(value):
+    if value == "$null":
+        return None
+    # Decode before tilde_decode(), which would turn float exponent '+' into space.
+    try:
+        if value.startswith("i:"):
+            number = int(value[2:])
+            if not -(2**63) <= number < 2**63:
+                raise ValueError
+            return number
+        if value.startswith("f:"):
+            number = float.fromhex(value[2:])
+            if math.isnan(number):
+                raise ValueError
+            return number
+        if value.startswith("b:"):
+            return bytes.fromhex(value[2:])
+    except (ValueError, OverflowError):
+        raise BadRequest("Invalid _next")
+    return tilde_decode(value)
+
+
 def _parse_next(_next, sort, sort_desc):
     """Split a ?_next= cursor into (sort_value, primary key components)."""
     sort_value = None
-    components = urlsafe_components(_next)
+    components = _next.split(",")
     # If a sort order is applied and there are multiple components,
     # the first of these is the sort value
     if (sort or sort_desc) and (len(components) > 1):
-        sort_value = components[0]
-        # Special case for if non-urlencoded first token was $null
-        if _next.split(",")[0] == "$null":
-            sort_value = None
-        components = components[1:]
-    return sort_value, components
+        sort_value = _decode_sort_value(components.pop(0))
+    return sort_value, [tilde_decode(component) for component in components]
 
 
 def _at_or_before_next_where_clause(_next, sort, sort_desc, pks, use_rowid, params):
@@ -2314,12 +2347,10 @@ def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid)
     }
     if is_view:
         return position
-    components = urlsafe_components(_next)
-    if (sort or sort_desc) and len(components) > 1:
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+    if (sort or sort_desc) and len(_next.split(",")) > 1:
         position["after_column"] = sort or sort_desc
-        position["after_value"] = (
-            None if _next.split(",")[0] == "$null" else components[0]
-        )
+        position["after_value"] = None if sort_value is None else str(sort_value)
     else:
         position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
         position["after_value"] = ", ".join(components)
@@ -2877,10 +2908,7 @@ async def _next_value_and_url(
                 ).single_value()
             if isinstance(prefix, dict) and "value" in prefix:
                 prefix = prefix["value"]
-            if prefix is None:
-                prefix = "$null"
-            else:
-                prefix = tilde_encode(str(prefix))
+            prefix = _encode_sort_value(prefix)
             next_value = f"{prefix},{next_value}"
             added_args = {"_next": next_value}
             if sort:

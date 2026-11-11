@@ -2222,3 +2222,40 @@ async def test_hook_register_column_types():
     assert "email" in ds._column_types
     assert "json" in ds._column_types
     assert "nonexistent" not in ds._column_types
+
+
+@pytest.mark.asyncio
+async def test_plugins_json_lists_registered_actions():
+    """https://github.com/simonw/datasette/issues/2484"""
+    from datasette import hookimpl
+    from datasette.permissions import Action
+    from datasette.plugins import pm
+
+    class CustomActionPlugin:
+        __name__ = "custom_action_plugin"
+
+        @hookimpl
+        def register_actions(self, datasette):
+            return [
+                Action(
+                    name="custom-perm",
+                    abbr="cp",
+                    description="Custom permission description",
+                )
+            ]
+
+    plugin = CustomActionPlugin()
+    pm.register(plugin, name="custom_action_plugin")
+    try:
+        ds = Datasette()
+        response = await ds.client.get("/-/plugins.json?all=1")
+        assert response.status_code == 200
+        plugins_by_name = {p["name"]: p for p in response.json()}
+        assert "custom_action_plugin" in plugins_by_name
+        plugin_entry = plugins_by_name["custom_action_plugin"]
+        assert plugin_entry["actions"] == [
+            {"name": "custom-perm", "description": "Custom permission description"}
+        ]
+        assert plugin_entry["permissions"] == ["custom-perm"]
+    finally:
+        pm.unregister(plugin)

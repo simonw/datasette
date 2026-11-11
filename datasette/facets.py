@@ -175,6 +175,7 @@ class ColumnFacet(Facet):
         columns = await self.get_columns(self.sql, self.params)
         facet_size = self.get_facet_size()
         suggested_facets = []
+        self._suggestions_so_far = suggested_facets
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
             if column in already_enabled:
@@ -332,6 +333,7 @@ class ArrayFacet(Facet):
     async def suggest(self):
         columns = await self.get_columns(self.sql, self.params)
         suggested_facets = []
+        self._suggestions_so_far = suggested_facets
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
             if column in already_enabled:
@@ -491,6 +493,7 @@ class DateFacet(Facet):
         columns = await self.get_columns(self.sql, self.params)
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         suggested_facets = []
+        self._suggestions_so_far = suggested_facets
         for column in columns:
             if column in already_enabled:
                 continue

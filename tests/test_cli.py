@@ -213,6 +213,48 @@ def test_install_requirements(run_module, tmpdir):
     assert sys.argv == ["pip", "install", "-r", str(path)]
 
 
+@pytest.mark.parametrize(
+    "flag,expected_arg",
+    [
+        ("--pre", "--pre"),
+        ("--force-reinstall", "--force-reinstall"),
+        ("--no-cache-dir", "--no-cache-dir"),
+    ],
+)
+@mock.patch("datasette.cli.run_module")
+def test_install_flags(run_module, flag, expected_arg):
+    runner = CliRunner()
+    runner.invoke(cli, ["install", flag, "datasette-mock-plugin"])
+    run_module.assert_called_once_with("pip", run_name="__main__")
+    assert sys.argv == ["pip", "install", expected_arg, "datasette-mock-plugin"]
+
+
+@mock.patch("datasette.cli.run_module")
+def test_install_multiple_options(run_module):
+    runner = CliRunner()
+    runner.invoke(
+        cli,
+        [
+            "install",
+            "--pre",
+            "--force-reinstall",
+            "--no-cache-dir",
+            "-U",
+            "datasette-mock-plugin",
+        ],
+    )
+    run_module.assert_called_once_with("pip", run_name="__main__")
+    assert sys.argv == [
+        "pip",
+        "install",
+        "--upgrade",
+        "--pre",
+        "--force-reinstall",
+        "--no-cache-dir",
+        "datasette-mock-plugin",
+    ]
+
+
 def test_install_error_if_no_packages():
     runner = CliRunner()
     result = runner.invoke(cli, ["install"])

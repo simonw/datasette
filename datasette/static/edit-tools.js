@@ -2902,6 +2902,30 @@ function createTableAlterColumnRow(state, column) {
   row.appendChild(main);
   row.appendChild(details);
 
+  if (existing && column.generated) {
+    // SQLite computes this column, so it cannot have a default or be part
+    // of the primary key. It can still be renamed, moved and dropped.
+    row.dataset.generated = "1";
+    defaultControls.controls.style.display = "none";
+    pkLabel.style.display = "none";
+    pkInput.disabled = true;
+    var generatedHelp = document.createElement("p");
+    generatedHelp.className =
+      "table-alter-detail-help table-alter-generated-help";
+    generatedHelp.style.gridColumn = "1 / -1";
+    generatedHelp.appendChild(
+      document.createTextNode(
+        "Generated column (" +
+          (column.generated.stored ? "stored" : "virtual") +
+          "), calculated as ",
+      ),
+    );
+    var generatedCode = document.createElement("code");
+    generatedCode.textContent = column.generated.expression;
+    generatedHelp.appendChild(generatedCode);
+    details.insertBefore(generatedHelp, details.firstChild);
+  }
+
   var controls = [
     nameInput,
     typeSelect,

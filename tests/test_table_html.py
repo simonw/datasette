@@ -3,6 +3,7 @@ import urllib.parse
 from types import SimpleNamespace
 
 import pytest
+import sqlite_utils
 from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
@@ -3129,3 +3130,100 @@ def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
     # https://github.com/simonw/datasette/pull/2476
     response = app_client_with_dot.get("/fixtures~2Edot/complex_foreign_keys")
     assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not hasattr(sqlite_utils.db.Table, "generated_columns"),
+    reason="Needs sqlite-utils with generated column support",
+)
+async def test_table_alter_generated_columns():
+    ds = Datasette([], default_deny=False)
+    ds.root_enabled = True
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_alter_generated"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (
+                id integer primary key,
+                price real,
+                qty integer,
+                total real generated always as (price * qty) virtual,
+                total_s real as (price * qty * 2) stored,
+                name text
+            );
+            create index idx_total on items(total);
+            insert into items (price, qty, name) values (2.5, 4, 'a');
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        alter_data = table_data_from_soup(Soup(response.text, "html.parser"))[
+            "alterTable"
+        ]
+        # Generated columns are listed, in their position in the table
+        assert [
+            (column["name"], column.get("generated"))
+            for column in alter_data["columns"]
+        ] == [
+            ("id", None),
+            ("price", None),
+            ("qty", None),
+            ("total", {"expression": "price * qty", "stored": False}),
+            ("total_s", {"expression": "price * qty * 2", "stored": True}),
+            ("name", None),
+        ]
+        # Reordering and renaming keeps them, rewriting their expressions
+        response = await ds.client.post(
+            "/data/items/-/alter",
+            actor={"id": "root"},
+            json={
+                "operations": [
+                    {"op": "rename_column", "args": {"name": "price", "to": "cost"}},
+                    {
+                        "op": "reorder_columns",
+                        "args": {
+                            "columns": [
+                                "name",
+                                "total",
+                                "id",
+                                "cost",
+                                "qty",
+                                "total_s",
+                            ]
+                        },
+                    },
+                ]
+            },
+        )
+        assert response.status_code == 200, response.text
+        rows = (await db.execute("select * from items")).rows
+        assert [dict(row) for row in rows] == [
+            {
+                "name": "a",
+                "total": 10.0,
+                "id": 1,
+                "cost": 2.5,
+                "qty": 4,
+                "total_s": 20.0,
+            }
+        ]
+        details = {c.name: c.hidden for c in await db.table_column_details("items")}
+        assert details == {
+            "name": 0,
+            "total": 2,
+            "id": 0,
+            "cost": 0,
+            "qty": 0,
+            "total_s": 3,
+        }
+        # A column a generated column depends on cannot be dropped
+        response = await ds.client.post(
+            "/data/items/-/alter",
+            actor={"id": "root"},
+            json={"operations": [{"op": "drop_column", "args": {"name": "qty"}}]},
+        )
+        assert response.status_code == 400
+        assert "used by generated column" in response.json()["errors"][0]
+    finally:
+        ds.close()

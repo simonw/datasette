@@ -659,6 +659,21 @@ async def _execute_sql_ui(
     return data
 
 
+def _generated_columns(conn, table_name):
+    # Requires a sqlite-utils that can preserve generated columns when it
+    # rebuilds a table - older versions silently drop them, so there the
+    # alter dialog keeps hiding those columns instead
+    table = sqlite_utils.Database(conn)[table_name]
+    try:
+        generated = table.generated_columns
+    except (AttributeError, ValueError):
+        return {}
+    return {
+        name: {"expression": column.expression, "stored": column.stored}
+        for name, column in generated.items()
+    }
+
+
 async def _table_alter_ui(
     datasette, request, db, database_name, table_name, is_view, pks
 ):
@@ -686,9 +701,14 @@ async def _table_alter_ui(
             "fk_table": fk["other_table"],
             "fk_column": other_column,
         }
+    generated_columns = await db.execute_fn(
+        lambda conn: _generated_columns(conn, table_name)
+    )
     columns = []
     for column in await db.table_column_details(table_name):
-        if column.hidden:
+        # hidden is 2 or 3 for generated columns, which the dialog can
+        # reorder, rename and drop provided their expression is known
+        if column.hidden and column.name not in generated_columns:
             continue
         sqlite_type = SQLiteType.from_declared_type(column.type)
         column_type = column_types_map.get(column.name)
@@ -710,6 +730,8 @@ async def _table_alter_ui(
         }
         if default_expr:
             column_data["default_expr"] = default_expr
+        if column.name in generated_columns:
+            column_data["generated"] = generated_columns[column.name]
         columns.append(column_data)
 
     data = {

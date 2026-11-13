@@ -151,6 +151,40 @@ dialog.datasette-modal::backdrop {
     }
 }
 
+/* View transitions ======================================================== */
+
+/* Cross-document view transitions: navigating between same-origin Datasette
+   pages crossfades rather than flashing blank. Pure CSS, no JavaScript -
+   browsers without support navigate exactly as before. */
+@media (prefers-reduced-motion: no-preference) {
+    @view-transition {
+        navigation: auto;
+    }
+}
+
+/* The table and facets are swapped in place: each gets its own transition
+   group, so the old table crossfades into the new one (after applying a
+   filter, sorting, paginating) rather than being blended into the rest of
+   the page. Names only apply during a transition, as view-transition-name
+   creates a stacking context that would trap column and action menus. */
+html:active-view-transition .content > .facet-results {
+    view-transition-name: facet-results;
+}
+html:active-view-transition .table-wrapper:has(> table.rows-and-columns) {
+    view-transition-name: rows-table;
+}
+/* No slide from the old position to the new one - when the old page was
+   scrolled (clicking "Next page" below a long table) that would sweep the
+   table in from thousands of pixels away. The group sits where the new
+   element is and the old snapshot is clipped to it as it fades out.
+   Only animation-name is reset: the old/new crossfade inherits its
+   duration from the group, so the "animation" shorthand would kill it. */
+::view-transition-group(facet-results),
+::view-transition-group(rows-table) {
+    animation-name: none;
+    overflow: clip;
+}
+
 /* Reset and Page Setup ==================================================== */
 
 /* Reset from http://meyerweb.com/eric/tools/css/reset/

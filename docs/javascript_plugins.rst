@@ -577,19 +577,54 @@ Dismissal guards and busy state
 
 You can set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
 
-Use ``source`` to decide what to do. This example prompts the user to ask if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't prompt them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``.
+Use ``source`` to decide what to do. This example asks the user if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't ask them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``. It keeps the dialog open by returning ``false``, then closes it if the user confirms:
 
 .. code-block:: javascript
 
     modal.beforeClose = (source) => {
         if (source === "cancel") return true;
-        return confirm("Discard unsaved changes?");
+        DatasetteModal.confirm({
+            message: "Discard unsaved changes?",
+            confirmLabel: "Discard",
+            cancelLabel: "Keep editing",
+            danger: true,
+        }).then((confirmed) => {
+            if (confirmed) modal.close();
+        });
+        return false;
     };
 
 
 Set ``modal.busy = true`` while saving to prevent user dismissal.  While busy, ``requestClose()`` returns ``false`` without calling ``beforeClose``.
 
 If an operation fails, set ``modal.busy = false`` so the user can retry or close the dialog. A successful operation can call ``modal.close()`` even while busy.
+
+.. _javascript_plugins_modal_confirm:
+
+Confirmation dialogs
+~~~~~~~~~~~~~~~~~~~~
+
+``DatasetteModal.confirm(options)`` shows a small confirmation dialog and returns a promise that resolves to ``true`` if the user confirms, or ``false`` if they cancel, press Escape or click outside the dialog. It can be shown on top of another open dialog.
+
+Use this instead of the browser's ``confirm()`` function. Browsers embedded in other applications can dismiss native ``alert()``, ``confirm()`` and ``prompt()`` dialogs without displaying them, which makes any button that depends on one appear to do nothing.
+
+``options`` is an object with these optional properties:
+
+- ``message`` (string): The question to ask.
+- ``confirmLabel`` (string): Text for the confirming button. Defaults to ``"OK"``.
+- ``cancelLabel`` (string): Text for the cancelling button. Defaults to ``"Cancel"``.
+- ``danger`` (boolean): Set to ``true`` to style the confirming button as a destructive action. Defaults to ``false``.
+
+.. code-block:: javascript
+
+    const confirmed = await DatasetteModal.confirm({
+        message: "Delete this saved filter?",
+        confirmLabel: "Delete",
+        danger: true,
+    });
+    if (confirmed) {
+        // Carry out the action
+    }
 
 .. _javascript_plugins_modal_classes:
 

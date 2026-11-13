@@ -1225,9 +1225,9 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
     page.evaluate("""
         () => {
             window.__discardConfirmMessages = [];
-            window.confirm = (message) => {
-                window.__discardConfirmMessages.push(message);
-                return false;
+            DatasetteModal.confirm = (options) => {
+                window.__discardConfirmMessages.push(options.message);
+                return Promise.resolve(false);
             };
         }
         """)
@@ -2208,7 +2208,10 @@ def test_modal_nested_escape_and_cleanup(page, datasette_server):
     field.fill("Unsaved title")
     page.evaluate("""() => {
         window.confirmations = [];
-        window.confirm = message => { confirmations.push(message); return false; };
+        DatasetteModal.confirm = options => {
+            confirmations.push(options.message);
+            return Promise.resolve(false);
+        };
     }""")
     # Plugin controls can consume Escape without closing their containing form.
     field.evaluate("""node => node.addEventListener('keydown', event => {
@@ -2345,23 +2348,78 @@ def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind
         dialog.locator('input[name="table"]').fill("unsaved_table")
     else:
         dialog.locator(".table-alter-add-column").click()
-    # Real browser confirms, including WebKit, should appear once and stay usable.
-    confirmations = []
+    # Embedded browsers can silently dismiss native prompts, so discarding is
+    # confirmed with an in-page dialog and never with window.confirm()
+    native_prompts = []
 
-    def reject(prompt):
-        confirmations.append(prompt.message)
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
         prompt.dismiss()
 
-    page.on("dialog", reject)
-    with page.expect_event("dialog"):
-        page.keyboard.press("Escape")
-    expect(dialog).to_be_visible()
-    assert len(confirmations) == 1
-    page.remove_listener("dialog", reject)
-    page.on("dialog", lambda prompt: prompt.accept())
+    page.on("dialog", dismiss)
+    confirmation = page.locator("dialog.modal-confirm-dialog[open]")
     page.keyboard.press("Escape")
+    expect(confirmation).to_be_visible()
+    expect(confirmation.locator(".modal-confirm-message")).to_have_text(
+        "Discard this new table?" if kind == "create" else "Discard table changes?"
+    )
+    expect(confirmation.locator(".modal-confirm-cancel")).to_have_text("Keep editing")
+    expect(confirmation.locator(".modal-confirm-ok")).to_have_text("Discard")
+    expect(confirmation.locator(".modal-confirm-ok")).to_be_focused()
+
+    # Escape answers the confirmation without closing the dialog behind it
+    page.keyboard.press("Escape")
+    expect(confirmation).to_have_count(0)
+    expect(dialog).to_be_visible()
+
+    page.keyboard.press("Escape")
+    confirmation.locator(".modal-confirm-cancel").click()
+    expect(confirmation).to_have_count(0)
+    expect(dialog).to_be_visible()
+
+    page.keyboard.press("Escape")
+    confirmation.locator(".modal-confirm-ok").click()
+    expect(confirmation).to_have_count(0)
     expect(dialog).not_to_be_visible()
     expect(menu.locator("summary")).to_be_focused()
+    assert native_prompts == []
+
+
+@pytest.mark.playwright
+def test_row_edit_discard_is_confirmed_in_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = []
+
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", dismiss)
+    page.goto(datasette_server + "data/projects")
+    page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
+    dialog = page.locator("#row-edit-dialog")
+    field = dialog.locator('input[name="title"]')
+    expect(field).to_be_visible()
+    original_title = field.input_value()
+    field.fill("Unsaved title")
+
+    confirmation = page.locator("dialog.modal-confirm-dialog[open]")
+    page.keyboard.press("Escape")
+    expect(confirmation.locator(".modal-confirm-message")).to_have_text(
+        "Discard unsaved changes to this row?"
+    )
+    confirmation.locator(".modal-confirm-cancel").click()
+    expect(dialog).to_be_visible()
+    expect(field).to_have_value("Unsaved title")
+    expect(field).to_be_focused()
+
+    # Clicking outside the dialog asks too, and Discard closes it unsaved
+    page.mouse.click(2, 2)
+    confirmation.locator(".modal-confirm-ok").click()
+    expect(dialog).not_to_be_visible()
+    assert native_prompts == []
+    assert project_row(datasette_server, 1)["title"] == original_title
 
 
 MENU_CASES = [

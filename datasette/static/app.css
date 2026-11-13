@@ -1423,13 +1423,16 @@ button.core[type=button] {
     height: var(--filter-control-height);
     border: 1px solid var(--filter-control-border, #ccc);
     border-radius: 5px;
-    background-color: #fff;
+    /* Browsers draw different arrows and text insets for a native select,
+       so turn that off and draw our own chevron */
+    appearance: none;
+    background: #fff url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23444' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 10px center / 10px 6px;
     color: inherit;
     cursor: pointer;
     font-family: inherit;
     font-size: 0.875rem;
     line-height: 1.25;
-    padding: 7px 8px;
+    padding: 7px 28px 7px 9px;
 }
 
 .select-wrapper option {

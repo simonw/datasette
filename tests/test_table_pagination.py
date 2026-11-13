@@ -318,3 +318,33 @@ def test_count_before_uses_primary_key_index(pks, use_rowid, next_value):
         )
     )
     assert plan.startswith("SEARCH"), plan
+
+
+@pytest.mark.asyncio
+async def test_empty_primary_key_cursor_position(tmp_path):
+    ds = Datasette([tmp_path / "empty.db"])
+    try:
+        await ds.get_database().execute_write_script("""
+            create table items (id text primary key);
+            insert into items values (''), ('a'), ('b');
+            create view items_view as select id from items;
+        """)
+        response = await ds.client.get("/empty/items?_size=1&_next=")
+        soup = BeautifulSoup(response.text, "html.parser")
+        assert "Back to first page" in soup.get_text()
+        response = await ds.client.post("/empty/items/-/count?_next=&_count=before")
+        assert response.status_code == 200
+        assert response.json()["count"] == 1
+        response = await ds.client.get("/empty/items_view?_size=1&_next=")
+        assert response.status_code == 200
+        assert (
+            "Back to first page"
+            not in BeautifulSoup(response.text, "html.parser").get_text()
+        )
+        response = await ds.client.post(
+            "/empty/items_view/-/count?_next=&_count=before"
+        )
+        assert response.status_code == 200
+        assert response.json()["count"] == 3
+    finally:
+        ds.close()

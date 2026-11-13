@@ -1579,7 +1579,11 @@ class TableCountView(BaseView):
             self.ds, request, resolved.db.name, resolved.table
         )
         _next = request.args.get("_next")
-        if request.args.get("_count") == "before" and _next:
+        if (
+            request.args.get("_count") == "before"
+            and _next is not None
+            and not (resolved.is_view and _next == "")
+        ):
             return await self.count_before(
                 request, resolved, _next, where_clauses, params
             )
@@ -2295,7 +2299,7 @@ def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
 def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid):
     """Context for the "you are not on the first page" strip, or None on page 1."""
     _next = request.args.get("_next")
-    if not _next:
+    if _next is None or (is_view and _next == ""):
         return None
     route_path = request.scope.get("route_path")
     position = {
@@ -2476,10 +2480,15 @@ async def table_view_data(
     count_sql = f"select count(*) {from_sql}"
 
     # Handle pagination driven by ?_next=
-    _next = _next or request.args.get("_next")
+    _next = _next if _next is not None else request.args.get("_next")
+
+    # A view paginates by integer offset, so the first page arrives as an empty
+    # ?_next=; a table's empty _next is a real cursor for an empty primary key.
+    if is_view and _next == "":
+        _next = None
 
     offset = ""
-    if _next:
+    if _next is not None:
         if is_view:
             # _next is an offset
             offset = f" offset {int(_next)}"
@@ -2676,7 +2685,7 @@ async def table_view_data(
 
     data = {
         "ok": True,
-        "next": next_value and str(next_value) or None,
+        "next": None if next_value is None else str(next_value),
         "next_url": next_url,
     }
     data.update(

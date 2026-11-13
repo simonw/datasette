@@ -367,6 +367,72 @@ async def test_page_size_zero(ds_client):
     assert None is response.json()["next_url"]
 
 
+def test_paginate_table_with_empty_string_primary_key():
+    # path_from_row_pks() returns "" for a row whose only primary key
+    # value is the empty string, and "" is a legitimate _next= cursor.
+    # The "next" key and the _next= handling both used a truthiness
+    # check, so the token was dropped and pagination never advanced.
+    with make_app_client(
+        memory=True,
+        extra_databases={
+            "empty_pk": (
+                "CREATE TABLE t (id TEXT PRIMARY KEY);"
+                "INSERT INTO t (id) VALUES ('a'), (''), ('c'), ('d'), ('e');"
+            )
+        },
+    ) as client:
+        fetched = []
+        path = "/empty_pk/t.json?_size=1"
+        page = 0
+        while path:
+            page += 1
+            response = client.get(path)
+            assert response.status == 200
+            data = response.json
+            fetched.extend(row["id"] for row in data["rows"])
+            if data["next_url"]:
+                # next_url and next agree, per docs/json_api.rst
+                assert (
+                    urllib.parse.urlencode({"_next": data["next"]}) in data["next_url"]
+                )
+            path = data["next_url"]
+            if path:
+                path = path.replace("http://localhost", "")
+            assert page < 30, "Possible infinite loop detected"
+
+        # Every row exactly once
+        assert 5 == len(fetched)
+        assert ["", "a", "c", "d", "e"] == sorted(fetched)
+        assert 5 == page
+        # And the final page has both keys null, as documented
+        last = client.get("/empty_pk/t.json?_size=100").json
+        assert None is last["next"]
+        assert None is last["next_url"]
+
+
+def test_view_ignores_an_empty_next_cursor():
+    # Views paginate by integer offset, not by a keyset cursor, so the
+    # first page arrives as ?_next= (empty). Feeding that to int() raises
+    # ValueError and returns 500; an empty cursor must mean "first page".
+    with make_app_client(
+        memory=True,
+        extra_databases={
+            "view_db": (
+                "CREATE TABLE items (id TEXT PRIMARY KEY);"
+                "INSERT INTO items (id) VALUES ('a'), ('b'), ('c');"
+                "CREATE VIEW v AS SELECT id FROM items;"
+            )
+        },
+    ) as client:
+        response = client.get("/view_db/v.json?_size=1&_sort=id&_next=")
+        assert response.status == 200
+        assert [row["id"] for row in response.json["rows"]] == ["a"]
+
+        response = client.get("/view_db/v.json?_size=1&_sort=id&_next=1")
+        assert response.status == 200
+        assert [row["id"] for row in response.json["rows"]] == ["b"]
+
+
 @pytest.mark.asyncio
 async def test_paginate_compound_keys(ds_client):
     fetched = []

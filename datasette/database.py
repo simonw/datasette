@@ -49,7 +49,7 @@ from .telemetry_registry import (
     TRANSACTION,
     TRUNCATED,
 )
-from .tracer import trace
+from .tracer import trace, tracing_active
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -67,6 +67,22 @@ from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
 from .utils.sqlite import sqlite_derived_table_dependencies, sqlite_hidden_table_names
 
 connections = threading.local()
+
+
+class _Connection(sqlite3.Connection):
+    """sqlite3.Connection that remembers its current trace callback.
+
+    sqlite3 offers no way to read back the callback installed with
+    set_trace_callback(), so execute_fn() could not otherwise chain to and
+    restore a callback a plugin installed on a pooled connection.
+    """
+
+    _datasette_trace_callback = None
+
+    def set_trace_callback(self, trace_callback):
+        super().set_trace_callback(trace_callback)
+        self._datasette_trace_callback = trace_callback
+
 
 EXECUTE_WRITE_RETURNING_LIMIT = 10
 
@@ -180,14 +196,20 @@ class Database:
         if self.memory_name:
             uri = f"file:{self.memory_name}?mode=memory&cache=shared"
             conn = sqlite3.connect(
-                uri, uri=True, check_same_thread=False, **extra_kwargs
+                uri,
+                uri=True,
+                check_same_thread=False,
+                factory=_Connection,
+                **extra_kwargs,
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
             self._all_connections.append(conn)
             return conn
         if self.is_memory:
-            conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
+            conn = sqlite3.connect(
+                ":memory:", uri=True, check_same_thread=False, factory=_Connection
+            )
             self._all_connections.append(conn)
             return conn
 
@@ -204,7 +226,11 @@ class Database:
         if self.mode is not None:
             qs = f"?mode={self.mode}"
         conn = sqlite3.connect(
-            f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
+            f"file:{self.path}{qs}",
+            uri=True,
+            check_same_thread=False,
+            factory=_Connection,
+            **extra_kwargs,
         )
         self._all_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
@@ -672,18 +698,46 @@ class Database:
         span.
         """
         self._check_not_closed()
+        # Collect the SQL run by fn so it shows up in ?_trace=1 output
+        traced_sql = [] if tracing_active() else None
 
         def fn_in_execute_span(conn):
             # Runs on the worker thread
             with tracer.start_as_current_span(DB_QUERY_EXECUTE):
-                return fn(conn)
+                if traced_sql is None or not isinstance(conn, _Connection):
+                    return fn(conn)
+                # Chain to any callback already installed on this pooled
+                # connection (e.g. by a plugin) rather than replacing it
+                previous = conn._datasette_trace_callback
 
-        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-            span.set_attribute(DB_SYSTEM, "sqlite")
-            span.set_attribute(DB_NAMESPACE, self.name)
-            span.set_attribute(CALLBACK, callback_name(fn))
-            with record_operation_duration(self.name, "read"):
-                return await self._execute_fn(fn_in_execute_span)
+                def trace_callback(statement):
+                    traced_sql.append(statement)
+                    if previous is not None:
+                        previous(statement)
+
+                sqlite3.Connection.set_trace_callback(conn, trace_callback)
+                try:
+                    return fn(conn)
+                finally:
+                    # Restore the connection's own callback: the one that was
+                    # there before, or whatever fn() installed while running
+                    sqlite3.Connection.set_trace_callback(
+                        conn, conn._datasette_trace_callback
+                    )
+
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql="", params=None, fn=callback_name(fn)
+        ) as trace_kwargs:
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(CALLBACK, callback_name(fn))
+                try:
+                    with record_operation_duration(self.name, "read"):
+                        return await self._execute_fn(fn_in_execute_span)
+                finally:
+                    if traced_sql:
+                        trace_kwargs["sql"] = ";\n".join(traced_sql)
 
     async def _execute_fn(self, fn):
         self._check_not_closed()

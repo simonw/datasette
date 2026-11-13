@@ -106,6 +106,94 @@ def datasette_server(tmp_path):
             process.wait()
 
 
+@pytest.fixture(scope="module")
+def name_collision_server(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("name-collisions")
+    db_paths = []
+    for database in ("data", "tag", "swatch", "table"):
+        db_path = tmp_path / f"{database}.db"
+        db_paths.append(str(db_path))
+        conn = sqlite3.connect(db_path)
+        try:
+            tables = ["items"]
+            if database == "data":
+                tables += [
+                    "create-column-headings",
+                    "alter-column-headings",
+                    "create-column-label",
+                    "alter-column-label",
+                    "create-icon-button",
+                    "alter-icon-button",
+                    "wrapper",
+                    "tools",
+                    "schema",
+                    "row-toolbar",
+                    "count",
+                ]
+            for table in tables:
+                conn.execute(f'create table "{table}" (id integer primary key)')
+                conn.executemany(
+                    f'insert into "{table}" values (?)',
+                    ((n,) for n in range(1, 10003 if table == "count" else 51)),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    config_path = tmp_path / "datasette.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "databases": {
+                    "data": {
+                        "queries": {
+                            name: {"sql": "select * from items"}
+                            for name in (
+                                "row-detail",
+                                "card-sql",
+                                "row",
+                                "cards",
+                                "list-filters",
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    )
+    port = find_free_port()
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "datasette",
+            *db_paths,
+            "--config",
+            str(config_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--setting",
+            "num_sql_threads",
+            "1",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        wait_for_server(process, url)
+        yield url
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
 def write_playwright_database(db_path):
     conn = sqlite3.connect(db_path)
     try:
@@ -1846,6 +1934,79 @@ def test_count_all(page, datasette_server):
     )
     assert page.locator(".count-all").count() == 0
     assert "id" in page.locator("h3").first.inner_text()
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("width", (390, 1280))
+@pytest.mark.parametrize(
+    "path",
+    (
+        "data/create-column-headings",
+        "data/alter-column-headings",
+        "data/create-column-label",
+        "data/alter-column-label",
+        "data/create-icon-button",
+        "data/alter-icon-button",
+        "data/tools",
+        "data/schema",
+        "data/row-toolbar",
+        "data/row-detail",
+        "data/card-sql",
+        "data/row",
+        "data/cards",
+        "data/list-filters",
+        "tag/items",
+        "swatch/items",
+        "table/items",
+    ),
+)
+def test_resource_names_do_not_change_page_layout(
+    page, name_collision_server, width, path
+):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": width, "height": 664})
+    page.goto(name_collision_server + path)
+    expect(page.locator("h1")).to_be_visible()
+    assert page.locator("body").bounding_box()["width"] == pytest.approx(width, abs=1)
+    assert page.evaluate("document.documentElement.scrollWidth") <= width + 1
+    page.mouse.move(width / 2, 550)
+    page.mouse.wheel(0, 500)
+    page.wait_for_function("scrollY > 0")
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "table",
+    (
+        "create-column-headings",
+        "alter-column-headings",
+        "create-column-label",
+        "alter-column-label",
+    ),
+)
+def test_row_pages_are_visible_with_component_table_names(
+    page, name_collision_server, table
+):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": 390, "height": 664})
+    page.goto(f"{name_collision_server}data/{table}/1")
+    expect(page.locator("h1")).to_be_visible()
+    expect(page.locator(".row-fields")).to_be_visible()
+    assert page.locator("body").bounding_box()["width"] == pytest.approx(390, abs=1)
+
+
+@pytest.mark.playwright
+def test_count_all_preserves_page_for_table_named_count(page, name_collision_server):
+    from playwright.sync_api import expect
+
+    page.goto(name_collision_server + "data/count?id__gt=1")
+    page.get_by_role("button", name="count all", exact=True).click()
+    expect(page.locator(".table-summary .table-count")).to_have_text("10,001 rows")
+    expect(page.locator("h1")).to_be_visible()
+    expect(page.locator("table.rows-and-columns")).to_be_visible()
+    expect(page.locator(".count-all")).to_have_count(0)
 
 
 @pytest.mark.playwright

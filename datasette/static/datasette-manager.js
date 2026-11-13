@@ -11,7 +11,7 @@ const DOM_SELECTORS = {
   jsonExportLink: ".export-links a[href*=json]",
 
   /** Event listeners that go outside of the main table, e.g. existing scroll listener */
-  tableWrapper: ".table-wrapper",
+  tableWrapper: "div.table-wrapper",
   table: "table.rows-and-columns",
   aboveTablePanel: ".above-table-panel",
 

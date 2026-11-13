@@ -5128,6 +5128,10 @@ dialog.table-alter-dialog {
     margin-right: auto;
 }
 
+:where(dialog).table-alter-dialog .table-alter-drop-confirm {
+    margin-right: 0;
+}
+
 :where(dialog).table-alter-dialog .modal-btn-danger:hover {
     background: #991b1b;
 }

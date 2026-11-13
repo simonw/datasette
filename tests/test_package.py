@@ -59,3 +59,25 @@ def test_package_with_port(mock_call, mock_which, tmp_path_factory):
     )
     assert 0 == result.exit_code
     assert EXPECTED_DOCKERFILE.format(port=8080) == capture.captured
+
+
+@mock.patch("shutil.which")
+@mock.patch("datasette.cli.call")
+def test_package_filename_with_space(mock_call, mock_which, tmp_path_factory):
+    # https://github.com/simonw/datasette/issues/1233
+    mock_which.return_value = True
+    capture = CaptureDockerfile()
+    mock_call.side_effect = capture
+    runner = CliRunner()
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("extra database.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli, ["package", "extra database.db", "--secret", "sekrit"]
+    )
+    assert 0 == result.exit_code
+    assert (
+        "RUN datasette inspect 'extra database.db' --inspect-file inspect-data.json"
+        in capture.captured
+    )
+    assert "-i 'extra database.db'" in capture.captured

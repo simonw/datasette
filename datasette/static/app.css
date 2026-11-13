@@ -6138,15 +6138,23 @@ button.column-menu-trigger[aria-expanded="true"] {
     content: attr(data-label);
 }
 
-/* Copy button: quiet until the field is hovered or the button focused */
-.row-field-copy {
+/* Copy button, plus the JSON toggle row-fields.js adds beneath it */
+.row-field-actions {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin: -0.2rem -0.3rem -0.2rem 0;
+}
+/* Quiet until the field is hovered or the button focused */
+.row-field-copy,
+.row-field-json {
     flex: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    margin: -0.2rem -0.3rem -0.2rem 0;
     padding: 0;
     border: 1px solid transparent;
     border-radius: 6px;
@@ -6158,17 +6166,28 @@ button.column-menu-trigger[aria-expanded="true"] {
 }
 .row-field:hover .row-field-copy,
 .row-field-copy:focus-visible,
-.row-field-copy.is-copied {
+.row-field-copy.is-copied,
+.row-field:hover .row-field-json,
+.row-field-json:focus-visible,
+.row-field-json[aria-pressed="true"] {
     opacity: 1;
 }
-.row-field-copy:hover {
+.row-field-copy:hover,
+.row-field-json:hover,
+.row-field-json[aria-pressed="true"] {
     background: #eef6ff;
     border-color: var(--rule);
     color: var(--accent);
 }
-.row-field-copy:focus-visible {
+.row-field-copy:focus-visible,
+.row-field-json:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
+}
+.row-field-value.is-json-pretty {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
 }
 .row-field-copy .icon-copied,
 .row-field-copy.is-copied .icon-copy {
@@ -6190,7 +6209,8 @@ button.column-menu-trigger[aria-expanded="true"] {
 }
 
 @media (hover: none) {
-    .row-field-copy {
+    .row-field-copy,
+    .row-field-json {
         opacity: 0.7;
     }
 }
@@ -6229,11 +6249,16 @@ button.column-menu-trigger[aria-expanded="true"] {
     .row-field dd {
         display: block;
     }
-    .row-field-copy {
+    /* Side by side in the label line, rather than stacked */
+    .row-field-actions {
         position: absolute;
         top: 0.2rem;
         right: 0.35rem;
+        flex-direction: row;
         margin: 0;
+    }
+    .row-field:has(.row-field-json) dt {
+        padding-right: 3.75rem;
     }
 }
 

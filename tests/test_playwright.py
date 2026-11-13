@@ -4179,3 +4179,92 @@ def test_homepage_sections_from_javascript_plugins(page, datasette_server):
     # Hidden while searching
     page.keyboard.type("proj")
     expect(section).to_be_hidden()
+
+
+@pytest.mark.playwright
+def test_row_page_json_pretty_print_toggle(page, datasette_server):
+    page.add_init_script("""
+        (() => {
+            let clipboardText = "";
+            Object.defineProperty(navigator, "clipboard", {
+                configurable: true,
+                get: () => ({
+                    writeText: async (text) => {
+                        clipboardText = String(text);
+                    },
+                    readText: async () => clipboardText,
+                }),
+            });
+        })();
+        """)
+    page.goto(f"{datasette_server}fixtures/facetable/1")
+    toggles = page.locator(".row-field-json")
+    # Only object/array JSON values get a toggle: not "CA", not "n1"
+    assert [
+        toggle.evaluate("el => el.closest('.row-field').dataset.column")
+        for toggle in toggles.all()
+    ] == ["tags", "complex_array"]
+
+    field = page.locator('.row-field[data-column="complex_array"]')
+    toggle = field.locator(".row-field-json")
+    value = field.locator(".row-field-value")
+    copy = field.locator(".row-field-copy")
+    pretty = '[\n  {\n    "foo": "bar"\n  }\n]'
+    assert toggle.get_attribute("aria-pressed") == "false"
+    assert value.text_content() == '[{"foo": "bar"}]'
+
+    toggle.click()
+    assert toggle.get_attribute("aria-pressed") == "true"
+    assert value.text_content() == pretty
+    copy.click()
+    assert page.evaluate("navigator.clipboard.readText()") == pretty
+
+    toggle.click()
+    assert toggle.get_attribute("aria-pressed") == "false"
+    assert value.text_content() == '[{"foo": "bar"}]'
+    copy.click()
+    assert page.evaluate("navigator.clipboard.readText()") == '[{"foo": "bar"}]'
+
+    # "[]" is already as pretty as it gets, so no toggle
+    page.goto(f"{datasette_server}fixtures/facetable/3")
+    assert page.locator(".row-field-json").count() == 0
+
+
+@pytest.mark.playwright
+def test_row_page_json_pretty_print_expands_long_value(
+    page, datasette_server, tmp_path
+):
+    # datasette_server shares this tmp_path, so this writes to its data.db
+    conn = sqlite3.connect(tmp_path / "data.db")
+    try:
+        conn.execute("create table json_docs (id integer primary key, doc text)")
+        conn.execute(
+            "insert into json_docs values (1, ?)",
+            [json.dumps({f"key{i}": "value " * 5 for i in range(30)})],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    page.goto(f"{datasette_server}data/json_docs/1")
+    field = page.locator('.row-field[data-column="doc"]')
+    toggle = field.locator(".row-field-json")
+    wrap = field.locator(".row-field-long")
+    expand = field.locator(".row-field-expand")
+
+    def is_expanded():
+        return "is-expanded" in wrap.get_attribute("class").split()
+
+    assert not is_expanded()
+    # Pretty-printing reveals the whole value, switching back collapses it
+    toggle.click()
+    assert is_expanded()
+    assert expand.get_attribute("aria-expanded") == "true"
+    toggle.click()
+    assert not is_expanded()
+    assert expand.get_attribute("aria-expanded") == "false"
+
+    # A value the user expanded themselves stays expanded
+    expand.click()
+    toggle.click()
+    toggle.click()
+    assert is_expanded()

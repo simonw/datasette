@@ -251,6 +251,8 @@ def write_playwright_database(db_path):
             score integer,
             city text
         );
+        create table drop_demo (id integer primary key, name text);
+        insert into drop_demo (name) values ('one'), ('two');
         with recursive sequence(n) as (
             select 1 union all select n + 1 from sequence where n < 20
         )
@@ -372,6 +374,12 @@ def write_playwright_config(config_path):
                                 "permissions": {
                                     "insert-row": True,
                                     "update-row": True,
+                                },
+                            },
+                            "drop_demo": {
+                                "permissions": {
+                                    "alter-table": True,
+                                    "drop-table": True,
                                 },
                             },
                         },
@@ -1247,6 +1255,55 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
         "Discard table changes?"
     ]
     assert dialog.evaluate("node => node.open") is True
+
+
+@pytest.mark.playwright
+def test_alter_table_drop_table_confirms_in_dialog(page, datasette_server):
+    # Embedded browsers can silently dismiss window.confirm(), so dropping a
+    # table must be confirmed in the dialog without any native prompt
+    native_prompts = []
+
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", dismiss)
+    page.goto(f"{datasette_server}data/drop_demo")
+    page.locator("details.actions-menu-links").evaluate("node => node.open = true")
+    page.locator('button[data-table-action="alter-table"]').click()
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    drop_button = dialog.locator(".table-alter-drop")
+    confirm_button = dialog.locator(".table-alter-drop-confirm")
+    assert drop_button.is_visible()
+    assert confirm_button.is_hidden()
+
+    drop_button.click()
+    assert dialog.locator(".table-alter-review-title").inner_text() == "Drop table"
+    assert dialog.locator(".table-alter-review-warning").inner_text() == (
+        'Permanently delete the table "drop_demo"? '
+        "This will delete all of its data and cannot be undone."
+    )
+    assert confirm_button.is_visible()
+    assert confirm_button.inner_text() == "Drop table"
+    assert drop_button.is_hidden()
+    assert dialog.locator(".table-alter-save").is_hidden()
+    assert dialog.locator(".table-alter-fields").is_hidden()
+    # Nothing is dropped until the confirmation button is clicked
+    assert httpx2.get(f"{datasette_server}data/drop_demo.json").status_code == 200
+
+    dialog.locator(".table-alter-back").click()
+    assert dialog.locator(".table-alter-fields").is_visible()
+    assert dialog.locator(".table-alter-save").is_visible()
+    assert drop_button.is_visible()
+    assert confirm_button.is_hidden()
+    assert httpx2.get(f"{datasette_server}data/drop_demo.json").status_code == 200
+
+    drop_button.click()
+    confirm_button.click()
+    page.wait_for_url(f"{datasette_server}data")
+    assert httpx2.get(f"{datasette_server}data/drop_demo.json").status_code == 404
+    assert native_prompts == []
 
 
 @pytest.mark.playwright

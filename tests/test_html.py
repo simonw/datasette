@@ -3,6 +3,7 @@ import hashlib
 import json
 import pathlib
 import re
+import sqlite3
 import urllib.parse
 
 import pytest
@@ -169,6 +170,52 @@ async def test_static_hash_cache_control(ds_client):
     response = await ds_client.get("/-/static/app.css?_hash=incorrect")
     assert response.status_code == 200
     assert "cache-control" not in response.headers
+
+
+IF_NONE_MATCH_FORMATS = (
+    # format string for the If-None-Match header, expected status
+    ("{etag}", 304),
+    ("W/{etag}", 304),
+    ('"other", {etag}', 304),
+    ('"other",W/{etag}', 304),
+    ("*", 304),
+    ('"other"', 200),
+    ('W/"other", "another"', 200),
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("if_none_match,expected_status", IF_NONE_MATCH_FORMATS)
+async def test_static_if_none_match(ds_client, if_none_match, expected_status):
+    etag = (await ds_client.get("/-/static/app.css")).headers["etag"]
+    response = await ds_client.get(
+        "/-/static/app.css",
+        headers={"if-none-match": if_none_match.format(etag=etag)},
+    )
+    assert response.status_code == expected_status
+    assert response.headers["etag"] == etag
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("if_none_match,expected_status", IF_NONE_MATCH_FORMATS)
+async def test_database_download_if_none_match(
+    tmp_path, if_none_match, expected_status
+):
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    datasette = Datasette([], immutables=[path], cors=True)
+    etag = (await datasette.client.get("/data.db")).headers["etag"]
+    response = await datasette.client.get(
+        "/data.db", headers={"if-none-match": if_none_match.format(etag=etag)}
+    )
+    assert response.status_code == expected_status
+    # A 304 should carry the same ETag and CORS headers as the 200
+    assert response.headers["etag"] == etag
+    assert response.headers["access-control-allow-origin"] == "*"
+    if expected_status == 304:
+        assert response.content == b""
 
 
 def test_static_mounts():

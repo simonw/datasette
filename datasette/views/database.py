@@ -37,7 +37,13 @@ from datasette.utils import (
 from datasette.utils import (
     named_parameters as derive_named_parameters,
 )
-from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
+from datasette.utils.asgi import (
+    AsgiFileDownload,
+    Forbidden,
+    NotFound,
+    Response,
+    etag_matches,
+)
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
@@ -597,9 +603,8 @@ async def database_download(request, datasette):
         etag = f'"{db.hash}"'
         headers["Etag"] = etag
         # Has user seen this already?
-        if_none_match = request.headers.get("if-none-match")
-        if if_none_match and if_none_match == etag:
-            return Response("", status=304)
+        if etag_matches(request.headers.get("if-none-match"), etag):
+            return Response("", status=304, headers=headers)
     headers["Transfer-Encoding"] = "chunked"
     return AsgiFileDownload(
         filepath,

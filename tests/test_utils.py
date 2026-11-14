@@ -2,6 +2,7 @@
 Tests for various datasette helper functions.
 """
 
+import contextlib
 import hashlib
 import json
 import os
@@ -446,8 +447,7 @@ def test_to_css_class(s, expected):
 
 
 def test_temporary_docker_directory_uses_hard_link():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
+    with tempfile.TemporaryDirectory() as td, contextlib.chdir(td):
         with open("hello", "w") as fp:
             fp.write("world")
         # Default usage of this should use symlink
@@ -476,8 +476,7 @@ def test_temporary_docker_directory_uses_hard_link():
 def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
     # Copy instead if os.link raises OSError (normally due to different device)
     mock_link.side_effect = OSError
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
+    with tempfile.TemporaryDirectory() as td, contextlib.chdir(td):
         with open("hello", "w") as fp:
             fp.write("world")
         # Default usage of this should use symlink
@@ -503,8 +502,7 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
 
 
 def test_temporary_docker_directory_quotes_args():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
+    with tempfile.TemporaryDirectory() as td, contextlib.chdir(td):
         with open("hello", "w") as fp:
             fp.write("world")
         with utils.temporary_docker_directory(

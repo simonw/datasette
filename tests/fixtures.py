@@ -121,7 +121,7 @@ def make_app_client(
     metadata=None,
     crossdb=False,
 ):
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory() as tmpdir, contextlib.ExitStack() as stack:
         filepath = os.path.join(tmpdir, filename)
         if is_immutable:
             files = []
@@ -143,7 +143,7 @@ def make_app_client(
                     c2.close()
                 # Insert at start to help test /-/databases ordering:
                 files.insert(0, extra_filepath)
-        os.chdir(os.path.dirname(filepath))
+        stack.enter_context(contextlib.chdir(os.path.dirname(filepath)))
         settings = settings or {}
         for key, value in {
             "default_page_size": 50,

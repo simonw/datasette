@@ -62,6 +62,11 @@ You can run the tests faster using multiple CPU cores with `pytest-xdist <https:
 
     uv run pytest -m "serial"
 
+Tests that enter temporary directories should use ``contextlib.chdir()``
+within the temporary directory's context. This restores the previous working
+directory before cleanup, including when a test raises an exception. Windows
+cannot remove a directory while it is the process working directory.
+
 .. _contributing_playwright:
 
 Running Playwright tests

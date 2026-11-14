@@ -442,8 +442,8 @@ If the plugin is not configured the return value will be ``None``.
 
 .. _datasette_render_template:
 
-await .render_template(template, context=None, request=None)
-------------------------------------------------------------
+await .render_template(template, context=None, request=None, view_name=None, \*, plugin_context=None)
+-----------------------------------------------------------------------------------------------------
 
 ``template`` - string, list of strings or jinja2.Template
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.
@@ -452,11 +452,19 @@ await .render_template(template, context=None, request=None)
 
     If this is a Jinja `Template object <https://jinja.palletsprojects.com/en/2.11.x/api/#jinja2.Template>`__ it will be used directly.
 
-``context`` - None or a Python dictionary
+``context`` - None, a Python dictionary or a dataclass instance
     The context variables to pass to the template.
 
 ``request`` - request object or None
     If you pass a Datasette request object here it will be made available to the template.
+
+``view_name`` - string or None
+    The view name passed to the :ref:`page extras plugin hooks <plugin_page_extras>`.
+
+``plugin_context`` - None or a Python dictionary
+    Optional ``database``, ``table``, ``columns``, ``sql`` and ``params`` values to pass to :ref:`extra_template_vars() <plugin_hook_extra_template_vars>`, :ref:`extra_css_urls() <plugin_hook_extra_css_urls>`, :ref:`extra_js_urls() <plugin_hook_extra_js_urls>` and :ref:`extra_body_script() <plugin_hook_extra_body_script>`. Pass this argument by keyword.
+
+    ``database``, ``table`` and ``columns`` default to their values in ``context``. ``sql`` and ``params`` default to ``None``. An explicitly supplied value, including ``None``, overrides the default for that hook argument. These values are not added to the template context, and the input dictionary is not modified.
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 

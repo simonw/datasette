@@ -1127,6 +1127,7 @@ class RenderersExtra(Extra):
                 columns=context.columns or [],
                 rows=context.rows or [],
                 sql=query.get("sql", None),
+                params=query.get("params"),
                 query_name=context.query_name,
                 database=context.database_name,
                 table=table_name,

@@ -38,6 +38,11 @@ You can also install it using `pip` or `pipx`:
 
 Datasette requires Python 3.11 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
 
+## One-click deploy
+
+<a href="https://repocloud.io/details/Datasette/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="Deploy on RepoCloud" height="42"></a>
+<a href="https://railway.com/deploy/datasette"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="42"></a>
+
 ## Basic usage
 
     datasette serve path/to/database.db

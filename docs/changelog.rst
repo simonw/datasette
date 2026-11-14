@@ -9,6 +9,7 @@ Changelog
 Unreleased
 ----------
 
+- New ``Response.stream(body)`` method for returning a response a chunk at a time from an async iterator of strings or bytes, for example from a :ref:`plugin_register_routes` view. See :ref:`internals_response_stream`.
 - The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
 - Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.
 

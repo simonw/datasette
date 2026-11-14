@@ -927,8 +927,13 @@ limit ${sqlNumber(limit)}`;
         <span class="modal-title" id="${TITLE_ID}">Column statistics</span>
         <span class="modal-meta"></span>
       </div>
-      <div class="column-stats-columns" role="tablist" aria-label="Columns" hidden></div>
-      <div class="modal-body column-stats-body" id="column-stats-panel" role="tabpanel"></div>
+      <div class="column-stats-scroll">
+        <div class="column-stats-columns" hidden>
+          <div class="column-stats-tablist" role="tablist" aria-label="Columns"></div>
+          <button type="button" class="column-stats-more" aria-expanded="false" hidden></button>
+        </div>
+        <div class="modal-body column-stats-body" id="column-stats-panel" role="tabpanel"></div>
+      </div>
       <div class="modal-footer">
         <span class="footer-info" aria-live="polite"></span>
         <button type="button" class="modal-btn modal-btn-ghost column-stats-close">Close</button>
@@ -940,8 +945,11 @@ limit ${sqlNumber(limit)}`;
       dialog: dialog,
       meta: dialog.querySelector(".modal-meta"),
       body: dialog.querySelector(".column-stats-body"),
-      tabList: dialog.querySelector(".column-stats-columns"),
+      columns: dialog.querySelector(".column-stats-columns"),
+      tabList: dialog.querySelector(".column-stats-tablist"),
+      moreButton: dialog.querySelector(".column-stats-more"),
       tabs: [],
+      expanded: false,
       footerInfo: dialog.querySelector(".footer-info"),
       closeButton: dialog.querySelector(".column-stats-close"),
       controller: null,
@@ -952,6 +960,7 @@ limit ${sqlNumber(limit)}`;
       modal.requestClose("cancel");
     });
     dialog.addEventListener("close", () => {
+      setExpanded(state, false);
       if (state.controller) {
         state.controller.abort();
         state.controller = null;
@@ -971,7 +980,7 @@ limit ${sqlNumber(limit)}`;
     if (!columns.length) {
       return;
     }
-    s.tabList.hidden = false;
+    s.columns.hidden = false;
     s.tabs = columns.map((column, index) => {
       var tab = h(
         "button",
@@ -984,6 +993,8 @@ limit ${sqlNumber(limit)}`;
           "aria-controls": s.body.id || null,
           tabindex: "-1",
           "data-column": column.name,
+          // Shows the full name if a very long one is truncated
+          title: column.name,
         },
         [
           h("span", {
@@ -1016,8 +1027,11 @@ limit ${sqlNumber(limit)}`;
     });
     s.tabs.forEach((tab) => s.tabList.appendChild(tab));
     resetTabStopOnLeave(s);
+    // Arrow keys move between the pills on show; the "+N more" button
+    // reveals the rest
     s.tabList.addEventListener("keydown", (event) => {
-      var index = s.tabs.indexOf(document.activeElement);
+      var visible = s.tabs.filter((tab) => !tab.hidden);
+      var index = visible.indexOf(document.activeElement);
       if (index === -1) {
         return;
       }
@@ -1027,17 +1041,95 @@ limit ${sqlNumber(limit)}`;
         ArrowLeft: index - 1,
         ArrowUp: index - 1,
         Home: 0,
-        End: s.tabs.length - 1,
+        End: visible.length - 1,
       }[event.key];
       if (next === undefined) {
         return;
       }
       event.preventDefault();
-      next = (next + s.tabs.length) % s.tabs.length;
-      setTabStop(s, s.tabs[next]);
-      s.tabs[next].focus();
-      scrollTabIntoView(s, s.tabs[next]);
+      next = (next + visible.length) % visible.length;
+      setTabStop(s, visible[next]);
+      visible[next].focus();
     });
+    s.moreButton.addEventListener("click", () => {
+      setExpanded(s, !s.expanded);
+      fitColumnTabs(s);
+    });
+    // Pills wrap differently at a new width, so fit them again. Only the
+    // width matters: fitting them changes the height.
+    var lastWidth = 0;
+    new ResizeObserver((entries) => {
+      var width = entries[entries.length - 1].contentRect.width;
+      if (width && width !== lastWidth) {
+        lastWidth = width;
+        fitColumnTabs(s);
+      }
+    }).observe(s.columns);
+  }
+
+  function setExpanded(s, expanded) {
+    s.expanded = expanded;
+    s.columns.classList.toggle("is-expanded", expanded);
+    s.moreButton.setAttribute("aria-expanded", String(expanded));
+  }
+
+  // Collapsed, show as many pills as fit in MAX_TAB_ROWS rows with a
+  // "+N more" button at the end of the last one, always including the
+  // selected column's pill. Expanded, show every pill and a "Show fewer"
+  // button.
+  var MAX_TAB_ROWS = 3;
+
+  function fitColumnTabs(s) {
+    var tabs = s.tabs;
+    var more = s.moreButton;
+    if (!tabs.length || !s.dialog.open) {
+      return;
+    }
+    tabs.forEach((tab) => {
+      tab.hidden = false;
+    });
+    more.hidden = true;
+    var rowTops = Array.from(new Set(tabs.map((tab) => tab.offsetTop)));
+    if (rowTops.length <= MAX_TAB_ROWS) {
+      setExpanded(s, false);
+      return;
+    }
+    more.hidden = false;
+    if (s.expanded) {
+      more.textContent = "Show fewer";
+      more.removeAttribute("aria-label");
+      return;
+    }
+    var lastRowTop = rowTops.sort((a, b) => a - b)[MAX_TAB_ROWS - 1];
+    var selectedIndex = tabs.findIndex(
+      (tab) => tab.getAttribute("aria-selected") === "true",
+    );
+    // Show the first `count` pills, plus the selected one if it's later
+    function showFirst(count) {
+      var hiddenCount = 0;
+      tabs.forEach((tab, index) => {
+        tab.hidden = index >= count && index !== selectedIndex;
+        hiddenCount += tab.hidden ? 1 : 0;
+      });
+      more.textContent = `+${hiddenCount} more`;
+      more.setAttribute(
+        "aria-label",
+        `Show ${hiddenCount} more column${hiddenCount === 1 ? "" : "s"}`,
+      );
+      return more.offsetTop <= lastRowTop;
+    }
+    // The most pills that still leave the button on the last row
+    var low = 0;
+    var high = tabs.length - 1;
+    while (low < high) {
+      var middle = Math.ceil((low + high) / 2);
+      if (showFirst(middle)) {
+        low = middle;
+      } else {
+        high = middle - 1;
+      }
+    }
+    showFirst(low);
   }
 
   // Tabbing back into the pills lands on the selected column, even after
@@ -1079,18 +1171,6 @@ limit ${sqlNumber(limit)}`;
       s.body.removeAttribute("aria-labelledby");
     }
     return selected;
-  }
-
-  // Scroll within the pill list only, never the page behind the dialog.
-  function scrollTabIntoView(s, tab) {
-    var list = s.tabList;
-    var top = tab.offsetTop - list.offsetTop;
-    var bottom = top + tab.offsetHeight;
-    if (top < list.scrollTop) {
-      list.scrollTop = top - 6;
-    } else if (bottom > list.scrollTop + list.clientHeight) {
-      list.scrollTop = bottom - list.clientHeight + 6;
-    }
   }
 
   // Link to the table filtered to a value, on top of the current filters if
@@ -1233,15 +1313,18 @@ limit ${sqlNumber(limit)}`;
     if (tableFilter) {
       overviewSection.body.before(renderScope());
     }
+    if (activeTab) {
+      // An earlier fit may have hidden it; it can only be focused if shown.
+      // fitColumnTabs() below always keeps it.
+      activeTab.hidden = false;
+    }
     s.modal.show({
       returnFocusTo: options.returnFocusTo,
       initialFocus: options.focusScopeToggle
         ? scopeToggle
         : activeTab || s.closeButton,
     });
-    if (activeTab) {
-      scrollTabIntoView(s, activeTab);
-    }
+    fitColumnTabs(s);
 
     // Say which rows the statistics cover, with a button to switch between
     // the filtered rows and the whole table.

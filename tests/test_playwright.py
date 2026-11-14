@@ -3244,6 +3244,85 @@ def test_column_statistics_switch_columns(page, datasette_server):
     assert page_errors == []
 
 
+@pytest.mark.playwright
+def test_column_statistics_more_columns_toggle(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.set_viewport_size({"width": 800, "height": 900})
+    names = [f"column_{i:02d}" for i in range(1, 31)]
+    sql = "select " + ", ".join(f"score as {name}" for name in names)
+    sql += " from stats_demo"
+    page.goto(datasette_server + "data/-/query?" + urllib.parse.urlencode({"sql": sql}))
+    dialog = page.locator("#column-stats-dialog")
+    tabs = dialog.get_by_role("tab")
+    more = dialog.locator(".column-stats-more")
+
+    def open_first_column():
+        page.locator("table.rows-and-columns th").nth(0).locator(
+            ".column-menu-trigger"
+        ).click()
+        page.locator("#column-actions-menu").get_by_role(
+            "menuitem", name="Column statistics", exact=True
+        ).click()
+        page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+
+    def visible_tabs():
+        return tabs.evaluate_all(
+            "tabs => tabs.filter(tab => !tab.hidden).map(tab => tab.dataset.column)"
+        )
+
+    def row_count():
+        return dialog.locator(".column-stats-columns").evaluate("""columns => new Set(
+                Array.from(columns.querySelectorAll(
+                    '.column-stats-column:not([hidden]), .column-stats-more'
+                )).map(node => node.offsetTop)
+            ).size""")
+
+    open_first_column()
+    # Collapsed: the first pills in three rows, ending in "+N more"
+    shown = visible_tabs()
+    hidden_count = len(names) - len(shown)
+    assert hidden_count > 0
+    assert shown == names[: len(shown)]
+    expect(more).to_have_text(f"+{hidden_count} more")
+    expect(more).to_have_attribute("aria-expanded", "false")
+    assert row_count() == 3
+    # The pill list never scrolls on its own
+    assert dialog.locator(".column-stats-columns").evaluate(
+        "columns => columns.scrollHeight <= columns.clientHeight"
+    )
+    # Arrow keys only move between the pills on show
+    expect(dialog.get_by_role("tab", name="column_01 integer")).to_be_focused()
+    page.keyboard.press("ArrowLeft")
+    expect(dialog.get_by_role("tab", name=f"{shown[-1]} integer")).to_be_focused()
+    # Expanded: every pill, and switching column stays expanded
+    more.click()
+    expect(more).to_have_text("Show fewer")
+    expect(more).to_have_attribute("aria-expanded", "true")
+    assert visible_tabs() == names
+    dialog.get_by_role("tab", name="column_30 integer").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog).to_have_attribute("data-column", "column_30")
+    assert visible_tabs() == names
+    # Collapsing keeps the selected pill, after the others
+    more.click()
+    expect(more).to_have_attribute("aria-expanded", "false")
+    shown = visible_tabs()
+    assert shown[-1] == "column_30"
+    assert shown[:-1] == names[: len(shown) - 1]
+    expect(more).to_have_text(f"+{len(names) - len(shown)} more")
+    assert row_count() == 3
+    # Reopening starts collapsed
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    open_first_column()
+    expect(more).to_have_attribute("aria-expanded", "false")
+    assert "column_30" not in visible_tabs()
+    assert page_errors == []
+
+
 CLIPBOARD_STUB = """
 (() => {
     window.clipboardText = null;

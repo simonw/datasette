@@ -3162,28 +3162,56 @@ dialog.column-stats-dialog {
     min-width: 0;
 }
 
-/* A pill for each column, to switch the dialog between columns */
+/* The pills and the statistics scroll together, so the pill list never
+   needs a scrollbar of its own */
+.column-stats-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    /* Keeps the pill rows the same width whether or not it scrolls */
+    scrollbar-gutter: stable;
+}
+
+.column-stats-dialog .column-stats-body {
+    overflow: visible;
+}
+
+/* A pill for each column, to switch the dialog between columns. Collapsed,
+   it shows at most three rows (column-stats.js hides the rest behind a
+   "+N more" pill) and stays pinned while the statistics scroll beneath it.
+   Expanded, every pill shows and they scroll away with the statistics. */
 .column-stats-columns {
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    flex-shrink: 0;
-    max-height: 5.6rem;
-    overflow-y: auto;
     padding: 10px 24px;
     border-bottom: 1px solid var(--rule);
+    background: var(--card);
+}
+
+.column-stats-columns.is-expanded {
+    position: static;
 }
 
 .column-stats-columns[hidden] {
     display: none;
 }
 
-.column-stats-column {
+/* The tablist holds only the tabs, but the pills and the "+N more" button
+   share one row layout */
+.column-stats-tablist {
+    display: contents;
+}
+
+.column-stats-column,
+.column-stats-more {
     display: inline-flex;
     align-items: baseline;
     gap: 6px;
-    max-width: 16rem;
+    /* Only truncate names too long to fit on a row by themselves */
+    max-width: 100%;
     padding: 3px 10px;
     border: 1px solid var(--rule);
     border-radius: 999px;
@@ -3196,6 +3224,26 @@ dialog.column-stats-dialog {
     white-space: nowrap;
 }
 
+.column-stats-column[hidden],
+.column-stats-more[hidden] {
+    display: none;
+}
+
+.column-stats-more {
+    border-style: dashed;
+    color: var(--accent);
+}
+
+.column-stats-more:hover {
+    border-color: var(--accent);
+    border-style: solid;
+}
+
+.column-stats-more:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .column-stats-column:hover {
     border-color: var(--accent);
 }
@@ -3206,6 +3254,7 @@ dialog.column-stats-dialog {
 }
 
 .column-stats-column-name {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }

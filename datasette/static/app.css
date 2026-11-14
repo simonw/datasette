@@ -6607,70 +6607,137 @@ button.column-menu-trigger[aria-expanded="true"] {
     text-overflow: ellipsis;
 }
 
-/* Tables and views */
-.catalog-list {
+/* Tables and views: a column of cards, one per table, each a single link
+   to its table. One column, so the order reads straight down the page.
+   _catalog_cards.html, used by the homepage and database page. */
+ul.catalog-list {
+    display: grid;
+    gap: 0.6rem;
     margin: 0;
     padding: 0;
     list-style: none;
-    border: 1px solid var(--rule);
-    border-radius: 0.5rem;
-    background: var(--card);
-    overflow: hidden;
 }
 .catalog-item {
-    padding: 0.7rem 0.9rem;
-}
-.catalog-item + .catalog-item {
-    border-top: 1px solid var(--rule);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0.7rem 0.85rem 0.75rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
 }
 .catalog-item:hover {
-    background: #f7fbff;
+    border-color: #a9c1ec;
 }
 .catalog-item-heading {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem 0.5rem;
+    align-items: baseline;
+    gap: 0.15rem 0.5rem;
 }
 .catalog-item-name {
-    font-size: 1.0625rem;
+    font-size: 1rem;
     font-weight: 600;
     overflow-wrap: anywhere;
 }
-.catalog-item-links {
+/* The whole card is the link */
+.catalog-item-name::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+}
+.catalog-item-name:focus-visible {
+    outline: none;
+}
+.catalog-item-name:focus-visible::after {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.type-tag-hidden {
+    color: #4b5563;
+    background: #eef0f3;
+}
+.catalog-item-count {
     margin-left: auto;
-    color: var(--muted);
     font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 .catalog-item-description {
-    margin: 0.2rem 0 0;
-    font-size: 0.9375rem;
+    margin: 0.25rem 0 0;
+    font-size: 0.875rem;
 }
 .catalog-item-columns {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.15rem 0.6rem;
-    margin: 0.3rem 0 0;
-    color: var(--muted);
-    font-family: ui-monospace, monospace;
+    margin: 0.4rem 0 0;
+    color: #536978;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.8125rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
 }
 .catalog-column-more {
+    color: var(--muted);
     font-family: system-ui, -apple-system, sans-serif;
-    font-style: italic;
+    white-space: nowrap;
+}
+/* "+N more" as a button: shows the rest of the columns in the card. It
+   sits above the card's own link. */
+button.catalog-column-more {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    padding: 0 0.15rem;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--accent);
+    font-size: inherit;
+    line-height: inherit;
+    cursor: pointer;
+}
+button.catalog-column-more:hover {
+    text-decoration: underline;
+}
+button.catalog-column-more:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 .catalog-item-meta {
     display: flex;
     flex-wrap: wrap;
-    margin: 0.25rem 0 0;
+    align-items: center;
+    margin: 0.45rem 0 0;
     color: var(--muted);
     font-size: 0.8125rem;
 }
-.catalog-item-meta span + span::before {
+.catalog-item-meta > span + span::before {
     content: "·";
     margin: 0 0.45em;
+}
+.catalog-item-meta .db-tag {
+    padding: 0;
+    background: none;
+    font-size: inherit;
+    font-weight: 400;
+    line-height: inherit;
+}
+/* Above the card's own link, so the linked tables can be followed */
+.catalog-item-links {
+    position: relative;
+    z-index: 1;
+}
+.homepage .catalog-item-links a,
+.homepage .catalog-item-links a:visited {
+    color: #1d4f7a;
+    text-decoration: none;
+}
+.homepage .catalog-item-links a:hover,
+.homepage .catalog-item-links a:focus-visible {
+    color: var(--accent);
+    text-decoration: underline;
 }
 .homepage-empty,
 .homepage-more {
@@ -6683,10 +6750,6 @@ button.column-menu-trigger[aria-expanded="true"] {
 @media (max-width: 600px) {
     .homepage-search-button {
         display: none;
-    }
-    .catalog-item-links {
-        margin-left: 0;
-        flex-basis: 100%;
     }
 }
 .homepage a.homepage-database,
@@ -6713,7 +6776,9 @@ button.column-menu-trigger[aria-expanded="true"] {
     text-decoration: underline;
 }
 .catalog-column-match {
-    padding: 0 0.2rem;
+    /* The negative margin keeps the highlight from pushing the comma away */
+    margin: 0 -0.2rem;
+    padding: 0.05rem 0.2rem;
     border-radius: 3px;
     background: #fff3b0;
     color: var(--ink);
@@ -6928,6 +6993,9 @@ ul.query-list {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
     border-radius: 0.4rem;
+}
+.catalog-item.is-active {
+    border-radius: 8px;
 }
 .homepage .is-active a.catalog-item-name,
 .homepage .is-active a.query-row-name {

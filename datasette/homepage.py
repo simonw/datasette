@@ -188,7 +188,7 @@ async def build_catalog(
                 SELECT name FROM catalog_columns c
                 WHERE c.database_name = matching.database_name
                   AND c.table_name = matching.name
-                ORDER BY cid LIMIT {COLUMNS_PREVIEW}
+                ORDER BY cid LIMIT -1
             )) AS columns,
             (SELECT json_group_array(name) FROM (
                 SELECT name FROM catalog_columns c
@@ -242,7 +242,8 @@ async def build_catalog(
 
     items = []
     for row in rows:
-        columns = json.loads(row["columns"] or "[]")
+        all_columns = json.loads(row["columns"] or "[]")
+        columns = all_columns[:COLUMNS_PREVIEW]
         column_count = row["column_count"]
         if row["type"] == "view":
             # Views are not in catalog_columns; only look these up for this page
@@ -253,6 +254,7 @@ async def build_catalog(
                 # A broken view, for example one referencing a missing table
                 view_columns = []
             column_count = len(view_columns)
+            all_columns = view_columns
             columns = view_columns[:COLUMNS_PREVIEW]
         matched_columns = json.loads(row["matched_columns"] or "[]")
         if matched_columns:
@@ -268,6 +270,7 @@ async def build_catalog(
                 "title": row["title"],
                 "description": row["description"],
                 "columns": columns,
+                "more_columns": [c for c in all_columns if c not in columns],
                 "matched_columns": matched_columns,
                 "column_count": column_count,
                 "linked_tables": json.loads(row["linked_tables"] or "[]"),

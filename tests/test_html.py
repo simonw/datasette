@@ -265,17 +265,25 @@ async def test_database_page(ds_client):
     # Should have a <textarea> for executing SQL
     assert "<textarea" in response.text
 
-    # And a list of tables
-    for fragment in (
-        '<h2 id="tables">Tables',
-        '<h3><a href="/fixtures/sortable">sortable</a></h3>',
-        "<p><em>pk, foreign_key_with_label, foreign_key_with_blank_label, ",
-    ):
-        assert fragment in response.text
-
-    # And views
-    views_ul = soup.find("h2", string="Views").find_next_sibling("ul")
-    assert views_ul is not None
+    # And a card for each table, then each view
+    assert soup.select_one("h2#tables").text == "Tables and views"
+    rows = {
+        li.select_one("a.catalog-item-name")["href"]: li
+        for li in soup.select("ul.catalog-list li.catalog-item")
+    }
+    sortable = rows["/fixtures/sortable"]
+    assert sortable.select_one("a.catalog-item-name").text == "sortable"
+    assert "catalog-item-table" in sortable["class"]
+    assert sortable.select_one(".catalog-item-count").text == "201 rows"
+    assert (
+        " ".join(sortable.select_one(".catalog-item-columns").text.split())
+        == "pk1, pk2, content, sortable, sortable_with_nulls, "
+        "sortable_with_nulls_2, text"
+    )
+    assert (
+        rows["/fixtures/foreign_key_references"].select_one(".catalog-item-links").text
+        == "links to primary_key_multiple_columns, simple_primary_key"
+    )
     assert [
         ("/fixtures/binary_data_view", "binary_data_view"),
         ("/fixtures/paginated_view", "paginated_view"),
@@ -285,10 +293,14 @@ async def test_database_page(ds_client):
             "searchable_view_configured_by_metadata",
         ),
         ("/fixtures/simple_view", "simple_view"),
-    ] == sorted([(a["href"], a.text) for a in views_ul.find_all("a")])
+    ] == sorted(
+        (href, li.select_one("a.catalog-item-name").text)
+        for href, li in rows.items()
+        if "catalog-item-view" in li["class"]
+    )
 
     # And a list of stored queries
-    queries_ul = soup.find("h2", string="Queries").find_next_sibling("ul")
+    queries_ul = soup.find("h2", string="Queries").find_next("ul")
     assert queries_ul is not None
     assert [
         ("/fixtures/magic_parameters", "magic_parameters"),

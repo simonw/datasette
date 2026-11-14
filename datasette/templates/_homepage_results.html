@@ -1,3 +1,4 @@
+{% import "_catalog_cards.html" as catalog_cards with context %}
 {% set multiple_databases = databases|length > 1 %}
 {% if multiple_databases %}
 <nav class="homepage-databases" aria-labelledby="homepage-databases-label">
@@ -47,31 +48,13 @@
         {% else %}Tables{% if catalog.totals.views %} and views{% endif %}{% endif %}
     </h2>
     {% if items %}
-    <ul class="catalog-list">
+    {% set show_database = multiple_databases and not database_filter %}
+    {% call catalog_cards.list() %}
     {% for item in items %}
-        <li class="catalog-item catalog-item-{{ item.type }}">
-            <div class="catalog-item-heading">
-                <a class="catalog-item-name" href="{{ item.url }}">{{ item.title or item.name }}</a>
-                {%- if item.private %} 🔒{% endif %}
-                {% if item.type == "view" %}<span class="type-tag type-tag-view" title="A SQL view">view</span>{% endif %}
-                {% if multiple_databases and not database_filter %}<span class="db-tag" style="--db-color: #{{ item.color }}">{{ item.database }}</span>{% endif %}
-                {% if item.linked_tables %}<span class="catalog-item-links" title="Linked by foreign keys to: {{ item.linked_tables|join(', ') }}">links to {{ item.linked_tables|length }} table{% if item.linked_tables|length != 1 %}s{% endif %}</span>{% endif %}
-            </div>
-            {% if item.description %}<p class="catalog-item-description">{{ item.description }}</p>{% endif %}
-            <p class="catalog-item-columns">
-                {%- for column in item.columns %}{% if column in item.matched_columns %}<mark class="catalog-column catalog-column-match">{{ column }}</mark>{% else %}<span class="catalog-column">{{ column }}</span>{% endif %}{% endfor -%}
-                {%- if item.column_count > item.columns|length %}<span class="catalog-column-more">+{{ item.column_count - item.columns|length }} more</span>{% endif -%}
-            </p>
-            {% if item.count is not none or item.has_fts or (item.title and item.title != item.name) %}
-            <p class="catalog-item-meta">
-                {%- if item.title and item.title != item.name %}<span><code>{{ item.name }}</code></span>{% endif -%}
-                {%- if item.count is not none %}<span>{{ "{:,}".format(item.count) }}{% if item.count_truncated %}+{% endif %} row{% if item.count != 1 %}s{% endif %}</span>{% endif -%}
-                {%- if item.has_fts %}<span>full-text search</span>{% endif -%}
-            </p>
-            {% endif %}
-        </li>
+        {% set count_text = ("{:,}".format(item.count) ~ ("+" if item.count_truncated else "")) if item.count is not none else none %}
+        {{- catalog_cards.card(item, show_database=show_database, count_text=count_text) }}
     {% endfor %}
-    </ul>
+    {% endcall %}
     {% elif q %}
     <p class="homepage-empty">No tables or views match “{{ q }}”. <a href="{{ urls.instance() }}{% if database_filter %}?database={{ database_filter|urlencode }}{% endif %}">Clear search</a></p>
     {% else %}

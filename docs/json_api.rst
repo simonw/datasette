@@ -757,7 +757,7 @@ The available table extras are listed below.
     .. code-block:: json
 
         {
-          "json": "/fixtures/facetable.json?_extra=renderers&_format=json&_labels=on"
+          "json": "/fixtures/facetable.json?_extra=renderers&_labels=on"
         }
 
 ``custom_table_templates``

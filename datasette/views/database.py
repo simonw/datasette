@@ -27,6 +27,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
+    path_without_format,
     request_route_path,
     sqlite3,
     tilde_decode,
@@ -941,6 +942,8 @@ class QueryView(View):
                 database=database,
                 table=None,
                 request=request,
+                path=path_without_format(request),
+                full_path=path_without_format(request, include_query_string=True),
                 view_name="table",
                 truncated=results.truncated if results else False,
                 error=query_error,
@@ -1014,6 +1017,8 @@ class QueryView(View):
                     database=database,
                     table=data.get("table"),
                     request=request,
+                    path=path_without_format(request),
+                    full_path=path_without_format(request, include_query_string=True),
                     view_name="database",
                 )
                 it_can_render = await await_me_maybe(it_can_render)

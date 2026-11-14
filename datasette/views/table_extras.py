@@ -13,6 +13,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
+    path_without_format,
     request_route_path,
     to_css_class,
 )
@@ -1131,6 +1132,10 @@ class RenderersExtra(Extra):
                 database=context.database_name,
                 table=table_name,
                 request=context.request,
+                path=path_without_format(context.request),
+                full_path=path_without_format(
+                    context.request, include_query_string=True
+                ),
                 view_name=view_name,
             )
             it_can_render = await await_me_maybe(it_can_render)

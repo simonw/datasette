@@ -1,0 +1,22 @@
+<div class="table-wrapper"><table class="execute-write-analysis">
+    <thead>
+        <tr>
+            <th scope="col">Operation</th>
+            <th scope="col">Database</th>
+            <th scope="col">Table</th>
+            <th scope="col">Required permission</th>
+            <th scope="col">Allowed</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in analysis_rows %}
+            <tr>
+                <td><code>{{ row.operation }}</code></td>
+                <td><code>{{ row.database }}</code></td>
+                <td><code>{{ row.table }}</code>{% if row.source %} <span class="execute-write-analysis-source">via <code>{{ row.source }}</code></span>{% endif %}</td>
+                <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% elif row.message %}<span class="execute-write-analysis-rejected">{{ row.message }}</span>{% else %}<span class="execute-write-analysis-na">n/a</span>{% endif %}</td>
+                <td>{% if row.allowed is none %}<span class="execute-write-analysis-na">n/a</span>{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table></div>

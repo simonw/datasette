@@ -19,6 +19,7 @@ import urllib
 from collections import Counter, OrderedDict, namedtuple
 from collections.abc import Iterable
 from contextlib import contextmanager
+from shutil import copytree
 
 import aiofiles
 import click
@@ -26,8 +27,8 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .shutil_backport import copytree
-from .sqlite import sqlite3, supports_table_xinfo
+from ..version import __version__
+from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
     from datasette.database import Database
@@ -311,6 +312,29 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
     return ",".join(bits)
 
 
+def compound_keys_at_or_before_sql(pks, start_index=0):
+    # The inverse of compound_keys_after_sql(): rows up to and including the
+    # cursor. Written out directly, rather than as "not (...after...)", so
+    # SQLite can answer it with a range search on the primary key index.
+    # For pk1/pk2/pk3 returns:
+    #
+    # ([pk1] < :p0)
+    #   or
+    # ([pk1] = :p0 and [pk2] < :p1)
+    #   or
+    # ([pk1] = :p0 and [pk2] = :p1 and [pk3] <= :p2)
+    or_clauses = []
+    for i, pk in enumerate(pks):
+        and_clauses = [
+            f"{escape_sqlite(earlier)} = :p{j + start_index}"
+            for j, earlier in enumerate(pks[:i])
+        ]
+        op = "<=" if i == len(pks) - 1 else "<"
+        and_clauses.append(f"{escape_sqlite(pk)} {op} :p{i + start_index}")
+        or_clauses.append(f"({' and '.join(and_clauses)})")
+    return "({})".format("\n  or\n".join(or_clauses))
+
+
 def compound_keys_after_sql(pks, start_index=0):
     # Implementation of keyset pagination
     # See https://github.com/simonw/datasette/issues/190
@@ -495,6 +519,17 @@ def append_querystring(url, querystring):
     return f"{url}{op}{querystring}"
 
 
+def request_route_path(request):
+    """
+    The request path with any ``base_url`` prefix removed by the router.
+
+    Pass this as ``path=`` to ``path_with_added_args()`` and friends when
+    the result will go through ``datasette.urls.path()``, so ``base_url`` is
+    applied exactly once whether or not a proxy stripped it from the request.
+    """
+    return request.scope.get("route_path") or request.path
+
+
 def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):
@@ -573,6 +608,29 @@ def escape_sqlite(s):
     return '"{}"'.format(s.replace('"', '""'))
 
 
+_datasette_requirement_re = re.compile(
+    # A requirement named datasette, or a path or URL to a datasette wheel or sdist
+    r"^datasette(\[[^\]]*\])?\s*($|[=<>!~;@])"
+    r"|(^|/)datasette-\d[^/]*\.(whl|tar\.gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def datasette_install_requirements(install, branch=None):
+    """
+    Requirements to pip install for a published Datasette: Datasette itself
+    followed by any extras from --install. Datasette defaults to the version
+    that is running this command, unless --branch was used or one of the
+    --install values is itself a requirement for Datasette.
+    """
+    install = list(install)
+    if branch:
+        return [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + install
+    if any(_datasette_requirement_re.search(item.strip()) for item in install):
+        return install
+    return [f"datasette=={__version__}"] + install
+
+
 def make_dockerfile(
     files,
     metadata_file,
@@ -614,12 +672,7 @@ def make_dockerfile(
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
+    install = datasette_install_requirements(install, branch)
 
     apt_get_extras_ = []
     apt_get_extras_.extend(apt_get_extras)
@@ -822,10 +875,21 @@ def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
     sql, params = detect_fts_sql(table)
     rows = conn.execute(sql, params).fetchall()
-    if len(rows) == 0:
-        return None
-    else:
+    if rows:
         return rows[0][0]
+    # detect_fts_sql() only matches content="table" and content=[table], but
+    # SQLite also accepts content=table, content='table' and content=`table`
+    candidates = conn.execute(
+        "select name, sql from sqlite_master where rootpage = 0"
+        " and sql like '%VIRTUAL TABLE%USING FTS%'"
+        " and instr(lower(sql), lower(?))",
+        [table],
+    ).fetchall()
+    for name, fts_sql in candidates:
+        content_table = _fts_external_content_table(fts_sql)
+        if content_table and content_table.lower() == table.lower():
+            return name
+    return None
 
 
 def detect_fts_sql(table):
@@ -957,7 +1021,7 @@ def to_css_class(s):
     """
     if css_class_re.match(s):
         return s
-    md5_suffix = md5_not_usedforsecurity(s)[:6]
+    md5_suffix = hashlib.md5(s.encode("utf8"), usedforsecurity=False).hexdigest()[:6]
     # Strip leading _, -
     s = s.lstrip("_").lstrip("-")
     # Replace any whitespace with hyphens
@@ -1660,8 +1724,9 @@ def prune_empty_dicts(d: dict):
 def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
-    hierarchy in destination if needed. After moving, recursively remove any keys
-    in the source that are left empty.
+    hierarchy in destination if needed. A 'plugins' block is merged by plugin name
+    with one already in the destination, the source winning for a name in both.
+    After moving, recursively remove any keys in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1676,8 +1741,16 @@ def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]
                 d = dest
                 for step in path:
                     d = d.setdefault(step, {})
-                # Move the plugins
-                d[key] = value
+                # Move the plugins, keeping any the destination already has
+                # for other plugin names
+                if (
+                    key == "plugins"
+                    and isinstance(value, dict)
+                    and isinstance(d.get(key), dict)
+                ):
+                    d[key] = {**d[key], **value}
+                else:
+                    d[key] = value
                 # Remove the plugins from source
                 src.pop(key, None)
             elif isinstance(value, dict):
@@ -1755,14 +1828,6 @@ def redact_keys(original: dict, key_patterns: Iterable) -> dict:
             return data
 
     return redact(original)
-
-
-def md5_not_usedforsecurity(s):
-    try:
-        return hashlib.md5(s.encode("utf8"), usedforsecurity=False).hexdigest()
-    except TypeError:
-        # For Python 3.8 which does not support usedforsecurity=False
-        return hashlib.md5(s.encode("utf8")).hexdigest()
 
 
 _etag_cache = {}

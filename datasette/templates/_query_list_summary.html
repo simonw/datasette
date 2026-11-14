@@ -1,0 +1,4 @@
+<p class="homepage-summary">
+    <span>{{ "{:,}".format(total) }} quer{% if total != 1 %}ies{% else %}y{% endif %}</span>
+    {%- if filters.q %}<span>matching “{{ filters.q }}”</span>{% endif -%}
+</p>

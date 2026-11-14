@@ -36,7 +36,7 @@ You can also install it using `pip` or `pipx`:
 
     pip install datasette
 
-Datasette requires Python 3.10 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
+Datasette requires Python 3.11 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
 
 ## Basic usage
 
@@ -74,7 +74,7 @@ The license and source information will be displayed on the index page and in th
 
 ## datasette publish
 
-If you have [Heroku](https://heroku.com/) or [Google Cloud Run](https://cloud.google.com/run/) configured, Datasette can deploy one or more SQLite databases to the internet with a single command:
+If you have [Heroku](https://www.heroku.com/) or [Google Cloud Run](https://cloud.google.com/run/) configured, Datasette can deploy one or more SQLite databases to the internet with a single command:
 
     datasette publish heroku database.db
 

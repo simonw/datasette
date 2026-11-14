@@ -11,20 +11,34 @@ from datasette.utils import (
 from datasette.utils.asgi import Response
 
 
+def _load_json_value(value):
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def convert_specific_columns_to_json(rows, columns, json_cols):
+    if not rows:
+        return rows
+    if columns is None:
+        if not isinstance(rows[0], dict):
+            return rows
+        columns = rows[0].keys()
     json_cols = set(json_cols)
     if not json_cols.intersection(columns):
         return rows
     new_rows = []
     for row in rows:
-        new_row = []
-        for value, column in zip(row, columns):
-            if column in json_cols:
-                try:
-                    value = json.loads(value)
-                except (TypeError, ValueError):
-                    pass
-            new_row.append(value)
+        if isinstance(row, dict):
+            new_row = dict(row)
+            for column in json_cols.intersection(row):
+                new_row[column] = _load_json_value(row[column])
+        else:
+            new_row = [
+                _load_json_value(value) if column in json_cols else value
+                for value, column in zip(row, columns)
+            ]
         new_rows.append(new_row)
     return new_rows
 
@@ -37,9 +51,23 @@ def json_renderer(request, args, data, error, truncated=None, view_name=None):
     json_cols = []
     if "_json" in args:
         json_cols = args.getlist("_json")
-    if json_cols and "rows" in data and "columns" in data:
+    object_keys = None
+    pks = data.get("primary_keys")
+    if (
+        not error
+        and args.get("_shape") == "object"
+        and pks
+        and any(pk in json_cols for pk in pks)
+    ):
+        object_keys = []
+        columns = data.get("columns")
+        for row in data["rows"]:
+            if columns and not isinstance(row, dict):
+                row = dict(zip(columns, row))
+            object_keys.append(path_from_row_pks(row, pks, False))
+    if json_cols and "rows" in data:
         data["rows"] = convert_specific_columns_to_json(
-            data["rows"], data["columns"], json_cols
+            data["rows"], data.get("columns"), json_cols
         )
 
     # unless _json_infinity=1 requested, replace infinity with None
@@ -95,8 +123,12 @@ def json_renderer(request, args, data, error, truncated=None, view_name=None):
                     )
                 else:
                     object_rows = {}
-                    for row in data["rows"]:
-                        pk_string = path_from_row_pks(row, pks, not pks)
+                    for index, row in enumerate(data["rows"]):
+                        pk_string = (
+                            object_keys[index]
+                            if object_keys is not None
+                            else path_from_row_pks(row, pks, not pks)
+                        )
                         object_rows[pk_string] = row
                     data = object_rows
             if shape_error:

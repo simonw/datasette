@@ -129,10 +129,11 @@ Some endpoints add extra context keys. For example, a SQL error from a
 ``"rows"`` and ``"truncated"`` keys of the response it was unable to
 produce.
 
-Permission errors use the same format: a request that fails a permission
-check receives a ``403`` with this JSON error body when the URL ends in
-``.json`` or the request sends an ``Accept: application/json`` or
-``Content-Type: application/json`` header.
+Errors handled by Datasette's exception and permission handlers use this
+format when the URL ends in ``.json`` or the request sends an
+``Accept: application/json`` or ``Content-Type: application/json`` header.
+Without one of these signals, an error on an HTML page is rendered as HTML.
+Errors on explicit ``.csv`` URLs remain plain text, regardless of headers.
 
 .. _json_api_custom_sql:
 
@@ -319,7 +320,10 @@ query string arguments:
     JSON. Without this argument those columns will be returned as JSON objects
     that have been double-encoded into a JSON string value.
 
-    Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
+    With ``_shape=object``, the object keys still use the original database
+    primary-key values, even when a primary-key column is decoded using ``_json``.
+
+    Compare `this query without the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array>`_ to `this query using the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``
     If your data contains infinity or -infinity values, Datasette will replace
@@ -534,7 +538,7 @@ The available table extras are listed below.
         }
 
 ``display_columns``
-    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.
 
     Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
 

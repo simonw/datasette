@@ -107,6 +107,48 @@ This example shows how a plugin might add a button for starting a new chat:
       });
     });
 
+.. _javascript_plugins_makeHomepageSections:
+
+makeHomepageSections(context)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This method should return a JavaScript array of objects defining additional sections to be shown on the Datasette homepage, between the search box and the list of queries, tables and views.
+
+It returns objects in the same shape as :ref:`javascript_plugins_makeJumpSections`, plus an optional ``title``:
+
+``id`` - string
+    A unique string ID for the section, for example ``agent-chat``
+``title`` - string, optional
+    A heading for the section. Datasette renders it in the same style as the other homepage section headings, above the node passed to ``render()``.
+``render(node, context)`` - function
+    A function that will be called with a DOM node to render the section into
+
+The ``context`` object passed to both functions has one key:
+
+``container``
+    The ``.homepage-sections`` element that the section nodes are added to.
+
+Plugins are responsible for deciding if a section should be shown - for example by only registering the plugin for users who have permission to use the feature. A plugin that already implements ``makeJumpSections`` can often reuse the same ``render()`` function here.
+
+.. code-block:: javascript
+
+    document.addEventListener('datasette_init', function(ev) {
+      ev.detail.registerPlugin('agent-plugin', {
+        version: 0.1,
+        makeHomepageSections: (context) => {
+          return [
+            {
+              id: 'agent-chat',
+              title: 'Datasette Agent',
+              render: (node, context) => {
+                node.innerHTML = '<a href="/-/agent">Ask a question about this data</a>';
+              }
+            }
+          ];
+        }
+      });
+    });
+
 .. _javascript_plugins_makeAboveTablePanelConfigs:
 
 makeAboveTablePanelConfigs()
@@ -516,7 +558,7 @@ Opening and closing
     - ``restoreFocus`` (boolean): Whether closing returns focus to the element recorded by ``show()``. Defaults to ``true``.
 
 ``modal.requestClose(source)``
-    Alternative to ``.close()`` that requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
+    Alternative to ``.close()`` that requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. It also returns ``false`` if ``beforeClose`` returns a promise, because the dialog has not closed yet. Close and Cancel buttons should use this method.
 
     ``source`` is an optional string that is passed to ``beforeClose`` and identifies what requested dismissal. Datasette supplies ``"escape"`` for the Escape key or a native cancel event and ``"backdrop"`` for a click outside the dialog. ``source`` defaults to ``"cancel"``.
 
@@ -533,21 +575,60 @@ If the dialog is no longer needed, remove the wrapper with ``modal.remove()``.
 Dismissal guards and busy state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
-
-Use ``source`` to decide what to do. This example prompts the user to ask if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't prompt them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``.
+You can set ``modal.beforeClose`` to a function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
 
 .. code-block:: javascript
 
-    modal.beforeClose = (source) => {
+    let uploading = false;
+    modal.beforeClose = (source) => !uploading;
+
+The function can also be ``async``, or return a promise. The dialog stays open while the promise is pending, then closes when it resolves unless it resolves to ``false``. Further dismissal requests are ignored until the promise settles, and a promise that rejects keeps the dialog open.
+
+Use ``source`` to decide what to do. This example asks the user if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't ask them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``:
+
+.. code-block:: javascript
+
+    modal.beforeClose = async (source) => {
         if (source === "cancel") return true;
-        return confirm("Discard unsaved changes?");
+        return await DatasetteModal.confirm({
+            message: "Discard unsaved changes?",
+            confirmLabel: "Discard",
+            cancelLabel: "Keep editing",
+            danger: true,
+        });
     };
 
 
 Set ``modal.busy = true`` while saving to prevent user dismissal.  While busy, ``requestClose()`` returns ``false`` without calling ``beforeClose``.
 
 If an operation fails, set ``modal.busy = false`` so the user can retry or close the dialog. A successful operation can call ``modal.close()`` even while busy.
+
+.. _javascript_plugins_modal_confirm:
+
+Confirmation dialogs
+~~~~~~~~~~~~~~~~~~~~
+
+``DatasetteModal.confirm(options)`` shows a small confirmation dialog and returns a promise that resolves to ``true`` if the user confirms, or ``false`` if they cancel, press Escape or click outside the dialog. It can be shown on top of another open dialog.
+
+Use this instead of the browser's ``confirm()`` function. Browsers embedded in other applications can dismiss native ``alert()``, ``confirm()`` and ``prompt()`` dialogs without displaying them, which makes any button that depends on one appear to do nothing.
+
+``options`` is an object with these optional properties:
+
+- ``message`` (string): The question to ask.
+- ``confirmLabel`` (string): Text for the confirming button. Defaults to ``"OK"``.
+- ``cancelLabel`` (string): Text for the cancelling button. Defaults to ``"Cancel"``.
+- ``danger`` (boolean): Set to ``true`` to style the confirming button as a destructive action. Defaults to ``false``.
+
+.. code-block:: javascript
+
+    const confirmed = await DatasetteModal.confirm({
+        message: "Delete this saved filter?",
+        confirmLabel: "Delete",
+        danger: true,
+    });
+    if (confirmed) {
+        // Carry out the action
+    }
 
 .. _javascript_plugins_modal_classes:
 
@@ -574,7 +655,7 @@ The following classes can be used by your modal:
     Sets the title's font size, weight and color. Use ``aria-labelledby`` to associate the title with the dialog.
 
 ``modal-meta``
-    Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background.
+    Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background. Text too long to fit next to the ``modal-title`` is cut off with an ellipsis, so consider setting a ``title`` attribute with the full text.
 
 ``modal-body``
     Adds padding and makes overflowing content scroll while the header and footer remain visible. Sets ``min-height: 0``, ``overflow: auto`` and ``padding: 16px 24px 24px``.
@@ -602,6 +683,85 @@ You can customize layout and sizing without adding extra classes. For example, t
 
     dialog#my-plugin-dialog {
         width: min(720px, calc(100vw - 32px));
+    }
+
+.. _javascript_plugins_copy_button:
+
+Copy to clipboard buttons
+-------------------------
+
+Plugins can use the ``<datasette-copy-button>`` custom element to add a button that copies text to the clipboard. This is the same button that Datasette uses for values on the row page and for the schema on the table and schema pages.
+
+The button shows a copy icon, which changes to a tick for a moment once the text has been copied. The element is available on every page that extends Datasette's ``base.html`` template.
+
+This example uses the :ref:`datasette_init event <javascript_datasette_init>` to add two copy buttons to the page. The first copies the text of another element, the second copies a value set from JavaScript:
+
+.. literalinclude:: shots/copy-button-example.js
+   :language: javascript
+
+Here are those two buttons. The second is shown as it looks just after it has been clicked:
+
+.. only:: not latex
+
+    .. image:: images/copy-button-example.webp
+       :width: 455px
+       :alt: Two lines of text. The first reads "Install this plugin: datasette install my-plugin" followed by a small icon of two overlapping squares. The second reads "Link to this page" followed by a green tick
+
+The element can also be used directly in the HTML of a :ref:`custom template <customization_custom_templates>`:
+
+.. code-block:: html
+
+    <datasette-copy-button value="Text to copy"></datasette-copy-button>
+
+The element adds its own ``<button>`` when the page loads, so nothing is displayed if JavaScript is not available.
+
+Attributes
+~~~~~~~~~~
+
+``value``
+    The text to copy.
+
+``for``
+    The ``id`` of another element on the page. The text of that element is copied instead of ``value``: the current value of an ``<input>``, ``<textarea>`` or ``<select>``, or the text content of any other element. The text is read at the moment the button is clicked.
+
+``name``
+    A short description of what will be copied, such as ``install command``. This is used for the accessible name of the button, "Copy install command", and for the message announced to screen readers after a click, "Copied install command to clipboard". Without a ``name`` these are "Copy to clipboard" and "Copied to clipboard".
+
+    Set this whenever a page has more than one copy button, so that people using a screen reader can tell the buttons apart.
+
+``copied``
+    Datasette adds this attribute once the text has been copied and removes it again 1.5 seconds later. Use it in CSS selectors, as shown below.
+
+Properties and methods
+~~~~~~~~~~~~~~~~~~~~~~
+
+``copyButton.value``
+    The text to copy, as a string. Setting this property sets the ``value`` attribute.
+
+``copyButton.copy()``
+    Copies the text, as if the button had been clicked. Returns a promise that resolves to ``true`` if the text was copied or ``false`` if the browser refused.
+
+    Browsers only allow writing to the clipboard in response to a user action such as a click, so call this from an event handler.
+
+Styling
+~~~~~~~
+
+The element is displayed inline, so it can be used in the middle of a line of text. Position it using CSS on the ``datasette-copy-button`` element itself. The ``<button>`` it contains can be styled as well.
+
+This example places a button in the top right corner of a block of code, with a white background while the tick is showing:
+
+.. code-block:: css
+
+    .my-plugin-code {
+        position: relative;
+    }
+    .my-plugin-code datasette-copy-button {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+    }
+    .my-plugin-code datasette-copy-button[copied] > button {
+        background: white;
     }
 
 .. _javascript_datasette_manager_selectors:

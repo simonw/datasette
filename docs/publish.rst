@@ -56,6 +56,29 @@ Cloud Run provides a URL on the ``.run.app`` domain, but you can also point your
 
 See :ref:`cli_help_publish_cloudrun___help` for the full list of options for this command.
 
+.. _publish_cloud_run_content_length:
+
+Large responses on Cloud Run
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Cloud Run returns an error for any HTTP/1 response of 32 MiB or more that includes a ``Content-Length`` header. Responses without that header are streamed and have no size limit.
+
+``datasette publish cloudrun`` works around this by deploying a ``config.json`` file that turns on a workaround built into Datasette. With this enabled, any response of 32,000,000 bytes or more is sent without a ``Content-Length`` header. This allows larger database files to be downloaded, at the cost of browsers being unable to show a progress bar for them.
+
+If you deploy Datasette to Cloud Run in some other way you can enable the same workaround with this :ref:`configuration <configuration>`:
+
+.. code-block:: json
+
+    {
+        "plugins": {
+            "datasette-publish-cloudrun": {
+                "content_length_workaround": true
+            }
+        }
+    }
+
+``datasette publish cloudrun`` does not add this file if you use ``--extra-options`` to pass your own ``--config`` option.
+
 .. _publish_heroku:
 
 Publishing to Heroku
@@ -128,6 +151,16 @@ If you just want to set the title, license or source information you can do that
 You can also specify plugins you would like to install. For example, if you want to include the `datasette-vega <https://github.com/simonw/datasette-vega>`_ visualization plugin you can use the following::
 
     datasette publish cloudrun mydatabase.db --service=my-service --install=datasette-vega
+
+The published instance will run the same version of Datasette as the one you used to run the ``datasette publish`` command. To deploy a different version, pass it to ``--install``::
+
+    datasette publish cloudrun mydatabase.db --service=my-service --install=datasette==1.0a42
+
+Or use ``--branch`` to install Datasette from a branch of its GitHub repository::
+
+    datasette publish cloudrun mydatabase.db --service=my-service --branch=main
+
+The same applies to ``datasette package``.
 
 If a plugin has any :ref:`plugins_configuration_secret` you can use the ``--plugin-secret`` option to set those secrets at publish time. For example, using Heroku with `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ you might run the following command::
 

@@ -1,0 +1,159 @@
+{#- Export dialog for table, query and row pages. Expects renderers,
+    display_rows, url_csv_path, url_csv_hidden_args and url_tsv_path, plus:
+    - export_meta: shown in the header and used for download filenames
+    - export_scope and export_scope_description: which rows are exported,
+      e.g. "Filtered rows" and 'where state = "CA"'
+    - export_rows: dict with page (rows on this page), more (true if there
+      are rows beyond this page), later (true past the first page, when the
+      exports start from this page's ?_next= cursor), max (max_returned_rows),
+      total (exact row count or none) and count_url (to fetch the count when
+      total is none). None to show no row counts.
+    - export_single_row: true on row pages, which offer TSV, CSV and JSON for
+      that one row. Otherwise the dialog also offers more JSON shapes, using
+      append_querystring.
+    Formats from plugins use renderer_options for their label, description
+    and which actions to offer. -#}
+{% set export_base = export_meta or "data" %}
+{% set export_later = export_rows.later if export_rows else false %}
+{#- "Include all rows" streams every row from the first one, so offer it on
+    every later page, and on the first page when CSV would stop short -#}
+{% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_csv_stream %}
+{% macro rows_text(n) %}{{ "{:,}".format(n) }} row{{ "" if n == 1 else "s" }}{% endmacro %}
+{#- How many rows an export returns. JSON and plugin formats return the rows
+    on this page; TSV and CSV ask for _size=max, starting from this page.
+    Mirrored by rowsLabel() in export-dialog.js. -#}
+{% macro rows_label(kind, rows, id) %}
+    {%- set n = rows.page -%}
+    {%- set total = rows.total -%}
+    {%- set up_to = false -%}
+    {%- if kind == "csv" and rows.more -%}
+        {%- if rows.later or (total is none and rows.page < rows.max) -%}{%- set up_to = true -%}
+        {%- elif total is not none -%}{%- set n = [total, rows.max]|min -%}
+        {%- else -%}{%- set n = rows.max -%}{%- endif -%}
+    {%- endif -%}
+    {%- set complete = not up_to and not rows.later and (not rows.more or (total is not none and n >= total)) -%}
+    <span class="export-rows" id="export-{{ id }}-rows" data-export-rows="{{ kind }}" data-partial="{{ 'false' if complete or n == 0 else 'true' }}">
+    {%- if up_to -%}Up to {{ rows_text(rows.max) }}{% if rows.later %} from this page{% endif %}
+    {%- elif n == 0 -%}No rows
+    {%- elif rows.later -%}{{ rows_text(n) }} on this page
+    {%- elif complete -%}All {{ rows_text(total if total is not none else n) }}
+    {%- elif total is not none -%}First {{ "{:,}".format(n) }} of {{ rows_text(total) }}
+    {%- else -%}First {{ rows_text(n) }}{%- endif -%}
+    </span>
+{%- endmacro %}
+{#- TSV or CSV: submit buttons for the shared form, with TSV using formaction -#}
+{% macro delimited_option(id, name, description, rows, formaction=none) %}
+                    <div class="export-option" data-export-format="{{ id }}">
+                        <div class="export-option-text">
+                            <div class="export-option-heading">
+                                <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
+                                {% if rows %}{{ rows_label("csv", rows, id) }}{% endif %}
+                            </div>
+                            <span class="export-option-description">{{ description }}</span>
+                        </div>
+                        <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name"{% if rows %} aria-describedby="export-{{ id }}-rows"{% endif %}>
+                            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
+                            <button type="submit" class="export-action" data-export-action="view"{% if formaction %} formaction="{{ formaction }}"{% endif %}>View</button>
+                            <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on"{% if formaction %} formaction="{{ formaction }}"{% endif %}>Download</button>
+                            <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+                        </div>
+                    </div>
+{% endmacro %}
+{#- kind is "binary" for Download and Copy URL only, "webpage" for View and
+    Copy URL only, or none for all four actions -#}
+{% macro export_option(id, name, description, url, filename, rows, kind=none) %}
+            <li class="export-option" data-export-format="{{ id }}"{% if kind %} data-export-kind="{{ kind }}"{% endif %}>
+                <div class="export-option-text">
+                    <div class="export-option-heading">
+                        <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
+                        {% if rows %}{{ rows_label("json", rows, id) }}{% endif %}
+                    </div>
+                    {% if description %}<span class="export-option-description">{{ description }}</span>{% endif %}
+                </div>
+                <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name"{% if rows %} aria-describedby="export-{{ id }}-rows"{% endif %}>
+                    {% if not kind %}<button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>{% endif %}
+                    {% if kind != "binary" %}<a class="export-action" data-export-action="view" href="{{ url }}">View</a>{% endif %}
+                    {% if kind != "webpage" %}<a class="export-action" data-export-action="download" href="{{ url }}" download="{{ filename }}">Download</a>{% endif %}
+                    <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
+                </div>
+            </li>
+{% endmacro %}
+<datasette-modal><dialog id="export-dialog" class="datasette-modal export-dialog" aria-labelledby="export-dialog-title"{% if export_scope or export_later %} aria-describedby="{{ 'export-scope' if export_scope }}{{ ' ' if export_scope and export_later }}{{ 'export-page-note' if export_later }}"{% endif %}
+    {%- if export_rows %}
+    data-rows-page="{{ export_rows.page }}" data-rows-more="{{ 'true' if export_rows.more else 'false' }}" data-rows-later="{{ 'true' if export_later else 'false' }}" data-rows-max="{{ export_rows.max }}" data-rows-total="{{ '' if export_rows.total is none else export_rows.total }}"
+    {%- if export_rows.total is none and (export_rows.more or export_later) and export_rows.count_url %} data-count-url="{{ export_rows.count_url }}"{% endif %}
+    {%- endif %}>
+    <div class="modal-header">
+        <h2 class="modal-title" id="export-dialog-title">Export data</h2>
+        {% if export_meta %}<span class="modal-meta" title="{{ export_meta }}">{{ export_meta }}</span>{% endif %}
+    </div>
+    <div class="modal-body export-links">
+        {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}
+        {% if export_later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ "TSV or " if url_tsv_path }}CSV.{% endif %}</p>{% endif %}
+        {% if display_rows %}
+        {#- TSV and CSV share a form, so the options under them apply to both.
+            The other formats are in a separate box below, as the options do
+            not apply to them. -#}
+        <div class="export-options export-option-group">
+                <form class="export-csv-form" action="{{ url_csv_path }}" method="get">
+                    {% if url_tsv_path %}{{ delimited_option("tsv", "TSV", "Tab-separated values, for pasting into Excel or Google Sheets", export_rows, formaction=url_tsv_path) }}{% endif %}
+                    {{ delimited_option("csv", "CSV", "Comma-separated values, for spreadsheets and other tools", export_rows) }}
+                    {% if expandable_columns or csv_stream %}
+                    <div class="export-csv-options">
+                        {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> Expand labels</label>{% endif %}
+                        {% if csv_stream %}<label{% if settings.max_csv_mb %} title="Streams every matching row, up to the {{ settings.max_csv_mb }} MB size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_later %} from the first page{% endif %}</span></label>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% for key, value in url_csv_hidden_args %}
+                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                    {% endfor %}
+                </form>
+        </div>
+        {% endif %}
+        <ul class="export-options">
+            {% if export_single_row %}
+            {{ export_option("json", "JSON", "The row inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
+            {% else %}
+            {{ export_option("json", "JSON", "Rows inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
+            {{ export_option("json-array", "JSON array", "Just the rows, as an array of objects", append_querystring(renderers['json'], '_shape=array'), export_base ~ ".json", export_rows) }}
+            {{ export_option("json-nl", "Newline-delimited JSON", "One JSON object per line", append_querystring(renderers['json'], '_shape=array&_nl=on'), export_base ~ ".jsonl", export_rows) }}
+            {% if primary_keys %}
+            {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
+            {% endif %}
+            {% endif %}
+            {% for name, url in renderers.items() if name != "json" %}
+            {% set options = (renderer_options or {}).get(name) or {} %}
+            {{ export_option("format-" ~ loop.index, options.label or name, options.description, url, export_base ~ "." ~ name, export_rows, kind="binary" if options.is_binary else ("webpage" if options.is_webpage else none)) }}
+            {% endfor %}
+        </ul>
+        <p class="export-status" role="status"></p>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="modal-btn modal-btn-ghost export-dialog-close" commandfor="export-dialog" command="close">Close</button>
+    </div>
+</dialog></datasette-modal>
+<script>
+// export-dialog.js is only needed once the dialog opens, so import it on the
+// first click of the Export data button, or straight away for a link to
+// #export. Then click again: the script opens the dialog, or if it failed to
+// load the button's commandfor opens it without.
+(() => {
+  const src = {{ static("export-dialog.js")|tojson }};
+  let state = "idle";
+  function load() {
+    state = "loading";
+    return import(src)
+      .catch(() => {})
+      .finally(() => {
+        state = "done";
+      });
+  }
+  document.addEventListener("click", (ev) => {
+    const button = ev.target.closest(".export-data-button");
+    if (!button || ev.defaultPrevented || state === "done") return;
+    ev.preventDefault();
+    if (state === "idle") load().then(() => button.click());
+  });
+  if (location.hash === "#export") load();
+})();
+</script>

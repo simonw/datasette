@@ -731,4 +731,4 @@ For example, this query will show a list of tables across both of the above data
     from
       [extra_database].sqlite_master
 
-`Try that out here <https://latest.datasette.io/_memory?sql=select%0D%0A++%27fixtures%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bfixtures%5D.sqlite_master%0D%0Aunion%0D%0Aselect%0D%0A++%27extra_database%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bextra_database%5D.sqlite_master>`__.
+`Try that out here <https://latest.datasette.io/_memory/-/query?sql=select%0D%0A++%27fixtures%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bfixtures%5D.sqlite_master%0D%0Aunion%0D%0Aselect%0D%0A++%27extra_database%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bextra_database%5D.sqlite_master>`__.

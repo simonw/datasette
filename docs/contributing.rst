@@ -20,7 +20,7 @@ General guidelines
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.10 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.11 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 
@@ -160,24 +160,19 @@ If you want to change Datasette's Python code you can use the ``--reload`` optio
 This also enables development mode for static asset cache busting, described in
 :ref:`customization_static_files`.
 
-You can also use the ``fixtures.py`` script to recreate the testing version of ``metadata.json`` used by the unit tests. To do that::
+You can also use the ``fixtures.py`` script to write the configuration and metadata used by the unit tests. The configuration filename comes before the metadata filename::
 
-    uv run python tests/fixtures.py fixtures.db fixtures-metadata.json
+    uv run python tests/fixtures.py fixtures.db fixtures-config.json fixtures-metadata.json --recreate
 
-Or to output the plugins used by the tests, run this::
+The ``--recreate`` option replaces the ``fixtures.db`` created above. Omit it if you are creating a new database.
 
-    uv run python tests/fixtures.py fixtures.db fixtures-metadata.json fixtures-plugins
-    Test tables written to fixtures.db
-    - metadata written to fixtures-metadata.json
-    Wrote plugin: fixtures-plugins/register_output_renderer.py
-    Wrote plugin: fixtures-plugins/view_name.py
-    Wrote plugin: fixtures-plugins/my_plugin.py
-    Wrote plugin: fixtures-plugins/messages_output_renderer.py
-    Wrote plugin: fixtures-plugins/my_plugin_2.py
+To also output the plugins used by the tests, add the plugins directory as the final argument::
 
-Then run Datasette like this::
+    uv run python tests/fixtures.py fixtures.db fixtures-config.json fixtures-metadata.json fixtures-plugins --recreate
 
-    uv run datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
+Then run Datasette with both files and the plugins directory::
+
+    uv run datasette fixtures.db -c fixtures-config.json -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
 
 .. _contributing_debugging:
 

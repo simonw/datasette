@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import contextvars
+import hashlib
 import inspect
 import os
 import queue
@@ -16,7 +17,6 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
-from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
     linked_root_span_kwargs,
@@ -58,7 +58,6 @@ from .utils import (
     escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
-    md5_not_usedforsecurity,
     sqlite3,
     sqlite_timelimit,
     table_column_details,
@@ -160,7 +159,9 @@ class Database:
     def color(self):
         if self.hash:
             return self.hash[:6]
-        return md5_not_usedforsecurity(self.name)[:6]
+        return hashlib.md5(self.name.encode("utf8"), usedforsecurity=False).hexdigest()[
+            :6
+        ]
 
     def suggest_name(self):
         if self.is_temp_disk:
@@ -833,7 +834,8 @@ class Database:
             return self.cached_hash
         else:
             p = Path(self.path)
-            self.cached_hash = inspect_hash(p)
+            with p.open("rb") as fp:
+                self.cached_hash = hashlib.file_digest(fp, "sha256").hexdigest()
             return self.cached_hash
 
     @property

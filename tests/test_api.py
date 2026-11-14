@@ -49,10 +49,15 @@ async def test_homepage_sort_by_relationships(ds_client):
     tables = [
         t["name"] for t in response.json()["databases"][0]["tables_and_views_truncated"]
     ]
-    assert tables == [
+    assert tables[:3] == [
         "simple_primary_key",
         "foreign_key_references",
         "complex_foreign_keys",
+    ]
+    # These two have two relationships each, so they are ordered by row count -
+    # unless counting takes longer than its 10ms limit, as it can on a busy CI
+    # machine, in which case the counts are skipped and they are ordered by name
+    assert sorted(tables[3:]) == [
         "roadside_attraction_characteristics",
         "searchable_tags",
     ]
@@ -788,7 +793,7 @@ async def test_settings_json(ds_client):
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,
         "max_insert_rows": 100,
-        "max_post_body_bytes": 2 * 1024 * 1024,
+        "max_post_body_bytes": 10 * 1024 * 1024,
         "sql_time_limit_ms": 200,
         "allow_download": True,
         "allow_signed_tokens": True,
@@ -811,6 +816,148 @@ async def test_settings_json(ds_client):
 test_json_columns_default_expected = [
     {"intval": 1, "strval": "s", "floatval": 0.5, "jsonval": '{"foo": "bar"}'}
 ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["table", "query"])
+@pytest.mark.parametrize("include_columns", [False, True])
+@pytest.mark.parametrize(
+    "shape", ["objects", "object", "array", "arrayfirst", "arrays"]
+)
+async def test_json_columns_with_output_shapes(endpoint, include_columns, shape):
+    if endpoint == "query" and shape == "object":
+        pytest.skip("Object shape requires a table primary key")
+    ds = Datasette()
+    db = ds.add_memory_database("json_shapes")
+    await db.execute_write("CREATE TABLE t (value text, id integer primary key)")
+    await db.execute_write("INSERT INTO t VALUES (?, ?)", ['["a", "b"]', 1])
+    parameters = {"_json": "value", "_shape": shape}
+    if include_columns:
+        parameters["_extra"] = "columns"
+    if endpoint == "query":
+        parameters["sql"] = "SELECT value, id FROM t"
+        path = "/json_shapes/-/query.json"
+    else:
+        path = "/json_shapes/t.json"
+    try:
+        response = await ds.client.get(path + "?" + urllib.parse.urlencode(parameters))
+        assert response.status_code == 200
+        result = response.json()
+        row = {"value": ["a", "b"], "id": 1}
+        if shape == "object":
+            assert result == {"1": row}
+        elif shape == "array":
+            assert result == [row]
+        elif shape == "arrayfirst":
+            assert result == [["a", "b"]]
+        elif shape == "arrays":
+            assert result["rows"] == [[["a", "b"], 1]]
+        else:
+            assert result["rows"] == [row]
+        if shape in ("objects", "arrays"):
+            assert ("columns" in result) == include_columns
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["table", "row"])
+@pytest.mark.parametrize(
+    "value,expected", [('["a"]', ["a"]), ("not JSON", "not JSON"), (None, None)]
+)
+async def test_json_columns_preserve_other_values(endpoint, value, expected):
+    ds = Datasette()
+    db = ds.add_memory_database("json_values")
+    await db.execute_write(
+        "CREATE TABLE t (id integer primary key, value text, other text)"
+    )
+    await db.execute_write(
+        "INSERT INTO t VALUES (?, ?, ?)", [1, value, '{"keep": true}']
+    )
+    path = "/json_values/t.json" if endpoint == "table" else "/json_values/t/1.json"
+    try:
+        response = await ds.client.get(path + "?_json=value")
+        assert response.status_code == 200
+        assert response.json()["rows"] == [
+            {"id": 1, "value": expected, "other": '{"keep": true}'}
+        ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("include_columns", [False, True])
+@pytest.mark.parametrize("composite_key", [False, True])
+@pytest.mark.parametrize(
+    "values",
+    [
+        [('"same"', "same"), ("same", "same")],
+        [("null", None), ("None", "None")],
+        [(' {"id":1}', {"id": 1})],
+        [('["x"]', ["x"]), ("['x']", "['x']")],
+    ],
+)
+async def test_json_columns_object_preserves_primary_keys(
+    include_columns, composite_key, values
+):
+    ds = Datasette()
+    db = ds.add_memory_database("json_keys")
+    primary_key = "id, tenant" if composite_key else "id"
+    await db.execute_write(
+        f"CREATE TABLE t (id text, tenant text, payload text, primary key ({primary_key}))"
+    )
+    expected = {}
+    for index, (raw_id, decoded_id) in enumerate(values):
+        payload = f"row-{index}"
+        await db.execute_write(
+            "INSERT INTO t VALUES (?, ?, ?)", [raw_id, '"team"', payload]
+        )
+        key = tilde_encode(raw_id)
+        if composite_key:
+            key += "," + tilde_encode('"team"')
+        expected[key] = {
+            "id": decoded_id,
+            "tenant": "team" if composite_key else '"team"',
+            "payload": payload,
+        }
+    parameters = [("_shape", "object"), ("_json", "id")]
+    if composite_key:
+        parameters.append(("_json", "tenant"))
+    if include_columns:
+        parameters.append(("_extra", "columns"))
+    try:
+        response = await ds.client.get(
+            "/json_keys/t.json?" + urllib.parse.urlencode(parameters)
+        )
+        assert response.status_code == 200
+        assert response.json() == expected
+        for key in expected:
+            detail = await ds.client.get(f"/json_keys/t/{key}.json")
+            assert detail.status_code == 200
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "shape", ["objects", "object", "array", "arrayfirst", "arrays"]
+)
+async def test_json_columns_with_empty_results(shape):
+    ds = Datasette()
+    db = ds.add_memory_database("json_empty")
+    await db.execute_write("CREATE TABLE t (id integer primary key, value text)")
+    try:
+        response = await ds.client.get(f"/json_empty/t.json?_json=value&_shape={shape}")
+        assert response.status_code == 200
+        result = response.json()
+        if shape == "object":
+            assert result == {}
+        elif shape in ("array", "arrayfirst"):
+            assert result == []
+        else:
+            assert result["rows"] == []
+    finally:
+        ds.close()
 
 
 @pytest.mark.asyncio

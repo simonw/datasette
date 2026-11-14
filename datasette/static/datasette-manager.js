@@ -7,11 +7,11 @@ const DATASETTE_EVENTS = {
 // Plugins will have greater stability if they use the functional hooks- but if they do decide to hook into
 // literal DOM selectors, they'll have an easier time using these addresses.
 const DOM_SELECTORS = {
-  /** Should have one match */
+  /** The first match is the default JSON export link */
   jsonExportLink: ".export-links a[href*=json]",
 
   /** Event listeners that go outside of the main table, e.g. existing scroll listener */
-  tableWrapper: ".table-wrapper",
+  tableWrapper: "div.table-wrapper",
   table: "table.rows-and-columns",
   aboveTablePanel: ".above-table-panel",
 
@@ -122,6 +122,31 @@ const datasetteManager = {
     });
 
     return jumpSections;
+  },
+
+  /**
+   * Sections shown on the homepage, between the search box and the catalog.
+   * Each plugin's makeHomepageSections(context) returns an array of
+   * {id, render(node, context)} objects, the same shape as makeJumpSections.
+   */
+  makeHomepageSections: (context) => {
+    let homepageSections = [];
+
+    datasetteManager.plugins.forEach((plugin, pluginName) => {
+      if (plugin.makeHomepageSections) {
+        try {
+          const sections = plugin.makeHomepageSections(context) || [];
+          homepageSections.push(...sections);
+        } catch (error) {
+          console.error(
+            `Error in makeHomepageSections() for plugin ${pluginName}`,
+            error,
+          );
+        }
+      }
+    });
+
+    return homepageSections;
   },
 
   /**

@@ -175,7 +175,33 @@ class BaseView:
         return view
 
 
-async def stream_csv(datasette, fetch_data, request, database):
+# Formats that stream_csv() writes, with their content type for downloads.
+# TSV uses Excel's tab-separated dialect, so it pastes cleanly into Excel and
+# Google Sheets: values containing tabs, newlines or double quotes are wrapped
+# in double quotes, with any double quotes inside them doubled.
+CSV_FORMATS = {
+    "csv": ("excel", "text/csv; charset=utf-8"),
+    "tsv": ("excel-tab", "text/tab-separated-values; charset=utf-8"),
+}
+
+
+def is_csv_format(datasette, format_):
+    """True if stream_csv() should handle this format. A plugin that
+    registers its own tsv output renderer takes over .tsv from Datasette."""
+    return format_ == "csv" or (format_ == "tsv" and "tsv" not in datasette.renderers)
+
+
+def tsv_export_path(datasette, request):
+    """Path to this page as TSV, or None if a plugin handles .tsv instead"""
+    if not is_csv_format(datasette, "tsv"):
+        return None
+    # route_path is the path without base_url, set when base_url is not "/"
+    path = request.scope.get("route_path") or request.path
+    return datasette.urls.path(path_with_format(path=path, format="tsv"))
+
+
+async def stream_csv(datasette, fetch_data, request, database, format_="csv"):
+    dialect, download_content_type = CSV_FORMATS[format_]
     kwargs = {}
     stream = request.args.get("_stream")
     # Do not calculate facets or counts:
@@ -232,7 +258,7 @@ async def stream_csv(datasette, fetch_data, request, database):
     if trace:
         content_type = "text/html; charset=utf-8"
         preamble = (
-            "<html><head><title>CSV debug</title></head>"
+            f"<html><head><title>{format_.upper()} debug</title></head>"
             '<body><textarea style="width: 90%; height: 70vh">'
         )
         postamble = "</textarea></body></html>"
@@ -242,9 +268,9 @@ async def stream_csv(datasette, fetch_data, request, database):
         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
         if trace:
             await limited_writer.write(preamble)
-            writer = csv.writer(EscapeHtmlWriter(limited_writer))
+            writer = csv.writer(EscapeHtmlWriter(limited_writer), dialect=dialect)
         else:
-            writer = csv.writer(limited_writer)
+            writer = csv.writer(limited_writer, dialect=dialect)
         first = True
         next = None
         while first or (next and stream):
@@ -264,9 +290,11 @@ async def stream_csv(datasette, fetch_data, request, database):
                         new_row = []
                         for column, cell in zip(headings, row):
                             if isinstance(cell, bytes):
-                                # If this is a table page, use .urls.row_blob()
-                                if data.get("table"):
-                                    pks = data.get("primary_keys") or []
+                                pks = data.get("primary_keys") or []
+                                # If this is a table page with a way to identify
+                                # the row, use .urls.row_blob(). Views usually
+                                # have no rowid, so they use the content hash.
+                                if data.get("table") and (pks or "rowid" in headings):
                                     cell = datasette.absolute_url(
                                         request,
                                         datasette.urls.row_blob(
@@ -289,12 +317,13 @@ async def stream_csv(datasette, fetch_data, request, database):
                                                     cell
                                                 ).hexdigest(),
                                             },
-                                            replace_format="csv",
+                                            replace_format=format_,
                                         ),
                                     )
-                                    cell = url.replace("&_nocount=1", "").replace(
-                                        "&_nofacet=1", ""
-                                    )
+                                    for internal_arg in ("_nocount=1", "_nofacet=1"):
+                                        url = url.replace("&" + internal_arg, "")
+                                        url = url.replace("?" + internal_arg + "&", "?")
+                                    cell = url
                             new_row.append(cell)
                         row = new_row
                     if not expanded_columns:
@@ -329,9 +358,9 @@ async def stream_csv(datasette, fetch_data, request, database):
         add_cors_headers(headers)
     if request.args.get("_dl", None):
         if not trace:
-            content_type = "text/csv; charset=utf-8"
-        disposition = 'attachment; filename="{}.csv"'.format(
-            request.url_vars.get("table", database)
+            content_type = download_content_type
+        disposition = 'attachment; filename="{}.{}"'.format(
+            request.url_vars.get("table", database), format_
         )
         headers["content-disposition"] = disposition
 

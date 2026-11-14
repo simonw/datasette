@@ -1,0 +1,35 @@
+<script>
+// column-stats.js is only needed once the Column statistics dialog opens, so
+// this stand-in DatasetteColumnStats imports it the first time open() is
+// called, by table.js's column menus or query-column-actions.js. The script
+// then adds the real open() and the rest of its API to this same object.
+// load() imports it without opening the dialog.
+(() => {
+  const src = {{ static("column-stats.js")|tojson }};
+  let loading = null;
+  function load() {
+    if (!loading) {
+      loading = import(src).catch((error) => {
+        // Forget the failure, so that the next click tries again
+        loading = null;
+        throw error;
+      });
+    }
+    return loading;
+  }
+  function open(options) {
+    return load().then(
+      () => {
+        if (stats.open !== open) stats.open(options);
+      },
+      (error) => console.error("Could not load column statistics:", error),
+    );
+  }
+  const stats = {
+    isAvailable: () => !!(window.HTMLDialogElement && window.fetch),
+    load,
+    open,
+  };
+  window.DatasetteColumnStats = stats;
+})();
+</script>

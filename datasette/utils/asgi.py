@@ -101,6 +101,8 @@ class Request:
         self.scope = scope
         self.receive = receive
         self.max_post_body_bytes = max_post_body_bytes
+        self._post_body: bytes | None = None
+        self._post_body_started = False
 
     def __repr__(self):
         return f'<asgi.Request method="{self.method}" url="{self.url}">'
@@ -184,6 +186,12 @@ class Request:
         too_large = PayloadTooLarge(
             f"Request body exceeded maximum size of {max_bytes} bytes"
         )
+        if self._post_body is not None:
+            if max_bytes and len(self._post_body) > max_bytes:
+                raise too_large
+            return self._post_body
+        if self._post_body_started:
+            raise RuntimeError("The previous request body read has not completed")
         if max_bytes:
             # Reject early if the client declares an oversized body
             try:
@@ -195,6 +203,8 @@ class Request:
         chunks = []
         received = 0
         more_body = True
+        # The receive stream cannot be rewound if this read fails or is cancelled.
+        self._post_body_started = True
         while more_body:
             message = await self.receive()
             assert message["type"] == "http.request", message
@@ -204,7 +214,8 @@ class Request:
                 raise too_large
             chunks.append(chunk)
             more_body = message.get("more_body", False)
-        return b"".join(chunks)
+        self._post_body = b"".join(chunks)
+        return self._post_body
 
     async def post_vars(self):
         body = await self.post_body()

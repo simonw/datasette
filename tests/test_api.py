@@ -878,9 +878,12 @@ async def test_json_columns_preserve_other_values(endpoint, value, expected):
     try:
         response = await ds.client.get(path + "?_json=value")
         assert response.status_code == 200
-        assert response.json()["rows"] == [
-            {"id": 1, "value": expected, "other": '{"keep": true}'}
-        ]
+        row = {"id": 1, "value": expected, "other": '{"keep": true}'}
+        if endpoint == "row":
+            # Row pages return a single {"row": {...}} object
+            assert response.json()["row"] == row
+        else:
+            assert response.json()["rows"] == [row]
     finally:
         ds.close()
 

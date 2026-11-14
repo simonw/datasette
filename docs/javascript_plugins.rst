@@ -558,7 +558,7 @@ Opening and closing
     - ``restoreFocus`` (boolean): Whether closing returns focus to the element recorded by ``show()``. Defaults to ``true``.
 
 ``modal.requestClose(source)``
-    Alternative to ``.close()`` that requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
+    Alternative to ``.close()`` that requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. It also returns ``false`` if ``beforeClose`` returns a promise, because the dialog has not closed yet. Close and Cancel buttons should use this method.
 
     ``source`` is an optional string that is passed to ``beforeClose`` and identifies what requested dismissal. Datasette supplies ``"escape"`` for the Escape key or a native cancel event and ``"backdrop"`` for a click outside the dialog. ``source`` defaults to ``"cancel"``.
 
@@ -575,23 +575,27 @@ If the dialog is no longer needed, remove the wrapper with ``modal.remove()``.
 Dismissal guards and busy state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
-
-Use ``source`` to decide what to do. This example asks the user if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't ask them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``. It keeps the dialog open by returning ``false``, then closes it if the user confirms:
+You can set ``modal.beforeClose`` to a function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
 
 .. code-block:: javascript
 
-    modal.beforeClose = (source) => {
+    let uploading = false;
+    modal.beforeClose = (source) => !uploading;
+
+The function can also be ``async``, or return a promise. The dialog stays open while the promise is pending, then closes when it resolves unless it resolves to ``false``. Further dismissal requests are ignored until the promise settles, and a promise that rejects keeps the dialog open.
+
+Use ``source`` to decide what to do. This example asks the user if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't ask them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``:
+
+.. code-block:: javascript
+
+    modal.beforeClose = async (source) => {
         if (source === "cancel") return true;
-        DatasetteModal.confirm({
+        return await DatasetteModal.confirm({
             message: "Discard unsaved changes?",
             confirmLabel: "Discard",
             cancelLabel: "Keep editing",
             danger: true,
-        }).then((confirmed) => {
-            if (confirmed) modal.close();
         });
-        return false;
     };
 
 

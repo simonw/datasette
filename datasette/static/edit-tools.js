@@ -2135,32 +2135,22 @@ async function saveTableCreateDialog(state) {
 
 // Asks before throwing away unsaved changes, using a nested dialog because
 // native prompts such as window.confirm() can be silently dismissed by
-// embedded browsers. Always returns false, so a modal.beforeClose() guard
-// keeps the dialog open until the user has answered.
-function confirmDiscardInDialog(modal, message) {
-  if (modal._discardConfirmationOpen) {
-    return false;
-  }
-  modal._discardConfirmationOpen = true;
-  DatasetteModal.confirm({
+// embedded browsers. Returns a promise for modal.beforeClose(), which keeps
+// the dialog open unless the user chooses to discard.
+function confirmDiscardInDialog(message) {
+  return DatasetteModal.confirm({
     message: message,
     confirmLabel: "Discard",
     cancelLabel: "Keep editing",
     danger: true,
-  }).then(function (confirmed) {
-    modal._discardConfirmationOpen = false;
-    if (confirmed) {
-      modal.close();
-    }
   });
-  return false;
 }
 
 function confirmDiscardTableCreateChanges(state) {
   if (!tableCreateDialogHasChanges(state)) {
     return true;
   }
-  return confirmDiscardInDialog(state.modal, "Discard this new table?");
+  return confirmDiscardInDialog("Discard this new table?");
 }
 
 function ensureTableCreateDialog(manager) {
@@ -3921,7 +3911,7 @@ function confirmDiscardTableAlterChanges(state) {
   if (!tableAlterDialogHasChanges(state)) {
     return true;
   }
-  return confirmDiscardInDialog(state.modal, "Discard table changes?");
+  return confirmDiscardInDialog("Discard table changes?");
 }
 
 function ensureTableAlterDialog(manager) {
@@ -5776,7 +5766,7 @@ function confirmDiscardRowEditChanges(state) {
     state.mode === "insert"
       ? "Discard this new row?"
       : "Discard unsaved changes to this row?";
-  return confirmDiscardInDialog(state.modal, message);
+  return confirmDiscardInDialog(message);
 }
 
 function setRowInsertDialogTitle(state) {

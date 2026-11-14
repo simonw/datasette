@@ -2333,6 +2333,105 @@ def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_modal_before_close_can_return_a_promise(page, datasette_server):
+    page.goto(datasette_server)
+    result = page.evaluate("""async () => {
+        const modal = DatasetteModal.create();
+        modal.dialog.innerHTML = "<button>Close</button>";
+        document.body.append(modal);
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+        const calls = [];
+        let answer;
+        const pendingGuard = (source) => {
+            calls.push(source);
+            return new Promise((resolve) => { answer = resolve; });
+        };
+        const out = {};
+
+        // The dialog stays open while the promise is pending
+        modal.beforeClose = pendingGuard;
+        modal.show();
+        out.returnedWhilePending = modal.requestClose("escape");
+        out.openWhilePending = modal.dialog.open;
+        // ... and further requests do not call the guard again
+        out.returnedForSecondRequest = modal.requestClose("backdrop");
+        out.callsWhilePending = calls.slice();
+
+        answer(false);
+        await tick();
+        out.openAfterFalse = modal.dialog.open;
+
+        modal.requestClose("backdrop");
+        out.callsAfterAnswer = calls.slice();
+        answer(true);
+        await tick();
+        out.openAfterTrue = modal.dialog.open;
+
+        // Like a synchronous guard, only false keeps the dialog open
+        modal.beforeClose = async () => {};
+        modal.show();
+        modal.requestClose();
+        await tick();
+        out.openAfterUndefined = modal.dialog.open;
+
+        // A rejected promise keeps the dialog open and is still reported
+        const rejection = new Promise((resolve) => {
+            window.addEventListener("unhandledrejection", (event) => {
+                event.preventDefault();
+                resolve(event.reason.message);
+            }, { once: true });
+        });
+        modal.beforeClose = () => Promise.reject(new Error("guard failed"));
+        modal.show();
+        modal.requestClose();
+        out.rejection = await rejection;
+        out.openAfterRejection = modal.dialog.open;
+
+        // Synchronous guards still close straight away
+        modal.beforeClose = () => true;
+        out.returnedForSyncGuard = modal.requestClose();
+        out.openAfterSyncGuard = modal.dialog.open;
+
+        // An answer that arrives after the dialog was closed and reopened is stale
+        modal.beforeClose = pendingGuard;
+        modal.show();
+        modal.requestClose();
+        modal.close();
+        modal.show();
+        answer(true);
+        await tick();
+        out.openAfterStaleAnswer = modal.dialog.open;
+
+        // Busy dialogs stay open even if the guard then allows closing
+        modal.requestClose();
+        modal.busy = true;
+        answer(true);
+        await tick();
+        out.openWhileBusy = modal.dialog.open;
+
+        modal.close();
+        modal.remove();
+        return out;
+    }""")
+    assert result == {
+        "returnedWhilePending": False,
+        "openWhilePending": True,
+        "returnedForSecondRequest": False,
+        "callsWhilePending": ["escape"],
+        "openAfterFalse": True,
+        "callsAfterAnswer": ["escape", "backdrop"],
+        "openAfterTrue": False,
+        "openAfterUndefined": False,
+        "rejection": "guard failed",
+        "openAfterRejection": True,
+        "returnedForSyncGuard": True,
+        "openAfterSyncGuard": False,
+        "openAfterStaleAnswer": True,
+        "openWhileBusy": True,
+    }
+
+
+@pytest.mark.playwright
 @pytest.mark.parametrize("kind", ["create", "alter"])
 def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind):
     from playwright.sync_api import expect

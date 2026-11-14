@@ -2,11 +2,6 @@
 
 {% block title %}{% if is_instance %}Schema for all databases{% elif table_name %}Schema for {{ schemas[0].database }}.{{ table_name }}{% else %}Schema for {{ schemas[0].database }}{% endif %}{% endblock %}
 
-{% block extra_head %}
-{{- super() -}}
-<script src="{{ static('copy-button.js') }}" defer></script>
-{% endblock %}
-
 {% block body_class %}schema{% endblock %}
 
 {% block crumbs %}

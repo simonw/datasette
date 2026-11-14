@@ -4280,6 +4280,39 @@ def test_copy_button_value_and_failure(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_copy_button_for_plugins(page, datasette_server):
+    from playwright.sync_api import expect
+
+    stub_clipboard(page)
+    # Available on every page, here the homepage
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        document.querySelector("section.content").insertAdjacentHTML(
+            "beforeend",
+            `<input id="copy-input" value="initial">
+            <datasette-copy-button for="copy-input" name="input">
+            </datasette-copy-button>
+            <ol><li id="copy-li">list item</li></ol>
+            <datasette-copy-button for="copy-li"></datasette-copy-button>`
+        );
+    }""")
+    status = page.locator(".datasette-copy-button-status")
+    # for= reads the current value of a form field when clicked
+    page.locator("#copy-input").fill("typed later")
+    page.get_by_role("button", name="Copy input").click()
+    expect(status).to_have_text("Copied input to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "typed later"
+    # and the text content of anything else
+    page.get_by_role("button", name="Copy to clipboard").click()
+    expect(status).to_have_text("Copied to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "list item"
+    # copy() resolves to whether the text was copied
+    assert (
+        page.evaluate("document.querySelector('datasette-copy-button').copy()") is True
+    )
+
+
+@pytest.mark.playwright
 def test_row_page_json_pretty_print_toggle(page, datasette_server):
     stub_clipboard(page)
     page.goto(f"{datasette_server}fixtures/facetable/1")

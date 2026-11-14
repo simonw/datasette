@@ -646,6 +646,85 @@ You can customize layout and sizing without adding extra classes. For example, t
         width: min(720px, calc(100vw - 32px));
     }
 
+.. _javascript_plugins_copy_button:
+
+Copy to clipboard buttons
+-------------------------
+
+Plugins can use the ``<datasette-copy-button>`` custom element to add a button that copies text to the clipboard. This is the same button that Datasette uses for values on the row page and for the schema on the table and schema pages.
+
+The button shows a copy icon, which changes to a tick for a moment once the text has been copied. The element is available on every page that extends Datasette's ``base.html`` template.
+
+This example uses the :ref:`datasette_init event <javascript_datasette_init>` to add two copy buttons to the page. The first copies the text of another element, the second copies a value set from JavaScript:
+
+.. literalinclude:: shots/copy-button-example.js
+   :language: javascript
+
+Here are those two buttons. The second is shown as it looks just after it has been clicked:
+
+.. only:: not latex
+
+    .. image:: images/copy-button-example.webp
+       :width: 455px
+       :alt: Two lines of text. The first reads "Install this plugin: datasette install my-plugin" followed by a small icon of two overlapping squares. The second reads "Link to this page" followed by a green tick
+
+The element can also be used directly in the HTML of a :ref:`custom template <customization_custom_templates>`:
+
+.. code-block:: html
+
+    <datasette-copy-button value="Text to copy"></datasette-copy-button>
+
+The element adds its own ``<button>`` when the page loads, so nothing is displayed if JavaScript is not available.
+
+Attributes
+~~~~~~~~~~
+
+``value``
+    The text to copy.
+
+``for``
+    The ``id`` of another element on the page. The text of that element is copied instead of ``value``: the current value of an ``<input>``, ``<textarea>`` or ``<select>``, or the text content of any other element. The text is read at the moment the button is clicked.
+
+``name``
+    A short description of what will be copied, such as ``install command``. This is used for the accessible name of the button, "Copy install command", and for the message announced to screen readers after a click, "Copied install command to clipboard". Without a ``name`` these are "Copy to clipboard" and "Copied to clipboard".
+
+    Set this whenever a page has more than one copy button, so that people using a screen reader can tell the buttons apart.
+
+``copied``
+    Datasette adds this attribute once the text has been copied and removes it again 1.5 seconds later. Use it in CSS selectors, as shown below.
+
+Properties and methods
+~~~~~~~~~~~~~~~~~~~~~~
+
+``copyButton.value``
+    The text to copy, as a string. Setting this property sets the ``value`` attribute.
+
+``copyButton.copy()``
+    Copies the text, as if the button had been clicked. Returns a promise that resolves to ``true`` if the text was copied or ``false`` if the browser refused.
+
+    Browsers only allow writing to the clipboard in response to a user action such as a click, so call this from an event handler.
+
+Styling
+~~~~~~~
+
+The element is displayed inline, so it can be used in the middle of a line of text. Position it using CSS on the ``datasette-copy-button`` element itself. The ``<button>`` it contains can be styled as well.
+
+This example places a button in the top right corner of a block of code, with a white background while the tick is showing:
+
+.. code-block:: css
+
+    .my-plugin-code {
+        position: relative;
+    }
+    .my-plugin-code datasette-copy-button {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+    }
+    .my-plugin-code datasette-copy-button[copied] > button {
+        background: white;
+    }
+
 .. _javascript_datasette_manager_selectors:
 
 Selectors

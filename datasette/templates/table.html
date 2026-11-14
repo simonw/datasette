@@ -18,9 +18,6 @@
 {% endif %}
 <script src="{{ static('table-layout.js') }}" defer></script>
 <script src="{{ static('mobile-column-actions.js') }}" defer></script>
-{% if table_definition or view_definition %}
-<script src="{{ static('copy-button.js') }}" defer></script>
-{% endif %}
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
 @media only screen and (max-width: 576px) {

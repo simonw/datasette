@@ -697,6 +697,7 @@ h2 em {
 datasette-copy-button {
     flex: none;
     display: inline-flex;
+    vertical-align: middle;
 }
 datasette-copy-button > button {
     display: inline-flex;

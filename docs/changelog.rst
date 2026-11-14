@@ -9,6 +9,7 @@ Changelog
 Unreleased
 ----------
 
+- The total time spent calculating suggested facets for a page is now capped at ten times the :ref:`setting_facet_suggest_time_limit_ms` setting, so tables with a large number of columns can no longer spend several seconds suggesting facets. (:issue:`862`)
 - The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
 - Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.
 

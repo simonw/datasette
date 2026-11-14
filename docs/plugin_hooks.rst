@@ -847,6 +847,9 @@ Each Facet subclass implements a new type of facet operation. The class should l
         async def suggest(self):
             # Use self.sql and self.params to suggest some facets
             suggested_facets = []
+            # If this runs a query per column, check
+            # self.suggest_time_exceeded() before each query and
+            # stop once it returns True
             suggested_facets.append(
                 {
                     "name": column,  # Or other unique name

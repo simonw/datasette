@@ -1,4 +1,5 @@
 import json
+import time
 import urllib
 
 from datasette import hookimpl
@@ -11,6 +12,26 @@ from datasette.utils import (
     request_route_path,
     sqlite3,
 )
+
+# Suggesting facets for a page can take at most this many multiples of
+# the facet_suggest_time_limit_ms setting in total, see #862
+SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE = 10
+
+
+def start_suggest_deadline(ds, facet_instances):
+    """
+    Start the clock on the total time allowed for suggesting facets for a
+    page, sharing a single deadline across all of the facet instances.
+    """
+    time_limit_ms = ds.setting("facet_suggest_time_limit_ms")
+    if not time_limit_ms:
+        # 0 means no per-query suggestion limit, so no total limit either
+        return
+    deadline = (
+        time.monotonic() + SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE * time_limit_ms / 1000
+    )
+    for facet in facet_instances:
+        facet.suggest_deadline = deadline
 
 
 def load_facet_configs(request, table_config):
@@ -86,6 +107,10 @@ class Facet:
     type = None
     # How many rows to consider when suggesting facets:
     suggest_consider = 1000
+    # time.monotonic() value after which suggest() should stop considering
+    # further columns, or None for no deadline. Shared by every facet
+    # instance on a page, see start_suggest_deadline()
+    suggest_deadline = None
 
     def __init__(
         self,
@@ -152,6 +177,17 @@ class Facet:
     async def suggest(self):
         return []
 
+    def suggest_time_exceeded(self):
+        """
+        True if the page has used up its total time budget for suggesting
+        facets. suggest() implementations should check this before running
+        the query for each column and stop if it returns True.
+        """
+        return (
+            self.suggest_deadline is not None
+            and time.monotonic() >= self.suggest_deadline
+        )
+
     async def facet_results(self):
         # returns ([results], [timed_out])
         # TODO: Include "hideable" with each one somehow, which indicates if it was
@@ -177,6 +213,8 @@ class ColumnFacet(Facet):
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             suggested_facet_sql = f"""
@@ -334,6 +372,8 @@ class ArrayFacet(Facet):
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             # Is every value in this column either null or a JSON array?
@@ -492,6 +532,8 @@ class DateFacet(Facet):
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         suggested_facets = []
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             # Does this column contain any dates in the first 100 rows?

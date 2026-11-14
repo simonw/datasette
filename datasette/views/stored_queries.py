@@ -2,7 +2,12 @@ from urllib.parse import parse_qsl, urlencode
 
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import stored_query_to_dict
-from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3, tilde_decode
+from datasette.utils import (
+    UNSTABLE_API_MESSAGE,
+    named_parameters,
+    sqlite3,
+    tilde_decode,
+)
 from datasette.utils.asgi import Response
 
 from .base import BaseView
@@ -64,7 +69,7 @@ class QueryParametersView(BaseView):
 def _query_list_url(path, query_string, *, set_args=None, remove_args=None):
     set_args = set_args or {}
     remove_args = set(remove_args or ())
-    skip = set(set_args) | remove_args | {"_next"}
+    skip = set(set_args) | remove_args | {"_next", "_fragment", "_start"}
     pairs = [
         (key, value)
         for key, value in parse_qsl(query_string, keep_blank_values=True)
@@ -112,6 +117,14 @@ class QueryListView(BaseView):
             include_private=True,
         )
         query_list_path = self.query_list_path(database)
+        # The cursor does not say how far into the list it is, so HTML pages
+        # carry the position in ?_start= for the "Showing 21-40 of 87" footer
+        try:
+            start = max(int(request.args.get("_start") or 0), 0)
+        except ValueError:
+            start = 0
+        if not request.args.get("_next"):
+            start = 0
         next_url = None
         if page.next:
             pairs = [
@@ -119,9 +132,11 @@ class QueryListView(BaseView):
                 for key, value in parse_qsl(
                     request.query_string, keep_blank_values=True
                 )
-                if key != "_next"
+                if key not in ("_next", "_fragment", "_start")
             ]
             pairs.append(("_next", page.next))
+            if format_ == "html":
+                pairs.append(("_start", str(start + len(page.queries))))
             next_url = self.ds.absolute_url(
                 request,
                 f"{request.path}?{urlencode(pairs)}",
@@ -201,6 +216,37 @@ class QueryListView(BaseView):
             },
         ]
 
+        total = await self.ds.count_queries(database, **current_filters)
+
+        # Database chips, as on the homepage: "All" plus every database that
+        # has queries, each with how many match the current filters
+        database_chips = []
+        all_queries_href = None
+        if format_ == "html":
+            chip_query_string = _query_list_url("", request.query_string)
+            for name, db in self.ds.databases.items():
+                if name == "_internal":
+                    continue
+                if name != database and not await self.ds.count_queries(
+                    name, actor=request.actor
+                ):
+                    continue
+                database_chips.append(
+                    {
+                        "name": name,
+                        "count": await self.ds.count_queries(name, **current_filters),
+                        "color": db.color,
+                        "selected": name == database,
+                        "href": self.ds.urls.database(name)
+                        + "/-/queries"
+                        + chip_query_string,
+                    }
+                )
+            if len(database_chips) < 2:
+                database_chips = []
+            all_queries_href = self.ds.urls.path("/-/queries") + chip_query_string
+
+        actor_id = (request.actor or {}).get("id")
         data = {
             "ok": True,
             "database": database,
@@ -231,6 +277,25 @@ class QueryListView(BaseView):
                     "queries": [stored_query_to_dict(query) for query in page.queries],
                 }
             )
+        data.update(
+            {
+                "total": total,
+                "start": start,
+                "database_chips": database_chips,
+                "all_queries_href": all_queries_href,
+                "actor_id": actor_id,
+                # Inputs for each query, read from the SQL when not declared
+                "query_parameters": {
+                    (query.database, query.name): list(query.parameters)
+                    or list(dict.fromkeys(named_parameters(query.sql)))
+                    for query in page.queries
+                },
+            }
+        )
+        if request.args.get("_fragment") == "results":
+            response = await self.render(["_query_list_fragment.html"], request, data)
+            response.headers["X-Robots-Tag"] = "noindex"
+            return response
         return await self.render(
             ["query_list.html"],
             request,

@@ -3,6 +3,17 @@
 {% block title %}API Explorer{% endblock %}
 
 {% block extra_head %}
+<style>
+#apiJson {
+    font-size: 0.8em;
+}
+@media (pointer: coarse) {
+    /* Avoid Mobile Safari zooming in on focus */
+    #apiJson {
+        font-size: 16px;
+    }
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -35,7 +46,7 @@
     </div>
     <div style="margin: 0.5em 0">
       <label for="apiJson" style="vertical-align: top">JSON:</label>
-      <textarea id="apiJson" name="json" style="width: 60%; height: 200px; font-family: monospace; font-size: 0.8em;"></textarea>
+      <textarea id="apiJson" name="json" style="width: 60%; height: 200px; font-family: monospace;"></textarea>
     </div>
     <p><button id="json-format" type="button">Format JSON</button> <input type="submit" value="POST"></p>
   </form>

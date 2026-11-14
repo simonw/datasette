@@ -1,0 +1,67 @@
+{% set multiple_databases = database_chips|length > 1 %}
+{# A filter group is only useful with a choice in it, or one already applied #}
+{% set useful_facets = [] %}
+{% for facet in facets %}{% if facet["items"]|length > 1 or facet["items"]|selectattr("active")|list %}{% set _ = useful_facets.append(facet) %}{% endif %}{% endfor %}
+{% if database_chips or useful_facets %}
+<div class="query-list-filters">
+    {% if database_chips %}
+    <nav class="homepage-databases" aria-labelledby="query-list-databases-label">
+        <span class="homepage-databases-label" id="query-list-databases-label">Databases</span>
+        <a href="{{ all_queries_href }}" class="homepage-database{% if not database %} selected{% endif %}"{% if not database %} aria-current="true"{% endif %}>All</a>
+        {% for chip in database_chips %}
+        <a href="{{ chip.href }}" class="homepage-database{% if chip.selected %} selected{% endif %}{% if not chip.count %} empty{% endif %}" style="--db-color: #{{ chip.color }}"{% if chip.selected %} aria-current="true"{% endif %}>
+            <span class="db-swatch" aria-hidden="true"></span>{{ chip.name }}
+            <span class="homepage-database-count">{{ "{:,}".format(chip.count) }}</span>
+        </a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+    {% if useful_facets %}
+    <nav class="homepage-databases query-list-facets" aria-label="Query filters">
+        {% for facet in useful_facets %}
+        <span class="homepage-databases-label">{{ facet.title }}</span>
+        {% for item in facet["items"] %}
+            {% if item.href %}<a class="homepage-database{% if item.active %} selected{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="true"{% endif %}>{% else %}<span class="homepage-database empty">{% endif %}{{ item.label }} <span class="homepage-database-count">{{ "{:,}".format(item.count) }}</span>{% if item.href %}</a>{% else %}</span>{% endif %}
+        {% endfor %}
+        {% endfor %}
+    </nav>
+    {% endif %}
+</div>
+{% endif %}
+
+<section class="homepage-queries" aria-label="Queries">
+{% if queries %}
+    <ul class="query-list">
+    {% for query in queries %}
+        <li class="query-row">
+            <a class="query-row-name" href="{{ urls.query(query.database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}">{{ query.title or query.name }}</a>
+            {%- if query.private %} 🔒{% endif %}
+            {% if actor_id and query.owner_id == actor_id %}<span class="type-tag type-tag-mine">yours</span>{% endif %}
+            {% if query.is_write %}<span class="type-tag type-tag-write">writes</span>{% endif %}
+            {% if query.is_private %}<span class="type-tag type-tag-private" title="Only the owner can view this query">private</span>{% endif %}
+            {% if query.is_trusted and query.source != "config" %}<span class="type-tag type-tag-trusted" title="Runs without the usual SQL and write permission checks">trusted</span>{% endif %}
+            {% if multiple_databases and not database %}<span class="db-tag" style="--db-color: #{{ (database_chips|selectattr('name', 'equalto', query.database)|first or {}).color }}">{{ query.database }}</span>{% endif %}
+            <span class="query-row-detail">
+                {%- if query.description %}{{ query.description }}{% elif not query.hide_sql %}<code>{{ query.sql|truncate(120) }}</code>{% endif -%}
+                {%- set parameters = query_parameters[(query.database, query.name)] %}
+                {%- if parameters %} · inputs: {% for p in parameters %}<code>{{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif -%}
+                {%- if query.owner_id and query.owner_id != actor_id %} · by <span class="query-row-owner">{{ query.owner_id }}</span>{% endif -%}
+            </span>
+        </li>
+    {% endfor %}
+    </ul>
+    {% if next_url or start %}
+    <nav class="page-position page-position-footer" aria-label="Query pagination">
+        <span class="page-position-text">Showing <strong>{{ "{:,}".format(start + 1) }}–{{ "{:,}".format(start + queries|length) }}</strong> of <strong>{{ "{:,}".format(total) }}</strong></span>
+        {% if next_url %}<span class="page-position-links"><a class="page-position-next" href="{{ next_url }}" rel="next">
+            Next
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a></span>{% endif %}
+    </nav>
+    {% endif %}
+{% elif filters.q %}
+    <p class="homepage-empty">No queries match “{{ filters.q }}”. <a href="{{ query_list_path }}">Clear search</a></p>
+{% else %}
+    <p class="homepage-empty">No queries found.</p>
+{% endif %}
+</section>

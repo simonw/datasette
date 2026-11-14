@@ -1,0 +1,51 @@
+{#
+  Tables and views as a grid of cards, one per table. Shared by the
+  homepage and the database page.
+
+  {% call catalog_cards.list() %}
+    {{ catalog_cards.card(item, show_database=True, count_text="1,204") }}
+  {% endcall %}
+
+  item is a dictionary: url, name, type ("table" or "view") and optionally
+  title, private, hidden, description, database, color, count, columns
+  (the ones shown to start with), more_columns (the rest, shown by the
+  "+N more" button, which needs catalog-cards.js on the page),
+  matched_columns, column_count, has_fts and linked_tables (names of tables
+  in the same database, which needs database). count_text is the row count
+  as it should be shown, e.g. "1,204" or ">10,000".
+
+  Import it "with context": the linked tables use urls.
+#}
+{% macro list() -%}
+<ul class="catalog-list">
+    {{- caller() -}}
+</ul>
+{%- endmacro %}
+
+{% macro card(item, show_database=false, count_text=none) -%}
+    <li class="catalog-item catalog-item-{{ item.type }}">
+        <div class="catalog-item-heading">
+            <a class="catalog-item-name" href="{{ item.url }}">{{ item.title or item.name }}</a>
+            {%- if item.private %} 🔒{% endif %}
+            {% if item.type == "view" %}<span class="type-tag type-tag-view" title="A SQL view">view</span>{% endif %}
+            {% if item.hidden %}<span class="type-tag type-tag-hidden">hidden</span>{% endif %}
+            {% if count_text %}<span class="catalog-item-count">{{ count_text }} row{% if item.count != 1 %}s{% endif %}</span>{% endif %}
+        </div>
+        {% if item.description %}<p class="catalog-item-description">{{ item.description }}</p>{% endif %}
+        {% if item.columns %}
+        <p class="catalog-item-columns">
+            {%- for column in item.columns %}{% if column in (item.matched_columns or []) %}<mark class="catalog-column catalog-column-match">{{ column }}</mark>{% else %}<span class="catalog-column">{{ column }}</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor -%}
+            {%- if item.more_columns %}<span class="catalog-columns-rest" hidden>{% for column in item.more_columns %}, <span class="catalog-column">{{ column }}</span>{% endfor %}</span> <button type="button" class="catalog-column-more" data-catalog-columns-more aria-expanded="false" data-label-more="+{{ item.more_columns|length }} more" data-label-fewer="show fewer">+{{ item.more_columns|length }} more</button>
+            {%- elif item.column_count and item.column_count > item.columns|length %} <span class="catalog-column-more">+{{ item.column_count - item.columns|length }} more</span>{% endif -%}
+        </p>
+        {% endif %}
+        {% if show_database or item.has_fts or item.linked_tables or (item.title and item.title != item.name) %}
+        <p class="catalog-item-meta">
+            {%- if show_database %}<span class="db-tag" style="--db-color: #{{ item.color }}">{{ item.database }}</span>{% endif -%}
+            {%- if item.title and item.title != item.name %}<span><code>{{ item.name }}</code></span>{% endif -%}
+            {%- if item.has_fts %}<span>full-text search</span>{% endif -%}
+            {%- if item.linked_tables %}<span class="catalog-item-links"{% if item.linked_tables|length > 3 %} title="Linked by foreign keys to: {{ item.linked_tables|join(', ') }}"{% endif %}>links to {% for other in item.linked_tables[:3] %}<a href="{{ urls.table(item.database, other) }}">{{ other }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if item.linked_tables|length > 3 %} and {{ item.linked_tables|length - 3 }} more{% endif %}</span>{% endif -%}
+        </p>
+        {% endif %}
+    </li>
+{%- endmacro %}

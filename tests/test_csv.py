@@ -142,6 +142,19 @@ async def test_table_csv_blob_columns(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_view_csv_blob_columns(ds_client):
+    # https://github.com/simonw/datasette/issues/2601
+    response = await ds_client.get("/fixtures/binary_data_view.csv")
+    assert response.status_code == 200
+    assert response.text == (
+        "data\r\n"
+        "http://localhost/fixtures/binary_data_view.blob?_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d\r\n"
+        "http://localhost/fixtures/binary_data_view.blob?_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724\r\n"
+        '""\r\n'
+    )
+
+
+@pytest.mark.asyncio
 async def test_custom_sql_csv_blob_columns(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.csv?sql=select+rowid,+data+from+binary_data"
@@ -324,3 +337,112 @@ def test_table_csv_stream_does_not_calculate_counts(app_client_with_trace):
     response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
     soup = Soup(response.text, "html.parser")
     assert "select count(*)" not in soup.find("pre").text
+
+
+@pytest.mark.asyncio
+async def test_table_tsv(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.tsv")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == EXPECTED_TABLE_CSV.replace(",", "\t")
+
+
+@pytest.mark.asyncio
+async def test_table_tsv_download(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.tsv?_dl=1")
+    assert response.status_code == 200
+    assert (
+        response.headers["content-type"] == "text/tab-separated-values; charset=utf-8"
+    )
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="simple_primary_key.tsv"'
+    )
+
+
+@pytest.mark.asyncio
+async def test_table_tsv_with_labels_and_stream(ds_client):
+    response = await ds_client.get("/fixtures/facetable.tsv?_labels=1&_stream=1")
+    assert response.status_code == 200
+    lines = response.text.split("\r\n")
+    assert lines[0].split("\t")[5:7] == ["_city_id", "_city_id_label"]
+    # Excel's quoting: values with double quotes in are quoted, quotes doubled
+    assert lines[1].split("\t")[8] == '"[""tag1"", ""tag2""]"'
+    assert len([line for line in lines if line]) == 16
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_tsv_quotes_like_excel(ds_client):
+    sql = (
+        "select 'plain' as a, 'tab\there' as b, 'line\nbreak' as c,"
+        " 'say \"hi\"' as d, 'a,b' as e"
+    )
+    response = await ds_client.get(
+        "/fixtures/-/query.tsv?" + urllib.parse.urlencode({"sql": sql})
+    )
+    assert response.status_code == 200
+    assert response.text == (
+        "a\tb\tc\td\te\r\n" 'plain\t"tab\there"\t"line\nbreak"\t"say ""hi"""\ta,b\r\n'
+    )
+
+
+@pytest.mark.asyncio
+async def test_row_tsv(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1.tsv")
+    assert response.status_code == 200
+    assert response.text == "id\tcontent\r\n1\thello\r\n"
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_tsv_blob_columns(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.tsv?sql=select+rowid,+data+from+binary_data"
+    )
+    assert response.status_code == 200
+    assert response.text.split("\r\n")[1].startswith(
+        "1\thttp://localhost/fixtures/-/query.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash="
+    )
+
+
+@pytest.mark.asyncio
+async def test_tsv_errors_are_plain_text(ds_client):
+    response = await ds_client.get("/fixtures/-/query.tsv?sql=select+blah")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == "no such column: blah"
+
+
+@pytest.mark.asyncio
+async def test_tsv_plugin_renderer_takes_over():
+    from datasette import hookimpl
+    from datasette.plugins import pm
+
+    class TsvPlugin:
+        @hookimpl
+        def register_output_renderer(self):
+            return {
+                "extension": "tsv",
+                "render": lambda: {"body": "from the plugin"},
+            }
+
+    plugin = TsvPlugin()
+    pm.register(plugin, name="tsv_plugin")
+    try:
+        ds = Datasette(memory=True)
+        await ds.invoke_startup()
+        db = ds.add_memory_database("tsv_plugin")
+        await db.execute_write("create table t (id integer primary key)")
+        await db.execute_write("insert into t values (1)")
+        for path in ("/tsv_plugin/t.tsv", "/tsv_plugin/-/query.tsv?sql=select+1"):
+            response = await ds.client.get(path)
+            assert response.text == "from the plugin"
+        # The export dialog offers the plugin's tsv instead of the built-in one
+        response = await ds.client.get("/tsv_plugin/t")
+        soup = Soup(response.text, "html.parser")
+        dialog = soup.select_one("#export-dialog")
+        assert dialog.select_one('[data-export-format="tsv"]') is None
+        assert "/tsv_plugin/t.tsv" in [
+            a["href"] for a in dialog.select('a[data-export-action="view"]')
+        ]
+    finally:
+        pm.unregister(plugin, name="tsv_plugin")

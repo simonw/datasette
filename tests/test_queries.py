@@ -1,8 +1,10 @@
 import json
 import re
 from html import unescape
+from urllib.parse import urlsplit
 
 import pytest
+import sqlite_utils
 from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
@@ -495,7 +497,10 @@ async def test_database_page_query_preview_is_limited():
     assert html_response.status_code == 200
     assert "Demo query 05" in html_response.text
     assert "Demo query 06" not in html_response.text
-    assert '<a href="/data/-/queries">View 25 queries</a>' in html_response.text
+    assert (
+        '<a class="homepage-section-link" href="/data/-/queries">All 25 queries →</a>'
+        in html_response.text
+    )
     assert len(json_response.json()["queries"]) == 5
     assert json_response.json()["queries_more"] is True
     assert json_response.json()["queries_count"] == 25
@@ -765,96 +770,72 @@ async def test_query_list_search_filter_and_html():
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
     assert "Demo query 01" not in html_response.text
-    assert 'class="query-list-results"' in html_response.text
-    assert 'class="query-list-facets"' in html_response.text
-    assert 'type="radio"' not in html_response.text
-    assert "Only the owning actor can view this query." not in html_response.text
-    assert (
-        "Execution skips the usual SQL and write permission checks"
-        not in html_response.text
-    )
+    soup = Soup(html_response.text, "html.parser")
+    assert soup.select_one("form[data-homepage-search] input#query-search")
+    assert [a.text for a in soup.select("a.query-row-name")] == ["Demo query 02"]
+    assert [span.text for span in soup.select(".homepage-summary span")] == [
+        "1 query",
+        "matching “02”",
+    ]
+
+    def row(response, title):
+        soup = Soup(response.text, "html.parser")
+        link = soup.find("a", class_="query-row-name", string=title)
+        return link.find_parent("li")
+
+    def tags(response, title):
+        return [t.text for t in row(response, title).select(".type-tag")]
+
+    def facet_chips(response):
+        soup = Soup(response.text, "html.parser")
+        nav = soup.select_one("nav.query-list-facets")
+        if nav is None:
+            return []
+        return [
+            (
+                " ".join(chip.text.split()),
+                chip.get("href"),
+                "selected" in chip["class"],
+            )
+            for chip in nav.select(".homepage-database")
+        ]
+
     assert flags_response.status_code == 200
-    assert '<th scope="col">Owner</th>' in flags_response.text
-    assert '<th scope="col">Flags</th>' in flags_response.text
-    assert '<th scope="col">Mode</th>' not in flags_response.text
-    assert 'class="query-list-owner">root</td>' in flags_response.text
-    assert 'class="query-list-pill">Read-only</span>' in flags_response.text
-    assert (
-        'class="query-list-pill query-list-pill-write">Writable</span>'
-        in flags_response.text
+    # Your own queries are tagged, private and writable queries flagged
+    assert tags(flags_response, "Private query") == ["yours", "private"]
+    assert tags(flags_response, "Writable query") == ["yours", "writes"]
+    # Config queries are trusted by default, so that is not called out
+    assert tags(flags_response, "Trusted query") == []
+    assert "inputs: name" in " ".join(
+        row(flags_response, "Writable query").text.split()
     )
-    assert (
-        'class="query-list-pill query-list-pill-private">Private</span>'
-        in flags_response.text
-    )
-    assert (
-        'class="query-list-pill query-list-pill-trusted">Trusted</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=0"><span>Read-only</span><span class="query-list-facet-count">5</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=1"><span>Writable</span><span class="query-list-facet-count">1</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_private=0"><span>Not private</span><span class="query-list-facet-count">5</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_private=1"><span>Private</span><span class="query-list-facet-count">1</span>'
-        in flags_response.text
-    )
-    assert "Only the owning actor can view this query." in flags_response.text
-    assert (
-        "Execution skips the usual SQL and write permission checks"
-        in flags_response.text
-    )
+    assert facet_chips(flags_response) == [
+        ("Read-only 5", "/data/-/queries?is_write=0", False),
+        ("Writable 1", "/data/-/queries?is_write=1", False),
+        ("Not private 5", "/data/-/queries?is_private=0", False),
+        ("Private 1", "/data/-/queries?is_private=1", False),
+    ]
     assert json_response.json()["queries"][0]["name"] == "demo_query_02"
     assert [query["name"] for query in filtered_response.json()["queries"]] == [
         "private_query"
     ]
     assert "Writable query" in filtered_write_response.text
     assert "Demo query 01" not in filtered_write_response.text
-    assert (
-        'query-list-facet-link query-list-facet-link-active" href="/data/-/queries"'
-        in filtered_write_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Read-only</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_write_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=1&amp;is_private=0"><span>Not private</span><span class="query-list-facet-count">1</span>'
-        in filtered_write_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Private</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_write_response.text
-    )
+    # The active filter links back to the unfiltered list; groups with a
+    # single choice are left out
+    assert facet_chips(filtered_write_response) == [
+        ("Writable 1", "/data/-/queries", True),
+    ]
     assert "Private query" in filtered_private_response.text
     assert "Demo query 01" not in filtered_private_response.text
-    assert (
-        'href="/data/-/queries?is_private=1&amp;is_write=0"><span>Read-only</span><span class="query-list-facet-count">1</span>'
-        in filtered_private_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Writable</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_private_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Not private</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_private_response.text
-    )
+    assert facet_chips(filtered_private_response) == [
+        ("Private 1", "/data/-/queries", True),
+    ]
     assert no_results_response.status_code == 200
-    assert "No queries found." in no_results_response.text
-    assert 'class="query-list-filters core"' not in no_results_response.text
-    assert 'id="query-search"' not in no_results_response.text
-    assert 'class="query-list-facets"' not in no_results_response.text
-    assert "<h2>Mode</h2>" not in no_results_response.text
-    assert "<h2>Visibility</h2>" not in no_results_response.text
+    assert "No queries match “nope”" in no_results_response.text
+    # The search box stays, so the search can be changed
+    assert 'id="query-search"' in no_results_response.text
+    assert "query-list-facets" not in no_results_response.text
 
 
 @pytest.mark.asyncio
@@ -935,10 +916,22 @@ async def test_global_query_list_api_and_html():
         ("beta", "beta_first"),
     ]
     assert html_response.status_code == 200
-    assert '<th scope="col">Database</th>' in html_response.text
-    assert 'class="query-list-database" href="/beta">beta</a>' in html_response.text
-    assert "Beta first" in html_response.text
+    soup = Soup(html_response.text, "html.parser")
+    beta_row = soup.find("a", class_="query-row-name", string="Beta first").find_parent(
+        "li"
+    )
+    assert beta_row.select_one(".db-tag").text == "beta"
     assert "Alpha first" not in html_response.text
+    # Database chips keep the search, and show how many match in each
+    chips = [
+        (" ".join(a.text.split()), a["href"], "empty" in a["class"])
+        for a in soup.select("nav.homepage-databases a.homepage-database")
+    ]
+    assert chips == [
+        ("All", "/-/queries?q=Beta", False),
+        ("alpha 0", "/alpha/-/queries?q=Beta", True),
+        ("beta 1", "/beta/-/queries?q=Beta", False),
+    ]
 
 
 @pytest.mark.asyncio
@@ -1597,6 +1590,7 @@ async def test_create_query_analyze_endpoint_uses_sql_only():
             "database": "data",
             "table": "dogs",
             "required_permission": "view-table",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -2111,6 +2105,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
             "database": "data",
             "table": "dogs",
             "required_permission": "insert-row, update-row, delete-row",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -2129,6 +2124,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
             "database": "data",
             "table": "dogs",
             "required_permission": "insert-row, update-row, delete-row",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -2910,7 +2906,12 @@ async def test_execute_write_form_rejects_vacuum_operation_with_flash_error():
         '<p class="message-error">VACUUM is not allowed in user-supplied SQL</p>'
         in denied_response.text
     )
-    assert denied_response.text.count("VACUUM is not allowed in user-supplied SQL") == 1
+    # Shown once as the error, and once against the operation it applies to
+    assert denied_response.text.count("VACUUM is not allowed in user-supplied SQL") == 2
+    assert (
+        '<span class="execute-write-analysis-rejected">'
+        "VACUUM is not allowed in user-supplied SQL</span>"
+    ) in denied_response.text
 
 
 @pytest.mark.asyncio
@@ -3099,6 +3100,156 @@ async def test_execute_write_rejects_virtual_and_shadow_table_writes(
 
 
 @pytest.mark.asyncio
+async def test_execute_write_on_table_with_fts_triggers():
+    # sqlite-utils enable_fts(create_triggers=True) keeps an external-content
+    # FTS index in sync using triggers. Permission on the table itself must be
+    # enough to write to it - no separate grants on the FTS tables.
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "repos": {
+                            "permissions": {
+                                "view-table": {"id": "writer"},
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_fts_triggers", name="data")
+
+    def create_fts_table(conn):
+        repos = sqlite_utils.Database(conn)["repos"]
+        repos.insert({"id": 1, "name": "datasette"}, pk="id")
+        repos.enable_fts(["name"], create_triggers=True)
+
+    await db.execute_write_fn(create_fts_table)
+    await ds.invoke_startup()
+
+    async def search(term):
+        return [
+            row[0]
+            for row in await db.execute(
+                "select rowid from repos_fts where repos_fts match ?", [term]
+            )
+        ]
+
+    assert await search("datasette") == [1]
+
+    for sql, term, expected in (
+        ("insert into repos (id, name) values (2, 'llm')", "llm", [2]),
+        ("update repos set name = 'sqlite-utils' where id = 1", "utils", [1]),
+        ("delete from repos where id = 2", "llm", []),
+    ):
+        analysis_response = await ds.client.get(
+            "/data/-/execute-write/analyze",
+            actor={"id": "writer"},
+            params={"sql": sql},
+        )
+        analysis = analysis_response.json()
+        assert analysis["execute_disabled"] is False, analysis
+        assert {row["table"] for row in analysis["analysis_rows"]} == {"repos"}
+
+        response = await ds.client.post(
+            "/data/-/execute-write",
+            actor={"id": "writer"},
+            json={"sql": sql},
+        )
+        assert response.status_code == 200, response.text
+        assert await search(term) == expected
+
+    assert await search("datasette") == []
+
+
+@pytest.mark.asyncio
+async def test_execute_write_analysis_explains_rejected_operations():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_explains_rejections", name="data")
+    await db.execute_write("create virtual table docs using fts5(title, content='')")
+    await ds.invoke_startup()
+    sql = "insert into docs(docs) values('delete-all')"
+    expected_message = "Writes to virtual tables are not allowed in user-supplied SQL"
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    page_response = await ds.client.get(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+
+    data = analysis_response.json()
+    assert data["execute_disabled"] is True
+    assert data["execute_disabled_reason"] == expected_message
+    rejected_row = next(row for row in data["analysis_rows"] if row["table"] == "docs")
+    assert rejected_row["allowed"] is False
+    assert rejected_row["message"] == expected_message
+
+    assert (
+        f'<span class="execute-write-analysis-rejected">{expected_message}</span>'
+        in page_response.text
+    )
+    assert (
+        f'data-execute-write-disabled-reason aria-live="polite">{expected_message}</span>'
+        in page_response.text
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_write_analysis_shows_trigger_source():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_trigger_source", name="data")
+    await db.execute_write_script("""
+        create table dogs (id integer primary key, name text);
+        create table log (message text);
+        create trigger dogs_ai after insert on dogs begin
+            insert into log (message) values (new.name);
+        end;
+    """)
+    await ds.invoke_startup()
+    sql = "insert into dogs (name) values ('Cleo')"
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    page_response = await ds.client.get(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+
+    log_row = next(
+        row
+        for row in analysis_response.json()["analysis_rows"]
+        if row["table"] == "log"
+    )
+    assert log_row["source"] == "dogs_ai"
+    assert (
+        '<td><code>log</code> <span class="execute-write-analysis-source">'
+        "via <code>dogs_ai</code></span></td>"
+    ) in page_response.text
+
+
+@pytest.mark.asyncio
 async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3231,6 +3382,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
             "database": "data",
             "table": "foobar",
             "required_permission": "create-table",
+            "message": None,
             "source": None,
             "allowed": True,
         }
@@ -3786,3 +3938,53 @@ async def test_stored_query_json_uses_parameters_not_params():
     query = next(q for q in listing["queries"] if q["name"] == "with_params")
     assert query["parameters"] == ["name", "age"]
     assert "params" not in query
+
+
+@pytest.mark.asyncio
+async def test_query_list_fragment_and_pagination():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("query_list_fragment", name="data")
+    await ds.invoke_startup()
+    await add_numbered_queries(ds, "data", 25)
+    response = await ds.client.get("/data/-/queries?q=Demo", actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    assert len(soup.select("li.query-row")) == 20
+    nav = soup.select_one("nav.page-position-footer")
+    assert " ".join(nav.select_one(".page-position-text").text.split()) == (
+        "Showing 1–20 of 25"
+    )
+    next_href = nav.select_one("a.page-position-next")["href"]
+    assert "q=Demo" in next_href
+    assert "_next=" in next_href
+    assert "_start=20" in next_href
+
+    # The second page knows where it is, and is the last page
+    path = urlsplit(next_href)
+    response = await ds.client.get(path.path + "?" + path.query, actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    assert len(soup.select("li.query-row")) == 5
+    nav = soup.select_one("nav.page-position-footer")
+    assert " ".join(nav.select_one(".page-position-text").text.split()) == (
+        "Showing 21–25 of 25"
+    )
+    assert nav.select_one("a.page-position-next") is None
+    # The JSON API's own next link is unchanged
+    data = (
+        await ds.client.get("/data/-/queries.json?_size=20", actor={"id": "root"})
+    ).json()
+    assert "_start" not in data["next_url"]
+
+    # The live search fetches just the summary and results
+    response = await ds.client.get(
+        "/data/-/queries?q=Demo&_fragment=results", actor={"id": "root"}
+    )
+    assert response.status_code == 200
+    assert response.headers["x-robots-tag"] == "noindex"
+    assert "<html" not in response.text
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("p.homepage-summary span").text == "25 queries"
+    results = soup.select_one("div[data-homepage-results]")
+    assert len(results.select("li.query-row")) == 20
+    # Links in the fragment point at the full page
+    next_href = results.select_one("a.page-position-next")["href"]
+    assert "_fragment" not in next_href

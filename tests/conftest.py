@@ -277,16 +277,19 @@ def install_event_tracking_plugin():
 
 @pytest.fixture(scope="session")
 def ds_localhost_http_server():
+    # A fixed port could already be taken by an unrelated server, which
+    # wait_until_responds() would then mistake for this one
+    port = find_free_port()
     ds_proc = subprocess.Popen(
-        [sys.executable, "-m", "datasette", "--memory", "-p", "8041"],
+        [sys.executable, "-m", "datasette", "--memory", "-p", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         # Avoid FileNotFoundError: [Errno 2] No such file or directory:
         cwd=tempfile.gettempdir(),
     )
     try:
-        wait_until_responds("http://localhost:8041/", process=ds_proc)
-        yield ds_proc
+        wait_until_responds(f"http://localhost:{port}/", process=ds_proc)
+        yield ds_proc, port
     finally:
         stop_process(ds_proc)
 
@@ -366,8 +369,8 @@ def serve_with_plugins(tmp_path):
     signals. The usual in-process ``pm.register`` plugin pattern can't reach
     a subprocess, so plugin source is written out as importable files instead.
 
-    Unlike ``ds_localhost_http_server`` this is function-scoped and takes a
-    fresh port each time, because each test needs its own plugins. Call it as::
+    Unlike ``ds_localhost_http_server`` this is function-scoped and starts a
+    new server each time, because each test needs its own plugins. Call it as::
 
         proc, port = serve_with_plugins({"my_plugin": PLUGIN_SOURCE})
 

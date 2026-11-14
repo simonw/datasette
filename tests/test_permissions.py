@@ -136,14 +136,28 @@ def test_database_list_respects_view_database():
         extra_databases={"data.db": "create table names (name text)"},
     ) as client:
         anon_response = client.get("/")
-        assert '<a href="/data">data</a></h2>' in anon_response.text
-        assert '<a href="/fixtures">fixtures</a>' not in anon_response.text
+        anon_links = homepage_item_links(anon_response.text)
+        assert "/data/names" in anon_links
+        assert not any(link.startswith("/fixtures/") for link in anon_links)
+        # Only one database is visible, so there is no database filter
+        assert 'href="/?database=fixtures"' not in anon_response.text
         auth_response = client.get(
             "/",
             cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
-        assert '<a href="/data">data</a></h2>' in auth_response.text
-        assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
+        auth_links = homepage_item_links(auth_response.text)
+        assert "/data/names" in auth_links
+        assert any(link.startswith("/fixtures/") for link in auth_links)
+        soup = Soup(auth_response.text, "html.parser")
+        fixtures_chip = soup.select_one(
+            'a.homepage-database[href="/?database=fixtures"]'
+        )
+        assert "🔒" in fixtures_chip.text
+
+
+def homepage_item_links(html):
+    soup = Soup(html, "html.parser")
+    return [a["href"] for a in soup.select("a.catalog-item-name")]
 
 
 def test_database_list_respects_view_table():
@@ -167,7 +181,8 @@ def test_database_list_respects_view_table():
             ">v</a> 🔒",
         ]
         anon_response_text = client.get("/").text
-        assert "0 rows in 0 tables" in anon_response_text
+        assert "/data/names" not in homepage_item_links(anon_response_text)
+        assert "/data/v" not in homepage_item_links(anon_response_text)
         for html_fragment in html_fragments:
             assert html_fragment not in anon_response_text
         auth_response_text = client.get(
@@ -321,7 +336,7 @@ def test_query_list_respects_view_query():
             }
         }
     ) as client:
-        html_fragment = '<li><a href="/fixtures/q" title="select 1 + 1">q</a> 🔒</li>'
+        html_fragment = '<a class="query-row-name" href="/fixtures/q">q</a> 🔒'
         anon_response = client.get("/fixtures")
         assert html_fragment not in anon_response.text
         assert '"/fixtures/q"' not in anon_response.text
@@ -641,14 +656,31 @@ def test_padlocks_on_database_page(cascade_app_client):
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
         )
+        soup = Soup(response.text, "html.parser")
+
+        def link_and_padlock(css_class, name):
+            link = soup.find("a", class_=css_class, string=name)
+            following = link.next_sibling
+            padlock = isinstance(following, str) and "🔒" in following
+            return name + (" 🔒" if padlock else "")
+
         # Tables
-        assert ">123_starts_with_digits</a></h3>" in response.text
-        assert ">Table With Space In Name</a> 🔒</h3>" in response.text
+        assert (
+            link_and_padlock("catalog-item-name", "123_starts_with_digits")
+            == "123_starts_with_digits"
+        )
+        assert (
+            link_and_padlock("catalog-item-name", "Table With Space In Name")
+            == "Table With Space In Name 🔒"
+        )
         # Queries
-        assert ">query_two</a></li>" in response.text
+        assert link_and_padlock("query-row-name", "query_two") == "query_two"
         # Views
-        assert ">paginated_view</a> 🔒</li>" in response.text
-        assert ">simple_view</a></li>" in response.text
+        assert (
+            link_and_padlock("catalog-item-name", "paginated_view")
+            == "paginated_view 🔒"
+        )
+        assert link_and_padlock("catalog-item-name", "simple_view") == "simple_view"
     finally:
         cascade_app_client.ds.config = previous_config
         async_to_sync(cascade_app_client.ds.remove_query)("fixtures", "query_two")

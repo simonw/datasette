@@ -17,6 +17,7 @@ from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.utils import (
     InvalidSql,
     add_cors_headers,
+    append_querystring,
     await_me_maybe,
     call_with_supported_arguments,
     error_body,
@@ -27,6 +28,7 @@ from datasette.utils import (
     path_with_format,
     path_with_removed_args,
     path_without_format,
+    request_route_path,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -36,11 +38,17 @@ from datasette.utils import (
 from datasette.utils import (
     named_parameters as derive_named_parameters,
 )
-from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
+from datasette.utils.asgi import (
+    AsgiFileDownload,
+    Forbidden,
+    NotFound,
+    Response,
+    etag_matches,
+)
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, stream_csv
+from .base import DatasetteError, View, is_csv_format, stream_csv, tsv_export_path
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -449,7 +457,33 @@ class QueryContext(Context):
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
         }
     )
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
+    truncated: bool = field(
+        metadata={
+            "help": "Boolean indicating if the results were truncated at the ``max_returned_rows`` limit"
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for CSV export"})
+    url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
+    url_csv_hidden_args: list = field(
+        metadata={
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving the SQL and parameters while forcing ``_size=max``."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
+        }
+    )
+    append_querystring: callable = field(
+        metadata={
+            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
+        }
+    )
     show_hide_hidden: str = field(
         metadata={
             "help": "Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state."
@@ -477,6 +511,11 @@ class QueryContext(Context):
     top_stored_query: callable = field(
         metadata={
             "help": "Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML."
+        }
+    )
+    query_page_data: dict = field(
+        metadata={
+            "help": "JSON data used by the column statistics dialog on the query page, or ``None`` if it is not available. It is only provided for read-only queries that returned rows, use no magic parameters and are run by an actor who can execute custom SQL. Has ``database`` and ``executeSql`` keys. ``executeSql`` has ``queryUrl`` and ``editorUrl``, a ``query`` with the ``sql``, its ``params`` and ``shownRows``, the number of rows shown on the page, and ``columns``: the result columns with unique ``name`` values and the SQLite storage ``type`` seen in the returned rows (``mixed`` if more than one)."
         }
     )
     query_actions: callable = field(
@@ -565,10 +604,8 @@ async def database_download(request, datasette):
         etag = f'"{db.hash}"'
         headers["Etag"] = etag
         # Has user seen this already?
-        if_none_match = request.headers.get("if-none-match")
-        if if_none_match and if_none_match == etag:
-            return Response("", status=304)
-    headers["Transfer-Encoding"] = "chunked"
+        if etag_matches(request.headers.get("if-none-match"), etag):
+            return Response("", status=304, headers=headers)
     return AsgiFileDownload(
         filepath,
         filename=os.path.basename(filepath),
@@ -857,7 +894,7 @@ class QueryView(View):
             return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
-        if format_ == "csv":
+        if is_csv_format(datasette, format_):
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
 
@@ -867,7 +904,9 @@ class QueryView(View):
                 data = {"rows": results.rows, "columns": results.columns}
                 return data, None, None
 
-            return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
+            return await stream_csv(
+                datasette, fetch_data_for_csv, request, db.name, format_=format_
+            )
         elif format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
@@ -1006,23 +1045,31 @@ class QueryView(View):
             show_hide_hidden = ""
             if stored_query and stored_query.hide_sql:
                 if bool(params.get("_show_sql")):
-                    show_hide_link = path_with_removed_args(request, {"_show_sql"})
+                    show_hide_link = path_with_removed_args(
+                        request, {"_show_sql"}, path=request_route_path(request)
+                    )
                     show_hide_text = "hide"
                     show_hide_hidden = (
                         '<input type="hidden" name="_show_sql" value="1">'
                     )
                 else:
-                    show_hide_link = path_with_added_args(request, {"_show_sql": 1})
+                    show_hide_link = path_with_added_args(
+                        request, {"_show_sql": 1}, path=request_route_path(request)
+                    )
                     show_hide_text = "show"
             else:
                 if bool(params.get("_hide_sql")):
-                    show_hide_link = path_with_removed_args(request, {"_hide_sql"})
+                    show_hide_link = path_with_removed_args(
+                        request, {"_hide_sql"}, path=request_route_path(request)
+                    )
                     show_hide_text = "show"
                     show_hide_hidden = (
                         '<input type="hidden" name="_hide_sql" value="1">'
                     )
                 else:
-                    show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
+                    show_hide_link = path_with_added_args(
+                        request, {"_hide_sql": 1}, path=request_route_path(request)
+                    )
                     show_hide_text = "hide"
             hide_sql = show_hide_text == "show"
 
@@ -1064,6 +1111,27 @@ class QueryView(View):
                     + urlencode({"sql": sql})
                 )
 
+            # Column statistics re-run this query as part of other queries, so
+            # they need permission to execute SQL and a read-only query with
+            # no magic parameters (their values can't be passed back in)
+            query_page_data = None
+            if (
+                allow_execute_sql
+                and is_validated_sql
+                and ":_" not in sql
+                and not stored_query_write
+                and not query_error
+                and rows
+            ):
+                query_page_data = _query_page_data(
+                    datasette,
+                    database,
+                    sql,
+                    named_parameter_values,
+                    columns,
+                    rows,
+                )
+
             async def query_actions():
                 query_actions = []
                 for hook in pm.hook.query_actions(
@@ -1080,6 +1148,14 @@ class QueryView(View):
                         query_actions.extend(extra_links)
                 return query_actions
 
+            url_csv = datasette.urls.path(
+                path_with_format(
+                    request=request,
+                    path=request.scope.get("route_path"),
+                    format="csv",
+                    extra_qs={"_size": "max"},
+                )
+            )
             r = Response.html(
                 await datasette.render_template(
                     template,
@@ -1114,14 +1190,20 @@ class QueryView(View):
                         ),
                         columns=columns,
                         renderers=renderers,
-                        url_csv=datasette.urls.path(
-                            path_with_format(
-                                request=request,
-                                path=request.scope.get("route_path"),
-                                format="csv",
-                                extra_qs={"_size": "max"},
+                        renderer_options=datasette._renderer_options,
+                        truncated=bool(results and results.truncated),
+                        url_csv=url_csv,
+                        url_csv_path=url_csv.split("?")[0],
+                        url_csv_hidden_args=[
+                            (key, value)
+                            for key, value in parse_qsl(
+                                request.query_string, keep_blank_values=True
                             )
-                        ),
+                            if key not in ("_size", "_dl")
+                        ]
+                        + [("_size", "max")],
+                        url_tsv_path=tsv_export_path(datasette, request),
+                        append_querystring=append_querystring,
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=metadata,
                         alternate_url_json=alternate_url_json,
@@ -1139,6 +1221,7 @@ class QueryView(View):
                             database=database,
                             query_name=stored_query.name if stored_query else None,
                         ),
+                        query_page_data=query_page_data,
                         query_actions=query_actions,
                     ),
                     request=request,
@@ -1195,6 +1278,43 @@ class MagicParameters(dict):
                     return super().__getitem__(key)
         else:
             return super().__getitem__(key)
+
+
+_STORAGE_TYPES = {int: "integer", float: "real", str: "text", bytes: "blob"}
+
+
+def _query_page_data(datasette, database, sql, params, columns, rows):
+    # Used by the column statistics dialog (column-stats.js), which wraps the
+    # query in a CTE with an explicit column list, so every result column
+    # needs a unique name. SQLite compares names case-insensitively.
+    seen = set()
+    stats_columns = []
+    for index, column in enumerate(columns):
+        name = column
+        suffix = 2
+        while name.lower() in seen:
+            name = f"{column}_{suffix}"
+            suffix += 1
+        seen.add(name.lower())
+        # The storage type of the values returned, since query results have
+        # no declared type
+        types = {
+            _STORAGE_TYPES.get(type(row[index]), "")
+            for row in rows
+            if row[index] is not None
+        }
+        storage_type = (types.pop() if len(types) == 1 else "mixed") if types else ""
+        stats_columns.append({"name": name, "type": storage_type})
+    query_path = f"{datasette.urls.database(database)}/-/query"
+    return {
+        "database": database,
+        "executeSql": {
+            "queryUrl": query_path + ".json",
+            "editorUrl": query_path,
+            "query": {"sql": sql, "params": params, "shownRows": len(rows)},
+            "columns": stats_columns,
+        },
+    }
 
 
 async def display_rows(datasette, database, request, rows, columns):

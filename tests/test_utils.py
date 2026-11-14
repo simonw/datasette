@@ -195,7 +195,10 @@ def test_validate_sql_select_good(good_sql):
     utils.validate_sql_select(good_sql)
 
 
-@pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
+@pytest.mark.parametrize(
+    "open_quote,close_quote",
+    [('"', '"'), ("[", "]"), ("'", "'"), ("`", "`"), ("", "")],
+)
 def test_detect_fts(open_quote, close_quote):
     sql = f"""
     CREATE TABLE "Dumb_Table" (
@@ -220,6 +223,7 @@ def test_detect_fts(open_quote, close_quote):
     assert None is utils.detect_fts(conn, "Dumb_Table")
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
+    assert None is utils.detect_fts(conn, "Street_Tree")
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
     conn.close()
 
@@ -539,6 +543,22 @@ def test_compound_keys_after_sql():
   or
 (a = :p0 and b = :p1 and c > :p2))
     """.strip() == utils.compound_keys_after_sql(["a", "b", "c"])
+
+
+def test_compound_keys_at_or_before_sql():
+    assert "((a <= :p0))" == utils.compound_keys_at_or_before_sql(["a"])
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b <= :p1))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b"])
+    assert """
+((a < :p3)
+  or
+(a = :p3 and b < :p4)
+  or
+(a = :p3 and b = :p4 and c <= :p5))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b", "c"], 3)
 
 
 def test_table_columns():
@@ -1015,3 +1035,43 @@ def test_deep_dict_update(dict1, dict2, expected):
     assert result == expected
     # Check that the original dict1 was modified
     assert dict1 == expected
+
+
+@pytest.mark.parametrize(
+    "install,branch,expected",
+    [
+        # Defaults to the version of Datasette running the command
+        ([], None, ["datasette==VERSION"]),
+        (["datasette-vega"], None, ["datasette==VERSION", "datasette-vega"]),
+        # --branch installs from GitHub instead
+        (
+            ["datasette-vega"],
+            "main",
+            ["https://github.com/simonw/datasette/archive/main.zip", "datasette-vega"],
+        ),
+        # A requirement for Datasette in --install replaces the default
+        (["datasette==0.65.5"], None, ["datasette==0.65.5"]),
+        (["datasette>=1.0a0", "datasette-vega"], None, None),
+        (["Datasette[rich]"], None, None),
+        (["datasette @ https://example.com/d.zip"], None, None),
+        (["/app/plugins/datasette-1.0a42-py3-none-any.whl"], None, None),
+        (["https://example.com/datasette-1.0a42.tar.gz"], None, None),
+        # Plugins that merely start with datasette do not
+        (
+            ["datasette-vega==0.6", "/tmp/datasette-vega-0.6.whl"],
+            None,
+            [
+                "datasette==VERSION",
+                "datasette-vega==0.6",
+                "/tmp/datasette-vega-0.6.whl",
+            ],
+        ),
+    ],
+)
+def test_datasette_install_requirements(install, branch, expected):
+    from datasette.version import __version__
+
+    if expected is None:
+        expected = install
+    expected = [item.replace("VERSION", __version__) for item in expected]
+    assert utils.datasette_install_requirements(install, branch) == expected

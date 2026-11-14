@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from datasette import cli
+from datasette.version import __version__
 
 
 @pytest.mark.serial
@@ -260,20 +261,24 @@ def test_publish_cloudrun_plugin_secrets(
         .split("\n====================\n")[0]
         .strip()
     )
-    expected = textwrap.dedent(
-        r"""
+    expected = (
+        textwrap.dedent(
+            r"""
     FROM python:3.11.0-slim-bullseye
     COPY . /app
     WORKDIR /app
 
     ENV DATASETTE_AUTH_GITHUB_CLIENT_ID 'x-client-id'
     ENV DATASETTE_SECRET 'x-secret'
-    RUN pip install -U datasette
+    RUN pip install -U datasette==VERSION
     RUN datasette inspect test.db --inspect-file inspect-data.json
     ENV PORT 8001
     EXPOSE 8001
-    CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --metadata metadata.json --setting force_https_urls on --port $PORT"""
-    ).strip()
+    CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --metadata metadata.json --setting force_https_urls on --config config.json --port $PORT"""
+        )
+        .strip()
+        .replace("VERSION", __version__)
+    )
     assert expected == dockerfile
     metadata = (
         result.output.split("=== metadata.json ===\n")[1]
@@ -289,6 +294,14 @@ def test_publish_cloudrun_plugin_secrets(
             },
         },
     } == json.loads(metadata)
+    config = (
+        result.output.split("=== config.json ===\n")[1]
+        .split("\n=== metadata.json ===\n")[0]
+        .strip()
+    )
+    assert json.loads(config) == {
+        "plugins": {"datasette-publish-cloudrun": {"content_length_workaround": True}}
+    }
 
 
 @pytest.mark.serial
@@ -338,12 +351,12 @@ def test_publish_cloudrun_apt_get_install(
 
     ENV DATASETTE_SECRET 'x-secret'
     ENV SQLITE_EXTENSIONS '/usr/lib/x86_64-linux-gnu/mod_spatialite.so'
-    RUN pip install -U datasette
+    RUN pip install -U datasette==VERSION
     RUN datasette inspect test.db --inspect-file inspect-data.json
     ENV PORT 8001
     EXPOSE 8001
-    CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --port $PORT
-    """).strip()
+    CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --config config.json --port $PORT
+    """).strip().replace("VERSION", __version__)
     assert expected == dockerfile
 
 
@@ -354,12 +367,20 @@ def test_publish_cloudrun_apt_get_install(
 @pytest.mark.parametrize(
     "extra_options,expected",
     [
-        ("", "--setting force_https_urls on"),
+        ("", "--setting force_https_urls on --config config.json"),
         (
             "--setting base_url /foo",
-            "--setting base_url /foo --setting force_https_urls on",
+            "--setting base_url /foo --setting force_https_urls on --config config.json",
         ),
-        ("--setting force_https_urls off", "--setting force_https_urls off"),
+        (
+            "--setting force_https_urls off",
+            "--setting force_https_urls off --config config.json",
+        ),
+        # A config file passed by the user is left alone
+        (
+            "--config custom.json",
+            "--config custom.json --setting force_https_urls on",
+        ),
     ],
 )
 def test_publish_cloudrun_extra_options(
@@ -398,3 +419,47 @@ def test_publish_cloudrun_extra_options(
         .strip()
     )
     assert extra_options == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config,limit,expect_content_length",
+    [
+        # Enabled, response at or over the limit: no content-length
+        ({"content_length_workaround": True}, 100, False),
+        # Enabled, response under the limit: content-length is kept
+        ({"content_length_workaround": True}, 10**9, True),
+        # Not enabled: content-length is always kept
+        ({"content_length_workaround": False}, 100, True),
+        (None, 100, True),
+    ],
+)
+async def test_content_length_workaround(
+    tmp_path, monkeypatch, config, limit, expect_content_length
+):
+    import sqlite3
+
+    from datasette.app import Datasette
+    from datasette.publish import cloudrun
+
+    monkeypatch.setattr(cloudrun, "CONTENT_LENGTH_LIMIT", limit)
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    expected_bytes = (tmp_path / "data.db").read_bytes()
+    # The plugins block in metadata must not replace the one in config
+    datasette = Datasette(
+        [],
+        immutables=[path],
+        metadata={"plugins": {"datasette-other-plugin": {"foo": "bar"}}},
+        config=(
+            {"plugins": {"datasette-publish-cloudrun": config}} if config else None
+        ),
+    )
+    response = await datasette.client.get("/data.db")
+    assert response.status_code == 200
+    assert response.content == expected_bytes
+    assert "transfer-encoding" not in response.headers
+    assert ("content-length" in response.headers) is expect_content_length
+    assert datasette.plugin_config("datasette-other-plugin") == {"foo": "bar"}

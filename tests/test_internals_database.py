@@ -507,6 +507,7 @@ async def test_view_names(db):
         "simple_view",
         "searchable_view",
         "searchable_view_configured_by_metadata",
+        "binary_data_view",
     ]
 
 

@@ -80,7 +80,7 @@ SAMESITE_VALUES = ("strict", "lax", "none")
 # far below multipart's DEFAULT_MAX_REQUEST_SIZE: that parser streams to disk,
 # while these bodies are held in RAM and json.loads() can multiply their
 # footprint several times over.
-DEFAULT_MAX_POST_BODY_BYTES = 2 * 1024 * 1024  # 2MB
+DEFAULT_MAX_POST_BODY_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 class _RequestHeaders(dict):
@@ -173,7 +173,7 @@ class Request:
         Read the request body fully into memory.
 
         The body is capped at max_bytes - or self.max_post_body_bytes
-        (default 2MB, set from the max_post_body_bytes setting for requests
+        (default 10MB, set from the max_post_body_bytes setting for requests
         created by Datasette) if max_bytes is not provided. Pass max_bytes=0
         to disable the limit. Raises PayloadTooLarge (HTTP 413) if exceeded -
         oversized bodies are rejected as soon as the limit is passed, without
@@ -467,6 +467,27 @@ async def asgi_send_file(
 HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
 
 
+def etag_matches(if_none_match, etag):
+    """
+    Does this If-None-Match request header match the ETag of the response?
+
+    If-None-Match uses weak comparison, so a W/ prefix on either side is
+    ignored. The header can be a comma-separated list of ETags, or * which
+    matches any ETag.
+    """
+    if not if_none_match:
+        return False
+
+    def strong(value):
+        return value.strip().removeprefix("W/")
+
+    etag = strong(etag)
+    return any(
+        candidate.strip() == "*" or strong(candidate) == etag
+        for candidate in if_none_match.split(",")
+    )
+
+
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
     root_path = Path(root_path)
     static_headers = {}
@@ -501,8 +522,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
                 headers["Cache-Control"] = HASHED_STATIC_CACHE_CONTROL
             etag = await calculate_etag(full_path, chunk_size=chunk_size)
             headers["ETag"] = etag
-            if_none_match = request.headers.get("if-none-match")
-            if if_none_match and if_none_match == etag:
+            if etag_matches(request.headers.get("if-none-match"), etag):
                 return await asgi_send(send, "", 304, headers=headers)
             await asgi_send_file(
                 send, full_path, chunk_size=chunk_size, headers=headers

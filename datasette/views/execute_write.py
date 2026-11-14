@@ -236,6 +236,7 @@ class ExecuteWriteView(BaseView):
         execute_write_columns=None,
         execute_write_display_rows=None,
         execute_write_truncated=False,
+        error_shown=None,
         status=200,
     ):
         parameter_values = parameter_values or {}
@@ -289,6 +290,10 @@ class ExecuteWriteView(BaseView):
             save_query_base_url = self.ds.urls.database(db.name) + "/-/queries/store"
             if not execute_disabled_reason:
                 save_query_url = save_query_base_url + "?" + urlencode({"sql": sql})
+        # Don't repeat a rejection that is already shown as the error above
+        displayed_disabled_reason = execute_disabled_reason
+        if error_shown is not None and error_shown == execute_disabled_reason:
+            displayed_disabled_reason = None
 
         response = await self.render(
             ["execute_write.html"],
@@ -310,7 +315,7 @@ class ExecuteWriteView(BaseView):
                 "execute_write_truncated": execute_write_truncated,
                 "sql_parameter_name_prefix": SQL_PARAMETER_FORM_PREFIX,
                 "execute_disabled": bool(execute_disabled_reason),
-                "execute_disabled_reason": execute_disabled_reason,
+                "execute_disabled_reason": displayed_disabled_reason,
                 "table_columns": table_columns,
                 "write_template_tables": write_template_tables,
                 "write_template_operations": write_template_operations,
@@ -378,6 +383,7 @@ class ExecuteWriteView(BaseView):
                 analysis_error=None if ex.flash else ex.message,
                 execution_message=None if ex.flash else ex.message,
                 execution_ok=False,
+                error_shown=ex.message,
                 status=ex.status,
             )
 

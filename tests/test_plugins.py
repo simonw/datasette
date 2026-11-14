@@ -21,6 +21,7 @@ from datasette.permissions import Action, PermissionSQL
 from datasette.plugins import DEFAULT_PLUGINS, get_plugins, pm
 from datasette.resources import DatabaseResource
 from datasette.utils import StartupError, await_me_maybe
+from datasette.utils.asgi import Response
 from datasette.utils.sqlite import sqlite3
 
 from .fixtures import (
@@ -299,6 +300,20 @@ async def test_plugin_config(ds_client):
     )
     assert {"depth": "root"} == ds_client.ds.plugin_config("name-of-plugin")
     assert None is ds_client.ds.plugin_config("unknown-plugin")
+
+
+def test_plugin_config_database_without_plugins_falls_back_to_top():
+    ds = Datasette(
+        memory=True,
+        config={
+            "plugins": {"name-of-plugin": {"depth": "root"}},
+            "databases": {"fixtures": {"tables": {"t": {"allow": True}}}},
+        },
+    )
+    assert {"depth": "root"} == ds.plugin_config("name-of-plugin", database="fixtures")
+    assert None is ds.plugin_config(
+        "name-of-plugin", database="fixtures", fallback=False
+    )
 
 
 @pytest.mark.asyncio
@@ -708,14 +723,106 @@ async def test_hook_register_output_renderer_returning_broken_value(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/options_demo/t",
+        "/options_demo/-/query?sql=select+*+from+t",
+        "/options_demo/t/1",
+    ),
+)
+async def test_hook_register_output_renderer_export_options(path):
+    class OptionsPlugin:
+        @hookimpl
+        def register_output_renderer(self):
+            return [
+                {
+                    "extension": "md",
+                    "render": lambda: {"body": "| id |"},
+                    "label": "Markdown table",
+                    "description": "For pasting into GitHub issues",
+                },
+                {
+                    "extension": "csvgz",
+                    "render": lambda: Response(body=b"\x1f\x8b"),
+                    "is_binary": True,
+                },
+                {
+                    "extension": "chart",
+                    "render": lambda: Response.html("<h1>Chart</h1>"),
+                    "label": "Chart",
+                    "is_webpage": True,
+                },
+            ]
+
+    plugin = OptionsPlugin()
+    pm.register(plugin, name="options_demo")
+    try:
+        ds = Datasette(memory=True)
+        await ds.invoke_startup()
+        db = ds.add_memory_database("options_demo")
+        await db.execute_write("create table t (id integer primary key)")
+        await db.execute_write("insert into t values (1)")
+        response = await ds.client.get(path)
+        assert response.status_code == 200
+        dialog = Soup(response.text, "html.parser").select_one("#export-dialog")
+        rows = {
+            row.select_one(".export-option-name").text: (
+                row.get("data-export-kind"),
+                getattr(row.select_one(".export-option-description"), "text", None),
+                [el["data-export-action"] for el in row.select("[data-export-action]")],
+            )
+            for row in dialog.select(".export-option")
+            if row["data-export-format"].startswith("format-")
+        }
+        # Other tests can leave the fixture plugins' formats registered too
+        assert {
+            name: rows[name]
+            for name in ("Markdown table", "csvgz", "Chart")
+            if name in rows
+        } == {
+            "Markdown table": (
+                None,
+                "For pasting into GitHub issues",
+                ["copy", "view", "download", "copy-url"],
+            ),
+            # The label defaults to the extension
+            "csvgz": ("binary", None, ["download", "copy-url"]),
+            "Chart": ("webpage", None, ["view", "copy-url"]),
+        }
+    finally:
+        pm.unregister(plugin, name="options_demo")
+
+
+@pytest.mark.asyncio
+async def test_hook_register_output_renderer_binary_and_webpage_is_an_error():
+    class BothPlugin:
+        @hookimpl
+        def register_output_renderer(self):
+            return {
+                "extension": "both",
+                "render": lambda: {"body": ""},
+                "is_binary": True,
+                "is_webpage": True,
+            }
+
+    plugin = BothPlugin()
+    pm.register(plugin, name="both_demo")
+    try:
+        with pytest.raises(StartupError) as ex:
+            Datasette(memory=True)
+        assert str(ex.value) == (
+            "Output renderer 'both' cannot set both is_binary and is_webpage"
+        )
+    finally:
+        pm.unregister(plugin, name="both_demo")
+
+
+@pytest.mark.asyncio
 async def test_hook_register_output_renderer_can_render(ds_client):
     response = await ds_client.get("/fixtures/facetable?_no_can_render=1")
     assert response.status_code == 200
-    links = (
-        Soup(response.text, "html.parser")
-        .find("p", {"class": "export-links"})
-        .find_all("a")
-    )
+    links = Soup(response.text, "html.parser").select_one(".export-links").find_all("a")
     actual = [link["href"] for link in links]
     # Should not be present because we sent ?_no_can_render=1
     assert "/fixtures/facetable.testall?_labels=on" not in actual
@@ -782,11 +889,7 @@ async def test_hook_register_output_renderer_can_render_canned_query(ds_client):
     assert saw["sql"] == "PRAGMA cache_size;"
     assert saw["query_name"] == "pragma_cache_size"
     # The renderer's export link should therefore be offered
-    links = (
-        Soup(response.text, "html.parser")
-        .find("p", {"class": "export-links"})
-        .find_all("a")
-    )
+    links = Soup(response.text, "html.parser").select_one(".export-links").find_all("a")
     actual = [link["href"] for link in links]
     assert any(
         href.startswith("/fixtures/pragma_cache_size.testall") for href in actual
@@ -1517,7 +1620,8 @@ async def test_hook_register_actions_no_duplicates(duplicate):
     # This should error:
     with pytest.raises(StartupError) as ex:
         await ds.invoke_startup()
-        assert f"Duplicate action {duplicate}" in str(ex.value)
+
+    assert f"Duplicate action {duplicate}" in str(ex.value)
 
 
 @pytest.mark.asyncio
@@ -1790,7 +1894,7 @@ async def test_hook_track_event():
     # Should have a recent created as well
     created = event.created
     assert isinstance(created, datetime.datetime)
-    assert created.tzinfo == datetime.timezone.utc
+    assert created.tzinfo == datetime.UTC
 
 
 @pytest.mark.asyncio

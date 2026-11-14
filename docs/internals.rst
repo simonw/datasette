@@ -2980,6 +2980,28 @@ Derive the list of ``:named`` parameters referenced in a SQL query.
 
 .. autofunction:: datasette.utils.named_parameters
 
+.. _internals_utils_to_css_class:
+
+to_css_class(s)
+---------------
+
+Derive a CSS class name from a string, such as a table name. Simple names are returned unchanged. Names that need normalization have whitespace replaced with hyphens and unsupported characters removed, and receive a six-character suffix from the MD5 digest of the original string to reduce name clashes.
+
+For example:
+
+.. code-block:: python
+
+    from datasette.utils import to_css_class
+
+    assert to_css_class("MixedCase") == "MixedCase"
+    assert to_css_class("no spaces") == "no-spaces-7088d7"
+    assert (
+        to_css_class("no $ characters")
+        == "no--characters-59e024"
+    )
+
+.. autofunction:: datasette.utils.to_css_class
+
 .. _internals_tilde_encoding:
 
 Tilde encoding

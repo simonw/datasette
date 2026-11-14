@@ -6953,6 +6953,7 @@ ul.query-list {
 }
 .homepage-header .page-action-menu {
     margin-top: 0.5rem;
+    margin-bottom: 0.5em;
 }
 .homepage-recent[hidden] {
     display: none;

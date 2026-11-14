@@ -7,6 +7,7 @@
       super();
       this.beforeClose = null;
       this._busy = false;
+      this._closeGuard = null;
       this._restoreFocus = true;
       this._returnFocusTo = null;
       this._escapeCleanup = null;
@@ -202,6 +203,8 @@
       this._escapeCleanup = null;
       clearTimeout(this._escapeTimer);
       this._escapeTimer = null;
+      // Any beforeClose() promise still pending no longer applies
+      this._closeGuard = null;
     }
 
     show({ returnFocusTo, initialFocus } = {}) {
@@ -217,8 +220,24 @@
     }
 
     requestClose(source = "cancel") {
-      if (!this.dialog.open || this.busy) return false;
-      if (this.beforeClose && this.beforeClose(source) === false) return false;
+      // A beforeClose() promise is still deciding an earlier request
+      if (!this.dialog.open || this.busy || this._closeGuard) return false;
+      const allowed = this.beforeClose ? this.beforeClose(source) : true;
+      if (allowed === false) return false;
+      if (allowed && typeof allowed.then === "function") {
+        // An async guard: stay open now, close later unless it resolves false
+        const guard = (this._closeGuard = allowed);
+        const settle = (result) => {
+          if (this._closeGuard !== guard) return;
+          this._closeGuard = null;
+          if (result !== false && this.dialog.open && !this.busy) this.close();
+        };
+        guard.then(settle, (error) => {
+          settle(false);
+          throw error;
+        });
+        return false;
+      }
       this.close();
       return true;
     }

@@ -25,7 +25,10 @@
     {% endif %}
 
     {% if item.schema %}
-        <pre style="background-color: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; border-radius: 4px;"><code>{{ item.schema }}</code></pre>
+        <div class="copyable-sql">
+            <pre id="schema-sql-{{ loop.index }}" style="background-color: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; border-radius: 4px;"><code>{{ item.schema }}</code></pre>
+            <datasette-copy-button for="schema-sql-{{ loop.index }}" name="{% if table_name %}{{ table_name }}{% else %}{{ item.database }}{% endif %} schema"></datasette-copy-button>
+        </div>
     {% else %}
         <p><em>No schema available for this database.</em></p>
     {% endif %}

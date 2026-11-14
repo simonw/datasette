@@ -593,11 +593,12 @@ async def test_row_html_no_primary_key(ds_client):
 async def test_row_html_copy_buttons(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     soup = Soup(response.text, "html.parser")
-    buttons = soup.select(".row-field .row-field-copy")
-    assert [(b["aria-label"], b["data-copy-value"], b["title"]) for b in buttons] == [
-        ("Copy id", "1", "Copy to clipboard"),
-        ("Copy content", "hello", "Copy to clipboard"),
+    buttons = soup.select(".row-field datasette-copy-button")
+    assert [(b["name"], b["value"]) for b in buttons] == [
+        ("id", "1"),
+        ("content", "hello"),
     ]
+    assert soup.find("script", src=re.compile(r"copy-button\.js"))
 
 
 @pytest.mark.asyncio
@@ -627,9 +628,9 @@ async def test_row_html_null_values_have_no_copy_button(ds_client):
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     fields = soup.select(".row-field")
-    assert [f["data-column"] for f in fields if f.select_one(".row-field-copy")] == [
-        "pk"
-    ]
+    assert [
+        f["data-column"] for f in fields if f.select_one("datasette-copy-button")
+    ] == ["pk"]
     nulls = [f.select_one(".row-field-empty") for f in fields[1:]]
     # The label comes from CSS so it is left out when the page is copied
     assert [(n["data-label"], n.text) for n in nulls] == [("null", "")] * (

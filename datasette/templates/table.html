@@ -259,14 +259,20 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 {% if table_definition %}
 <details class="table-schema">
     <summary>Table schema</summary>
-    <pre class="wrapped-sql">{{ table_definition }}</pre>
+    <div class="copyable-sql">
+        <pre class="wrapped-sql" id="table-schema-sql">{{ table_definition }}</pre>
+        <datasette-copy-button for="table-schema-sql" name="table schema"></datasette-copy-button>
+    </div>
 </details>
 {% endif %}
 
 {% if view_definition %}
 <details class="table-schema">
     <summary>View definition</summary>
-    <pre class="wrapped-sql">{{ view_definition }}</pre>
+    <div class="copyable-sql">
+        <pre class="wrapped-sql" id="view-definition-sql">{{ view_definition }}</pre>
+        <datasette-copy-button for="view-definition-sql" name="view definition"></datasette-copy-button>
+    </div>
 </details>
 {% endif %}
 

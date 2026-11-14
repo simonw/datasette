@@ -1,4 +1,5 @@
 import pathlib
+import re
 import urllib.parse
 from types import SimpleNamespace
 
@@ -118,8 +119,13 @@ CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_k
 )
 async def test_table_definition_sql(path, expected_definition_sql, ds_client):
     response = await ds_client.get(path)
-    pre = Soup(response.text, "html.parser").select_one("pre.wrapped-sql")
+    soup = Soup(response.text, "html.parser")
+    pre = soup.select_one("pre.wrapped-sql")
     assert expected_definition_sql == pre.string
+    # With a button to copy it
+    button = soup.select_one("details.table-schema datasette-copy-button")
+    assert button["for"] == pre["id"]
+    assert soup.find("script", src=re.compile(r"copy-button\.js"))
 
 
 def test_table_cell_truncation():

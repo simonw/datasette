@@ -605,7 +605,6 @@ async def database_download(request, datasette):
         # Has user seen this already?
         if etag_matches(request.headers.get("if-none-match"), etag):
             return Response("", status=304, headers=headers)
-    headers["Transfer-Encoding"] = "chunked"
     return AsgiFileDownload(
         filepath,
         filename=os.path.basename(filepath),

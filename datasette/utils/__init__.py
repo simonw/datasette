@@ -27,6 +27,7 @@ import markupsafe
 import mergedeep
 import yaml
 
+from ..version import __version__
 from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
@@ -607,6 +608,29 @@ def escape_sqlite(s):
     return '"{}"'.format(s.replace('"', '""'))
 
 
+_datasette_requirement_re = re.compile(
+    # A requirement named datasette, or a path or URL to a datasette wheel or sdist
+    r"^datasette(\[[^\]]*\])?\s*($|[=<>!~;@])"
+    r"|(^|/)datasette-\d[^/]*\.(whl|tar\.gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def datasette_install_requirements(install, branch=None):
+    """
+    Requirements to pip install for a published Datasette: Datasette itself
+    followed by any extras from --install. Datasette defaults to the version
+    that is running this command, unless --branch was used or one of the
+    --install values is itself a requirement for Datasette.
+    """
+    install = list(install)
+    if branch:
+        return [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + install
+    if any(_datasette_requirement_re.search(item.strip()) for item in install):
+        return install
+    return [f"datasette=={__version__}"] + install
+
+
 def make_dockerfile(
     files,
     metadata_file,
@@ -648,12 +672,7 @@ def make_dockerfile(
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
+    install = datasette_install_requirements(install, branch)
 
     apt_get_extras_ = []
     apt_get_extras_.extend(apt_get_extras)
@@ -1705,8 +1724,9 @@ def prune_empty_dicts(d: dict):
 def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
-    hierarchy in destination if needed. After moving, recursively remove any keys
-    in the source that are left empty.
+    hierarchy in destination if needed. A 'plugins' block is merged by plugin name
+    with one already in the destination, the source winning for a name in both.
+    After moving, recursively remove any keys in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1721,8 +1741,16 @@ def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]
                 d = dest
                 for step in path:
                     d = d.setdefault(step, {})
-                # Move the plugins
-                d[key] = value
+                # Move the plugins, keeping any the destination already has
+                # for other plugin names
+                if (
+                    key == "plugins"
+                    and isinstance(value, dict)
+                    and isinstance(d.get(key), dict)
+                ):
+                    d[key] = {**d[key], **value}
+                else:
+                    d[key] = value
                 # Remove the plugins from source
                 src.pop(key, None)
             elif isinstance(value, dict):

@@ -684,11 +684,79 @@ h2 em {
 }
 :where(details).table-schema .wrapped-sql {
     margin: 0.5rem 0 0;
-    padding: 0.75rem 1rem;
+    /* Room on the right for the copy button */
+    padding: 0.75rem 2.75rem 0.75rem 1rem;
     background: var(--card, #fff);
     border: 1px solid var(--rule, #d8e6f5);
     border-radius: 0.4rem;
     font-size: 0.85rem;
+}
+
+/* <datasette-copy-button>, see copy-button.js. An icon button that copies
+   text to the clipboard and shows a tick for a moment once it has. */
+datasette-copy-button {
+    flex: none;
+    display: inline-flex;
+}
+datasette-copy-button > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--muted, #6b6b6b);
+    cursor: pointer;
+    transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+datasette-copy-button > button:hover {
+    background: #eef6ff;
+    border-color: var(--rule, #d8e6f5);
+    color: var(--accent, #1a56db);
+}
+datasette-copy-button > button:focus-visible {
+    outline: 2px solid var(--accent, #1a56db);
+    outline-offset: 1px;
+}
+datasette-copy-button .icon-copied,
+datasette-copy-button[copied] .icon-copy {
+    display: none;
+}
+datasette-copy-button[copied] .icon-copied {
+    display: block;
+}
+datasette-copy-button[copied] > button {
+    color: #1f7a4d;
+}
+/* Tells screen readers what was copied */
+.datasette-copy-button-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* A block of SQL with a copy button in its top right corner */
+.copyable-sql {
+    position: relative;
+}
+.copyable-sql > datasette-copy-button {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+}
+/* Opaque, since a long line of SQL can scroll underneath */
+.copyable-sql > datasette-copy-button > button {
+    background: #fff;
+    border-color: var(--rule, #d8e6f5);
+}
+.copyable-sql > datasette-copy-button > button:hover {
+    background: #eef6ff;
 }
 
 /* Tables ==================================================================
@@ -6180,8 +6248,6 @@ button.column-menu-trigger[aria-expanded="true"] {
     gap: 0.2rem;
     margin: -0.2rem -0.3rem -0.2rem 0;
 }
-/* Quiet until the field is hovered or the button focused */
-.row-field-copy,
 .row-field-json {
     flex: none;
     display: inline-flex;
@@ -6195,25 +6261,27 @@ button.column-menu-trigger[aria-expanded="true"] {
     background: none;
     color: var(--muted);
     cursor: pointer;
-    opacity: 0.35;
     transition: opacity 0.12s, background-color 0.12s, color 0.12s;
 }
-.row-field:hover .row-field-copy,
-.row-field-copy:focus-visible,
-.row-field-copy.is-copied,
+/* Quiet until the field is hovered or the button focused */
+.row-field datasette-copy-button > button,
+.row-field-json {
+    opacity: 0.35;
+}
+.row-field:hover datasette-copy-button > button,
+.row-field datasette-copy-button > button:focus-visible,
+.row-field datasette-copy-button[copied] > button,
 .row-field:hover .row-field-json,
 .row-field-json:focus-visible,
 .row-field-json[aria-pressed="true"] {
     opacity: 1;
 }
-.row-field-copy:hover,
 .row-field-json:hover,
 .row-field-json[aria-pressed="true"] {
     background: #eef6ff;
     border-color: var(--rule);
     color: var(--accent);
 }
-.row-field-copy:focus-visible,
 .row-field-json:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
@@ -6223,27 +6291,9 @@ button.column-menu-trigger[aria-expanded="true"] {
     font-size: 0.8125rem;
     overflow-wrap: anywhere;
 }
-.row-field-copy .icon-copied,
-.row-field-copy.is-copied .icon-copy {
-    display: none;
-}
-.row-field-copy.is-copied .icon-copied {
-    display: block;
-}
-.row-field-copy.is-copied {
-    color: #1f7a4d;
-}
-.row-field-copy-status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-}
 
 @media (hover: none) {
-    .row-field-copy,
+    .row-field datasette-copy-button > button,
     .row-field-json {
         opacity: 0.7;
     }

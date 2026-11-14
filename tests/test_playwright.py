@@ -4181,8 +4181,8 @@ def test_homepage_sections_from_javascript_plugins(page, datasette_server):
     expect(section).to_be_hidden()
 
 
-@pytest.mark.playwright
-def test_row_page_json_pretty_print_toggle(page, datasette_server):
+def stub_clipboard(page):
+    # navigator.clipboard.readText() then returns whatever was last copied
     page.add_init_script("""
         (() => {
             let clipboardText = "";
@@ -4197,6 +4197,91 @@ def test_row_page_json_pretty_print_toggle(page, datasette_server):
             });
         })();
         """)
+
+
+@pytest.mark.playwright
+def test_copy_button_copies_schema(page, datasette_server):
+    from playwright.sync_api import expect
+
+    stub_clipboard(page)
+    page.goto(f"{datasette_server}fixtures/-/schema")
+    button = page.get_by_role("button", name="Copy fixtures schema")
+    expect(button).to_have_attribute("title", "Copy to clipboard")
+    button.click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    expect(button).to_have_attribute("title", "Copied")
+    expect(page.locator(".datasette-copy-button-status")).to_have_text(
+        "Copied fixtures schema to clipboard"
+    )
+    copied = page.evaluate("navigator.clipboard.readText()")
+    assert "CREATE TABLE simple_primary_key" in copied
+    assert copied == page.locator("pre code").text_content()
+    # The tick goes away again
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(0)
+    expect(button).to_have_attribute("title", "Copy to clipboard")
+
+    # Schema for a single table
+    page.goto(f"{datasette_server}fixtures/simple_primary_key/-/schema")
+    page.get_by_role("button", name="Copy simple_primary_key schema").click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    table_schema = page.evaluate("navigator.clipboard.readText()")
+    assert table_schema.startswith("CREATE TABLE simple_primary_key (")
+
+    # The collapsed schema at the bottom of the table page
+    page.goto(f"{datasette_server}fixtures/simple_primary_key")
+    button = page.get_by_role("button", name="Copy table schema")
+    expect(button).to_be_hidden()
+    page.locator("details.table-schema > summary").click()
+    button.click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    # The table page adds a trailing semicolon
+    assert page.evaluate("navigator.clipboard.readText()") == table_schema + ";"
+
+    page.goto(f"{datasette_server}fixtures/simple_view")
+    page.locator("details.table-schema > summary").click()
+    page.get_by_role("button", name="Copy view definition").click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    assert page.evaluate("navigator.clipboard.readText()").startswith(
+        "CREATE VIEW simple_view AS"
+    )
+
+
+@pytest.mark.playwright
+def test_copy_button_value_and_failure(page, datasette_server):
+    from playwright.sync_api import expect
+
+    stub_clipboard(page)
+    page.goto(f"{datasette_server}fixtures/simple_primary_key/1")
+    field = page.locator('.row-field[data-column="content"]')
+    button = field.get_by_role("button", name="Copy content")
+    status = page.locator(".datasette-copy-button-status")
+    button.click()
+    expect(status).to_have_text("Copied content to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "hello"
+
+    # The value can be changed from JavaScript
+    field.locator("datasette-copy-button").evaluate("el => el.value = 'changed'")
+    button.click()
+    expect(status).to_have_text("Copied content to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "changed"
+
+    # Neither the clipboard API nor the execCommand fallback works
+    page.evaluate("""() => {
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            get: () => ({ writeText: async () => { throw new Error("no"); } }),
+        });
+        document.execCommand = () => false;
+    }""")
+    page.locator("datasette-copy-button[copied]").wait_for(state="detached")
+    button.click()
+    expect(status).to_have_text("Could not copy content")
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(0)
+
+
+@pytest.mark.playwright
+def test_row_page_json_pretty_print_toggle(page, datasette_server):
+    stub_clipboard(page)
     page.goto(f"{datasette_server}fixtures/facetable/1")
     toggles = page.locator(".row-field-json")
     # Only object/array JSON values get a toggle: not "CA", not "n1"
@@ -4208,7 +4293,7 @@ def test_row_page_json_pretty_print_toggle(page, datasette_server):
     field = page.locator('.row-field[data-column="complex_array"]')
     toggle = field.locator(".row-field-json")
     value = field.locator(".row-field-value")
-    copy = field.locator(".row-field-copy")
+    copy = field.locator("datasette-copy-button")
     pretty = '[\n  {\n    "foo": "bar"\n  }\n]'
     assert toggle.get_attribute("aria-pressed") == "false"
     assert value.text_content() == '[{"foo": "bar"}]'

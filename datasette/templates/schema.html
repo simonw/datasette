@@ -2,6 +2,11 @@
 
 {% block title %}{% if is_instance %}Schema for all databases{% elif table_name %}Schema for {{ schemas[0].database }}.{{ table_name }}{% else %}Schema for {{ schemas[0].database }}{% endif %}{% endblock %}
 
+{% block extra_head %}
+{{- super() -}}
+<script src="{{ static('copy-button.js') }}" defer></script>
+{% endblock %}
+
 {% block body_class %}schema{% endblock %}
 
 {% block crumbs %}
@@ -25,7 +30,10 @@
     {% endif %}
 
     {% if item.schema %}
-        <pre style="background-color: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; border-radius: 4px;"><code>{{ item.schema }}</code></pre>
+        <div class="copyable-sql">
+            <pre id="schema-sql-{{ loop.index }}" style="background-color: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; border-radius: 4px;"><code>{{ item.schema }}</code></pre>
+            <datasette-copy-button for="schema-sql-{{ loop.index }}" name="{% if table_name %}{{ table_name }}{% else %}{{ item.database }}{% endif %} schema"></datasette-copy-button>
+        </div>
     {% else %}
         <p><em>No schema available for this database.</em></p>
     {% endif %}

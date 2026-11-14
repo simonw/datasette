@@ -1,48 +1,7 @@
-// Row page field list: copy-to-clipboard buttons and "Show all" toggles
-// for long values. See _row_fields.html.
+// Row page field list: "Show all" toggles for long values and pretty-print
+// toggles for JSON values. See _row_fields.html. The copy buttons are
+// <datasette-copy-button> elements, see copy-button.js.
 (function () {
-  function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text).catch(function () {
-        return copyTextFallback(text);
-      });
-    }
-    return copyTextFallback(text);
-  }
-
-  // For non-secure contexts (e.g. http:// on a LAN address) or when the
-  // async clipboard API is refused
-  function copyTextFallback(text) {
-    return new Promise(function (resolve, reject) {
-      var textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        document.execCommand("copy") ? resolve() : reject();
-      } catch (error) {
-        reject(error);
-      } finally {
-        textarea.remove();
-      }
-    });
-  }
-
-  function announce(message) {
-    var status = document.querySelector(".row-field-copy-status");
-    if (!status) {
-      return;
-    }
-    // Clear first so repeating the same message is announced again
-    status.textContent = "";
-    setTimeout(function () {
-      status.textContent = message;
-    }, 50);
-  }
-
   // The template guesses which values are long from their length, but a
   // value of a few hundred characters can fit within the clamp on a wide
   // screen. Mark those as fitting so CSS drops the fade and the toggle.
@@ -87,10 +46,13 @@
     // Nothing to toggle for "[]", "{}" or values already stored pretty
     return pretty === text ? null : pretty;
   }
-  document.querySelectorAll(".row-field-copy").forEach(function (copyButton) {
+  var copyButtons = document.querySelectorAll(
+    ".row-field datasette-copy-button",
+  );
+  copyButtons.forEach(function (copyButton) {
     var field = copyButton.closest(".row-field");
-    var value = field && field.querySelector(".row-field-value");
-    var raw = copyButton.getAttribute("data-copy-value") || "";
+    var value = field.querySelector(".row-field-value");
+    var raw = copyButton.getAttribute("value") || "";
     var pretty = value ? prettyJson(raw) : null;
     if (pretty === null) {
       return;
@@ -130,10 +92,7 @@
       // Restore the original markup, which may include rendered links
       json.value.innerHTML = json.html;
     }
-    json.copyButton.setAttribute(
-      "data-copy-value",
-      isPretty ? json.pretty : json.raw,
-    );
+    json.copyButton.setAttribute("value", isPretty ? json.pretty : json.raw);
     var wrap = json.value.parentElement;
     if (wrap.classList.contains("row-field-long")) {
       if (isPretty) {
@@ -163,27 +122,6 @@
     var jsonButton = ev.target.closest(".row-field-json");
     if (jsonButton) {
       toggleJson(jsonButton);
-      return;
-    }
-    var copyButton = ev.target.closest(".row-field-copy");
-    if (copyButton) {
-      var field = copyButton.closest(".row-field");
-      var column = field ? field.getAttribute("data-column") : "value";
-      copyText(copyButton.getAttribute("data-copy-value") || "").then(
-        function () {
-          copyButton.classList.add("is-copied");
-          copyButton.setAttribute("title", "Copied");
-          announce("Copied " + column + " to clipboard");
-          clearTimeout(copyButton._copiedTimer);
-          copyButton._copiedTimer = setTimeout(function () {
-            copyButton.classList.remove("is-copied");
-            copyButton.setAttribute("title", "Copy to clipboard");
-          }, 1500);
-        },
-        function () {
-          announce("Could not copy " + column);
-        },
-      );
       return;
     }
     var expandButton = ev.target.closest(".row-field-expand");

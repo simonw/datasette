@@ -811,26 +811,7 @@ class Datasette:
             self.event_classes = tuple(event_classes)
 
             # Register actions, but watch out for duplicate name/abbr
-            action_names = {}
-            action_abbrs = {}
-            for hook in pm.hook.register_actions(datasette=self):
-                if hook:
-                    for action in hook:
-                        if (
-                            action.name in action_names
-                            and action != action_names[action.name]
-                        ):
-                            raise StartupError(f"Duplicate action name: {action.name}")
-                        if (
-                            action.abbr
-                            and action.abbr in action_abbrs
-                            and action != action_abbrs[action.abbr]
-                        ):
-                            raise StartupError(f"Duplicate action abbr: {action.abbr}")
-                        action_names[action.name] = action
-                        if action.abbr:
-                            action_abbrs[action.abbr] = action
-                        self.actions[action.name] = action
+            self._register_actions()
 
             # Register column types (classes, not instances)
             self._column_types = {}
@@ -2461,6 +2442,44 @@ ORDER BY allowed.parent, allowed.child
         conn.close()
         return info
 
+    def _register_actions(self):
+        # Register actions, but watch out for duplicate name/abbr
+        action_names = {}
+        action_abbrs = {}
+        self._plugin_actions = {}
+        plugin_to_distinfo = dict(pm.list_plugin_distinfo())
+        for impl in pm.hook.register_actions.get_hookimpls():
+            try:
+                hook = impl.function(datasette=self)
+            except TypeError:
+                hook = impl.function()
+            if hook:
+                for action in hook:
+                    if (
+                        action.name in action_names
+                        and action != action_names[action.name]
+                    ):
+                        raise StartupError(f"Duplicate action name: {action.name}")
+                    if (
+                        action.abbr
+                        and action.abbr in action_abbrs
+                        and action != action_abbrs[action.abbr]
+                    ):
+                        raise StartupError(f"Duplicate action abbr: {action.abbr}")
+                    action_names[action.name] = action
+                    if action.abbr:
+                        action_abbrs[action.abbr] = action
+                    self.actions[action.name] = action
+
+                    names_to_record = {impl.plugin_name}
+                    dist = plugin_to_distinfo.get(impl.plugin)
+                    if dist:
+                        dist_name = dist.name or getattr(dist, "project_name", None)
+                        if dist_name:
+                            names_to_record.add(dist_name)
+                    for pname in names_to_record:
+                        self._plugin_actions.setdefault(pname, []).append(action)
+
     def _plugins(self, request=None, all=False):
         ps = list(get_plugins())
         should_show_all = False
@@ -2471,6 +2490,9 @@ ORDER BY allowed.parent, allowed.child
         if not should_show_all:
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
         ps.sort(key=lambda p: p["name"])
+        if not hasattr(self, "_plugin_actions"):
+            self._register_actions()
+        plugin_actions = self._plugin_actions
         return [
             {
                 "name": p["name"],
@@ -2478,6 +2500,21 @@ ORDER BY allowed.parent, allowed.child
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
                 "hooks": sorted(set(p["hooks"])),
+                "actions": [
+                    {
+                        "name": a.name,
+                        "description": a.description,
+                    }
+                    for a in sorted(
+                        plugin_actions.get(p["name"], []), key=lambda a: a.name
+                    )
+                ],
+                "permissions": [
+                    a.name
+                    for a in sorted(
+                        plugin_actions.get(p["name"], []), key=lambda a: a.name
+                    )
+                ],
             }
             for p in ps
         ]

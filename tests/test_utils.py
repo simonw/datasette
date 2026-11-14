@@ -985,3 +985,43 @@ def test_deep_dict_update(dict1, dict2, expected):
     assert result == expected
     # Check that the original dict1 was modified
     assert dict1 == expected
+
+
+@pytest.mark.parametrize(
+    "install,branch,expected",
+    [
+        # Defaults to the version of Datasette running the command
+        ([], None, ["datasette==VERSION"]),
+        (["datasette-vega"], None, ["datasette==VERSION", "datasette-vega"]),
+        # --branch installs from GitHub instead
+        (
+            ["datasette-vega"],
+            "main",
+            ["https://github.com/simonw/datasette/archive/main.zip", "datasette-vega"],
+        ),
+        # A requirement for Datasette in --install replaces the default
+        (["datasette==0.65.5"], None, ["datasette==0.65.5"]),
+        (["datasette>=1.0a0", "datasette-vega"], None, None),
+        (["Datasette[rich]"], None, None),
+        (["datasette @ https://example.com/d.zip"], None, None),
+        (["/app/plugins/datasette-1.0a42-py3-none-any.whl"], None, None),
+        (["https://example.com/datasette-1.0a42.tar.gz"], None, None),
+        # Plugins that merely start with datasette do not
+        (
+            ["datasette-vega==0.6", "/tmp/datasette-vega-0.6.whl"],
+            None,
+            [
+                "datasette==VERSION",
+                "datasette-vega==0.6",
+                "/tmp/datasette-vega-0.6.whl",
+            ],
+        ),
+    ],
+)
+def test_datasette_install_requirements(install, branch, expected):
+    from datasette.version import __version__
+
+    if expected is None:
+        expected = install
+    expected = [item.replace("VERSION", __version__) for item in expected]
+    assert utils.datasette_install_requirements(install, branch) == expected

@@ -350,6 +350,7 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
+                "asgi_wrapper",
                 "publish_subcommand"
             ]
         },

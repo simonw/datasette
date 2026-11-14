@@ -13,6 +13,55 @@ from .common import (
     fail_if_publish_binary_not_installed,
 )
 
+PLUGIN_NAME = "datasette-publish-cloudrun"
+
+# Cloud Run rejects HTTP/1 responses of 32 MiB or more, counting the headers,
+# if they declare a Content-Length. Responses sent without one are streamed
+# instead and have no size limit. This is deliberately a little under 32 MiB.
+CONTENT_LENGTH_LIMIT = 32_000_000
+
+
+def _without_large_content_length(message):
+    headers = message.get("headers") or []
+    for name, value in headers:
+        if name.lower() == b"content-length":
+            try:
+                too_large = int(value) >= CONTENT_LENGTH_LIMIT
+            except ValueError:
+                too_large = False
+            if too_large:
+                return {
+                    **message,
+                    "headers": [
+                        pair for pair in headers if pair[0].lower() != b"content-length"
+                    ],
+                }
+    return message
+
+
+@hookimpl
+def asgi_wrapper(datasette):
+    config = datasette.plugin_config(PLUGIN_NAME)
+    if not (isinstance(config, dict) and config.get("content_length_workaround")):
+        return None
+
+    def wrap(app):
+        async def content_length_workaround(scope, receive, send):
+            if scope["type"] != "http":
+                await app(scope, receive, send)
+                return
+
+            async def wrapped_send(message):
+                if message["type"] == "http.response.start":
+                    message = _without_large_content_length(message)
+                await send(message)
+
+            await app(scope, receive, wrapped_send)
+
+        return content_length_workaround
+
+    return wrap
+
 
 @hookimpl
 def publish_subcommand(publish):
@@ -180,6 +229,15 @@ def publish_subcommand(publish):
                 extra_options += " "
             extra_options += "--setting force_https_urls on"
 
+        # Turn on the Content-Length workaround, unless a config file is
+        # already being passed to datasette serve
+        config_content = None
+        if not {"-c", "--config"} & set(extra_options.split()):
+            config_content = {
+                "plugins": {PLUGIN_NAME: {"content_length_workaround": True}}
+            }
+            extra_options += " --config config.json"
+
         environment_variables = {}
         if plugin_secret:
             extra_metadata["plugins"] = {}
@@ -209,7 +267,14 @@ def publish_subcommand(publish):
             environment_variables,
             apt_get_extras=apt_get_extras,
         ):
+            if config_content:
+                with open("config.json", "w") as fp:
+                    fp.write(json.dumps(config_content, indent=2))
             if show_files:
+                if config_content:
+                    print("=== config.json ===\n")
+                    print(json.dumps(config_content, indent=2))
+                    print()
                 if os.path.exists("metadata.json"):
                     print("=== metadata.json ===\n")
                     with open("metadata.json") as fp:

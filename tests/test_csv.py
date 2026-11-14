@@ -1,9 +1,11 @@
 import urllib.parse
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
+from datasette.utils import LimitedWriter, WriteLimitExceeded
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello
@@ -17,6 +19,47 @@ EXPECTED_CUSTOM_CSV = """content
 hello
 world
 """.replace("\n", "\r\n")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "character,repetitions", [("é", 600000), ("😀", 300000), ("a", 600000)]
+)
+@pytest.mark.parametrize("limit_mb", [0, 1])
+async def test_csv_limit_counts_utf8_bytes(character, repetitions, limit_mb):
+    ds = Datasette(settings={"max_csv_mb": limit_mb})
+    try:
+        db = ds.add_memory_database("unicode_csv")
+        await db.execute_write("CREATE TABLE t (id integer primary key, value text)")
+        await db.execute_write(
+            "INSERT INTO t VALUES (?, ?)", [1, character * repetitions]
+        )
+        response = await ds.client.get("/unicode_csv/t.csv")
+        assert response.status_code == 200
+        assert response.content.startswith(b"id,value\r\n")
+        if limit_mb and character != "a":
+            assert response.content[-100:].endswith(
+                b"CSV contains more than 1048576 bytes"
+            )
+            assert len(response.content) < 1048576
+        else:
+            assert response.text.endswith(character * 10 + "\r\n")
+            assert b"CSV contains more than" not in response.content
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["éé", "éé".encode()])
+async def test_csv_writer_utf8_byte_boundary(content):
+    writer = Mock(write=AsyncMock())
+    limited = LimitedWriter(writer, 5 / (1024 * 1024))
+    await limited.write("a")
+    await limited.write(content)
+    with pytest.raises(WriteLimitExceeded):
+        await limited.write("!")
+    assert writer.write.await_args_list == [call("a"), call(content)]
+
 
 EXPECTED_TABLE_WITH_LABELS_CSV = """
 pk,created,planet_int,on_earth,state,_city_id,_city_id_label,_neighborhood,tags,complex_array,distinct_some_null,n

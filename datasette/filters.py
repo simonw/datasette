@@ -216,13 +216,17 @@ class Filter:
 
 def _coerce_numeric_filter_value(value):
     try:
-        return int(value)
+        integer = int(value)
+        # SQLite binds integers as signed 64-bit values.
+        if -(2**63) <= integer < 2**63:
+            return integer
     except ValueError:
-        try:
-            converted = float(value)
-        except ValueError:
-            return value
-        return converted if math.isfinite(converted) else value
+        pass
+    try:
+        converted = float(value)
+    except ValueError:
+        return value
+    return converted if math.isfinite(converted) else value
 
 
 class TemplatedFilter(Filter):

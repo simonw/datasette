@@ -4,6 +4,7 @@ import pathlib
 import pytest
 
 from datasette.app import Datasette
+from datasette.plugins import pm
 from datasette.utils import StartupError
 from datasette.utils.sqlite import sqlite3
 
@@ -94,12 +95,15 @@ def test_invalid_settings(config_dir):
         (config_dir / "datasette.json").write_text(previous, "utf-8")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def config_dir_client(config_dir):
     ds = Datasette([], config_dir=config_dir)
-    yield _TestClient(ds)
-    for db in ds.databases.values():
-        db.close()
+    try:
+        yield _TestClient(ds)
+    finally:
+        # plugins_dir plugins are registered on the global plugin manager
+        pm.unregister(name="hooray.py")
+        ds.close()
 
 
 def test_settings(config_dir_client):

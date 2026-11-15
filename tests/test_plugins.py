@@ -537,7 +537,7 @@ def test_default_plugins_have_no_templates_path_or_static_path():
             assert None is plugin["templates_path"]
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def view_names_client(tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test-view-names")
     templates = tmpdir / "templates"
@@ -566,16 +566,18 @@ def view_names_client(tmp_path_factory):
     conn = sqlite3.connect(db_path)
     conn.executescript(TABLES)
     conn.close()
-    return _TestClient(
-        Datasette(
-            [db_path],
-            template_dir=str(templates),
-            plugins_dir=str(plugins),
-            config={
-                "databases": {"fixtures": {"queries": {"stored_query": "select 1"}}}
-            },
-        )
+    ds = Datasette(
+        [db_path],
+        template_dir=str(templates),
+        plugins_dir=str(plugins),
+        config={"databases": {"fixtures": {"queries": {"stored_query": "select 1"}}}},
     )
+    try:
+        yield _TestClient(ds)
+    finally:
+        # plugins_dir plugins are registered on the global plugin manager
+        pm.unregister(name="extra_vars.py")
+        ds.close()
 
 
 @pytest.mark.parametrize(
@@ -1828,7 +1830,7 @@ async def test_hook_actors_from_ids():
             "7": {"id": "7", "name": "Sarah Paulson"},
         }
     finally:
-        ds.pm.unregister(name="ReturnNothingPlugin")
+        ds.pm.unregister(name="ActorsFromIdsPlugin")
 
 
 @pytest.mark.asyncio

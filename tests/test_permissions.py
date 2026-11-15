@@ -1984,24 +1984,27 @@ async def test_permission_check_explains_required_actions():
     ds.root_enabled = True
     await ds.invoke_startup()
     ds.pm.register(StoreQueryPermissions(), name="store-query-test")
-    path = "/-/check.json?" + urllib.parse.urlencode(
-        {
-            "action": "store-query",
-            "parent": "analytics",
-            "actor": json.dumps({"id": "alice"}),
-        }
-    )
-    response = await ds.client.get(path, actor={"id": "root"})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["allowed"] is False
-    explanation = data["explanation"]
-    assert explanation["rule_allowed"] is True
-    assert explanation["required_actions"][0]["action"] == "execute-sql"
-    assert explanation["required_actions"][0]["allowed"] is False
-    assert explanation["summary"] == (
-        "Denied because store-query also requires execute-sql, which was denied."
-    )
+    try:
+        path = "/-/check.json?" + urllib.parse.urlencode(
+            {
+                "action": "store-query",
+                "parent": "analytics",
+                "actor": json.dumps({"id": "alice"}),
+            }
+        )
+        response = await ds.client.get(path, actor={"id": "root"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["allowed"] is False
+        explanation = data["explanation"]
+        assert explanation["rule_allowed"] is True
+        assert explanation["required_actions"][0]["action"] == "execute-sql"
+        assert explanation["required_actions"][0]["allowed"] is False
+        assert explanation["summary"] == (
+            "Denied because store-query also requires execute-sql, which was denied."
+        )
+    finally:
+        ds.pm.unregister(name="store-query-test")
 
 
 @pytest.mark.asyncio

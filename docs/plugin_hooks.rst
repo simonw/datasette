@@ -689,7 +689,7 @@ When a request is received, the ``"render"`` callback function is called with ze
     The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
 
 ``extras`` - dictionary
-    The :ref:`extras <json_api_extra>` this format declared using its ``"extras"`` key, plus any that were requested using ``?_extra=`` in the URL. Keys are the names of the extras. Extras that are not available for the current page are omitted.
+    Everything the JSON version of this page returns alongside its rows: the :ref:`extras <json_api_extra>` this format declared using its ``"extras"`` key, any that were requested using ``?_extra=`` in the URL, and the keys that type of page always includes. For table pages those are ``next``, the token for the next page of results, and ``next_url``, the URL of that page in this format - both are ``None`` on the last page. Extras that are not available for the current page are omitted.
 
 The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller.
 

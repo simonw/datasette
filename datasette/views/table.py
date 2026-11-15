@@ -22,6 +22,7 @@ from datasette.events import (
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.filters import Filters
 from datasette.plugins import pm
+from datasette.renderer import apply_column_type_transforms
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     CustomJSONEncoder,
@@ -2695,19 +2696,14 @@ async def table_view_data(
             include_internal=bool(extra_extras),
         )
     )
-    raw_sqlite_rows = rows[:page_size]
-    # Apply transform_value for columns with assigned types
-    ct_map = await datasette.get_column_types(database_name, table_name)
-    transformed_rows = []
-    for r in raw_sqlite_rows:
-        row_dict = dict(r)
-        for col_name, ct in ct_map.items():
-            if col_name in row_dict:
-                row_dict[col_name] = await ct.transform_value(
-                    row_dict[col_name], datasette
-                )
-        transformed_rows.append(row_dict)
-    data["rows"] = transformed_rows
+    if context_for_html_hack:
+        # Apply transform_value for columns with assigned types
+        data["rows"] = await apply_column_type_transforms(
+            datasette, database_name, table_name, rows[:page_size]
+        )
+    else:
+        # The JSON renderer applies those transforms itself
+        data["rows"] = [dict(row) for row in rows[:page_size]]
 
     if context_for_html_hack:
         data["count_truncated"] = count_is_truncated(

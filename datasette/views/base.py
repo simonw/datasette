@@ -178,13 +178,24 @@ class BaseView:
 
 def extras_for_renderer(datasette, request, format_, data):
     """
-    The extras= dictionary passed to an output renderer's render function:
-    the extras it declared when it was registered, plus any requested using
-    ?_extra=. Extras that are not available for this type of page are omitted.
+    The extras= dictionary passed to an output renderer's render function.
+
+    This is everything the JSON for this page returns alongside its rows:
+    the keys that type of page always includes (such as next and next_url
+    for tables), the extras the renderer declared when it was registered
+    and any requested using ?_extra=. Extras that are not available for
+    this type of page are omitted.
     """
     names = set(datasette._renderer_extras.get(format_) or [])
     names.update(extra_names_from_request(request))
-    return {name: data[name] for name in sorted(names) if name in data}
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in ("ok", "rows")
+        # Row and query pages always have columns, but it is only an
+        # extra if it was asked for - see issue 2136
+        and (key != "columns" or "columns" in names)
+    }
 
 
 # Formats that stream_csv() writes, with their content type for downloads.

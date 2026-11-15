@@ -70,8 +70,12 @@ async def test_table_renderer_receives_declared_extras(ds, db):
     assert response.status_code == 200
     assert response.json() == {
         "extras": {
+            # Tables always include these two
+            "next": "1",
+            "next_url": "http://localhost/data/dogs.declared?age__gt=3&_size=1&_next=1",
             # The count is of every matching row, not just this page
             "count": 2,
+            "count_truncated": False,
             "human_description_en": "where age > 3",
             "primary_keys": ["id"],
         },
@@ -91,26 +95,45 @@ async def test_query_renderer_omits_extras_not_available_for_queries(ds, db):
 async def test_row_renderer_omits_extras_not_available_for_rows(ds, db):
     response = await ds.client.get("/data/dogs/1.declared")
     assert response.status_code == 200
-    # primary_keys is available for rows, the other two are not
-    assert response.json() == {"extras": {"primary_keys": ["id"]}, "num_rows": 1}
+    data = response.json()
+    assert data["num_rows"] == 1
+    extras = data["extras"]
+    # count and human_description_en are not available for rows
+    assert "count" not in extras
+    assert "human_description_en" not in extras
+    # Rows always include these
+    assert isinstance(extras.pop("query_ms"), float)
+    assert extras == {
+        "database": "data",
+        "table": "dogs",
+        "primary_keys": ["id"],
+        "primary_key_values": ["1"],
+    }
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
-        ("/data/dogs.nonedeclared", {}),
-        ("/data/dogs.nonedeclared?_extra=count", {"count": 3}),
+        ("/data/dogs.nonedeclared", {"next": None, "next_url": None}),
+        (
+            "/data/dogs.nonedeclared?_extra=count",
+            {"next": None, "next_url": None, "count": 3, "count_truncated": False},
+        ),
+        # columns is only included if it was asked for
+        ("/data/-/query.nonedeclared?sql=select+1+as+one", {}),
         (
             "/data/-/query.nonedeclared?sql=select+1+as+one&_extra=columns",
             {"columns": ["one"]},
         ),
-        ("/data/dogs/1.nonedeclared?_extra=primary_keys", {"primary_keys": ["id"]}),
         # Requested extras are added to the declared ones
         (
             "/data/dogs.declared?_extra=is_view",
             {
+                "next": None,
+                "next_url": None,
                 "count": 3,
+                "count_truncated": False,
                 "human_description_en": "",
                 "primary_keys": ["id"],
                 "is_view": False,
@@ -164,3 +187,14 @@ def test_extras_must_be_a_list_of_strings(extras):
             Datasette(memory=True)
     finally:
         pm.unregister(name="bad_extras_renderer")
+
+
+def test_json_renderer_uses_documented_arguments_only(ds):
+    # The built-in JSON renderer is called like any plugin renderer, so it
+    # must not depend on the undocumented data= and args= arguments
+    import inspect
+
+    render, _ = ds.renderers["json"]
+    parameters = set(inspect.signature(render).parameters)
+    assert not parameters & {"data", "args"}
+    assert {"rows", "columns", "extras"} <= parameters

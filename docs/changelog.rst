@@ -10,7 +10,7 @@ Unreleased
 ----------
 
 - New ``Response.stream(body)`` method for returning a response a chunk at a time from an async iterator of strings or bytes, for example from a :ref:`plugin_register_routes` view. See :ref:`internals_response_stream`.
-- Output renderers registered with :ref:`plugin_register_output_renderer` can now list the :ref:`extras <json_api_extra>` they need, such as ``count`` or ``human_description_en``, using a new ``"extras"`` key. Datasette calculates those and passes them to the ``render`` function as a new ``extras`` argument. (:issue:`2770`, :issue:`2186`)
+- Output renderers registered with :ref:`plugin_register_output_renderer` can now list the :ref:`extras <json_api_extra>` they need, such as ``count`` or ``human_description_en``, using a new ``"extras"`` key. Datasette calculates those and passes them to the ``render`` function as a new ``extras`` argument, which also includes ``next`` and ``next_url`` on table pages. (:issue:`2770`, :issue:`2186`)
 - The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
 - Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.
 

@@ -1,6 +1,5 @@
 import json
 
-from datasette.extras import extra_names_from_request
 from datasette.utils import (
     CustomJSONEncoder,
     error_body,
@@ -43,9 +42,46 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(request, args, data, error, truncated=None):
+async def apply_column_type_transforms(datasette, database, table, rows):
+    """
+    Return rows as dictionaries, with transform_value() applied for any
+    columns that have been assigned a column type.
+    """
+    ct_map = await datasette.get_column_types(database, table)
+    transformed_rows = []
+    for row in rows:
+        row_dict = dict(row)
+        for col_name, ct in ct_map.items():
+            if col_name in row_dict:
+                row_dict[col_name] = await ct.transform_value(
+                    row_dict[col_name], datasette
+                )
+        transformed_rows.append(row_dict)
+    return transformed_rows
+
+
+async def json_renderer(
+    datasette,
+    request,
+    rows,
+    columns,
+    extras,
+    error,
+    database,
+    table,
+    view_name,
+    truncated=None,
+):
     """Render a response as JSON"""
+    args = request.args
     status_code = 200
+
+    if view_name == "table" and table and not error:
+        # Table pages apply transform_value() from any column types
+        rows = await apply_column_type_transforms(datasette, database, table, rows)
+
+    # Everything other than the rows comes from the extras
+    data = {"ok": True, **extras, "rows": rows}
 
     # Handle the _json= parameter which may modify data["rows"]
     json_cols = []
@@ -60,24 +96,22 @@ def json_renderer(request, args, data, error, truncated=None):
         and any(pk in json_cols for pk in pks)
     ):
         object_keys = []
-        columns = data.get("columns")
         for row in data["rows"]:
             if columns and not isinstance(row, dict):
                 row = dict(zip(columns, row))
             object_keys.append(path_from_row_pks(row, pks, False))
-    if json_cols and "rows" in data:
+    if json_cols:
         data["rows"] = convert_specific_columns_to_json(
-            data["rows"], data.get("columns"), json_cols
+            data["rows"], columns, json_cols
         )
 
     # unless _json_infinity=1 requested, replace infinity with None
-    if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
+    if not value_as_boolean(args.get("_json_infinity", "0")):
         data["rows"] = [remove_infinites(row) for row in data["rows"]]
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
     # if there's an error, ignore the shape entirely
-    data["ok"] = True
     if error:
         shape = "objects"
         status_code = 400
@@ -93,7 +127,6 @@ def json_renderer(request, args, data, error, truncated=None):
         else:
             data = [row[0] for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
-        columns = data.get("columns")
         rows = data.get("rows")
         if rows and columns and not isinstance(rows[0], dict):
             data["rows"] = [dict(zip(columns, row)) for row in rows]
@@ -133,11 +166,6 @@ def json_renderer(request, args, data, error, truncated=None):
     else:
         status_code = 400
         data = error_body(f"Invalid _shape: {shape}", status_code)
-
-    # Don't include "columns" in output
-    # https://github.com/simonw/datasette/issues/2136
-    if isinstance(data, dict) and "columns" not in extra_names_from_request(request):
-        data.pop("columns", None)
 
     # Handle _nl option for _shape=array
     nl = args.get("_nl", "")

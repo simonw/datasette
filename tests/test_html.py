@@ -345,14 +345,14 @@ async def test_disallowed_custom_sql_pragma(ds_client):
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
 async def test_sql_time_limit(ds_client_shorter_time_limit):
     response = await ds_client_shorter_time_limit.get(
-        "/fixtures/-/query?sql=select+sleep(0.5)"
+        "/fixtures/-/query?sql=select+sleep(0.1)"
     )
     assert 400 == response.status_code
     expected_html_fragments = [
         """
         <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
     """.strip(),
-        '<textarea style="width: 90%">select sleep(0.5)</textarea>',
+        '<textarea style="width: 90%">select sleep(0.1)</textarea>',
     ]
     for expected_html_fragment in expected_html_fragments:
         assert expected_html_fragment in response.text

@@ -333,7 +333,7 @@ async def test_custom_sql(ds_client):
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
 async def test_sql_time_limit(ds_client_shorter_time_limit):
     response = await ds_client_shorter_time_limit.get(
-        "/fixtures/-/query.json?sql=select+sleep(0.5)",
+        "/fixtures/-/query.json?sql=select+sleep(0.1)",
     )
     assert 400 == response.status_code
     expected_message = (

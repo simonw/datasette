@@ -1576,7 +1576,9 @@ For example:
 
 .. code-block:: python
 
-    downloads_are_allowed = datasette.setting("default_allow_download")
+    downloads_are_allowed = datasette.setting(
+        "default_allow_download"
+    )
 
 .. _datasette_resolve_database:
 

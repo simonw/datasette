@@ -1,7 +1,7 @@
 import pytest
 
 from datasette.app import Datasette
-from datasette.utils import PrefixedUrlString
+from datasette.utils import PrefixedUrlString, path_from_row_pks
 
 
 @pytest.fixture(scope="module")
@@ -149,3 +149,58 @@ def test_row(ds, ds_base_url, format, expected):
     actual = ds.urls.row("_memory", "facetable", "1", format=format)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
+
+
+@pytest.mark.parametrize("ds_base_url", ["/", "/prefix/"])
+@pytest.mark.parametrize("format", [None, "json"])
+@pytest.mark.parametrize(
+    "row,pks,use_rowid,expected_row_path",
+    [
+        ({"rowid": 42}, [], True, "42"),
+        ({"id": "a/b,c.d~"}, ["id"], False, "a~2Fb~2Cc~2Ed~7E"),
+        (
+            {"a": "one,two", "b": {"value": "three/four"}},
+            ["a", "b"],
+            False,
+            "one~2Ctwo,three~2Ffour",
+        ),
+    ],
+)
+def test_row_encoded_path(
+    ds, ds_base_url, format, row, pks, use_rowid, expected_row_path
+):
+    ds._settings["base_url"] = ds_base_url
+    row_path = path_from_row_pks(row, pks, use_rowid)
+    assert row_path == expected_row_path
+    actual = ds.urls.row("_memory", "table/name.csv", row_path, format=format)
+    expected = ds_base_url + "_memory/table~2Fname~2Ecsv/" + expected_row_path
+    if format:
+        expected += "." + format
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
+    assert ds.urls.path(actual) == expected
+
+
+@pytest.mark.parametrize("ds_base_url", ["/", "/prefix/"])
+@pytest.mark.parametrize(
+    "row_path", ["1", "a~2Fb~2Cc~2Ed~7E", "one~2Ctwo,three~2Ffour"]
+)
+@pytest.mark.parametrize(
+    "column,expected_column",
+    [
+        ("content", "content"),
+        ("image data", "image+data"),
+        ("a+b&c/=d?#%", "a%2Bb%26c%2F%3Dd%3F%23%25"),
+        ("café", "caf%C3%A9"),
+    ],
+)
+def test_row_blob(ds, ds_base_url, row_path, column, expected_column):
+    ds._settings["base_url"] = ds_base_url
+    actual = ds.urls.row_blob("_memory", "table/name.csv", row_path, column)
+    assert actual == (
+        ds_base_url
+        + "_memory/table~2Fname~2Ecsv/"
+        + row_path
+        + ".blob?_blob_column="
+        + expected_column
+    )

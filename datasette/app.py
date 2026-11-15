@@ -2668,6 +2668,8 @@ ORDER BY allowed.parent, allowed.child
                 "description": renderer.get("description"),
                 "is_binary": is_binary,
                 "is_webpage": is_webpage,
+                # Formats that can stream are grouped with "Include all rows"
+                "can_stream": self._renderer_can_stream[extension],
             }
 
     async def render_template(

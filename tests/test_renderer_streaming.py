@@ -318,3 +318,81 @@ async def test_row_stream_pages_are_max_returned_rows(plugin):
         assert response.text.split() == ["15", "15", "5"]
     finally:
         ds.close()
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_groups_formats_that_can_stream(ds):
+    from bs4 import BeautifulSoup
+
+    # A later page, so "Include all rows" is offered for this small table
+    response = await ds.client.get("/data/numbers?_next=10")
+    dialog = BeautifulSoup(response.text, "html.parser").select_one("#export-dialog")
+    form = dialog.select_one("form.export-csv-form")
+    # Formats that accept row_stream share the form with TSV and CSV, so
+    # "Include all rows" applies to them
+    formats = [row["data-export-format"] for row in form.select(".export-option")]
+    assert formats[:2] == ["tsv", "csv"]
+    assert sorted(formats[2:]) == ["big", "ndjson", "pagesizes"]
+    assert form.select_one("input[name=_stream]") is not None
+    ndjson = form.select_one('[data-export-format="ndjson"]')
+    assert {
+        button["data-export-action"]: (button["type"], button.get("formaction"))
+        for button in ndjson.select("button")
+    } == {
+        "copy": ("button", None),
+        "view": ("submit", "/data/numbers.ndjson"),
+        "download": ("submit", "/data/numbers.ndjson"),
+        "copy-url": ("button", None),
+    }
+    # They return up to max_returned_rows rows, like CSV
+    assert ndjson.select_one(".export-rows")["data-export-rows"] == "csv"
+    # Formats that cannot stream stay in the list below, as links
+    other = dialog.select_one("ul.export-options")
+    assert other.select_one('a[href^="/data/numbers.notstreaming"]') is not None
+    assert other.select_one('a[href^="/data/numbers.ndjson"]') is None
+    assert form.select_one('[formaction="/data/numbers.notstreaming"]') is None
+
+
+@pytest.mark.asyncio
+async def test_export_dialog_binary_format_that_can_stream(ds):
+    from bs4 import BeautifulSoup
+
+    def render_binary(row_stream):
+        async def body():
+            async for row in row_stream:
+                yield bytes([row["id"]])
+
+        return Response.stream(body(), content_type="application/octet-stream")
+
+    class BinaryPlugin:
+        __name__ = "BinaryPlugin"
+
+        @hookimpl
+        def register_output_renderer(self):
+            return {
+                "extension": "bin",
+                "render": render_binary,
+                "label": "Binary",
+                "is_binary": True,
+            }
+
+    pm.register(BinaryPlugin(), name="binary_renderer")
+    try:
+        binary_ds = _make_datasette()
+        await _add_numbers(binary_ds)
+        response = await binary_ds.client.get("/data/numbers?_next=10")
+        binary_ds.close()
+    finally:
+        pm.unregister(name="binary_renderer")
+    dialog = BeautifulSoup(response.text, "html.parser").select_one("#export-dialog")
+    row = dialog.select_one('form.export-csv-form [data-export-format="bin"]')
+    assert row["data-export-kind"] == "binary"
+    # Binary formats offer Download and Copy URL, not Copy or View
+    assert [
+        (button["data-export-action"], button.get("formaction"))
+        for button in row.select("button")
+    ] == [("download", "/data/numbers.bin"), ("copy-url", None)]
+    assert row.select_one(".export-option-name").text == "Binary"
+    note = dialog.select_one("#export-page-note").text
+    assert "to export every row as TSV, CSV, " in note
+    assert "Binary" in note

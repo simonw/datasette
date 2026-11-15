@@ -875,24 +875,20 @@ async def test_execute_write_fn_with_track_event(db):
 
 
 @pytest.mark.asyncio
-# func_only so the budget covers the write-thread call under test, not the
-# one-off app_client fixture setup this test may be first to trigger
 @pytest.mark.timeout(1, func_only=True)
-async def test_execute_write_fn_connection_exception(tmpdir, app_client):
+async def test_execute_write_fn_connection_exception(tmpdir, bare_ds):
     path = str(tmpdir / "immutable.db")
     conn = sqlite3.connect(path)
     conn.execute("vacuum")
     conn.close()
-    db = Database(app_client.ds, path=path, is_mutable=False)
-    app_client.ds.add_database(db, name="immutable-db")
+    db = Database(bare_ds, path=path, is_mutable=False)
+    bare_ds.add_database(db, name="immutable-db")
 
     def write_fn(conn):
         assert False
 
     with pytest.raises(AssertionError):
         await db.execute_write_fn(write_fn)
-
-    app_client.ds.remove_database("immutable-db")
 
 
 @pytest.mark.asyncio
@@ -1082,16 +1078,16 @@ async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)
 
 
-def test_mtime_ns_is_none_for_memory(app_client):
-    memory_db = Database(app_client.ds, is_memory=True)
+def test_mtime_ns_is_none_for_memory(bare_ds):
+    memory_db = Database(bare_ds, is_memory=True)
     assert memory_db.is_memory is True
     assert None is memory_db.mtime_ns
 
 
-def test_is_mutable(app_client):
-    assert Database(app_client.ds, is_memory=True).is_mutable is True
-    assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
-    assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
+def test_is_mutable(bare_ds):
+    assert Database(bare_ds, is_memory=True).is_mutable is True
+    assert Database(bare_ds, is_memory=True, is_mutable=True).is_mutable is True
+    assert Database(bare_ds, is_memory=True, is_mutable=False).is_mutable is False
 
 
 @pytest.mark.asyncio
@@ -1104,8 +1100,8 @@ async def test_attached_databases(app_client_two_attached_databases_crossdb_enab
 
 
 @pytest.mark.asyncio
-async def test_database_memory_name(app_client):
-    ds = app_client.ds
+async def test_database_memory_name(bare_ds):
+    ds = bare_ds
     foo1 = ds.add_database(Database(ds, memory_name="foo"))
     foo2 = ds.add_memory_database("foo")
     bar1 = ds.add_database(Database(ds, memory_name="bar"))
@@ -1122,8 +1118,8 @@ async def test_database_memory_name(app_client):
 
 
 @pytest.mark.asyncio
-async def test_in_memory_databases_forbid_writes(app_client):
-    ds = app_client.ds
+async def test_in_memory_databases_forbid_writes(bare_ds):
+    ds = bare_ds
     db = ds.add_database(Database(ds, memory_name="test"))
     with pytest.raises(sqlite3.OperationalError):
         await db.execute("create table foo (t text)")
@@ -1134,8 +1130,8 @@ async def test_in_memory_databases_forbid_writes(app_client):
 
 
 @pytest.mark.asyncio
-async def test_hidden_tables(app_client):
-    ds = app_client.ds
+async def test_hidden_tables(bare_ds):
+    ds = bare_ds
     db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
     assert await db.hidden_table_names() == []
     await db.execute("create virtual table f using fts5(a)")
@@ -1235,14 +1231,14 @@ async def test_replace_database(tmpdir):
     ],
     ids=["memory", "named_memory", "immutable_memory"],
 )
-def test_repr(app_client, kwargs, expected_repr):
-    db = Database(app_client.ds, **kwargs)
+def test_repr(bare_ds, kwargs, expected_repr):
+    db = Database(bare_ds, **kwargs)
     db.name = "test_db"
     assert repr(db) == expected_repr
 
 
-def test_repr_temp_disk(app_client):
-    db = Database(app_client.ds, is_temp_disk=True)
+def test_repr_temp_disk(bare_ds):
+    db = Database(bare_ds, is_temp_disk=True)
     db.name = "test_db"
     r = repr(db)
     assert r.startswith("<Database: test_db (mutable, temp_disk, size=")

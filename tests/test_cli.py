@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from datasette.app import SETTINGS
 from datasette.cli import cli, serve
+from datasette.fixtures import write_fixture_database
 from datasette.plugins import DEFAULT_PLUGINS, pm
 from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite3
@@ -24,7 +25,14 @@ from .fixtures import (
 )
 
 
-def test_inspect_cli(app_client):
+@pytest.fixture
+def fixtures_db_in_cwd(tmp_path, monkeypatch):
+    # The inspect tests pass a relative path, to check the "file" key
+    write_fixture_database(tmp_path / "fixtures.db")
+    monkeypatch.chdir(tmp_path)
+
+
+def test_inspect_cli(fixtures_db_in_cwd):
     runner = CliRunner()
     result = runner.invoke(cli, ["inspect", "fixtures.db"])
     data = json.loads(result.output)
@@ -56,7 +64,7 @@ def test_inspect_cli_counts_all_rows(tmp_path):
     assert data["big"]["tables"]["t"]["count"] == 10002
 
 
-def test_inspect_cli_writes_to_file(app_client):
+def test_inspect_cli_writes_to_file(fixtures_db_in_cwd):
     runner = CliRunner()
     result = runner.invoke(
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]

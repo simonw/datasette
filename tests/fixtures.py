@@ -147,7 +147,6 @@ def make_app_client(
                     c2.close()
                 # Insert at start to help test /-/databases ordering:
                 files.insert(0, extra_filepath)
-        os.chdir(os.path.dirname(filepath))
         settings = settings or {}
         for key, value in {
             "default_page_size": 50,

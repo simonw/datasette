@@ -133,10 +133,14 @@ async def test_row_stream_respects_filters_and_sort(ds):
 
 
 async def test_row_stream_pages(ds):
+    # Streaming fetches max_returned_rows at a time, not default_page_size
     response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
-    assert response.text.split() == ["10", "10", "10", "5"]
+    assert response.text.split() == ["35"]
+    # ... unless ?_size= asks for something else
     response = await ds.client.get("/data/numbers.pagesizes?_stream=1&_size=20")
     assert response.text.split() == ["20", "15"]
+    response = await ds.client.get("/data/numbers.pagesizes?_stream=1&_size=10")
+    assert response.text.split() == ["10", "10", "10", "5"]
     response = await ds.client.get("/data/numbers.pagesizes")
     assert response.text.split() == ["10"]
 
@@ -229,7 +233,7 @@ async def test_error_fetching_a_later_page_aborts_the_response(ds, monkeypatch):
 
     monkeypatch.setattr(table, "table_view_data", broken_on_third_page)
     with pytest.raises(ValueError, match="database went away"):
-        await ds.client.get("/data/numbers.csv?_stream=1")
+        await ds.client.get("/data/numbers.csv?_stream=1&_size=10")
     assert calls == [None, "10", "20"]
 
 
@@ -297,3 +301,20 @@ async def test_expanded_columns_extra(ds_client):
         await ds_client.get("/fixtures/facetable.json?_extra=expanded_columns&_size=1")
     ).json()
     assert data["expanded_columns"] == []
+
+
+@pytest.mark.asyncio
+async def test_row_stream_pages_are_max_returned_rows(plugin):
+    ds = _make_datasette(max_returned_rows=15)
+    await _add_numbers(ds)
+    try:
+        response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
+        assert response.text.split() == ["15", "15", "5"]
+        # A size set in the table configuration does not apply to streaming
+        ds.config = {"databases": {"data": {"tables": {"numbers": {"size": 5}}}}}
+        response = await ds.client.get("/data/numbers.pagesizes")
+        assert response.text.split() == ["5"]
+        response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
+        assert response.text.split() == ["15", "15", "5"]
+    finally:
+        ds.close()

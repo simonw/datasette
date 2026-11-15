@@ -272,35 +272,12 @@ def app_client():
 
 
 @pytest.fixture(scope="session")
-def app_client_no_files():
-    ds = Datasette([])
-    try:
-        yield TestClient(ds)
-    finally:
-        ds.close()
-
-
-@pytest.fixture(scope="session")
 def ds_client_no_files():
     ds = Datasette([])
     try:
         yield ds.client
     finally:
         ds.close()
-
-
-@pytest.fixture(scope="session")
-def app_client_base_url_prefix():
-    with make_app_client(settings={"base_url": "/prefix/"}) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-def app_client_two_attached_databases():
-    with make_app_client(
-        extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
-    ) as client:
-        yield client
 
 
 @pytest.fixture(scope="session")
@@ -313,42 +290,10 @@ def app_client_two_attached_databases_crossdb_enabled():
 
 
 @pytest.fixture(scope="session")
-def app_client_conflicting_database_names():
-    with make_app_client(
-        extra_databases={"foo.db": EXTRA_DATABASE_SQL, "foo-bar.db": EXTRA_DATABASE_SQL}
-    ) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
     with make_app_client(
         is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
     ) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-def app_client_with_trace():
-    with make_app_client(settings={"trace_debug": True}, is_immutable=True) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-def app_client_shorter_time_limit():
-    with make_app_client(20) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-def app_client_returned_rows_matches_page_size():
-    with make_app_client(max_returned_rows=50) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-def app_client_larger_cache_size():
-    with make_app_client(settings={"cache_size_kb": 2500}) as client:
         yield client
 
 

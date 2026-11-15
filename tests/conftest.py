@@ -141,16 +141,6 @@ def pytest_collection_modifyitems(config, items):
             if "playwright" in item.keywords:
                 item.add_marker(skip_playwright)
 
-    # Ensure test_cli.py and test_black.py and test_inspect.py run first before any asyncio code kicks in
-    move_to_front(items, "test_cli")
-    move_to_front(items, "test_black")
-    move_to_front(items, "test_inspect_cli")
-    move_to_front(items, "test_serve_with_get")
-    move_to_front(items, "test_serve_with_get_exit_code_for_error")
-    move_to_front(items, "test_inspect_cli_writes_to_file")
-    move_to_front(items, "test_spatialite_error_if_attempt_to_open_spatialite")
-    move_to_front(items, "test_package")
-    move_to_front(items, "test_package_with_port")
     # These start subprocesses, which can crash on macOS/CPython 3.13 late in
     # a test run once the pytest process has started many threads
     move_to_front(items, "test_datasette_package_never_imports_the_sdk")
@@ -162,22 +152,6 @@ def move_to_front(items, test_name):
     test = [fn for fn in items if fn.name == test_name]
     if test:
         items.insert(0, items.pop(items.index(test[0])))
-
-
-@pytest.fixture
-def restore_working_directory(tmpdir, request):
-    try:
-        previous_cwd = os.getcwd()
-    except OSError:
-        # https://github.com/simonw/datasette/issues/1361
-        previous_cwd = None
-    tmpdir.chdir()
-
-    def return_to_previous():
-        os.chdir(previous_cwd)
-
-    if previous_cwd is not None:
-        request.addfinalizer(return_to_previous)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -393,19 +367,11 @@ def serve_with_plugins(tmp_path):
 from .fixtures import (  # noqa: F401
     TEMP_PLUGIN_SECRET_FILE,
     app_client,
-    app_client_base_url_prefix,
-    app_client_conflicting_database_names,
     app_client_immutable_and_inspect_file,
-    app_client_larger_cache_size,
-    app_client_no_files,
-    app_client_returned_rows_matches_page_size,
-    app_client_shorter_time_limit,
-    app_client_two_attached_databases,
     app_client_two_attached_databases_crossdb_enabled,
     app_client_two_attached_databases_one_immutable,
     app_client_with_cors,
     app_client_with_dot,
-    app_client_with_trace,
     ds_client_base_url_prefix,
     ds_client_no_files,
     ds_client_shorter_time_limit,

@@ -771,6 +771,8 @@ A table can have far more rows than fit on one page. A ``"render"`` function tha
 
 Use ``async for rows in row_stream.pages()`` to receive a list of rows for each page instead of one row at a time. When streaming every row those pages are :ref:`setting_max_returned_rows` rows each, unless the URL sets a different ``?_size=``.
 
+The :ref:`Export data dialog <csv_export>` lists formats that accept ``row_stream`` in the same group as TSV and CSV, so that its "Include all rows" and "Expand labels" options apply to them. Like TSV and CSV, their links in the dialog use ``?_size=max``.
+
 Datasette's own :ref:`CSV and TSV export <csv_export>` is implemented this way. Some things to be aware of:
 
 - ``?_stream=1`` is ignored by formats that do not accept ``row_stream``.

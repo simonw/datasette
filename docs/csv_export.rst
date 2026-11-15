@@ -60,7 +60,9 @@ Options
 -------
 
 TSV and CSV share the following options. These are only offered for tables
-and views:
+and views. Formats added by plugins that can
+:ref:`stream every row <plugin_register_output_renderer_streaming>` are listed
+alongside TSV and CSV, and these options apply to them as well:
 
 * **expand labels** - if your table has any foreign key references this option
   will cause the export to gain additional ``COLUMN_NAME_label`` columns with a

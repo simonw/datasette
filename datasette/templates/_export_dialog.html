@@ -12,15 +12,29 @@
       that one row. Otherwise the dialog also offers more JSON shapes, using
       urls.modify().
     Formats from plugins use renderer_options for their label, description
-    and which actions to offer. -#}
+    and which actions to offer. Those that can stream every row are grouped
+    with TSV and CSV, so that "Include all rows" applies to them. -#}
 {% set export_base = export_meta or "data" %}
 {% set export_later = export_rows.later if export_rows else false %}
 {#- "Include all rows" streams every row from the first one, so offer it on
     every later page, and on the first page when CSV would stop short -#}
 {% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.default_allow_stream %}
+{#- Formats from plugins that can stream, as (extension, path, options) -#}
+{% set streaming = namespace(formats=[], names=(["TSV"] if url_tsv_path else []) + ["CSV"]) %}
+{% if display_rows %}
+{% for name, url in renderers.items() if name not in ("json", "csv") and not (name == "tsv" and url_tsv_path) %}
+    {% set options = (renderer_options or {}).get(name) or {} %}
+    {% if options.can_stream %}
+        {% set streaming.formats = streaming.formats + [(name, url.split("?")[0], options)] %}
+        {% set streaming.names = streaming.names + [options.label or name] %}
+    {% endif %}
+{% endfor %}
+{% endif %}
+{% set streaming_extensions = streaming.formats|map("first")|list %}
 {% macro rows_text(n) %}{{ "{:,}".format(n) }} row{{ "" if n == 1 else "s" }}{% endmacro %}
 {#- How many rows an export returns. JSON and plugin formats return the rows
-    on this page; TSV and CSV ask for _size=max, starting from this page.
+    on this page; TSV, CSV and plugin formats that can stream ("csv" here)
+    ask for _size=max, starting from this page.
     Mirrored by rowsLabel() in export-dialog.js. -#}
 {% macro rows_label(kind, rows, id) %}
     {%- set n = rows.page -%}
@@ -41,20 +55,22 @@
     {%- else -%}First {{ rows_text(n) }}{%- endif -%}
     </span>
 {%- endmacro %}
-{#- TSV or CSV: submit buttons for the shared form, with TSV using formaction -#}
-{% macro delimited_option(id, name, description, rows, formaction=none) %}
-                    <div class="export-option" data-export-format="{{ id }}">
+{#- TSV, CSV or a plugin format that can stream: submit buttons for the shared
+    form, with every format other than CSV using formaction. kind is as for
+    export_option below. -#}
+{% macro delimited_option(id, name, description, rows, formaction=none, kind=none) %}
+                    <div class="export-option" data-export-format="{{ id }}"{% if kind %} data-export-kind="{{ kind }}"{% endif %}>
                         <div class="export-option-text">
                             <div class="export-option-heading">
                                 <span class="export-option-name" id="export-{{ id }}-name">{{ name }}</span>
                                 {% if rows %}{{ rows_label("csv", rows, id) }}{% endif %}
                             </div>
-                            <span class="export-option-description">{{ description }}</span>
+                            {% if description %}<span class="export-option-description">{{ description }}</span>{% endif %}
                         </div>
                         <div class="export-actions" role="group" aria-labelledby="export-{{ id }}-name"{% if rows %} aria-describedby="export-{{ id }}-rows"{% endif %}>
-                            <button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>
-                            <button type="submit" class="export-action" data-export-action="view"{% if formaction %} formaction="{{ formaction }}"{% endif %}>View</button>
-                            <button type="submit" class="export-action" data-export-action="download" name="_dl" value="on"{% if formaction %} formaction="{{ formaction }}"{% endif %}>Download</button>
+                            {% if not kind %}<button type="button" class="export-action" data-export-action="copy" hidden>Copy</button>{% endif %}
+                            {% if kind != "binary" %}<button type="submit" class="export-action" data-export-action="view"{% if formaction %} formaction="{{ formaction }}"{% endif %}>View</button>{% endif %}
+                            {% if kind != "webpage" %}<button type="submit" class="export-action" data-export-action="download" name="_dl" value="on"{% if formaction %} formaction="{{ formaction }}"{% endif %}>Download</button>{% endif %}
                             <button type="button" class="export-action" data-export-action="copy-url" hidden>Copy URL</button>
                         </div>
                     </div>
@@ -89,15 +105,18 @@
     </div>
     <div class="modal-body export-links">
         {% if export_scope %}<p class="export-scope" id="export-scope" title="{{ export_scope }}{% if export_scope_description %} {{ export_scope_description }}{% endif %}"><strong>{{ export_scope }}</strong>{% if export_scope_description %} {{ export_scope_description }}{% endif %}</p>{% endif %}
-        {% if export_later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ "TSV or " if url_tsv_path }}CSV.{% endif %}</p>{% endif %}
+        {% if export_later %}<p class="export-page-note" id="export-page-note">These exports start from this page, not the first page.{% if csv_stream %} Check “Include all rows” to export every row as {{ streaming.names[:-1]|join(", ") }}{{ " or " if streaming.names|length > 1 }}{{ streaming.names[-1] }}.{% endif %}</p>{% endif %}
         {% if display_rows %}
-        {#- TSV and CSV share a form, so the options under them apply to both.
-            The other formats are in a separate box below, as the options do
-            not apply to them. -#}
+        {#- TSV, CSV and plugin formats that can stream share a form, so the
+            options under them apply to them all. The other formats are in a
+            separate box below, as the options do not apply to them. -#}
         <div class="export-options export-option-group">
                 <form class="export-csv-form" action="{{ url_csv_path }}" method="get">
                     {% if url_tsv_path %}{{ delimited_option("tsv", "TSV", "Tab-separated values, for pasting into Excel or Google Sheets", export_rows, formaction=url_tsv_path) }}{% endif %}
                     {{ delimited_option("csv", "CSV", "Comma-separated values, for spreadsheets and other tools", export_rows) }}
+                    {% for name, path, options in streaming.formats %}
+                    {{ delimited_option(name, options.label or name, options.description, export_rows, formaction=path, kind="binary" if options.is_binary else ("webpage" if options.is_webpage else none)) }}
+                    {% endfor %}
                     {% if expandable_columns or csv_stream %}
                     <div class="export-csv-options">
                         {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> Expand labels</label>{% endif %}
@@ -121,7 +140,7 @@
             {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", urls.modify(renderers['json'], add={'_shape': 'object'}), export_base ~ ".json", export_rows) }}
             {% endif %}
             {% endif %}
-            {% for name, url in renderers.items() if name not in ("json", "csv") and not (name == "tsv" and url_tsv_path) %}
+            {% for name, url in renderers.items() if name not in ("json", "csv") and not (name == "tsv" and url_tsv_path) and name not in streaming_extensions %}
             {% set options = (renderer_options or {}).get(name) or {} %}
             {{ export_option("format-" ~ loop.index, options.label or name, options.description, url, export_base ~ "." ~ name, export_rows, kind="binary" if options.is_binary else ("webpage" if options.is_webpage else none)) }}
             {% endfor %}

@@ -71,8 +71,9 @@
     errorFor(el)?.remove();
   }
 
-  // TSV and CSV build their URLs from the form they share, so its checkboxes
-  // apply. TSV's buttons send the form to its own path using formaction.
+  // TSV, CSV and plugin formats that can stream build their URLs from the
+  // form they share, so its checkboxes apply. All but CSV send the form to
+  // their own path using formaction.
   function exportUrl(el) {
     const row = el.closest(".export-option");
     const form = el.closest(".export-csv-form");
@@ -82,8 +83,11 @@
       const link = row.querySelector("a.export-action[href]");
       return new URL(link.getAttribute("href"), location.href).href;
     }
-    const view = row.querySelector('[data-export-action="view"]');
-    const path = view.getAttribute("formaction") || form.getAttribute("action");
+    // Binary formats have no View button, so look at Download as well
+    const submit = row.querySelector("[formaction]");
+    const path = submit
+      ? submit.getAttribute("formaction")
+      : form.getAttribute("action");
     const url = new URL(path, location.href);
     // Row pages have no fields to send, so no "?" either
     url.search = new URLSearchParams(new FormData(form));
@@ -164,8 +168,8 @@
   const rowsText = (n) => `${formatNumber(n)} row${n === 1 ? "" : "s"}`;
 
   // How many rows an export returns: JSON and plugin formats return the rows
-  // on this page, TSV and CSV ("csv" here) ask for _size=max starting from
-  // this page, and "Include all rows" streams every row from the first one.
+  // on this page, the formats that can stream - TSV, CSV and some plugin
+  // formats, "csv" here - ask for _size=max starting from this page, and "Include all rows" streams every row from the first one.
   // Mirrors the rows_label macro in _export_dialog.html.
   function rowsLabel(kind, rows, stream) {
     const { page, more, later, max, total } = rows;
@@ -222,7 +226,7 @@
       rows.total !== null &&
       rows.total <= rows.max
     ) {
-      // TSV and CSV already include every row, so the option would do nothing
+      // Those formats already include every row, so the option would do nothing
       stream.checked = false;
       stream.disabled = true;
       stream.closest("label").hidden = true;
@@ -328,7 +332,7 @@
       const el = ev.target.closest("[data-export-action]");
       const action = el && el.dataset.exportAction;
       if (action === "download" && el.closest(".export-csv-form")) {
-        // Download TSV or CSV through a link with a download attribute, like
+        // Download these formats through a link with a download attribute, like
         // the other formats, rather than submitting the form with _dl=on:
         // WebKit on Linux does not treat that response as a download
         ev.preventDefault();

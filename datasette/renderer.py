@@ -141,13 +141,17 @@ async def json_renderer(
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
+    # Row pages return {"row": {...}} unless a ?_shape= is requested
+    single_row = view_name == "row" and "_shape" not in args
     # if there's an error, ignore the shape entirely
     if error:
         shape = "objects"
+        single_row = False
         status_code = 400
         data.update(error_body(error, status_code))
 
-    if truncated is not None:
+    # A single row cannot be truncated
+    if truncated is not None and not single_row:
         data["truncated"] = truncated
     if shape == "arrayfirst":
         if not data["rows"]:
@@ -160,6 +164,18 @@ async def json_renderer(
         rows = data.get("rows")
         if rows and columns and not isinstance(rows[0], dict):
             data["rows"] = [dict(zip(columns, row)) for row in rows]
+        if single_row:
+            # Swap "rows" for "row", keeping its position in the output
+            data = {
+                ("row" if key == "rows" else key): (
+                    (value[0] if value else None) if key == "rows" else value
+                )
+                for key, value in data.items()
+            }
+            # Likewise the render_cell extra becomes a single object
+            if "render_cell" in data:
+                cells = data["render_cell"]
+                data["render_cell"] = cells[0] if cells else {}
         if shape == "object":
             shape_error = None
             if "primary_keys" not in data:

@@ -370,7 +370,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Color assigned to the database
 
 ``datasette_allow_facet`` - ``str``
-    The string "true" or "false" reflecting the allow_facet setting
+    The string "true" or "false" reflecting the default_allow_facet setting
 
 ``display_columns`` - ``list``
     Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.

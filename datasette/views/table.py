@@ -226,7 +226,7 @@ class TableContext(Context):
     )
     datasette_allow_facet: str = field(
         metadata={
-            "help": 'The string "true" or "false" reflecting the allow_facet setting'
+            "help": 'The string "true" or "false" reflecting the default_allow_facet setting'
         }
     )
     is_sortable: bool = field(
@@ -2109,7 +2109,7 @@ async def table_view_traced(datasette, request):
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,
             datasette_allow_facet=(
-                "true" if datasette.setting("allow_facet") else "false"
+                "true" if datasette.setting("default_allow_facet") else "false"
             ),
             is_sortable=any(c["sortable"] for c in data["display_columns"]),
             allow_execute_sql=await datasette.allowed(
@@ -2619,7 +2619,7 @@ async def table_view_data(
         extras.update(extra_extras)
 
     # Faceting
-    if not datasette.setting("allow_facet") and any(
+    if not datasette.setting("default_allow_facet") and any(
         arg.startswith("_facet") for arg in request.args
     ):
         raise BadRequest("_facet= is not allowed")

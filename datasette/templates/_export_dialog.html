@@ -17,7 +17,7 @@
 {% set export_later = export_rows.later if export_rows else false %}
 {#- "Include all rows" streams every row from the first one, so offer it on
     every later page, and on the first page when CSV would stop short -#}
-{% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_stream %}
+{% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.default_allow_stream %}
 {% macro rows_text(n) %}{{ "{:,}".format(n) }} row{{ "" if n == 1 else "s" }}{% endmacro %}
 {#- How many rows an export returns. JSON and plugin formats return the rows
     on this page; TSV and CSV ask for _size=max, starting from this page.

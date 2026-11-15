@@ -1141,7 +1141,7 @@ async def test_suggested_facets(ds_client):
 
 
 def test_allow_facet_off():
-    with make_app_client(settings={"allow_facet": False}) as client:
+    with make_app_client(settings={"default_allow_facet": False}) as client:
         assert (
             client.get(
                 "/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets"

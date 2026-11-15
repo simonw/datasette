@@ -242,12 +242,12 @@ SETTINGS = (
         "Time limit for calculating a suggested facet",
     ),
     Setting(
-        "allow_facet",
+        "default_allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
     ),
     Setting(
-        "allow_download",
+        "default_allow_download",
         True,
         "Allow users to download the original SQLite database files",
     ),
@@ -274,7 +274,7 @@ SETTINGS = (
     ),
     Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
     Setting(
-        "allow_stream",
+        "default_allow_stream",
         True,
         "Allow ?_stream=1 to export all rows (ignoring max_returned_rows)",
     ),
@@ -310,7 +310,9 @@ DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 # names. The old names are not documented but still work everywhere a
 # setting can be set or read.
 SETTING_ALIASES = {
-    "allow_csv_stream": "allow_stream",
+    "allow_facet": "default_allow_facet",
+    "allow_download": "default_allow_download",
+    "allow_csv_stream": "default_allow_stream",
     "max_csv_mb": "max_stream_mb",
 }
 

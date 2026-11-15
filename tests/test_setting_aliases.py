@@ -4,6 +4,7 @@ which is listed in datasette.app.SETTING_ALIASES but is not documented.
 """
 
 import json
+import re
 
 import pytest
 from click.testing import CliRunner
@@ -11,6 +12,8 @@ from click.testing import CliRunner
 from datasette.app import DEFAULT_SETTINGS, SETTING_ALIASES, Datasette
 from datasette.cli import cli
 from datasette.utils import StartupError
+
+from .fixtures import make_app_client
 
 
 def test_aliases_point_at_real_settings():
@@ -24,7 +27,7 @@ def test_aliases_point_at_real_settings():
     (
         {"settings": {"max_csv_mb": 7, "allow_csv_stream": False}},
         {"config": {"settings": {"max_csv_mb": 7, "allow_csv_stream": False}}},
-        {"settings": {"max_stream_mb": 7, "allow_stream": False}},
+        {"settings": {"max_stream_mb": 7, "default_allow_stream": False}},
     ),
 )
 def test_previous_names_set_the_renamed_settings(kwargs):
@@ -33,7 +36,7 @@ def test_previous_names_set_the_renamed_settings(kwargs):
         # Readable using either name
         assert ds.setting("max_stream_mb") == 7
         assert ds.setting("max_csv_mb") == 7
-        assert ds.setting("allow_stream") is False
+        assert ds.setting("default_allow_stream") is False
         assert ds.setting("allow_csv_stream") is False
     finally:
         ds.close()
@@ -124,9 +127,11 @@ def test_cli_previous_name_is_still_validated():
 def test_help_settings_only_lists_current_names():
     result = CliRunner().invoke(cli, ["--help-settings"])
     assert "max_stream_mb" in result.output
-    assert "allow_stream" in result.output
-    for old_name in SETTING_ALIASES:
-        assert old_name not in result.output
+    assert "default_allow_stream" in result.output
+    # allow_facet is part of default_allow_facet, so compare whole names
+    listed = set(re.findall(r"^\s+(\w+)\s", result.output, re.MULTILINE))
+    assert "default_allow_facet" in listed
+    assert not set(SETTING_ALIASES) & listed
 
 
 @pytest.mark.asyncio
@@ -138,3 +143,42 @@ async def test_previous_name_still_disables_streaming():
         assert response.text == "Streaming is disabled"
     finally:
         ds.close()
+
+
+@pytest.mark.parametrize(
+    "old_name,name",
+    (
+        ("allow_facet", "default_allow_facet"),
+        ("allow_download", "default_allow_download"),
+        ("allow_csv_stream", "default_allow_stream"),
+    ),
+)
+def test_default_allow_settings_previous_names(old_name, name):
+    assert SETTING_ALIASES[old_name] == name
+    ds = Datasette(memory=True, settings={old_name: False})
+    try:
+        assert ds.setting(name) is False
+        assert ds.setting(old_name) is False
+        assert ds.settings_dict()[old_name] is False
+    finally:
+        ds.close()
+
+
+def test_previous_name_still_disables_facets():
+    with make_app_client(settings={"allow_facet": False}) as client:
+        response = client.get("/fixtures/facetable.json?_facet=state")
+        assert response.status == 400
+        assert response.json["error"] == "_facet= is not allowed"
+
+
+def test_previous_name_still_disables_downloads():
+    with make_app_client(
+        is_immutable=True, settings={"allow_download": False}
+    ) as client:
+        assert client.get("/fixtures.db").status == 403
+
+
+def test_allow_stream_is_not_a_setting():
+    # allow_stream was never in a release, so it has no alias
+    assert "allow_stream" not in SETTING_ALIASES
+    assert "allow_stream" not in DEFAULT_SETTINGS

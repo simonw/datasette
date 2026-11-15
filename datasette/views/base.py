@@ -214,7 +214,7 @@ def stream_requested(datasette, request, format_):
         return False
     if not datasette._renderer_can_stream.get(format_):
         return False
-    if not datasette.setting("allow_stream"):
+    if not datasette.setting("default_allow_stream"):
         raise BadRequest("Streaming is disabled")
     if request.args.get("_next"):
         raise BadRequest("_next not allowed when streaming")

@@ -1669,6 +1669,42 @@ async def test_sort_excluded_column_rowid_table(query_string, expected_order):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "create_table",
+    (
+        "create table items (id text primary key, status text)",
+        "create table items (id text, status text, primary key (id, status))",
+    ),
+)
+@pytest.mark.parametrize("sort_arg", ("_sort", "_sort_desc"))
+async def test_sort_ties_paginate_without_skips_or_repeats(create_table, sort_arg):
+    # Rows are inserted out of primary key order, so SQLite returns ties on the
+    # sort column in a different order unless the query breaks them by primary key
+    rows = [("z", "a"), ("m", "a"), ("c", "a"), ("q", "b"), ("a", "b"), ("y", "b")]
+    ds = Datasette(settings={"default_page_size": 2, "max_returned_rows": 1000})
+    db = ds.add_memory_database("sort_ties")
+    await db.execute_write(create_table)
+    await db.execute_write_many("insert into items (id, status) values (?, ?)", rows)
+    await ds.invoke_startup()
+
+    fetched = []
+    path = f"/sort_ties/items.json?_shape=objects&{sort_arg}=status"
+    for _ in range(100):
+        response = await ds.client.get(path)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        fetched.extend(row["id"] for row in data["rows"])
+        path = data["next_url"]
+        if not path:
+            break
+        path = path.replace("http://localhost", "")
+    else:
+        assert False, "pagination did not terminate"
+
+    assert sorted(fetched) == sorted(row[0] for row in rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "path",
     (
         "/fixtures/roadside_attraction_characteristics?_size=2&_sort=attraction_id&_nocol=attraction_id",

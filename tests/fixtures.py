@@ -254,12 +254,6 @@ def app_client_larger_cache_size():
 
 
 @pytest.fixture(scope="session")
-def app_client_csv_max_mb_one():
-    with make_app_client(settings={"max_csv_mb": 1}) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
 def app_client_with_dot():
     with make_app_client(filename="fixtures.dot.db") as client:
         yield client

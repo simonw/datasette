@@ -10,6 +10,36 @@ from datasette.utils import (
 from datasette.utils.asgi import Response
 
 
+class RowStream:
+    """
+    The row_stream argument passed to output renderers: an async iterator
+    over the rows to render.
+
+    This is the rows on the current page, or every row - fetched a page at
+    a time - if the request asked for them all using ?_stream=1.
+
+    Use ``async for row in row_stream`` to loop through individual rows, or
+    ``async for rows in row_stream.pages()`` for a list of rows at a time.
+    """
+
+    def __init__(self, rows, fetch_next_page=None):
+        self._rows = rows
+        self._fetch_next_page = fetch_next_page
+
+    async def pages(self):
+        yield self._rows
+        while self._fetch_next_page is not None:
+            rows = await self._fetch_next_page()
+            if rows is None:
+                break
+            yield rows
+
+    async def __aiter__(self):
+        async for rows in self.pages():
+            for row in rows:
+                yield row
+
+
 def _load_json_value(value):
     try:
         return json.loads(value)

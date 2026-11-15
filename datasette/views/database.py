@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import itertools
 import json
@@ -50,9 +49,7 @@ from . import Context
 from .base import (
     DatasetteError,
     View,
-    is_csv_format,
-    page_for_renderer,
-    stream_csv,
+    render_with_output_renderer,
     tsv_export_path,
 )
 from .query_helpers import (
@@ -900,20 +897,7 @@ class QueryView(View):
             return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
-        if is_csv_format(datasette, format_):
-            if not sql:
-                raise DatasetteError("?sql= is required", status=400)
-
-            async def fetch_data_for_csv(request, _next=None):
-                # Reuse the trusted magic parameter values prepared above.
-                results = await db.execute(sql, params_for_query, truncate=True)
-                data = {"rows": results.rows, "columns": results.columns}
-                return data, None, None
-
-            return await stream_csv(
-                datasette, fetch_data_for_csv, request, db.name, format_=format_
-            )
-        elif format_ in datasette.renderers:
+        if format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
@@ -938,44 +922,21 @@ class QueryView(View):
                     extra_registry=table_extra_registry,
                 )
                 data.update(await resolve_query_extras(extras, query_extra_context))
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                datasette.renderers[format_][0],
-                datasette=datasette,
+            r = await render_with_output_renderer(
+                datasette,
+                request,
+                format_,
+                data=data,
                 columns=columns,
                 rows=rows,
                 sql=sql,
                 query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
-                request=request,
                 view_name="table",
                 truncated=results.truncated if results else False,
                 error=query_error,
-                page=page_for_renderer(datasette, request, format_, data),
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
             )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                r = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code") or 200,
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                r = result
-                # if status_code is not None:
-                #     # Over-ride the status code
-                #     r.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
         elif format_ == "html":
             headers = {}
             templates = [f"query-{to_css_class(database)}.html", "query.html"]

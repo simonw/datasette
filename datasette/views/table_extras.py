@@ -30,6 +30,7 @@ class TableExtraContext:
     private: bool
     rows: list
     columns: list
+    expanded_columns: list
     results_description: list
     table_columns: list
     pks: list
@@ -1193,6 +1194,18 @@ class ExpandableColumnsExtra(Extra):
         return expandables
 
 
+class ExpandedColumnsExtra(Extra):
+    description = 'List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects.'
+    docs_note = "See :ref:`expand_foreign_keys` for how to expand these labels."
+    example = ExtraExample(
+        "/fixtures/facetable.json?_labels=on&_extra=expanded_columns"
+    )
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
+
+    async def resolve(self, context):
+        return list(context.expanded_columns)
+
+
 class ForeignKeyTablesExtra(Extra):
     description = "List of tables that link to this row using foreign keys. Each item includes the foreign key fields plus ``count`` for matching rows and ``link`` for the filtered table URL."
     example = ExtraExample(
@@ -1347,6 +1360,7 @@ TABLE_EXTRA_CLASSES = [
     IsViewExtra,
     PrivateExtra,
     ExpandableColumnsExtra,
+    ExpandedColumnsExtra,
     ForeignKeyTablesExtra,
     FormHiddenArgsExtra,
 ]

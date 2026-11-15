@@ -662,7 +662,10 @@ When a request is received, the ``"render"`` callback function is called with ze
     The names of the columns returned by this query.
 
 ``rows`` - list of ``sqlite3.Row`` objects
-    The rows returned by the query.
+    The rows returned by the query. For a table this is the rows on the current page.
+
+``row_stream`` - async iterator
+    An async iterator over the rows to render. This is the rows on the current page, or every row if the request has ``?_stream=1``. See :ref:`plugin_register_output_renderer_streaming`.
 
 ``sql`` - string
     The SQL query that was executed.
@@ -744,6 +747,46 @@ And here is an example ``can_render`` function which returns ``True`` only if th
         }.issubset(columns)
 
 Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_, `datasette-geojson <https://datasette.io/plugins/datasette-geojson>`__, `datasette-copyable <https://datasette.io/plugins/datasette-copyable>`__
+
+
+.. _plugin_register_output_renderer_streaming:
+
+Streaming every row
+~~~~~~~~~~~~~~~~~~~
+
+A table can have far more rows than fit on one page. A ``"render"`` function that accepts the ``row_stream`` argument can output all of them, without loading them all into memory, by returning a :ref:`streaming response <internals_response_stream>`:
+
+.. code-block:: python
+
+    import json
+
+
+    def render_ndjson(columns, row_stream):
+        async def body():
+            async for row in row_stream:
+                yield json.dumps(dict(zip(columns, row))) + "\n"
+
+        return Response.stream(
+            body(), content_type="application/x-ndjson"
+        )
+
+
+    @hookimpl
+    def register_output_renderer(datasette):
+        return {"extension": "ndjson", "render": render_ndjson}
+
+``row_stream`` yields the rows on the current page. If the URL includes ``?_stream=1`` it carries on past the end of that page, fetching one page at a time, until it has yielded every row in the table or view. Your function does not need to know which of those is happening.
+
+Use ``async for rows in row_stream.pages()`` to receive a list of rows for each page instead of one row at a time.
+
+Datasette's own :ref:`CSV and TSV export <csv_export>` is implemented this way. Some things to be aware of:
+
+- ``?_stream=1`` is ignored by formats that do not accept ``row_stream``.
+- Only tables and views have more than one page. For a row, or the results of a SQL query, ``row_stream`` yields the same rows as ``rows``.
+- ``rows``, ``page`` and the other arguments describe the first page. Everything that could result in an error page - an invalid filter, a permission check - has already happened by the time your function is called.
+- :ref:`setting_allow_csv_stream` and :ref:`setting_max_csv_mb` apply to every format, not only CSV. A streamed response that grows larger than ``max_csv_mb`` is cut off by dropping the connection, as described in :ref:`internals_response_stream`.
+
+Any format can be downloaded as a file by adding ``?_dl=1`` to the URL, which adds a ``content-disposition: attachment`` header with a filename ending in the format's extension. A response that sets its own ``content-disposition`` header is left alone.
 
 .. _plugin_register_routes:
 

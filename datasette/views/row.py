@@ -38,9 +38,7 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
-    is_csv_format,
-    page_for_renderer,
-    stream_csv,
+    render_with_output_renderer,
     tsv_export_path,
 )
 from .table import (
@@ -176,18 +174,11 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def as_csv(self, request, database, format_="csv"):
-        return await stream_csv(self.ds, self.data, request, database, format_=format_)
-
     async def get(self, request):
         db = await self.ds.resolve_database(request)
         database = db.name
-        database_route = db.route
         format_ = request.url_vars.get("format") or "html"
         data_kwargs = {}
-
-        if is_csv_format(self.ds, format_):
-            return await self.as_csv(request, database_route, format_=format_)
 
         if format_ == "html":
             # HTML views default to expanding all foreign key labels
@@ -243,44 +234,24 @@ class RowView(BaseView):
         data["query_ms"] = (end - start) * 1000
 
         if format_ in self.ds.renderers:
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                self.ds.renderers[format_][0],
-                datasette=self.ds,
+            response = await render_with_output_renderer(
+                self.ds,
+                request,
+                format_,
+                data=data,
                 columns=data.get("columns") or [],
                 rows=data.get("rows") or [],
                 sql=data.get("query", {}).get("sql", None),
                 query_name=data.get("query_name"),
                 database=database,
                 table=data.get("table"),
-                request=request,
                 view_name=self.name,
                 truncated=False,  # TODO: support this
                 error=data.get("error"),
-                page=page_for_renderer(self.ds, request, format_, data),
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
             )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                response = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code", status_code or 200),
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                response = result
-                if status_code is not None:
-                    # Over-ride the status code
-                    response.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
+            if status_code is not None:
+                # Over-ride the status code
+                response.status = status_code
         elif format_ == "html":
             response = await self.html(request, data, extra_template_data, templates)
             if status_code is not None:

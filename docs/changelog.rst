@@ -10,6 +10,12 @@ Unreleased
 ----------
 
 - New ``Response.stream(body)`` method for returning a response a chunk at a time from an async iterator of strings or bytes, for example from a :ref:`plugin_register_routes` view. See :ref:`internals_response_stream`.
+- Output renderers can now stream every row of a table or view. A ``render`` function that accepts the new ``row_stream`` argument - an async iterator of rows - and returns ``Response.stream()`` will be sent every row when the URL includes ``?_stream=1``. See :ref:`plugin_register_output_renderer_streaming`. (:issue:`1101`)
+- CSV and TSV export are now implemented as default output renderers using that mechanism, replacing the previous special case. Plugins can replace either of them by registering a renderer for the ``csv`` or ``tsv`` extension. (:issue:`1062`)
+- **Breaking change**: an "include all rows" export that fails part of the way through, or that reaches the :ref:`setting_max_csv_mb` limit, now drops the connection so the download fails. Previously the error message was written as the last line of the file, which otherwise looked complete.
+- ``?_dl=1`` now adds a ``content-disposition: attachment`` header for every export format, not only CSV and TSV.
+- New ``?_extra=expanded_columns`` extra for table JSON, listing the foreign key columns that were expanded using ``?_labels=on``.
+- ``csv`` and ``tsv`` are now included in the ``?_extra=renderers`` extra.
 - Output renderers registered with :ref:`plugin_register_output_renderer` can now list the :ref:`extras <json_api_extra>` they need, such as ``count`` or ``human_description_en``, using a new ``"extras"`` key. Datasette calculates those and passes them to the ``render`` function in a new ``page`` argument, a dictionary which also includes ``next`` and ``next_url`` on table pages. (:issue:`2770`, :issue:`2186`)
 - The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
 - Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.

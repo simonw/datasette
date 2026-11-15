@@ -91,7 +91,7 @@ by Datasette.
     Stream all matching records, not just the first page of results. See below.
 
 ``?_dl=on``
-    Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header, or ``filename.tsv`` for TSV.
+    Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header, or ``filename.tsv`` for TSV. This works for every other export format too.
 
 Streaming all records
 ---------------------
@@ -101,10 +101,15 @@ under the hood it takes advantage of Python 3 asyncio capabilities and
 Datasette's efficient :ref:`pagination <pagination>` to stream back the full
 CSV or TSV file.
 
-Since databases can get pretty large, by default this option is capped at 100MB -
-if a table returns more than 100MB of data the last line of the file will be a
-truncation error message.
+Since databases can get pretty large, by default this option is capped at 100MB.
+If a table returns more than 100MB of data Datasette stops and drops the
+connection, so the download fails instead of saving a file that is silently
+missing rows. The same thing happens if an error occurs part of the way through.
 
 You can increase or remove this limit using the :ref:`setting_max_csv_mb` config
-setting. You can also disable the CSV export feature entirely using
+setting. You can also disable the *include all rows* option entirely using
 :ref:`setting_allow_csv_stream`.
+
+CSV and TSV are implemented as :ref:`output renderers <plugin_register_output_renderer>`
+that stream their rows. Plugins can add other formats that work the same way, see
+:ref:`plugin_register_output_renderer_streaming`.

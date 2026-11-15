@@ -591,6 +591,7 @@ class Datasette:
         # File extension -> label, description, is_binary and is_webpage
         self._renderer_options = {}
         self._renderer_extras = {}  # File extension -> extras the renderer declared
+        self._renderer_can_stream = {}  # File extension -> accepts row_stream
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
             self.executor = None
@@ -2582,6 +2583,11 @@ ORDER BY allowed.parent, allowed.child
                     f"Output renderer '{extension}' extras must be a list of strings"
                 )
             self._renderer_extras[extension] = list(declared_extras)
+            # Renderers that accept row_stream can stream every row
+            self._renderer_can_stream[extension] = (
+                "row_stream"
+                in inspect.signature(self.renderers[extension][0]).parameters
+            )
             # How the export dialog presents this format
             is_binary = bool(renderer.get("is_binary"))
             is_webpage = bool(renderer.get("is_webpage"))

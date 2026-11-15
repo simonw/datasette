@@ -425,7 +425,6 @@ from .fixtures import (  # noqa: F401
     app_client,
     app_client_base_url_prefix,
     app_client_conflicting_database_names,
-    app_client_csv_max_mb_one,
     app_client_immutable_and_inspect_file,
     app_client_larger_cache_size,
     app_client_no_files,

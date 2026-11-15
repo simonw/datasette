@@ -421,7 +421,9 @@ Default: ``on``
 
 Enables :ref:`the CSV and TSV export feature <csv_export>` where an entire
 table (potentially hundreds of thousands of rows) can be exported as a single
-CSV or TSV file. You can turn it off like this:
+CSV or TSV file. It also controls ``?_stream=1`` for any other
+:ref:`output format that can stream <plugin_register_output_renderer_streaming>`.
+You can turn it off like this:
 
 ::
 
@@ -440,7 +442,9 @@ Default: ``100``
 
 .. [[[end]]]
 
-The maximum size of CSV or TSV that can be exported, in megabytes.
+The maximum size of CSV or TSV that can be exported, in megabytes. The limit
+applies to any other :ref:`output format that streams its response <plugin_register_output_renderer_streaming>`
+as well. An export that reaches the limit is cut off by dropping the connection.
 You can disable the limit entirely by setting this to 0:
 
 ::

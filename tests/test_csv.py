@@ -260,34 +260,6 @@ async def test_csv_with_non_ascii_characters(ds_client):
     assert response.text == "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n"
 
 
-@pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2355")
-def test_max_csv_mb(app_client_csv_max_mb_one):
-    # This query deliberately generates a really long string
-    # should be 100*100*100*2 = roughly 2MB
-    response = app_client_csv_max_mb_one.get(
-        "/fixtures.csv?"
-        + urllib.parse.urlencode(
-            {
-                "sql": """
-            select group_concat('ab', '')
-            from json_each(json_array({lots})),
-                json_each(json_array({lots})),
-                json_each(json_array({lots}))
-            """.format(
-                    lots=", ".join(str(i) for i in range(100))
-                ),
-                "_stream": 1,
-                "_size": "max",
-            }
-        ),
-    )
-    # It's a 200 because we started streaming before we knew the error
-    assert response.status == 200
-    # Last line should be an error message
-    last_line = [line for line in response.body.split(b"\r\n") if line][-1]
-    assert last_line.startswith(b"CSV contains more than")
-
-
 @pytest.mark.asyncio
 async def test_table_csv_stream(ds_client):
     # Without _stream should return header + 100 rows:

@@ -121,7 +121,7 @@
             {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
             {% endif %}
             {% endif %}
-            {% for name, url in renderers.items() if name != "json" %}
+            {% for name, url in renderers.items() if name not in ("json", "csv") and not (name == "tsv" and url_tsv_path) %}
             {% set options = (renderer_options or {}).get(name) or {} %}
             {{ export_option("format-" ~ loop.index, options.label or name, options.description, url, export_base ~ "." ~ name, export_rows, kind="binary" if options.is_binary else ("webpage" if options.is_webpage else none)) }}
             {% endfor %}

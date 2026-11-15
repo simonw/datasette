@@ -1953,6 +1953,11 @@ async def table_view_traced(datasette, request):
         context_for_html_hack = True
         default_labels = True
 
+    # ?_stream=1 for a format that can stream fetches the largest pages
+    stream = bool(
+        request.args.get("_stream") and datasette._renderer_can_stream.get(format_)
+    )
+
     start = time.perf_counter()
     view_data = await table_view_data(
         datasette,
@@ -1962,6 +1967,7 @@ async def table_view_traced(datasette, request):
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
         renderer_extras=datasette._renderer_extras.get(format_),
+        stream=stream,
     )
     if isinstance(view_data, Response):
         return view_data
@@ -1984,6 +1990,7 @@ async def table_view_traced(datasette, request):
                 default_labels=default_labels,
                 _next=next_token,
                 rows_only=True,
+                stream=stream,
             )
             next_token = page_data["next"]
             return page_rows
@@ -2340,6 +2347,7 @@ async def table_view_data(
     _next=None,
     renderer_extras=None,
     rows_only=False,
+    stream=False,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -2469,7 +2477,10 @@ async def table_view_data(
     # Handle ?_size=500
     # TODO: This was:
     # page_size = _size or request.args.get("_size") or table_metadata.get("size")
-    page_size = request.args.get("_size") or table_metadata.get("size")
+    page_size = request.args.get("_size")
+    if not page_size:
+        # Streaming every row is fastest using the largest possible pages
+        page_size = "max" if stream else table_metadata.get("size")
     if page_size:
         if page_size == "max":
             page_size = datasette.max_returned_rows

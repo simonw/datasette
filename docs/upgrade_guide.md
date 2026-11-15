@@ -29,6 +29,20 @@ The URL for executing a SQL query now looks like this:
 
 **This isn't a breaking change.** API calls to the older ``/databasename?sql=...`` endpoint will redirect to the new ``databasename/-/query?sql=...`` endpoint. Upgrading to the new URL is recommended to avoid the overhead of the additional redirect.
 
+(upgrade_guide_v1_view_name_query)=
+### `view_name` is now `"query"` for SQL query pages
+
+Plugin hooks that accept a `view_name` argument - `extra_template_vars()`, `extra_css_urls()`, `extra_js_urls()`, `extra_body_script()` and the `render` and `can_render` functions of `register_output_renderer()` - are now passed `"query"` for pages that show the results of a SQL query. This applies to arbitrary SQL at `/databasename/-/query?sql=...` and to stored queries.
+
+Previously those pages used `"database"`, the same value as the page listing the tables in a database, except for the output renderer `render` function which was passed `"table"`.
+
+If your plugin checks `view_name == "database"` and should still run on query pages, update it to check for both:
+
+```python
+if view_name in ("database", "query"):
+    ...
+```
+
 (upgrade_guide_v1_metadata)=
 ### Metadata changes
 

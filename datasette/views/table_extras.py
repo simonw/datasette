@@ -1123,7 +1123,7 @@ class RenderersExtra(Extra):
         if expandable_columns:
             url_labels_extra = {"_labels": "on"}
         table_name = context.table_name
-        view_name = "table" if context.scope == ExtraScope.TABLE else "database"
+        view_name = context.scope.value  # "table", "row" or "query"
         for key, (_, can_render) in context.datasette.renderers.items():
             it_can_render = call_with_supported_arguments(
                 can_render,

@@ -934,7 +934,7 @@ class QueryView(View):
                 query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
-                view_name="table",
+                view_name="query",
                 truncated=results.truncated if results else False,
                 error=query_error,
             )
@@ -988,7 +988,7 @@ class QueryView(View):
                     request=request,
                     path=path_without_format(request),
                     full_path=path_without_format(request, include_query_string=True),
-                    view_name="database",
+                    view_name="query",
                 )
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
@@ -1194,7 +1194,7 @@ class QueryView(View):
                         query_actions=query_actions,
                     ),
                     request=request,
-                    view_name="database",
+                    view_name="query",
                 ),
                 headers=headers,
             )

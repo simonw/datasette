@@ -209,7 +209,7 @@ Extra template variables that should be made available in the rendered template 
     The names of the database columns that will be displayed on this page. ``None`` if the page does not contain a table.
 
 ``view_name`` - string
-    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+    The name of the view being displayed. (``index``, ``database``, ``table``, ``row`` and ``query`` are the most important ones.) ``query`` is used for both arbitrary SQL queries and stored queries.
 
 ``request`` - :ref:`internals_request` or None
     The current HTTP request. This can be ``None`` if the request object is not available.
@@ -695,7 +695,7 @@ When a request is received, the ``"render"`` callback function is called with ze
     If the query response was truncated - for example a SQL query returning more than 1,000 results where pagination is not available - this will be ``True``.
 
 ``view_name`` - string
-    The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
+    The name of the current view being called: ``table``, ``row`` or ``query``. ``query`` is used for both arbitrary SQL queries and stored queries. ``can_render`` is passed the same value.
 
 ``page`` - dictionary
     Everything the JSON version of this page returns alongside its rows: the :ref:`extras <json_api_extra>` this format declared using its ``"extras"`` key, any that were requested using ``?_extra=`` in the URL, and the keys that type of page always includes. For table pages those are ``next``, the token for the next page of results, and ``next_url``, the URL of that page in this format - both are ``None`` on the last page. Extras that are not available for the current page are omitted.

@@ -2374,9 +2374,19 @@ dialog.export-dialog {
     }
 }
 
-.download-sqlite em {
-    font-style: normal;
-    font-size: 0.8em;
+.download-sqlite {
+    margin: 1.25rem 0 0;
+}
+
+.download-sqlite-size {
+    color: #6b6b6b;
+    font-size: 0.8125rem;
+    transition: color 0.12s;
+}
+
+.download-sqlite .quiet-button:hover .download-sqlite-size,
+.download-sqlite .quiet-button:focus-visible .download-sqlite-size {
+    color: currentColor;
 }
 
 

@@ -27,10 +27,7 @@ from datasette.utils.sqlite import sqlite3
 from .fixtures import (
     PLUGINS_DIR,
     TEMP_PLUGIN_SECRET_FILE,
-    make_app_client,
-)
-from .fixtures import (
-    TestClient as _TestClient,
+    make_ds,
 )
 
 at_memory_re = re.compile(r" at 0x\w+")
@@ -349,6 +346,7 @@ async def test_plugin_config_file(ds_client):
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_extra_body_script",
     [
@@ -401,9 +399,9 @@ async def test_plugin_config_file(ds_client):
         ),
     ],
 )
-def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
+async def test_hook_extra_body_script(ds_client, path, expected_extra_body_script):
     r = re.compile(r"<script type=\"module\">var extra_body_script = (.*?);</script>")
-    response = app_client.get(path)
+    response = await ds_client.get(path)
     assert response.status_code == 200, response.text
     match = r.search(response.text)
     assert match is not None, "No extra_body_script found in HTML"
@@ -418,30 +416,31 @@ async def test_hook_asgi_wrapper(ds_client):
     assert "fixtures" == response.headers["x-databases"]
 
 
-def test_hook_extra_template_vars(restore_working_directory):
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_hook_extra_template_vars():
+    ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ) as client:
-        response = client.get("/-/versions")
-        assert response.status_code == 200
-        extra_template_vars = json.loads(
-            Soup(response.text, "html.parser").select("pre.extra_template_vars")[0].text
-        )
-        assert {
-            "template": "show_json.html",
-            "scope_path": "/-/versions",
-            "columns": None,
-        } == extra_template_vars
-        extra_template_vars_from_awaitable = json.loads(
-            Soup(response.text, "html.parser")
-            .select("pre.extra_template_vars_from_awaitable")[0]
-            .text
-        )
-        assert {
-            "template": "show_json.html",
-            "awaitable": True,
-            "scope_path": "/-/versions",
-        } == extra_template_vars_from_awaitable
+    )
+    response = await ds.client.get("/-/versions")
+    assert response.status_code == 200
+    extra_template_vars = json.loads(
+        Soup(response.text, "html.parser").select("pre.extra_template_vars")[0].text
+    )
+    assert {
+        "template": "show_json.html",
+        "scope_path": "/-/versions",
+        "columns": None,
+    } == extra_template_vars
+    extra_template_vars_from_awaitable = json.loads(
+        Soup(response.text, "html.parser")
+        .select("pre.extra_template_vars_from_awaitable")[0]
+        .text
+    )
+    assert {
+        "template": "show_json.html",
+        "awaitable": True,
+        "scope_path": "/-/versions",
+    } == extra_template_vars_from_awaitable
 
 
 @pytest.mark.asyncio
@@ -510,21 +509,22 @@ async def test_hook_extra_template_vars_invalid(ds_client, invalid_value):
         pm.unregister(plugin)
 
 
-def test_plugins_async_template_function(restore_working_directory):
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_plugins_async_template_function():
+    ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ) as client:
-        response = client.get("/-/versions")
-        assert response.status_code == 200
-        extra_from_awaitable_function = (
-            Soup(response.text, "html.parser")
-            .select("pre.extra_from_awaitable_function")[0]
-            .text
-        )
-        conn = sqlite3.connect(":memory:")
-        expected = conn.execute("select sqlite_version()").fetchone()[0]
-        conn.close()
-        assert expected == extra_from_awaitable_function
+    )
+    response = await ds.client.get("/-/versions")
+    assert response.status_code == 200
+    extra_from_awaitable_function = (
+        Soup(response.text, "html.parser")
+        .select("pre.extra_from_awaitable_function")[0]
+        .text
+    )
+    conn = sqlite3.connect(":memory:")
+    expected = conn.execute("select sqlite_version()").fetchone()[0]
+    conn.close()
+    assert expected == extra_from_awaitable_function
 
 
 def test_default_plugins_have_no_templates_path_or_static_path():
@@ -573,13 +573,14 @@ def view_names_client(tmp_path_factory):
         config={"databases": {"fixtures": {"queries": {"stored_query": "select 1"}}}},
     )
     try:
-        yield _TestClient(ds)
+        yield ds.client
     finally:
         # plugins_dir plugins are registered on the global plugin manager
         pm.unregister(name="extra_vars.py")
         ds.close()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,view_name",
     (
@@ -592,8 +593,8 @@ def view_names_client(tmp_path_factory):
         ("/fixtures/stored_query", "query"),
     ),
 )
-def test_view_names(view_names_client, path, view_name):
-    response = view_names_client.get(path)
+async def test_view_names(view_names_client, path, view_name):
+    response = await view_names_client.get(path)
     assert response.status_code == 200
     assert f"view_name:{view_name}" == response.text
 
@@ -1172,9 +1173,10 @@ async def test_hook_register_routes(ds_client, path, body):
     assert response.text == body
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("configured_path", ("path1", "path2"))
-def test_hook_register_routes_with_datasette(configured_path):
-    with make_app_client(
+async def test_hook_register_routes_with_datasette(configured_path):
+    ds = await make_ds(
         config={
             "plugins": {
                 "register-route-demo": {
@@ -1182,18 +1184,21 @@ def test_hook_register_routes_with_datasette(configured_path):
                 }
             }
         }
-    ) as client:
-        response = client.get(f"/{configured_path}/")
-        assert response.status_code == 200
-        assert configured_path.upper() == response.text
-        # Other one should 404
-        other_path = next(p for p in ("path1", "path2") if configured_path != p)
-        assert client.get(f"/{other_path}/", follow_redirects=True).status_code == 404
+    )
+    response = await ds.client.get(f"/{configured_path}/")
+    assert response.status_code == 200
+    assert configured_path.upper() == response.text
+    # Other one should 404
+    other_path = next(p for p in ("path1", "path2") if configured_path != p)
+    assert (
+        await ds.client.get(f"/{other_path}/", follow_redirects=True)
+    ).status_code == 404
 
 
-def test_hook_register_routes_override():
+@pytest.mark.asyncio
+async def test_hook_register_routes_override():
     "Plugins can over-ride default paths such as /db/table"
-    with make_app_client(
+    ds = await make_ds(
         config={
             "plugins": {
                 "register-route-demo": {
@@ -1201,35 +1206,36 @@ def test_hook_register_routes_override():
                 }
             }
         }
-    ) as client:
-        response = client.get("/db/table")
-        assert response.status_code == 200
-        assert (
-            response.text
-            == "/db/table: [('db_name', 'db'), ('table_and_format', 'table')]"
-        )
-
-
-def test_hook_register_routes_post(app_client):
-    response = app_client.post("/post/", {"this is": "post data"})
+    )
+    response = await ds.client.get("/db/table")
     assert response.status_code == 200
-    assert response.json["this is"] == "post data"
+    assert (
+        response.text == "/db/table: [('db_name', 'db'), ('table_and_format', 'table')]"
+    )
 
 
-def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+@pytest.mark.asyncio
+async def test_hook_register_routes_post(ds_client):
+    response = await ds_client.post("/post/", data={"this is": "post data"})
+    assert response.status_code == 200
+    assert response.json()["this is"] == "post data"
+
+
+@pytest.mark.asyncio
+async def test_hook_register_routes_csrftoken(tmpdir_factory):
     # csrftoken() is a legacy compatibility shim that returns a
     # per-request random value - it is no longer used for CSRF enforcement.
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
         "CSRFTOKEN:{{ csrftoken() }}:END", "utf-8"
     )
-    with make_app_client(template_dir=templates) as client:
-        response = client.get("/csrftoken-form/")
-        assert response.text.startswith("CSRFTOKEN:")
-        assert response.text.endswith(":END")
-        token = response.text[len("CSRFTOKEN:") : -len(":END")]
-        assert len(token) >= 20
-        assert "ds_csrftoken" not in response.cookies
+    ds = await make_ds(template_dir=templates)
+    response = await ds.client.get("/csrftoken-form/")
+    assert response.text.startswith("CSRFTOKEN:")
+    assert response.text.endswith(":END")
+    token = response.text[len("CSRFTOKEN:") : -len(":END")]
+    assert len(token) >= 20
+    assert "ds_csrftoken" not in response.cookies
 
 
 @pytest.mark.asyncio
@@ -1248,14 +1254,15 @@ async def test_hook_register_routes_add_message(ds_client):
     assert decoded == [["Hello from messages", 1]]
 
 
-def test_hook_register_routes_render_message(restore_working_directory, tmpdir_factory):
+@pytest.mark.asyncio
+async def test_hook_register_routes_render_message(tmpdir_factory):
     templates = tmpdir_factory.mktemp("templates")
     (templates / "render_message.html").write_text('{% extends "base.html" %}', "utf-8")
-    with make_app_client(template_dir=templates) as client:
-        response1 = client.get("/add-message/")
-        response2 = client.get("/render-message/", cookies=response1.cookies)
-        assert 200 == response2.status
-        assert "Hello from messages" in response2.text
+    ds = await make_ds(template_dir=templates)
+    response1 = await ds.client.get("/add-message/")
+    response2 = await ds.client.get("/render-message/", cookies=response1.cookies)
+    assert 200 == response2.status_code
+    assert "Hello from messages" in response2.text
 
 
 @pytest.mark.asyncio
@@ -1336,9 +1343,10 @@ async def test_plugin_startup_query_can_execute():
     assert [{"2": 2}] == response.json()
 
 
-def test_hook_register_magic_parameters(restore_working_directory):
-    with make_app_client(
-        extra_databases={"data.db": "create table logs (line text)"},
+@pytest.mark.asyncio
+async def test_hook_register_magic_parameters():
+    ds = await make_ds(
+        extra_databases={"data": "create table logs (line text)"},
         config={
             "databases": {
                 "data": {
@@ -1357,39 +1365,41 @@ def test_hook_register_magic_parameters(restore_working_directory):
                 }
             }
         },
-    ) as client:
-        response = client.post("/data/runme", {}, csrftoken_from=True)
-        assert response.status_code == 302
-        actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
-        assert [{"rowid": 1, "line": "1.1"}] == actual
-        # Now try the GET request against get_uuid
-        response_get = client.get("/data/get_uuid.json?_shape=array")
-        assert 200 == response_get.status
-        new_uuid = response_get.json[0][":_uuid_new"]
-        assert 4 == new_uuid.count("-")
-        # And test the async one
-        response_async = client.get("/data/asyncrequest.json?_shape=array")
-        assert 200 == response_async.status
-        assert response_async.json[0][":_asyncrequest_key"] == "key"
+    )
+    response = await ds.client.post("/data/runme", data={})
+    assert response.status_code == 302
+    actual = (
+        await ds.client.get("/data/logs.json?_sort_desc=rowid&_shape=array")
+    ).json()
+    assert [{"rowid": 1, "line": "1.1"}] == actual
+    # Now try the GET request against get_uuid
+    response_get = await ds.client.get("/data/get_uuid.json?_shape=array")
+    assert 200 == response_get.status_code
+    new_uuid = response_get.json()[0][":_uuid_new"]
+    assert 4 == new_uuid.count("-")
+    # And test the async one
+    response_async = await ds.client.get("/data/asyncrequest.json?_shape=array")
+    assert 200 == response_async.status_code
+    assert response_async.json()[0][":_asyncrequest_key"] == "key"
 
 
-def test_hook_forbidden(restore_working_directory):
-    with make_app_client(
-        extra_databases={"data2.db": "create table logs (line text)"},
+@pytest.mark.asyncio
+async def test_hook_forbidden():
+    ds = await make_ds(
+        extra_databases={"data2": "create table logs (line text)"},
         config={"allow": {}},
-    ) as client:
-        response = client.get("/")
-        assert response.status_code == 403
-        response2 = client.get("/data2")
-        assert 302 == response2.status
-        assert (
-            response2.headers["Location"]
-            == "/login?message=You do not have permission to view this database"
-        )
-        assert (
-            client.ds._last_forbidden_message
-            == "You do not have permission to view this database"
-        )
+    )
+    response = await ds.client.get("/")
+    assert response.status_code == 403
+    response2 = await ds.client.get("/data2")
+    assert 302 == response2.status_code
+    assert (
+        response2.headers["Location"]
+        == "/login?message=You do not have permission to view this database"
+    )
+    assert (
+        ds._last_forbidden_message == "You do not have permission to view this database"
+    )
 
 
 @pytest.mark.asyncio

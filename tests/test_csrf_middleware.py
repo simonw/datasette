@@ -189,22 +189,25 @@ async def test_middleware_unit(label, headers, expected):
     assert await _run_middleware(_http_scope(headers)) == expected
 
 
-def test_legacy_csrftoken_scope_value_nonempty(app_client):
+@pytest.mark.asyncio
+async def test_legacy_csrftoken_scope_value_nonempty(ds_client):
     # GET /post/ calls request.scope["csrftoken"]() - must not 500
-    response = app_client.get("/post/")
-    assert response.status == 200
+    response = await ds_client.get("/post/")
+    assert response.status_code == 200
     assert response.text.strip() != ""
     assert len(response.text.strip()) >= 20
 
 
-def test_legacy_csrftoken_no_ds_csrftoken_cookie(app_client):
-    response = app_client.get("/post/")
+@pytest.mark.asyncio
+async def test_legacy_csrftoken_no_ds_csrftoken_cookie(ds_client):
+    response = await ds_client.get("/post/")
     assert "ds_csrftoken" not in response.cookies
 
 
-def test_legacy_csrftoken_varies_across_requests(app_client):
-    r1 = app_client.get("/post/").text.strip()
-    r2 = app_client.get("/post/").text.strip()
+@pytest.mark.asyncio
+async def test_legacy_csrftoken_varies_across_requests(ds_client):
+    r1 = (await ds_client.get("/post/")).text.strip()
+    r2 = (await ds_client.get("/post/")).text.strip()
     assert r1 != r2
 
 

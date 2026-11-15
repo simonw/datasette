@@ -78,39 +78,38 @@ async def test_actor_cookie_that_expires(ds_client, offset, expected):
     assert ds_client.ds._last_request.scope["actor"] == expected
 
 
-def test_logout(app_client):
-    # Keeping app_client for the moment because of csrftoken_from
-    response = app_client.get(
-        "/-/logout", cookies={"ds_actor": app_client.actor_cookie({"id": "test"})}
+@pytest.mark.asyncio
+async def test_logout(ds_client):
+    response = await ds_client.get(
+        "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"id": "test"})}
     )
-    assert 200 == response.status
+    assert 200 == response.status_code
     assert "<p>You are logged in as <strong>test</strong></p>" in response.text
     # Actors without an id get full serialization
-    response2 = app_client.get(
-        "/-/logout", cookies={"ds_actor": app_client.actor_cookie({"name2": "bob"})}
+    response2 = await ds_client.get(
+        "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"name2": "bob"})}
     )
-    assert 200 == response2.status
+    assert 200 == response2.status_code
     assert (
         "<p>You are logged in as <strong>{&#39;name2&#39;: &#39;bob&#39;}</strong></p>"
         in response2.text
     )
     # If logged out you get a redirect to /
-    response3 = app_client.get("/-/logout")
-    assert 302 == response3.status
+    response3 = await ds_client.get("/-/logout")
+    assert 302 == response3.status_code
     # A POST to that page should log the user out
-    response4 = app_client.post(
+    response4 = await ds_client.post(
         "/-/logout",
-        csrftoken_from=True,
-        cookies={"ds_actor": app_client.actor_cookie({"id": "test"})},
+        cookies={"ds_actor": ds_client.actor_cookie({"id": "test"})},
     )
     # Should have recorded a logout event
-    event = last_event(app_client.ds)
+    event = last_event(ds_client.ds)
     assert event.name == "logout"
     assert event.actor == {"id": "test"}
     # The ds_actor cookie should have been unset
     assert cookie_was_deleted(response4, "ds_actor")
     # Should also have set a message
-    messages = app_client.ds.unsign(response4.cookies["ds_messages"], "messages")
+    messages = ds_client.ds.unsign(response4.cookies["ds_messages"], "messages")
     assert [["You are now logged out", 2]] == messages
 
 
@@ -140,6 +139,7 @@ async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, p
     )
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "post_data,errors,expected_duration,expected_r",
     (
@@ -178,13 +178,13 @@ async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, p
         ),
     ),
 )
-def test_auth_create_token(
-    app_client, post_data, errors, expected_duration, expected_r
+async def test_auth_create_token(
+    ds_client, post_data, errors, expected_duration, expected_r
 ):
-    assert app_client.get("/-/create-token").status == 403
-    ds_actor = app_client.actor_cookie({"id": "test"})
-    response = app_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
-    assert response.status == 200
+    assert (await ds_client.get("/-/create-token")).status_code == 403
+    ds_actor = ds_client.actor_cookie({"id": "test"})
+    response = await ds_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
+    assert response.status_code == 200
     assert ">Create an API token<" in response.text
     # Confirm some aspects of expected set of checkboxes
     soup = Soup(response.text, "html.parser")
@@ -199,19 +199,18 @@ def test_auth_create_token(
         }
     )
     # Now try actually creating one
-    response2 = app_client.post(
+    response2 = await ds_client.post(
         "/-/create-token",
-        post_data,
-        csrftoken_from=True,
+        data=post_data,
         cookies={"ds_actor": ds_actor},
     )
-    assert response2.status == 200
+    assert response2.status_code == 200
     if errors:
         for error in errors:
             assert f'<p class="message-error">{error}</p>' in response2.text
     else:
         # Check create-token event
-        event = last_event(app_client.ds)
+        event = last_event(ds_client.ds)
         assert event.name == "create-token"
         assert event.expires_after == expected_duration
         assert isinstance(event.restrict_all, list)
@@ -219,7 +218,7 @@ def test_auth_create_token(
         assert isinstance(event.restrict_resource, dict)
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
-        details = app_client.ds.unsign(token, "token")
+        details = ds_client.ds.unsign(token, "token")
         if expected_r:
             r = details.pop("_r")
             assert r == expected_r
@@ -230,12 +229,12 @@ def test_auth_create_token(
         else:
             assert details["d"] == expected_duration
         # And test that token
-        response3 = app_client.get(
+        response3 = await ds_client.get(
             "/-/actor.json",
             headers={"Authorization": "Bearer {}".format(f"dstok_{token}")},
         )
-        assert response3.status == 200
-        assert response3.json["actor"]["id"] == "test"
+        assert response3.status_code == 200
+        assert response3.json()["actor"]["id"] == "test"
 
 
 @pytest.mark.asyncio

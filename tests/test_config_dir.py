@@ -8,8 +8,6 @@ from datasette.plugins import pm
 from datasette.utils import StartupError
 from datasette.utils.sqlite import sqlite3
 
-from .fixtures import TestClient as _TestClient
-
 PLUGIN = """
 from datasette import hookimpl
 
@@ -99,51 +97,57 @@ def test_invalid_settings(config_dir):
 def config_dir_client(config_dir):
     ds = Datasette([], config_dir=config_dir)
     try:
-        yield _TestClient(ds)
+        yield ds.client
     finally:
         # plugins_dir plugins are registered on the global plugin manager
         pm.unregister(name="hooray.py")
         ds.close()
 
 
-def test_settings(config_dir_client):
-    response = config_dir_client.get("/-/settings.json")
-    assert 200 == response.status
-    assert 60 == response.json["default_cache_ttl"]
+@pytest.mark.asyncio
+async def test_settings(config_dir_client):
+    response = await config_dir_client.get("/-/settings.json")
+    assert 200 == response.status_code
+    assert 60 == response.json()["default_cache_ttl"]
 
 
-def test_plugins(config_dir_client):
-    response = config_dir_client.get("/-/plugins.json")
-    assert 200 == response.status
-    plugins = response.json
+@pytest.mark.asyncio
+async def test_plugins(config_dir_client):
+    response = await config_dir_client.get("/-/plugins.json")
+    assert 200 == response.status_code
+    plugins = response.json()
     assert "hooray.py" in {p["name"] for p in plugins}
     assert "non_py_file.txt" not in {p["name"] for p in plugins}
     assert "mypy_cache" not in {p["name"] for p in plugins}
 
 
-def test_templates_and_plugin(config_dir_client):
-    response = config_dir_client.get("/demo/cities/1")
-    assert 200 == response.status
+@pytest.mark.asyncio
+async def test_templates_and_plugin(config_dir_client):
+    response = await config_dir_client.get("/demo/cities/1")
+    assert 200 == response.status_code
     assert "Show row here. Plugin says hooray" == response.text
 
 
-def test_static(config_dir_client):
-    response = config_dir_client.get("/static/hello.css")
-    assert 200 == response.status
+@pytest.mark.asyncio
+async def test_static(config_dir_client):
+    response = await config_dir_client.get("/static/hello.css")
+    assert 200 == response.status_code
     assert CSS == response.text
     assert "text/css" == response.headers["content-type"]
 
 
-def test_static_directory_browsing_not_allowed(config_dir_client):
-    response = config_dir_client.get("/static/")
-    assert 403 == response.status
+@pytest.mark.asyncio
+async def test_static_directory_browsing_not_allowed(config_dir_client):
+    response = await config_dir_client.get("/static/")
+    assert 403 == response.status_code
     assert "403: Directory listing is not allowed" == response.text
 
 
-def test_databases(config_dir_client):
-    response = config_dir_client.get("/-/databases.json")
-    assert 200 == response.status
-    databases = response.json["databases"]
+@pytest.mark.asyncio
+async def test_databases(config_dir_client):
+    response = await config_dir_client.get("/-/databases.json")
+    assert 200 == response.status_code
+    databases = response.json()["databases"]
     assert 4 == len(databases)
     databases.sort(key=lambda d: d["name"])
     for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):

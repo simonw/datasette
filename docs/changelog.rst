@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_65_6:
+
+0.65.6 (2026-11-15)
+-------------------
+
+- Fixed a security issue where a database registered using ``add_database(db, name=..., route=...)`` with a route that differs from its name could be downloaded from ``/<route>.db`` by actors who were denied access to it. The ``view-database-download`` and ``view-database`` permission checks for that URL are now made against the database name. A ``permission_allowed()`` plugin hook that matched ``view-database-download`` against the route will now be passed the database name instead.
+
 .. _v0_65_5:
 
 0.65.5 (2026-09-16)

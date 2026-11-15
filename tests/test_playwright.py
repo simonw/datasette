@@ -3934,9 +3934,10 @@ def test_export_data_dialog_on_row_page(page, datasette_server):
     json_group = dialog.get_by_role("group", name="JSON", exact=True)
     json_group.get_by_role("button", name="Copy", exact=True).click()
     expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
-    assert json.loads(page.evaluate("clipboardText"))["rows"] == [
-        {"id": 1, "content": "hello"}
-    ]
+    assert json.loads(page.evaluate("clipboardText"))["row"] == {
+        "id": 1,
+        "content": "hello",
+    }
     csv = dialog.get_by_role("group", name="CSV", exact=True)
     with page.expect_download() as download_info:
         csv.get_by_role("button", name="Download").click()

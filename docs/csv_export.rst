@@ -108,7 +108,7 @@ missing rows. The same thing happens if an error occurs part of the way through.
 
 You can increase or remove this limit using the :ref:`setting_max_stream_mb` config
 setting. You can also disable the *include all rows* option entirely using
-:ref:`setting_allow_stream`.
+:ref:`setting_default_allow_stream`.
 
 CSV and TSV are implemented as :ref:`output renderers <plugin_register_output_renderer>`
 that stream their rows. Plugins can add other formats that work the same way, see

@@ -259,9 +259,9 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=200)
       facet_suggest_time_limit_ms  Time limit for calculating a suggested facet
                                    (default=50)
-      allow_facet                  Allow users to specify columns to facet using
+      default_allow_facet          Allow users to specify columns to facet using
                                    ?_facet= parameter (default=True)
-      allow_download               Allow users to download the original SQLite
+      default_allow_download       Allow users to download the original SQLite
                                    database files (default=True)
       allow_signed_tokens          Allow users to create and use signed API tokens
                                    (default=True)
@@ -275,7 +275,7 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    max-age= header) (default=5)
       cache_size_kb                SQLite cache size in KB (0 == use SQLite default)
                                    (default=0)
-      allow_stream                 Allow ?_stream=1 to export all rows (ignoring
+      default_allow_stream         Allow ?_stream=1 to export all rows (ignoring
                                    max_returned_rows) (default=True)
       max_stream_mb                Maximum size allowed for a streamed export in MB
                                    - set 0 to disable this limit (default=100)

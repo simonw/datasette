@@ -43,6 +43,40 @@ if view_name in ("database", "query"):
     ...
 ```
 
+(upgrade_guide_v1_renderer_response)=
+### Output renderers must return a `Response`
+
+The `render` function of an output renderer registered using `register_output_renderer()` must now return a `Response` object, or `None` if it cannot render the data. Returning a dictionary, which was deprecated in Datasette 0.49, is now an error.
+
+Change this:
+
+```python
+def render_demo():
+    return {
+        "body": "Hello",
+        "content_type": "text/plain",
+        "status_code": 200,
+        "headers": {"x-demo": "1"},
+    }
+```
+
+To this:
+
+```python
+from datasette import Response
+
+
+def render_demo():
+    return Response(
+        "Hello",
+        content_type="text/plain",
+        status=200,
+        headers={"x-demo": "1"},
+    )
+```
+
+The dictionary returned by `register_output_renderer()` itself must use the `"render"` key for that function. The older `"callback"` key is no longer accepted.
+
 (upgrade_guide_v1_metadata)=
 ### Metadata changes
 

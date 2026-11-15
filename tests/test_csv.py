@@ -4,6 +4,7 @@ import pytest
 from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
+from datasette.utils.asgi import Response
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello
@@ -394,7 +395,7 @@ async def test_tsv_plugin_renderer_takes_over():
         def register_output_renderer(self):
             return {
                 "extension": "tsv",
-                "render": lambda: {"body": "from the plugin"},
+                "render": lambda: Response.text("from the plugin"),
             }
 
     plugin = TsvPlugin()

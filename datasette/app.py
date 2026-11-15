@@ -2630,9 +2630,17 @@ ORDER BY allowed.parent, allowed.child
 
         for renderer in hook_renderers:
             extension = renderer["extension"]
+            if not renderer.get("render"):
+                raise StartupError(
+                    f"Output renderer '{extension}' must have a 'render' function"
+                    + (
+                        " - the 'callback' key has been renamed to 'render'"
+                        if "callback" in renderer
+                        else ""
+                    )
+                )
             self.renderers[extension] = (
-                # It used to be called "callback" - remove this in Datasette 1.0
-                renderer.get("render") or renderer["callback"],
+                renderer["render"],
                 renderer.get("can_render") or (lambda: True),
             )
             # Extras to resolve and pass to the render function as extras=

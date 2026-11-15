@@ -1,4 +1,4 @@
-from datasette import hookimpl
+from datasette import Response, hookimpl
 
 
 def render_message_debug(datasette, request):
@@ -7,7 +7,7 @@ def render_message_debug(datasette, request):
         datasette.add_message(
             request, request.args["add_msg"], getattr(datasette, msg_type)
         )
-    return {"body": "Hello from message debug"}
+    return Response.text("Hello from message debug")
 
 
 @hookimpl

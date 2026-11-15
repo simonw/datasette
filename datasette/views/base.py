@@ -294,17 +294,13 @@ async def render_with_output_renderer(
         result = await result
     if result is None:
         raise NotFound("No data")
-    if isinstance(result, dict):
-        response = Response(
-            body=result.get("body"),
-            status=result.get("status_code") or 200,
-            content_type=result.get("content_type", "text/plain"),
-            headers=result.get("headers"),
+    if not isinstance(result, Response):
+        raise TypeError(
+            f"Output renderer '{format_}' returned {type(result).__name__}: "
+            "render functions must return a datasette.Response object, "
+            "or None if they cannot render the data"
         )
-    elif isinstance(result, Response):
-        response = result
-    else:
-        assert False, f"{result} should be dict or Response"
+    response = result
 
     # ?_dl=1 downloads the response as a file
     if (

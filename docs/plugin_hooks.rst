@@ -700,21 +700,7 @@ When a request is received, the ``"render"`` callback function is called with ze
 ``page`` - dictionary
     Everything the JSON version of this page returns alongside its rows: the :ref:`extras <json_api_extra>` this format declared using its ``"extras"`` key, any that were requested using ``?_extra=`` in the URL, and the keys that type of page always includes. For table pages those are ``next``, the token for the next page of results, and ``next_url``, the URL of that page in this format - both are ``None`` on the last page. Extras that are not available for the current page are omitted.
 
-The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller.
-
-It can also return a dictionary with the following keys. This format is **deprecated** as-of Datasette 0.49 and will be removed by Datasette 1.0.
-
-``body`` - string or bytes, optional
-    The response body, default empty
-
-``content_type`` - string, optional
-    The Content-Type header, default ``text/plain``
-
-``status_code`` - integer, optional
-    The HTTP status code, default 200
-
-``headers`` - dictionary, optional
-    Extra HTTP headers to be returned in the response.
+The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller. Returning anything else is an error.
 
 An example of an output renderer callback function:
 

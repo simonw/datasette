@@ -779,7 +779,64 @@ async def test_hook_register_output_renderer_returning_response(ds_client):
 async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse?_broken=1")
     assert response.status_code == 500
-    assert "this should break should be dict or Response" in response.text
+    assert (
+        "Output renderer &#39;testresponse&#39; returned str: render functions "
+        "must return a datasette.Response object, or None if they cannot "
+        "render the data"
+    ) in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/facetable.testresponse?_dict=1",
+        "/fixtures/simple_primary_key/1.testresponse?_dict=1",
+        "/fixtures/-/query.testresponse?sql=select+1&_dict=1",
+    ),
+)
+async def test_hook_register_output_renderer_returning_dict_is_an_error(
+    ds_client, path
+):
+    # Returning a dictionary was deprecated in Datasette 0.49 and has
+    # since been removed
+    response = await ds_client.get(path)
+    assert response.status_code == 500
+    assert "Output renderer &#39;testresponse&#39; returned dict" in response.text
+    assert "must return a datasette.Response object" in response.text
+
+
+@pytest.mark.parametrize(
+    "renderer,expected",
+    (
+        (
+            {"extension": "old", "callback": lambda: Response.text("x")},
+            (
+                "Output renderer 'old' must have a 'render' function - "
+                "the 'callback' key has been renamed to 'render'"
+            ),
+        ),
+        (
+            {"extension": "old"},
+            "Output renderer 'old' must have a 'render' function",
+        ),
+    ),
+)
+def test_hook_register_output_renderer_requires_render(renderer, expected):
+    class Plugin:
+        __name__ = "Plugin"
+
+        @hookimpl
+        def register_output_renderer(self):
+            return renderer
+
+    pm.register(Plugin(), name="renderer_without_render")
+    try:
+        with pytest.raises(StartupError) as ex:
+            Datasette(memory=True)
+        assert str(ex.value) == expected
+    finally:
+        pm.unregister(name="renderer_without_render")
 
 
 @pytest.mark.asyncio

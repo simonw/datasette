@@ -498,7 +498,7 @@ async def test_database_page_query_preview_is_limited():
     assert "Demo query 05" in html_response.text
     assert "Demo query 06" not in html_response.text
     assert (
-        '<a class="homepage-section-link" href="/data/-/queries">All 25 queries →</a>'
+        '<a class="homepage-section-link" href="/data/-/queries">25 queries →</a>'
         in html_response.text
     )
     assert len(json_response.json()["queries"]) == 5

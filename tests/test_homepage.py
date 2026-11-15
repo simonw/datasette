@@ -263,7 +263,7 @@ async def test_homepage_queries_default_selection(ds):
     assert "Books under five pounds" in rows[0].text
     # Inputs derived from the SQL
     assert "inputs: author" in " ".join(rows[1].text.split())
-    assert "All 3 queries" in response.text
+    assert ">3 queries →</a>" in response.text
 
 
 @pytest.mark.asyncio

@@ -284,6 +284,8 @@ Default: ``50``
 
 When Datasette calculates suggested facets it needs to run a SQL query for every column in your table. This time limit, in milliseconds, applies separately to each query. If the time limit is exceeded the column will not be suggested as a facet.
 
+There is also a limit on the total time spent suggesting facets for a page, which is ten times this setting - 500ms by default. Once that total has been used up the remaining columns are not considered, so a table with a large number of columns may not have every possible facet suggested.
+
 You can increase this time limit like so::
 
     datasette mydatabase.db --setting facet_suggest_time_limit_ms 500

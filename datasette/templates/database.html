@@ -71,7 +71,7 @@
 <section class="homepage-queries" aria-labelledby="queries">
     <div class="homepage-section-header">
         <h2 id="queries">Queries</h2>
-        <a class="homepage-section-link" href="{{ urls.database(database) }}/-/queries">All {{ "{:,}".format(queries_count) }} quer{% if queries_count != 1 %}ies{% else %}y{% endif %} →</a>
+        <a class="homepage-section-link" href="{{ urls.database(database) }}/-/queries">{{ "{:,}".format(queries_count) }} quer{% if queries_count != 1 %}ies{% else %}y{% endif %} →</a>
     </div>
     <ul class="query-list">
         {% for query in queries %}

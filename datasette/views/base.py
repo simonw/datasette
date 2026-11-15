@@ -6,6 +6,7 @@ from datasette.utils import (
     add_cors_headers,
     call_with_supported_arguments,
     path_with_format,
+    path_without_format,
 )
 from datasette.utils.asgi import (
     BadRequest,
@@ -279,6 +280,8 @@ async def render_with_output_renderer(
         database=database,
         table=table,
         request=request,
+        path=path_without_format(request),
+        full_path=path_without_format(request, include_query_string=True),
         view_name=view_name,
         truncated=truncated,
         error=error,

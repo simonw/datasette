@@ -5,6 +5,7 @@ from typing import ClassVar
 from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
+from datasette.facets import start_suggest_deadline
 from datasette.plugins import pm
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
@@ -13,6 +14,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
+    path_without_format,
     request_route_path,
     to_css_class,
 )
@@ -292,10 +294,11 @@ class SuggestedFacetsExtra(Extra):
             and not context.nofacet
             and not context.nosuggest
         ):
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await context.run_sequential(
-                *facet_suggest_awaitables
-            ):
+            start_suggest_deadline(context.datasette, facet_instances)
+            for facet in facet_instances:
+                if facet.suggest_time_exceeded():
+                    break
+                (suggest_result,) = await context.run_sequential(facet.suggest())
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 
@@ -1132,6 +1135,10 @@ class RenderersExtra(Extra):
                 database=context.database_name,
                 table=table_name,
                 request=context.request,
+                path=path_without_format(context.request),
+                full_path=path_without_format(
+                    context.request, include_query_string=True
+                ),
                 view_name=view_name,
             )
             it_can_render = await await_me_maybe(it_can_render)

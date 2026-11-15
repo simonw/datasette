@@ -171,7 +171,16 @@ class DatabaseDownload(DataView):
     name = "database_download"
 
     async def get(self, request):
-        database = tilde_decode(request.url_vars["database"])
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            db = None
+        # The URL contains the database's route, but permissions refer to
+        # databases by name. Those differ for add_database(..., route=...).
+        # The check runs before the 404 for an unknown route, so an actor
+        # who is denied this for the whole instance gets a 403 either way.
+        database = db.name if db is not None else database_route
         await self.ds.ensure_permissions(
             request.actor,
             [
@@ -180,9 +189,7 @@ class DatabaseDownload(DataView):
                 "view-instance",
             ],
         )
-        try:
-            db = self.ds.get_database(route=database)
-        except KeyError:
+        if db is None:
             raise DatasetteError("Invalid database", status=404)
         if db.is_memory:
             raise DatasetteError("Cannot download in-memory databases", status=404)

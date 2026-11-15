@@ -1292,6 +1292,39 @@ async def test_infinity_returned_as_null(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,shape,expected",
+    (
+        (
+            "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid",
+            "arrays",
+            [[None], [None], [1.5]],
+        ),
+        (
+            "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid",
+            "arrayfirst",
+            [None, None, 1.5],
+        ),
+        (
+            "/fixtures/infinity.json?_sort=rowid",
+            "arrays",
+            [[1, None], [2, None], [3, 1.5]],
+        ),
+        ("/fixtures/infinity.json?_sort=rowid", "arrayfirst", [1, 2, 3]),
+        ("/fixtures/infinity/1.json?", "arrays", [[1, None]]),
+        ("/fixtures/infinity/1.json?", "arrayfirst", [1]),
+    ),
+)
+async def test_infinity_with_array_shapes(ds_client, path, shape, expected):
+    # remove_infinites() returns a plain list for a row containing infinity,
+    # so one response can mix those lists with sqlite3.Row objects
+    response = await ds_client.get(f"{path}&_shape={shape}")
+    assert response.status_code == 200
+    data = response.json()
+    assert (data["rows"] if shape == "arrays" else data) == expected
+
+
+@pytest.mark.asyncio
 async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
     response = await ds_client.get(
         "/fixtures/infinity.json?_shape=array&_json_infinity=1"

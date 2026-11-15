@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def schema_ds():
     """Create a Datasette instance with test databases and permission config."""
     ds = Datasette(
@@ -276,7 +276,7 @@ async def test_table_not_exists(schema_ds):
     assert "not found" in response.text.lower()
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def schema_table_perms_ds():
     """
     A database that is viewable by anonymous users, but with one table

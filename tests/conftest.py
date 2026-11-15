@@ -79,7 +79,7 @@ def bare_ds():
     return Datasette(memory=True)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def ds_client():
     import secrets
 

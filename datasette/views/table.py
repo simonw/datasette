@@ -224,11 +224,6 @@ class TableContext(Context):
     alternate_url_json: str = field(
         metadata={"help": "URL for the JSON version of this page"}
     )
-    datasette_allow_facet: str = field(
-        metadata={
-            "help": 'The string "true" or "false" reflecting the default_allow_facet setting'
-        }
-    )
     is_sortable: bool = field(
         metadata={"help": "True if any of the displayed columns can be used to sort"}
     )
@@ -2108,9 +2103,6 @@ async def table_view_traced(datasette, request):
             fix_path=datasette.urls.path,
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,
-            datasette_allow_facet=(
-                "true" if datasette.setting("default_allow_facet") else "false"
-            ),
             is_sortable=any(c["sortable"] for c in data["display_columns"]),
             allow_execute_sql=await datasette.allowed(
                 action="execute-sql",

@@ -219,6 +219,70 @@ def test_sort_scalar_round_trip(value):
     assert components == ["1"]
 
 
+@pytest.mark.parametrize(
+    "value",
+    [-0.0, 0.1, 1.0, 1.5, -2.5, 1e100, float("inf"), 2**63 - 1, b"\x00\xff", None],
+)
+def test_sort_scalar_token_is_query_string_safe(value):
+    # Clients can paste the "next" token into ?_next= without encoding it
+    from datasette.views.table import _encode_sort_value
+
+    token = _encode_sort_value(value)
+    assert "+" not in token
+    assert urllib.parse.parse_qs("_next=" + token + ",1") == {"_next": [token + ",1"]}
+
+
+@pytest.mark.asyncio
+async def test_sorted_float_cursor_without_url_encoding(tmp_path):
+    path = tmp_path / "pages.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute("create table items (id integer primary key, score)")
+        conn.executemany(
+            "insert into items (score) values (?)", [(1.5,), (2.5,), (3.5,), (4.5,)]
+        )
+    ds = Datasette([path])
+    try:
+        first = (await ds.client.get("/pages/items.json?_size=2&_sort=score")).json()
+        assert [row["id"] for row in first["rows"]] == [1, 2]
+        # The raw token, not the percent-encoded next_url
+        response = await ds.client.get(
+            "/pages/items.json?_size=2&_sort=score&_next=" + first["next"]
+        )
+        assert response.status_code == 200, response.text
+        assert [row["id"] for row in response.json()["rows"]] == [3, 4]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/pages/items.json", "/pages/items"])
+async def test_sorted_blob_cursor_with_trace(tmp_path, path):
+    # The decoded bytes cursor is a SQL parameter, which the tracer serializes
+    db_path = tmp_path / "pages.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("create table items (id integer primary key, score)")
+        conn.executemany(
+            "insert into items (score) values (?)",
+            [(b"\x00",), (b"\x01",), (b"\xff",)],
+        )
+    ds = Datasette([db_path], settings={"trace_debug": True})
+    try:
+        first = (await ds.client.get("/pages/items.json?_size=1&_sort=score")).json()
+        assert first["next"] == "b:00,1"
+        response = await ds.client.get(
+            path + "?_size=1&_sort=score&_trace=1&_next=" + first["next"]
+        )
+        assert response.status_code == 200, response.text
+        # repr() of the bytes parameter, with its backslash escaped by JSON
+        assert "\\\\x00" in response.text
+        if path.endswith(".json"):
+            data = response.json()
+            assert [row["id"] for row in data["rows"]] == [2]
+            assert data["_trace"]["num_traces"] > 0
+    finally:
+        ds.close()
+
+
 @pytest_asyncio.fixture
 async def pages_ds(tmp_path):
     ds = Datasette([tmp_path / "pages.db"])

@@ -2187,7 +2187,9 @@ def _encode_sort_value(value):
     if isinstance(value, int):
         return f"i:{value}"
     if isinstance(value, float):
-        return f"f:{value.hex()}"
+        # float.hex() writes positive exponents as "p+1". A raw "+" in a query
+        # string decodes to a space, so drop it - float.fromhex() accepts "p1"
+        return f"f:{value.hex().replace('+', '')}"
     if isinstance(value, bytes):
         return f"b:{value.hex()}"
     return tilde_encode(str(value))
@@ -2196,7 +2198,7 @@ def _encode_sort_value(value):
 def _decode_sort_value(value):
     if value == "$null":
         return None
-    # Decode before tilde_decode(), which would turn float exponent '+' into space.
+    # Typed values are not tilde-encoded, so check for them before tilde_decode()
     try:
         if value.startswith("i:"):
             number = int(value[2:])

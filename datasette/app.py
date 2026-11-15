@@ -590,6 +590,7 @@ class Datasette:
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         # File extension -> label, description, is_binary and is_webpage
         self._renderer_options = {}
+        self._renderer_extras = {}  # File extension -> extras the renderer declared
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
             self.executor = None
@@ -2572,6 +2573,15 @@ ORDER BY allowed.parent, allowed.child
                 renderer.get("render") or renderer["callback"],
                 renderer.get("can_render") or (lambda: True),
             )
+            # Extras to resolve and pass to the render function as extras=
+            declared_extras = renderer.get("extras") or []
+            if isinstance(declared_extras, str) or not all(
+                isinstance(name, str) for name in declared_extras
+            ):
+                raise StartupError(
+                    f"Output renderer '{extension}' extras must be a list of strings"
+                )
+            self._renderer_extras[extension] = list(declared_extras)
             # How the export dialog presents this format
             is_binary = bool(renderer.get("is_binary"))
             is_webpage = bool(renderer.get("is_webpage"))

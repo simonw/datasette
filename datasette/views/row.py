@@ -38,6 +38,7 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
+    extras_for_renderer,
     is_csv_format,
     stream_csv,
     tsv_export_path,
@@ -191,6 +192,9 @@ class RowView(BaseView):
         if format_ == "html":
             # HTML views default to expanding all foreign key labels
             data_kwargs["default_labels"] = True
+        elif self.ds._renderer_extras.get(format_):
+            # Extras declared by the output renderer for this format
+            data_kwargs["renderer_extras"] = self.ds._renderer_extras[format_]
 
         extra_template_data = {}
         start = time.perf_counter()
@@ -254,6 +258,7 @@ class RowView(BaseView):
                 view_name=self.name,
                 truncated=False,  # TODO: support this
                 error=data.get("error"),
+                extras=extras_for_renderer(self.ds, request, format_, data),
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
                 data=data,
@@ -423,7 +428,7 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def data(self, request, default_labels=False):
+    async def data(self, request, default_labels=False, renderer_extras=None):
         db, table, resource = await _database_and_table_resource_from_request(
             self.ds, request
         )
@@ -642,6 +647,9 @@ class RowView(BaseView):
         if request.url_vars.get("format"):
             # Data formats reject unknown extras; HTML ignores them
             table_extra_registry.validate_requested(extras, ExtraScope.ROW)
+        if renderer_extras:
+            # Any that are not available for rows are skipped when resolved
+            extras.update(renderer_extras)
 
         # Process extras
         row_extra_context = RowExtraContext(

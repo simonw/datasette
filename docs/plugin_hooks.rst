@@ -597,7 +597,7 @@ This will register ``render_demo`` to be called when paths with the extension ``
 
 ``render_demo`` is a Python function. It can be a regular function or an ``async def render_demo()`` awaitable function, depending on if it needs to make any asynchronous calls.
 
-``can_render_demo`` is a Python function (or ``async def`` function) which accepts the same arguments as ``render_demo`` but just returns ``True`` or ``False``. It lets Datasette know if the current SQL query can be represented by the plugin - and hence influence if a link to this output format is displayed in the user interface. If you omit the ``"can_render"`` key from the dictionary every query will be treated as being supported by the plugin.
+``can_render_demo`` is a Python function (or ``async def`` function) which accepts the same arguments as ``render_demo``, apart from ``extras``, but just returns ``True`` or ``False``. It lets Datasette know if the current SQL query can be represented by the plugin - and hence influence if a link to this output format is displayed in the user interface. If you omit the ``"can_render"`` key from the dictionary every query will be treated as being supported by the plugin.
 
 The dictionary can also include these optional keys, which control how the format is shown in the :ref:`Export data dialog <csv_export>`:
 
@@ -626,6 +626,32 @@ Formats that set neither option are offered with all four actions: **Copy**, **V
             "description": "An .xlsx file for Microsoft Excel",
             "is_binary": True,
         }
+
+The dictionary can also include an optional ``"extras"`` key, listing the :ref:`extras <json_api_extra>` the format needs. These are the same names that can be passed to ``?_extra=`` in the JSON API. Datasette calculates them and passes them to the ``"render"`` function as the ``extras`` argument described below:
+
+.. code-block:: python
+
+    def render_summary(rows, extras):
+        return Response.text(
+            "Showing {} of {} rows {}".format(
+                len(rows),
+                extras.get("count"),
+                extras.get("human_description_en") or "",
+            )
+        )
+
+
+    @hookimpl
+    def register_output_renderer(datasette):
+        return {
+            "extension": "summary",
+            "render": render_summary,
+            "extras": ["count", "human_description_en"],
+        }
+
+Extras are only calculated for the format that declared them, so a format that lists ``"count"`` does not make any other format slower.
+
+Not every extra is available on every page: ``count`` and ``human_description_en`` exist for tables but not for arbitrary SQL queries, for example. An extra that is not available for the current page is left out of the ``extras`` dictionary, so use ``extras.get(name)`` unless you know the extra is available everywhere your format is used.
 
 When a request is received, the ``"render"`` callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
 
@@ -661,6 +687,9 @@ When a request is received, the ``"render"`` callback function is called with ze
 
 ``view_name`` - string
     The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
+
+``extras`` - dictionary
+    The :ref:`extras <json_api_extra>` this format declared using its ``"extras"`` key, plus any that were requested using ``?_extra=`` in the URL. Keys are the names of the extras. Extras that are not available for the current page are omitted.
 
 The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller.
 

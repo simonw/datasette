@@ -47,7 +47,14 @@ from datasette.utils.asgi import (
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, is_csv_format, stream_csv, tsv_export_path
+from .base import (
+    DatasetteError,
+    View,
+    extras_for_renderer,
+    is_csv_format,
+    stream_csv,
+    tsv_export_path,
+)
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -912,6 +919,8 @@ class QueryView(View):
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)
             table_extra_registry.validate_requested(extras, ExtraScope.QUERY)
+            # Plus any extras declared by the output renderer for this format
+            extras.update(datasette._renderer_extras.get(format_) or [])
             if extras:
                 query_extra_context = QueryExtraContext(
                     datasette=datasette,
@@ -944,6 +953,7 @@ class QueryView(View):
                 view_name="table",
                 truncated=results.truncated if results else False,
                 error=query_error,
+                extras=extras_for_renderer(datasette, request, format_, data),
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
                 data=data,

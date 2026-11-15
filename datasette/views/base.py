@@ -2,6 +2,7 @@ import csv
 import hashlib
 import sys
 
+from datasette.extras import extra_names_from_request
 from datasette.utils import (
     EscapeHtmlWriter,
     InvalidSql,
@@ -173,6 +174,17 @@ class BaseView:
         view.__module__ = cls.__module__
         view.__name__ = cls.__name__
         return view
+
+
+def extras_for_renderer(datasette, request, format_, data):
+    """
+    The extras= dictionary passed to an output renderer's render function:
+    the extras it declared when it was registered, plus any requested using
+    ?_extra=. Extras that are not available for this type of page are omitted.
+    """
+    names = set(datasette._renderer_extras.get(format_) or [])
+    names.update(extra_names_from_request(request))
+    return {name: data[name] for name in sorted(names) if name in data}
 
 
 # Formats that stream_csv() writes, with their content type for downloads.

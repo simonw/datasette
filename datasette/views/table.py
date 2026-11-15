@@ -67,6 +67,7 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
+    extras_for_renderer,
     is_csv_format,
     stream_csv,
     tsv_export_path,
@@ -1987,6 +1988,7 @@ async def table_view_traced(datasette, request):
         extra_extras=extra_extras,
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
+        renderer_extras=datasette._renderer_extras.get(format_),
     )
     if isinstance(view_data, Response):
         return view_data
@@ -2038,6 +2040,7 @@ async def table_view_traced(datasette, request):
             view_name="table",
             truncated=False,
             error=None,
+            extras=extras_for_renderer(datasette, request, format_, data),
             # These will be deprecated in Datasette 1.0:
             args=request.args,
             data=data,
@@ -2375,6 +2378,7 @@ async def table_view_data(
     context_for_html_hack=False,
     default_labels=False,
     _next=None,
+    renderer_extras=None,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -2617,6 +2621,10 @@ async def table_view_data(
         # Data formats reject unknown extras; the HTML path (which passes
         # extra_extras={"_html"}) resolves internal extras of its own
         table_extra_registry.validate_requested(extras, ExtraScope.TABLE)
+    if renderer_extras:
+        # Extras declared by the output renderer for this format. Any that
+        # are not available for tables are skipped when extras are resolved.
+        extras.update(renderer_extras)
     if any(k for k in request.args if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":

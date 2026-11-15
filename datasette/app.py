@@ -273,14 +273,14 @@ SETTINGS = (
     ),
     Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
     Setting(
-        "allow_csv_stream",
+        "allow_stream",
         True,
-        "Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)",
+        "Allow ?_stream=1 to export all rows (ignoring max_returned_rows)",
     ),
     Setting(
-        "max_csv_mb",
+        "max_stream_mb",
         100,
-        "Maximum size allowed for CSV export in MB - set 0 to disable this limit",
+        "Maximum size allowed for a streamed export in MB - set 0 to disable this limit",
     ),
     Setting(
         "truncate_cells_html",
@@ -304,12 +304,30 @@ SETTINGS = (
     ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
-_HASH_URLS_REMOVED = "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead"
-OBSOLETE_SETTINGS = {
-    "hash_urls": _HASH_URLS_REMOVED,
-    "default_cache_ttl_hashed": _HASH_URLS_REMOVED,
-}
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
+# Previous names of settings that have been renamed, mapped to their new
+# names. The old names are not documented but still work everywhere a
+# setting can be set or read.
+SETTING_ALIASES = {
+    "allow_csv_stream": "allow_stream",
+    "max_csv_mb": "max_stream_mb",
+}
+
+
+def resolve_setting_aliases(settings, source):
+    """
+    Return a copy of the settings dictionary with any old setting names
+    replaced by their new names. source says where the settings came from,
+    for the error raised if a setting is given under both of its names.
+    """
+    for old_name, name in SETTING_ALIASES.items():
+        if old_name in settings and name in settings:
+            raise StartupError(
+                f"Setting '{name}' and its previous name '{old_name}' "
+                f"are both set in {source}"
+            )
+    return {SETTING_ALIASES.get(key, key): value for key, value in settings.items()}
+
 
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
@@ -551,7 +569,9 @@ class Datasette:
             config = json.loads((config_dir / "datasette.json").read_text())
 
         config = config or {}
-        config_settings = config.get("settings") or {}
+        config_settings = resolve_setting_aliases(
+            config.get("settings") or {}, "config file"
+        )
 
         # Validate settings from config file
         for key, value in config_settings.items():
@@ -571,6 +591,7 @@ class Datasette:
 
         # Validate settings from constructor parameter
         if settings:
+            settings = resolve_setting_aliases(settings, "settings parameter")
             for key, value in settings.items():
                 if key not in DEFAULT_SETTINGS:
                     raise StartupError(f"Invalid setting '{key}' in settings parameter")
@@ -586,7 +607,11 @@ class Datasette:
 
         self.config = config
         # CLI settings should overwrite datasette.json settings
-        self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
+        self._settings = {
+            **DEFAULT_SETTINGS,
+            **config_settings,
+            **(settings or {}),
+        }
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         # File extension -> label, description, is_binary and is_webpage
         self._renderer_options = {}
@@ -1010,11 +1035,15 @@ class Datasette:
             raise first_exception
 
     def setting(self, key):
-        return self._settings.get(key, None)
+        return self._settings.get(SETTING_ALIASES.get(key, key), None)
 
     def settings_dict(self):
         # Returns a fully resolved settings dictionary, useful for templates
-        return {option.name: self.setting(option.name) for option in SETTINGS}
+        settings = {option.name: self.setting(option.name) for option in SETTINGS}
+        # Custom templates may still use the previous name of a setting
+        for old_name, name in SETTING_ALIASES.items():
+            settings[old_name] = settings[name]
+        return settings
 
     def _metadata_recursive_update(self, orig, updated):
         if not isinstance(orig, dict) or not isinstance(updated, dict):

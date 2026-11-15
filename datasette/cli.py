@@ -18,6 +18,7 @@ from click_default_group import DefaultGroup
 
 from .app import (
     DEFAULT_SETTINGS,
+    SETTING_ALIASES,
     SETTINGS,
     SQLITE_LIMIT_ATTACHED,
     Datasette,
@@ -72,6 +73,8 @@ class Setting(CompositeParamType):
 
     def convert(self, config, param, ctx):
         name, value = config
+        # A renamed setting can still be set using its previous name
+        name = SETTING_ALIASES.get(name, name)
         if name in DEFAULT_SETTINGS:
             # For backwards compatibility with how this worked prior to
             # Datasette 1.0, we turn bare setting names into setting.name

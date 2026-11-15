@@ -180,7 +180,7 @@ async def test_stream_and_next_cannot_be_combined(ds):
 
 @pytest.mark.asyncio
 async def test_streaming_can_be_disabled(plugin):
-    ds = _make_datasette(allow_csv_stream=False)
+    ds = _make_datasette(allow_stream=False)
     await _add_numbers(ds)
     try:
         for format_ in ("ndjson", "csv", "tsv"):
@@ -194,8 +194,8 @@ async def test_streaming_can_be_disabled(plugin):
 
 
 @pytest.mark.asyncio
-async def test_streamed_response_larger_than_max_csv_mb_is_aborted(plugin):
-    ds = _make_datasette(max_csv_mb=1)
+async def test_streamed_response_larger_than_max_stream_mb_is_aborted(plugin):
+    ds = _make_datasette(max_stream_mb=1)
     await _add_numbers(ds)
     try:
         # Under the limit: one row is 600KB
@@ -204,7 +204,7 @@ async def test_streamed_response_larger_than_max_csv_mb_is_aborted(plugin):
         assert len(response.content) == 1024 * 600
         # Over the limit: the response has already started, so it cannot
         # become an error page - the connection is dropped instead
-        with pytest.raises(StreamSizeExceeded, match="max_csv_mb"):
+        with pytest.raises(StreamSizeExceeded, match="max_stream_mb"):
             await ds.client.get("/data/numbers.big?_size=2")
         with pytest.raises(StreamSizeExceeded):
             await ds.client.get(
@@ -215,8 +215,8 @@ async def test_streamed_response_larger_than_max_csv_mb_is_aborted(plugin):
 
 
 @pytest.mark.asyncio
-async def test_max_csv_mb_zero_disables_the_limit(plugin):
-    ds = _make_datasette(max_csv_mb=0)
+async def test_max_stream_mb_zero_disables_the_limit(plugin):
+    ds = _make_datasette(max_stream_mb=0)
     await _add_numbers(ds)
     try:
         response = await ds.client.get("/data/numbers.big?_size=3")

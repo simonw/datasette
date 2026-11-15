@@ -784,7 +784,7 @@ Datasette's own :ref:`CSV and TSV export <csv_export>` is implemented this way. 
 - ``?_stream=1`` is ignored by formats that do not accept ``row_stream``.
 - Only tables and views have more than one page. For a row, or the results of a SQL query, ``row_stream`` yields the same rows as ``rows``.
 - ``rows``, ``page`` and the other arguments describe the first page. Everything that could result in an error page - an invalid filter, a permission check - has already happened by the time your function is called.
-- :ref:`setting_allow_csv_stream` and :ref:`setting_max_csv_mb` apply to every format, not only CSV. A streamed response that grows larger than ``max_csv_mb`` is cut off by dropping the connection, as described in :ref:`internals_response_stream`.
+- :ref:`setting_allow_stream` and :ref:`setting_max_stream_mb` apply to every format, not only CSV. A streamed response that grows larger than ``max_stream_mb`` is cut off by dropping the connection, as described in :ref:`internals_response_stream`.
 
 Any format can be downloaded as a file by adding ``?_dl=1`` to the URL, which adds a ``content-disposition: attachment`` header with a filename ending in the format's extension. A response that sets its own ``content-disposition`` header is left alone.
 

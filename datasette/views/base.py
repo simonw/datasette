@@ -213,7 +213,7 @@ def stream_requested(datasette, request, format_):
         return False
     if not datasette._renderer_can_stream.get(format_):
         return False
-    if not datasette.setting("allow_csv_stream"):
+    if not datasette.setting("allow_stream"):
         raise BadRequest("Streaming is disabled")
     if request.args.get("_next"):
         raise BadRequest("_next not allowed when streaming")
@@ -234,7 +234,7 @@ async def _limit_stream_size(body, limit_mb):
             sent += len(chunk)
             if sent > limit_bytes:
                 raise StreamSizeExceeded(
-                    f"Response is larger than the {limit_mb}MB max_csv_mb limit"
+                    f"Response is larger than the {limit_mb}MB max_stream_mb limit"
                 )
             yield chunk
     finally:
@@ -315,7 +315,7 @@ async def render_with_output_renderer(
         )
 
     # Streamed responses are limited in size
-    limit_mb = datasette.setting("max_csv_mb")
+    limit_mb = datasette.setting("max_stream_mb")
     if limit_mb and hasattr(response.body, "__aiter__"):
         response.body = _limit_stream_size(response.body, limit_mb)
     return response

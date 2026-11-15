@@ -106,9 +106,9 @@ If a table returns more than 100MB of data Datasette stops and drops the
 connection, so the download fails instead of saving a file that is silently
 missing rows. The same thing happens if an error occurs part of the way through.
 
-You can increase or remove this limit using the :ref:`setting_max_csv_mb` config
+You can increase or remove this limit using the :ref:`setting_max_stream_mb` config
 setting. You can also disable the *include all rows* option entirely using
-:ref:`setting_allow_csv_stream`.
+:ref:`setting_allow_stream`.
 
 CSV and TSV are implemented as :ref:`output renderers <plugin_register_output_renderer>`
 that stream their rows. Plugins can add other formats that work the same way, see

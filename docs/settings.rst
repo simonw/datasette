@@ -406,13 +406,13 @@ Sets the amount of memory SQLite uses for its `per-connection cache <https://www
 
     datasette mydatabase.db --setting cache_size_kb 5000
 
-.. _setting_allow_csv_stream:
+.. _setting_allow_stream:
 
-allow_csv_stream
-~~~~~~~~~~~~~~~~
+allow_stream
+~~~~~~~~~~~~
 
 .. [[[cog
-    setting_default(cog, "allow_csv_stream")
+    setting_default(cog, "allow_stream")
 .. ]]]
 
 Default: ``on``
@@ -427,15 +427,15 @@ You can turn it off like this:
 
 ::
 
-    datasette mydatabase.db --setting allow_csv_stream off
+    datasette mydatabase.db --setting allow_stream off
 
-.. _setting_max_csv_mb:
+.. _setting_max_stream_mb:
 
-max_csv_mb
-~~~~~~~~~~
+max_stream_mb
+~~~~~~~~~~~~~
 
 .. [[[cog
-    setting_default(cog, "max_csv_mb")
+    setting_default(cog, "max_stream_mb")
 .. ]]]
 
 Default: ``100``
@@ -449,7 +449,7 @@ You can disable the limit entirely by setting this to 0:
 
 ::
 
-    datasette mydatabase.db --setting max_csv_mb 0
+    datasette mydatabase.db --setting max_stream_mb 0
 
 .. _setting_truncate_cells_html:
 

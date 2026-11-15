@@ -289,7 +289,7 @@ class SuggestedFacetsExtra(Extra):
         suggested_facets = []
         if (
             context.datasette.setting("suggest_facets")
-            and context.datasette.setting("allow_facet")
+            and context.datasette.setting("default_allow_facet")
             and not context.next_arg
             and not context.nofacet
             and not context.nosuggest

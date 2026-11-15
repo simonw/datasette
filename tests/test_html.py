@@ -903,7 +903,7 @@ def test_database_download_disallowed_for_memory():
 
 def test_allow_download_off():
     with make_app_client(
-        is_immutable=True, settings={"allow_download": False}
+        is_immutable=True, settings={"default_allow_download": False}
     ) as client:
         response = client.get("/fixtures")
         soup = Soup(response.content, "html.parser")

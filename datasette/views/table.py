@@ -224,11 +224,6 @@ class TableContext(Context):
     alternate_url_json: str = field(
         metadata={"help": "URL for the JSON version of this page"}
     )
-    datasette_allow_facet: str = field(
-        metadata={
-            "help": 'The string "true" or "false" reflecting the allow_facet setting'
-        }
-    )
     is_sortable: bool = field(
         metadata={"help": "True if any of the displayed columns can be used to sort"}
     )
@@ -2108,9 +2103,6 @@ async def table_view_traced(datasette, request):
             fix_path=datasette.urls.path,
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,
-            datasette_allow_facet=(
-                "true" if datasette.setting("allow_facet") else "false"
-            ),
             is_sortable=any(c["sortable"] for c in data["display_columns"]),
             allow_execute_sql=await datasette.allowed(
                 action="execute-sql",
@@ -2461,8 +2453,11 @@ async def table_view_data(
             where_clauses.extend(
                 _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params)
             )
-            if sort or sort_desc:
-                order_by = f"{order_by}, {order_by_pks}"
+
+    # The first page needs this tie-breaker too: the ?_next= cursor assumes that
+    # rows with the same sort value come back in primary key order
+    if (sort or sort_desc) and not is_view:
+        order_by = f"{order_by}, {order_by_pks}"
 
     where_clause = ""
     if where_clauses:
@@ -2616,7 +2611,7 @@ async def table_view_data(
         extras.update(extra_extras)
 
     # Faceting
-    if not datasette.setting("allow_facet") and any(
+    if not datasette.setting("default_allow_facet") and any(
         arg.startswith("_facet") for arg in request.args
     ):
         raise BadRequest("_facet= is not allowed")

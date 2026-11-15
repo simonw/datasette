@@ -274,7 +274,7 @@ class DatabaseView(View):
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
-                    allow_download=datasette.setting("allow_download")
+                    allow_download=datasette.setting("default_allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
                     attached_databases=attached_databases,
@@ -596,7 +596,7 @@ async def database_download(request, datasette):
 
     if db.is_memory:
         raise DatasetteError("Cannot download in-memory databases", status=404)
-    if not datasette.setting("allow_download") or db.is_mutable:
+    if not datasette.setting("default_allow_download") or db.is_mutable:
         raise Forbidden("Database download is forbidden")
     if not db.path:
         raise DatasetteError("Cannot download database", status=404)

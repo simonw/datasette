@@ -1141,7 +1141,7 @@ async def test_suggested_facets(ds_client):
 
 
 def test_allow_facet_off():
-    with make_app_client(settings={"allow_facet": False}) as client:
+    with make_app_client(settings={"default_allow_facet": False}) as client:
         assert (
             client.get(
                 "/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets"
@@ -1289,6 +1289,39 @@ async def test_infinity_returned_as_null(ds_client):
         {"rowid": 2, "value": None},
         {"rowid": 3, "value": 1.5},
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,shape,expected",
+    (
+        (
+            "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid",
+            "arrays",
+            [[None], [None], [1.5]],
+        ),
+        (
+            "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid",
+            "arrayfirst",
+            [None, None, 1.5],
+        ),
+        (
+            "/fixtures/infinity.json?_sort=rowid",
+            "arrays",
+            [[1, None], [2, None], [3, 1.5]],
+        ),
+        ("/fixtures/infinity.json?_sort=rowid", "arrayfirst", [1, 2, 3]),
+        ("/fixtures/infinity/1.json?", "arrays", [[1, None]]),
+        ("/fixtures/infinity/1.json?", "arrayfirst", [1]),
+    ),
+)
+async def test_infinity_with_array_shapes(ds_client, path, shape, expected):
+    # remove_infinites() returns a plain list for a row containing infinity,
+    # so one response can mix those lists with sqlite3.Row objects
+    response = await ds_client.get(f"{path}&_shape={shape}")
+    assert response.status_code == 200
+    data = response.json()
+    assert (data["rows"] if shape == "arrays" else data) == expected
 
 
 @pytest.mark.asyncio
@@ -1665,6 +1698,42 @@ async def test_sort_excluded_column_rowid_table(query_string, expected_order):
     # Every row visited exactly once, in the requested order, with no rows
     # skipped or repeated at a page boundary
     assert [row["c"] for row in fetched] == [f"c{i:02d}" for i in expected_order]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "create_table",
+    (
+        "create table items (id text primary key, status text)",
+        "create table items (id text, status text, primary key (id, status))",
+    ),
+)
+@pytest.mark.parametrize("sort_arg", ("_sort", "_sort_desc"))
+async def test_sort_ties_paginate_without_skips_or_repeats(create_table, sort_arg):
+    # Rows are inserted out of primary key order, so SQLite returns ties on the
+    # sort column in a different order unless the query breaks them by primary key
+    rows = [("z", "a"), ("m", "a"), ("c", "a"), ("q", "b"), ("a", "b"), ("y", "b")]
+    ds = Datasette(settings={"default_page_size": 2, "max_returned_rows": 1000})
+    db = ds.add_memory_database("sort_ties")
+    await db.execute_write(create_table)
+    await db.execute_write_many("insert into items (id, status) values (?, ?)", rows)
+    await ds.invoke_startup()
+
+    fetched = []
+    path = f"/sort_ties/items.json?_shape=objects&{sort_arg}=status"
+    for _ in range(100):
+        response = await ds.client.get(path)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        fetched.extend(row["id"] for row in data["rows"])
+        path = data["next_url"]
+        if not path:
+            break
+        path = path.replace("http://localhost", "")
+    else:
+        assert False, "pagination did not terminate"
+
+    assert sorted(fetched) == sorted(row[0] for row in rows)
 
 
 @pytest.mark.asyncio

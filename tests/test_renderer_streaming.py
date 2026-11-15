@@ -180,7 +180,7 @@ async def test_stream_and_next_cannot_be_combined(ds):
 
 @pytest.mark.asyncio
 async def test_streaming_can_be_disabled(plugin):
-    ds = _make_datasette(allow_stream=False)
+    ds = _make_datasette(default_allow_stream=False)
     await _add_numbers(ds)
     try:
         for format_ in ("ndjson", "csv", "tsv"):

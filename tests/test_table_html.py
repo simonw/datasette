@@ -2985,7 +2985,7 @@ async def test_table_post_method_not_allowed(ds_client):
 
 @pytest.mark.parametrize("allow_facet", (True, False))
 def test_allow_facet_off(allow_facet):
-    with make_app_client(settings={"allow_facet": allow_facet}) as client:
+    with make_app_client(settings={"default_allow_facet": allow_facet}) as client:
         response = client.get("/fixtures/facetable")
         expected = "DATASETTE_ALLOW_FACET = {};".format(
             "true" if allow_facet else "false"

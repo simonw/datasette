@@ -198,3 +198,94 @@ def test_json_renderer_uses_documented_arguments_only(ds):
     parameters = set(inspect.signature(render).parameters)
     assert not parameters & {"data", "args"}
     assert {"rows", "columns", "page"} <= parameters
+
+
+def _render_with_data(data, rows):
+    return Response.text("ok")
+
+
+def _render_with_args(args, rows):
+    return Response.text("ok")
+
+
+@pytest.mark.parametrize(
+    "render,argument,replacement",
+    (
+        (
+            _render_with_data,
+            "data",
+            "Declare the extras it needs and use the page argument instead",
+        ),
+        (_render_with_args, "args", "Use request.args instead"),
+    ),
+)
+def test_render_function_accepting_data_or_args_is_deprecated(
+    render, argument, replacement
+):
+    class DeprecatedPlugin:
+        __name__ = "DeprecatedPlugin"
+
+        @hookimpl
+        def register_output_renderer(self):
+            return {"extension": "deprecated", "render": render}
+
+    pm.register(DeprecatedPlugin(), name="deprecated_renderer")
+    try:
+        with pytest.warns(DeprecationWarning) as record:
+            ds = Datasette(memory=True)
+        ds.close()
+    finally:
+        pm.unregister(name="deprecated_renderer")
+    messages = [
+        str(warning.message)
+        for warning in record
+        if "Output renderer 'deprecated'" in str(warning.message)
+    ]
+    assert len(messages) == 1
+    assert messages[0].startswith(
+        f"Output renderer 'deprecated' accepts the {argument} argument, which is "
+        f"deprecated and will be removed before Datasette 1.0. {replacement}: "
+    )
+
+
+@pytest.mark.asyncio
+async def test_deprecated_data_and_args_are_still_passed():
+    def render(data, args):
+        return Response.json({"ok": data["ok"], "one": args["one"]})
+
+    class DeprecatedPlugin:
+        __name__ = "DeprecatedPlugin"
+
+        @hookimpl
+        def register_output_renderer(self):
+            return {"extension": "deprecated", "render": render}
+
+    pm.register(DeprecatedPlugin(), name="deprecated_renderer")
+    try:
+        with pytest.warns(DeprecationWarning) as record:
+            ds = Datasette(memory=True)
+        # The warning points at the render function, not at Datasette
+        ours = [w for w in record if "Output renderer 'deprecated'" in str(w.message)]
+        assert len(ours) == 2
+        assert {w.filename for w in ours} == {__file__}
+        assert {w.lineno for w in ours} == {render.__code__.co_firstlineno}
+        response = await ds.client.get("/_memory/-/query.deprecated?sql=select+1&one=1")
+        assert response.json() == {"ok": True, "one": "1"}
+        ds.close()
+    finally:
+        pm.unregister(name="deprecated_renderer")
+
+
+def test_no_deprecation_warning_for_other_renderers(ds):
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        other = Datasette(memory=True)
+        other.close()
+    # The ds fixture registers renderers that only use page - and the
+    # default CSV, TSV, blob and JSON renderers must not warn either
+    extensions = ("declared", "nonedeclared", "noargument", "csv", "tsv", "json")
+    for warning in record:
+        for extension in extensions:
+            assert f"Output renderer '{extension}'" not in str(warning.message)

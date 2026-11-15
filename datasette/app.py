@@ -24,6 +24,7 @@ import threading
 import time
 import types
 import urllib.parse
+import warnings
 from concurrent import futures
 from pathlib import Path
 
@@ -312,6 +313,37 @@ SETTING_ALIASES = {
     "allow_csv_stream": "allow_stream",
     "max_csv_mb": "max_stream_mb",
 }
+
+
+# Arguments that output renderer render functions should no longer accept,
+# mapped to what to use instead
+DEPRECATED_RENDER_ARGUMENTS = {
+    "data": "Declare the extras it needs and use the page argument instead",
+    "args": "Use request.args instead",
+}
+
+
+def _warn_deprecated_render_argument(render, extension, argument, replacement):
+    message = (
+        f"Output renderer '{extension}' accepts the {argument} argument, which is "
+        f"deprecated and will be removed before Datasette 1.0. {replacement}: "
+        "https://docs.datasette.io/en/latest/plugin_hooks.html"
+        "#register-output-renderer-datasette"
+    )
+    code = getattr(render, "__code__", None)
+    if code is None:
+        warnings.warn(message, DeprecationWarning, stacklevel=2)
+    else:
+        # Report the warning against the render function itself, so the
+        # plugin author can see which code needs to change
+        warnings.warn_explicit(
+            message,
+            DeprecationWarning,
+            filename=code.co_filename,
+            lineno=code.co_firstlineno,
+            # module must be a string or some warnings are silently dropped
+            module=getattr(render, "__module__", None) or "datasette",
+        )
 
 
 def resolve_setting_aliases(settings, source):
@@ -2612,11 +2644,15 @@ ORDER BY allowed.parent, allowed.child
                     f"Output renderer '{extension}' extras must be a list of strings"
                 )
             self._renderer_extras[extension] = list(declared_extras)
+            render = self.renderers[extension][0]
+            render_parameters = inspect.signature(render).parameters
             # Renderers that accept row_stream can stream every row
-            self._renderer_can_stream[extension] = (
-                "row_stream"
-                in inspect.signature(self.renderers[extension][0]).parameters
-            )
+            self._renderer_can_stream[extension] = "row_stream" in render_parameters
+            for deprecated, replacement in DEPRECATED_RENDER_ARGUMENTS.items():
+                if deprecated in render_parameters:
+                    _warn_deprecated_render_argument(
+                        render, extension, deprecated, replacement
+                    )
             # How the export dialog presents this format
             is_binary = bool(renderer.get("is_binary"))
             is_webpage = bool(renderer.get("is_webpage"))

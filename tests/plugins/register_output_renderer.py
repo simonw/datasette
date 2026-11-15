@@ -46,7 +46,6 @@ async def render_test_all_parameters(
     path,
     full_path,
     view_name,
-    data,
 ):
     headers = {}
     for custom_header in request.args.getlist("header"):

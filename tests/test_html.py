@@ -544,6 +544,10 @@ async def test_query_export_dialog_truncated(ds_client):
     soup = Soup(response.text, "html.parser")
     # max_returned_rows is 100 for these tests
     assert "Custom SQL query returning more than 100 rows" in response.text
+    # The same warning is repeated below the table
+    assert soup.select_one("p.query-truncated").get_text() == (
+        "Only the first 100 rows are shown \u2013 this query returned more."
+    )
     dialog = soup.select_one("dialog#export-dialog")
     assert {
         (el.text, el["data-partial"]) for el in dialog.select("[data-export-rows]")

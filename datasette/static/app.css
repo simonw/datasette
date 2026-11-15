@@ -2391,6 +2391,13 @@ dialog.export-dialog {
 
 
 
+/* Below a query's results when they stopped at max_returned_rows */
+.query-truncated {
+    margin: 0.75rem 0 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+}
+
 p.zero-results {
     border: 2px solid #ccc;
     background-color: #eee;

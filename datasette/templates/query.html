@@ -98,6 +98,9 @@
 {% endif %}
 {% set show_zero_results = not stored_query_write and not error %}
 {% include "_query_results.html" %}
+{% if display_rows and truncated %}
+    <p class="query-truncated">Only the first {{ "{:,}".format(display_rows|length) }} rows are shown &ndash; this query returned more.</p>
+{% endif %}
 
 {% include "_codemirror_foot.html" %}
 {% include "_sql_parameter_scripts.html" %}

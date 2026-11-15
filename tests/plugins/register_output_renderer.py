@@ -46,15 +46,14 @@ async def render_test_all_parameters(
     path,
     full_path,
     view_name,
-    data,
 ):
     headers = {}
     for custom_header in request.args.getlist("header"):
         key, value = custom_header.split(":")
         headers[key] = value
     result = await datasette.databases["fixtures"].execute("select 1 + 1")
-    return {
-        "body": json.dumps(
+    return Response(
+        json.dumps(
             {
                 "datasette": datasette,
                 "columns": columns,
@@ -71,19 +70,22 @@ async def render_test_all_parameters(
             },
             default=repr,
         ),
-        "content_type": request.args.get("content_type", "text/plain"),
-        "status_code": int(request.args.get("status_code", 200)),
-        "headers": headers,
-    }
+        content_type=request.args.get("content_type", "text/plain"),
+        status=int(request.args.get("status_code", 200)),
+        headers=headers,
+    )
 
 
 def render_test_no_parameters():
-    return {"body": "Hello"}
+    return Response.text("Hello")
 
 
 async def render_response(request):
     if request.args.get("_broken"):
         return "this should break"
+    if request.args.get("_dict"):
+        # The pre-1.0 way of returning a response
+        return {"body": "Hello", "content_type": "text/plain"}
     return Response.json({"this_is": "json"})
 
 
@@ -95,6 +97,6 @@ def register_output_renderer(datasette):
             "render": render_test_all_parameters,
             "can_render": can_render,
         },
-        {"extension": "testnone", "callback": render_test_no_parameters},
+        {"extension": "testnone", "render": render_test_no_parameters},
         {"extension": "testresponse", "render": render_response},
     ]

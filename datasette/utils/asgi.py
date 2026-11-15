@@ -562,9 +562,38 @@ class Response:
             }
         )
         body = self.body
+        if hasattr(body, "__aiter__"):
+            await self._asgi_send_stream(body, send)
+            return
         if not isinstance(body, bytes):
             body = body.encode("utf-8")
         await send({"type": "http.response.body", "body": body})
+
+    async def _asgi_send_stream(self, body, send):
+        # An exception raised here - by the iterator, or by send() if the
+        # client has gone away - propagates without the final empty chunk,
+        # so the server drops the connection and the client can tell that
+        # the response is incomplete.
+        iterator = body.__aiter__()
+        try:
+            async for chunk in iterator:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                if chunk:
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": chunk,
+                            "more_body": True,
+                        }
+                    )
+        finally:
+            # Runs the finally: blocks of an async generator that did not
+            # finish, for example because the client disconnected
+            aclose = getattr(iterator, "aclose", None)
+            if aclose is not None:
+                await aclose()
+        await send({"type": "http.response.body", "body": b""})
 
     def set_cookie(
         self,
@@ -623,6 +652,27 @@ class Response:
             headers=headers,
             content_type="application/json; charset=utf-8",
         )
+
+    @classmethod
+    def stream(
+        cls,
+        body,
+        status=200,
+        headers=None,
+        content_type="text/plain; charset=utf-8",
+    ):
+        """
+        A response that is sent to the client a chunk at a time.
+
+        body is an async iterator - usually an async generator - yielding
+        strings or bytes. Strings are encoded as UTF-8.
+        """
+        if not hasattr(body, "__aiter__"):
+            raise TypeError(
+                "Response.stream() body must be an async iterator, "
+                "such as an async generator"
+            )
+        return cls(body, status=status, headers=headers, content_type=content_type)
 
     @classmethod
     def error(cls, messages, status=400, headers=None):

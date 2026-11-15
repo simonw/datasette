@@ -1125,31 +1125,6 @@ class ValueAsBooleanError(ValueError):
     pass
 
 
-class WriteLimitExceeded(Exception):
-    pass
-
-
-class LimitedWriter:
-    def __init__(self, writer, limit_mb):
-        self.writer = writer
-        self.limit_bytes = limit_mb * 1024 * 1024
-        self.bytes_count = 0
-
-    async def write(self, bytes):
-        self.bytes_count += len(bytes)
-        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
-            raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
-        await self.writer.write(bytes)
-
-
-class EscapeHtmlWriter:
-    def __init__(self, writer):
-        self.writer = writer
-
-    async def write(self, content):
-        await self.writer.write(markupsafe.escape(content))
-
-
 _infinities = {float("inf"), float("-inf")}
 
 

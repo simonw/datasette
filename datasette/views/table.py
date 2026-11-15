@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import itertools
 import json
@@ -22,6 +21,7 @@ from datasette.events import (
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.filters import Filters
 from datasette.plugins import pm
+from datasette.renderer import apply_column_type_transforms
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     CustomJSONEncoder,
@@ -31,7 +31,6 @@ from datasette.utils import (
     add_cors_headers,
     append_querystring,
     await_me_maybe,
-    call_with_supported_arguments,
     compound_keys_after_sql,
     compound_keys_at_or_before_sql,
     decode_write_json_rows,
@@ -45,7 +44,6 @@ from datasette.utils import (
     path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
-    path_without_format,
     request_route_path,
     sqlite3,
     tilde_encode,
@@ -68,8 +66,8 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
-    is_csv_format,
-    stream_csv,
+    render_with_output_renderer,
+    stream_requested,
     tsv_export_path,
 )
 from .database import QueryView
@@ -1988,6 +1986,7 @@ async def table_view_traced(datasette, request):
         extra_extras=extra_extras,
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
+        renderer_extras=datasette._renderer_extras.get(format_),
     )
     if isinstance(view_data, Response):
         return view_data
@@ -1995,74 +1994,44 @@ async def table_view_traced(datasette, request):
     data, rows, columns, _expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
-    if is_csv_format(datasette, format_):
+    if format_ in datasette.renderers:
+        next_token = data["next"]
 
-        async def fetch_data(request, _next=None):
-            (
-                data,
-                rows,
-                columns,
-                expanded_columns,
-                _sql,
-                _next_url,
-            ) = await table_view_data(
+        async def fetch_next_page():
+            # Used to stream every row, a page at a time
+            nonlocal next_token
+            if not next_token:
+                return None
+            page_data, page_rows, *_ = await table_view_data(
                 datasette,
                 request,
                 resolved,
-                extra_extras=extra_extras,
-                context_for_html_hack=context_for_html_hack,
                 default_labels=default_labels,
-                _next=_next,
+                _next=next_token,
+                rows_only=True,
             )
-            data["rows"] = rows
-            data["table"] = resolved.table
-            data["columns"] = columns
-            data["expanded_columns"] = expanded_columns
-            return data, None, None
+            next_token = page_data["next"]
+            return page_rows
 
-        return await stream_csv(
-            datasette, fetch_data, request, resolved.db.name, format_=format_
-        )
-    elif format_ in datasette.renderers:
-        # Dispatch request to the correct output format renderer
-        # (CSV is not handled here due to streaming)
-        result = call_with_supported_arguments(
-            datasette.renderers[format_][0],
-            datasette=datasette,
+        r = await render_with_output_renderer(
+            datasette,
+            request,
+            format_,
+            data=data,
             columns=columns,
             rows=rows,
             sql=sql,
             query_name=None,
             database=resolved.db.name,
             table=resolved.table,
-            request=request,
-            path=path_without_format(request),
-            full_path=path_without_format(request, include_query_string=True),
             view_name="table",
             truncated=False,
             error=None,
-            # These will be deprecated in Datasette 1.0:
-            args=request.args,
-            data=data,
+            fetch_next_page=fetch_next_page,
         )
-        if asyncio.iscoroutine(result):
-            result = await result
-        if result is None:
-            raise NotFound("No data")
-        if isinstance(result, dict):
-            r = Response(
-                body=result.get("body"),
-                status=result.get("status_code") or 200,
-                content_type=result.get("content_type", "text/plain"),
-                headers=result.get("headers"),
-            )
-        elif isinstance(result, Response):
-            r = result
-            # if status_code is not None:
-            #     # Over-ride the status code
-            #     r.status = status_code
-        else:
-            assert False, f"{result} should be dict or Response"
+        if stream_requested(datasette, request, format_):
+            # Every row is in this response, so there is no next page
+            next_url = None
     elif format_ == "html":
         headers = {}
         templates = [
@@ -2378,6 +2347,8 @@ async def table_view_data(
     context_for_html_hack=False,
     default_labels=False,
     _next=None,
+    renderer_extras=None,
+    rows_only=False,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -2614,12 +2585,27 @@ async def table_view_data(
     )
     rows = rows[:page_size]
 
+    if rows_only:
+        # A later page of a streaming response: skip the extras
+        return (
+            {"next": next_value and str(next_value) or None},
+            rows,
+            columns,
+            expanded_columns,
+            sql,
+            next_url,
+        )
+
     # Resolve extras
     extras = extra_names_from_request(request)
     if not extra_extras:
         # Data formats reject unknown extras; the HTML path (which passes
         # extra_extras={"_html"}) resolves internal extras of its own
         table_extra_registry.validate_requested(extras, ExtraScope.TABLE)
+    if renderer_extras:
+        # Extras declared by the output renderer for this format. Any that
+        # are not available for tables are skipped when extras are resolved.
+        extras.update(renderer_extras)
     if any(k for k in request.args if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
@@ -2651,6 +2637,7 @@ async def table_view_data(
         private=private,
         rows=rows,
         columns=columns,
+        expanded_columns=expanded_columns,
         results_description=results.description,
         table_columns=table_columns,
         pks=pks,
@@ -2690,19 +2677,14 @@ async def table_view_data(
             include_internal=bool(extra_extras),
         )
     )
-    raw_sqlite_rows = rows[:page_size]
-    # Apply transform_value for columns with assigned types
-    ct_map = await datasette.get_column_types(database_name, table_name)
-    transformed_rows = []
-    for r in raw_sqlite_rows:
-        row_dict = dict(r)
-        for col_name, ct in ct_map.items():
-            if col_name in row_dict:
-                row_dict[col_name] = await ct.transform_value(
-                    row_dict[col_name], datasette
-                )
-        transformed_rows.append(row_dict)
-    data["rows"] = transformed_rows
+    if context_for_html_hack:
+        # Apply transform_value for columns with assigned types
+        data["rows"] = await apply_column_type_transforms(
+            datasette, database_name, table_name, rows[:page_size]
+        )
+    else:
+        # The JSON renderer applies those transforms itself
+        data["rows"] = [dict(row) for row in rows[:page_size]]
 
     if context_for_html_hack:
         data["count_truncated"] = count_is_truncated(

@@ -757,7 +757,9 @@ The available table extras are listed below.
     .. code-block:: json
 
         {
-          "json": "/fixtures/facetable.json?_extra=renderers&_labels=on"
+          "json": "/fixtures/facetable.json?_extra=renderers&_labels=on",
+          "tsv": "/fixtures/facetable.tsv?_extra=renderers&_labels=on",
+          "csv": "/fixtures/facetable.csv?_extra=renderers&_labels=on"
         }
 
 ``custom_table_templates``
@@ -867,6 +869,17 @@ The available table extras are listed below.
             },
             "name"
           ]
+        ]
+
+``expanded_columns``
+    List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects. (See :ref:`expand_foreign_keys` for how to expand these labels.)
+
+    ``GET /fixtures/facetable.json?_labels=on&_extra=expanded_columns``
+
+    .. code-block:: json
+
+        [
+          "_city_id"
         ]
 
 ``form_hidden_args``

@@ -199,6 +199,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.csv_renderer",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_output_renderer"
+            ]
+        },
+        {
             "name": "datasette.default_actions",
             "static": false,
             "templates": false,

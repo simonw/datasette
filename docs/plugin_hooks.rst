@@ -209,7 +209,7 @@ Extra template variables that should be made available in the rendered template 
     The names of the database columns that will be displayed on this page. ``None`` if the page does not contain a table.
 
 ``view_name`` - string
-    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+    The name of the view being displayed. (``index``, ``database``, ``table``, ``row`` and ``query`` are the most important ones.) ``query`` is used for both arbitrary SQL queries and stored queries.
 
 ``request`` - :ref:`internals_request` or None
     The current HTTP request. This can be ``None`` if the request object is not available.
@@ -597,7 +597,7 @@ This will register ``render_demo`` to be called when paths with the extension ``
 
 ``render_demo`` is a Python function. It can be a regular function or an ``async def render_demo()`` awaitable function, depending on if it needs to make any asynchronous calls.
 
-``can_render_demo`` is a Python function (or ``async def`` function) which accepts the same arguments as ``render_demo`` but just returns ``True`` or ``False``. It lets Datasette know if the current SQL query can be represented by the plugin - and hence influence if a link to this output format is displayed in the user interface. If you omit the ``"can_render"`` key from the dictionary every query will be treated as being supported by the plugin.
+``can_render_demo`` is a Python function (or ``async def`` function) which accepts the same arguments as ``render_demo``, apart from ``page``, but just returns ``True`` or ``False``. It lets Datasette know if the current SQL query can be represented by the plugin - and hence influence if a link to this output format is displayed in the user interface. If you omit the ``"can_render"`` key from the dictionary every query will be treated as being supported by the plugin.
 
 The dictionary can also include these optional keys, which control how the format is shown in the :ref:`Export data dialog <csv_export>`:
 
@@ -627,6 +627,32 @@ Formats that set neither option are offered with all four actions: **Copy**, **V
             "is_binary": True,
         }
 
+The dictionary can also include an optional ``"extras"`` key, listing the :ref:`extras <json_api_extra>` the format needs. These are the same names that can be passed to ``?_extra=`` in the JSON API. Datasette calculates them and passes them to the ``"render"`` function in the ``page`` argument described below:
+
+.. code-block:: python
+
+    def render_summary(rows, page):
+        return Response.text(
+            "Showing {} of {} rows {}".format(
+                len(rows),
+                page.get("count"),
+                page.get("human_description_en") or "",
+            )
+        )
+
+
+    @hookimpl
+    def register_output_renderer(datasette):
+        return {
+            "extension": "summary",
+            "render": render_summary,
+            "extras": ["count", "human_description_en"],
+        }
+
+Extras are only calculated for the format that declared them, so a format that lists ``"count"`` does not make any other format slower.
+
+Not every extra is available on every page: ``count`` and ``human_description_en`` exist for tables but not for arbitrary SQL queries, for example. An extra that is not available for the current page is left out of the ``page`` dictionary, so use ``page.get(name)`` unless you know the extra is available everywhere your format is used.
+
 When a request is received, the ``"render"`` callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
 
 ``datasette`` - :ref:`internals_datasette`
@@ -636,7 +662,10 @@ When a request is received, the ``"render"`` callback function is called with ze
     The names of the columns returned by this query.
 
 ``rows`` - list of ``sqlite3.Row`` objects
-    The rows returned by the query.
+    The rows returned by the query. For a table this is the rows on the current page.
+
+``row_stream`` - async iterator
+    An async iterator over the rows to render. This is the rows on the current page, or every row if the request has ``?_stream=1``. See :ref:`plugin_register_output_renderer_streaming`.
 
 ``sql`` - string
     The SQL query that was executed.
@@ -666,23 +695,12 @@ When a request is received, the ``"render"`` callback function is called with ze
     If the query response was truncated - for example a SQL query returning more than 1,000 results where pagination is not available - this will be ``True``.
 
 ``view_name`` - string
-    The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
+    The name of the current view being called: ``table``, ``row`` or ``query``. ``query`` is used for both arbitrary SQL queries and stored queries. ``can_render`` is passed the same value.
 
-The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller.
+``page`` - dictionary
+    Everything the JSON version of this page returns alongside its rows: the :ref:`extras <json_api_extra>` this format declared using its ``"extras"`` key, any that were requested using ``?_extra=`` in the URL, and the keys that type of page always includes. For table pages those are ``next``, the token for the next page of results, and ``next_url``, the URL of that page in this format - both are ``None`` on the last page. Extras that are not available for the current page are omitted.
 
-It can also return a dictionary with the following keys. This format is **deprecated** as-of Datasette 0.49 and will be removed by Datasette 1.0.
-
-``body`` - string or bytes, optional
-    The response body, default empty
-
-``content_type`` - string, optional
-    The Content-Type header, default ``text/plain``
-
-``status_code`` - integer, optional
-    The HTTP status code, default 200
-
-``headers`` - dictionary, optional
-    Extra HTTP headers to be returned in the response.
+The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller. Returning anything else is an error.
 
 An example of an output renderer callback function:
 
@@ -721,6 +739,46 @@ And here is an example ``can_render`` function which returns ``True`` only if th
         }.issubset(columns)
 
 Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_, `datasette-geojson <https://datasette.io/plugins/datasette-geojson>`__, `datasette-copyable <https://datasette.io/plugins/datasette-copyable>`__
+
+
+.. _plugin_register_output_renderer_streaming:
+
+Streaming every row
+~~~~~~~~~~~~~~~~~~~
+
+A table can have far more rows than fit on one page. A ``"render"`` function that accepts the ``row_stream`` argument can output all of them, without loading them all into memory, by returning a :ref:`streaming response <internals_response_stream>`:
+
+.. code-block:: python
+
+    import json
+
+
+    def render_ndjson(columns, row_stream):
+        async def body():
+            async for row in row_stream:
+                yield json.dumps(dict(zip(columns, row))) + "\n"
+
+        return Response.stream(
+            body(), content_type="application/x-ndjson"
+        )
+
+
+    @hookimpl
+    def register_output_renderer(datasette):
+        return {"extension": "ndjson", "render": render_ndjson}
+
+``row_stream`` yields the rows on the current page. If the URL includes ``?_stream=1`` it carries on past the end of that page, fetching one page at a time, until it has yielded every row in the table or view. Your function does not need to know which of those is happening.
+
+Use ``async for rows in row_stream.pages()`` to receive a list of rows for each page instead of one row at a time.
+
+Datasette's own :ref:`CSV and TSV export <csv_export>` is implemented this way. Some things to be aware of:
+
+- ``?_stream=1`` is ignored by formats that do not accept ``row_stream``.
+- Only tables and views have more than one page. For a row, or the results of a SQL query, ``row_stream`` yields the same rows as ``rows``.
+- ``rows``, ``page`` and the other arguments describe the first page. Everything that could result in an error page - an invalid filter, a permission check - has already happened by the time your function is called.
+- :ref:`setting_allow_stream` and :ref:`setting_max_stream_mb` apply to every format, not only CSV. A streamed response that grows larger than ``max_stream_mb`` is cut off by dropping the connection, as described in :ref:`internals_response_stream`.
+
+Any format can be downloaded as a file by adding ``?_dl=1`` to the URL, which adds a ``content-disposition: attachment`` header with a filename ending in the format's extension. A response that sets its own ``content-disposition`` header is left alone.
 
 .. _plugin_register_routes:
 

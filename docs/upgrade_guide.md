@@ -29,6 +29,54 @@ The URL for executing a SQL query now looks like this:
 
 **This isn't a breaking change.** API calls to the older ``/databasename?sql=...`` endpoint will redirect to the new ``databasename/-/query?sql=...`` endpoint. Upgrading to the new URL is recommended to avoid the overhead of the additional redirect.
 
+(upgrade_guide_v1_view_name_query)=
+### `view_name` is now `"query"` for SQL query pages
+
+Plugin hooks that accept a `view_name` argument - `extra_template_vars()`, `extra_css_urls()`, `extra_js_urls()`, `extra_body_script()` and the `render` and `can_render` functions of `register_output_renderer()` - are now passed `"query"` for pages that show the results of a SQL query. This applies to arbitrary SQL at `/databasename/-/query?sql=...` and to stored queries.
+
+Previously those pages used `"database"`, the same value as the page listing the tables in a database, except for the output renderer `render` function which was passed `"table"`.
+
+If your plugin checks `view_name == "database"` and should still run on query pages, update it to check for both:
+
+```python
+if view_name in ("database", "query"):
+    ...
+```
+
+(upgrade_guide_v1_renderer_response)=
+### Output renderers must return a `Response`
+
+The `render` function of an output renderer registered using `register_output_renderer()` must now return a `Response` object, or `None` if it cannot render the data. Returning a dictionary, which was deprecated in Datasette 0.49, is now an error.
+
+Change this:
+
+```python
+def render_demo():
+    return {
+        "body": "Hello",
+        "content_type": "text/plain",
+        "status_code": 200,
+        "headers": {"x-demo": "1"},
+    }
+```
+
+To this:
+
+```python
+from datasette import Response
+
+
+def render_demo():
+    return Response(
+        "Hello",
+        content_type="text/plain",
+        status=200,
+        headers={"x-demo": "1"},
+    )
+```
+
+The dictionary returned by `register_output_renderer()` itself must use the `"render"` key for that function. The older `"callback"` key is no longer accepted.
+
 (upgrade_guide_v1_metadata)=
 ### Metadata changes
 

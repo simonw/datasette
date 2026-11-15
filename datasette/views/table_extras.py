@@ -32,6 +32,7 @@ class TableExtraContext:
     private: bool
     rows: list
     columns: list
+    expanded_columns: list
     results_description: list
     table_columns: list
     pks: list
@@ -1122,7 +1123,7 @@ class RenderersExtra(Extra):
         if expandable_columns:
             url_labels_extra = {"_labels": "on"}
         table_name = context.table_name
-        view_name = "table" if context.scope == ExtraScope.TABLE else "database"
+        view_name = context.scope.value  # "table", "row" or "query"
         for key, (_, can_render) in context.datasette.renderers.items():
             it_can_render = call_with_supported_arguments(
                 can_render,
@@ -1198,6 +1199,18 @@ class ExpandableColumnsExtra(Extra):
             label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
+
+
+class ExpandedColumnsExtra(Extra):
+    description = 'List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects.'
+    docs_note = "See :ref:`expand_foreign_keys` for how to expand these labels."
+    example = ExtraExample(
+        "/fixtures/facetable.json?_labels=on&_extra=expanded_columns"
+    )
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
+
+    async def resolve(self, context):
+        return list(context.expanded_columns)
 
 
 class ForeignKeyTablesExtra(Extra):
@@ -1354,6 +1367,7 @@ TABLE_EXTRA_CLASSES = [
     IsViewExtra,
     PrivateExtra,
     ExpandableColumnsExtra,
+    ExpandedColumnsExtra,
     ForeignKeyTablesExtra,
     FormHiddenArgsExtra,
 ]

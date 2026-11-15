@@ -17,7 +17,7 @@
 {% set export_later = export_rows.later if export_rows else false %}
 {#- "Include all rows" streams every row from the first one, so offer it on
     every later page, and on the first page when CSV would stop short -#}
-{% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_csv_stream %}
+{% set csv_stream = export_rows and display_rows and (export_later or (next_url and not (export_rows.total is not none and export_rows.total <= export_rows.max))) and settings.allow_stream %}
 {% macro rows_text(n) %}{{ "{:,}".format(n) }} row{{ "" if n == 1 else "s" }}{% endmacro %}
 {#- How many rows an export returns. JSON and plugin formats return the rows
     on this page; TSV and CSV ask for _size=max, starting from this page.
@@ -101,7 +101,7 @@
                     {% if expandable_columns or csv_stream %}
                     <div class="export-csv-options">
                         {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> Expand labels</label>{% endif %}
-                        {% if csv_stream %}<label{% if settings.max_csv_mb %} title="Streams every matching row, up to the {{ settings.max_csv_mb }} MB size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_later %} from the first page{% endif %}</span></label>{% endif %}
+                        {% if csv_stream %}<label{% if settings.max_stream_mb %} title="Streams every matching row, up to the {{ settings.max_stream_mb }} MB size limit"{% endif %}><input type="checkbox" name="_stream"> <span class="export-stream-label">Include all {{ rows_text(export_rows.total) if export_rows.total is not none else "rows" }}{% if export_later %} from the first page{% endif %}</span></label>{% endif %}
                     </div>
                     {% endif %}
                     {% for key, value in url_csv_hidden_args %}
@@ -121,7 +121,7 @@
             {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
             {% endif %}
             {% endif %}
-            {% for name, url in renderers.items() if name != "json" %}
+            {% for name, url in renderers.items() if name not in ("json", "csv") and not (name == "tsv" and url_tsv_path) %}
             {% set options = (renderer_options or {}).get(name) or {} %}
             {{ export_option("format-" ~ loop.index, options.label or name, options.description, url, export_base ~ "." ~ name, export_rows, kind="binary" if options.is_binary else ("webpage" if options.is_webpage else none)) }}
             {% endfor %}

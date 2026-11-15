@@ -275,10 +275,10 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    max-age= header) (default=5)
       cache_size_kb                SQLite cache size in KB (0 == use SQLite default)
                                    (default=0)
-      allow_csv_stream             Allow .csv?_stream=1 to download all rows
-                                   (ignoring max_returned_rows) (default=True)
-      max_csv_mb                   Maximum size allowed for CSV export in MB - set 0
-                                   to disable this limit (default=100)
+      allow_stream                 Allow ?_stream=1 to export all rows (ignoring
+                                   max_returned_rows) (default=True)
+      max_stream_mb                Maximum size allowed for a streamed export in MB
+                                   - set 0 to disable this limit (default=100)
       truncate_cells_html          Truncate cells longer than this in HTML table
                                    view - set 0 to disable (default=2048)
       force_https_urls             Force URLs in API output to always use https://

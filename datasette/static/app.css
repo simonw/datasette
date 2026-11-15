@@ -6294,6 +6294,20 @@ button.column-menu-trigger[aria-expanded="true"] {
 .row-field-long.fits > .row-field-expand {
     display: none;
 }
+/* row-fields.js adds .is-rich when the value holds more than text, such as a
+   map drawn by a plugin: show all of it, and drop the toggle */
+.row-field-long.is-rich {
+    white-space: normal;
+}
+.row-field-long.is-rich > .row-field-value {
+    max-height: none;
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+.row-field-long.is-rich > .row-field-expand {
+    display: none;
+}
 .row-field-expand {
     margin-top: 0.35rem;
     padding: 0;

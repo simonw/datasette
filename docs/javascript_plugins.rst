@@ -685,6 +685,19 @@ You can customize layout and sizing without adding extra classes. For example, t
         width: min(720px, calc(100vw - 32px));
     }
 
+.. _javascript_plugins_row_values:
+
+Replacing values on the row page
+--------------------------------
+
+The row page shows each value in an element with the class ``row-field-value``, inside a ``<div class="row-field" data-column="column_name">``.
+
+Text values of more than 400 characters, or more than six lines, are collapsed to their first few lines with a "Show all 2,099 characters" toggle beneath them.
+
+If your plugin replaces the contents of a ``row-field-value`` element with something other than text - a map or a chart, for example - Datasette notices and displays all of it, without the toggle. This works however long after the page has loaded your plugin makes the change.
+
+Elements that are marked-up text do not count: a value containing only text and ``<a>``, ``<abbr>``, ``<b>``, ``<br>``, ``<code>``, ``<em>``, ``<i>``, ``<kbd>``, ``<mark>``, ``<small>``, ``<span>``, ``<strong>``, ``<sub>``, ``<sup>`` or ``<wbr>`` elements is still treated as text, and is still collapsed if it is long.
+
 .. _javascript_plugins_copy_button:
 
 Copy to clipboard buttons

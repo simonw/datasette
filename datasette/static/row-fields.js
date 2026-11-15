@@ -8,14 +8,58 @@
   // Re-checked whenever a value's size changes (window resize, font load).
   function updateFits(value) {
     var wrap = value.parentElement;
-    if (wrap.classList.contains("is-expanded")) {
+    if (
+      wrap.classList.contains("is-expanded") ||
+      wrap.classList.contains("is-rich")
+    ) {
       return;
     }
     wrap.classList.toggle("fits", value.scrollHeight <= value.clientHeight + 1);
   }
+
+  // A long value is clamped because it is a lot of text. If a plugin has
+  // replaced that text with something else - a map, a chart, an image - then
+  // its length no longer says anything about how much room it needs, so
+  // mark it as rich and let CSS show all of it without the toggle. Elements
+  // that are just marked-up text, such as links, do not count.
+  var TEXT_ELEMENTS =
+    "a, abbr, b, br, code, em, i, kbd, mark, small, span, strong, sub, sup, wbr";
+  function updateRich(value) {
+    var rich = Array.prototype.some.call(
+      value.querySelectorAll("*"),
+      function (el) {
+        return !el.matches(TEXT_ELEMENTS);
+      },
+    );
+    value.parentElement.classList.toggle("is-rich", rich);
+    if (!rich) {
+      updateFits(value);
+    }
+  }
+
   var longValues = document.querySelectorAll(
     ".row-field-long > .row-field-value",
   );
+  longValues.forEach(updateRich);
+  // Plugin JavaScript usually runs after this script, so keep watching
+  if (window.MutationObserver) {
+    var richObserver = new MutationObserver(function (mutations) {
+      var seen = [];
+      mutations.forEach(function (mutation) {
+        // childList mutations always have an element as their target
+        var value = mutation.target.closest(
+          ".row-field-long > .row-field-value",
+        );
+        if (value && seen.indexOf(value) === -1) {
+          seen.push(value);
+          updateRich(value);
+        }
+      });
+    });
+    longValues.forEach(function (value) {
+      richObserver.observe(value, { childList: true, subtree: true });
+    });
+  }
   if (window.ResizeObserver) {
     var observer = new ResizeObserver(function (entries) {
       entries.forEach(function (entry) {

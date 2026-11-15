@@ -4679,3 +4679,55 @@ def test_row_page_json_pretty_print_expands_long_value(
     toggle.click()
     toggle.click()
     assert is_expanded()
+
+
+@pytest.mark.playwright
+def test_row_page_long_value_replaced_by_plugin_is_not_clamped(
+    page, datasette_server, tmp_path
+):
+    from playwright.sync_api import expect
+
+    # datasette_server shares this tmp_path, so this writes to its data.db
+    conn = sqlite3.connect(tmp_path / "data.db")
+    try:
+        conn.execute("create table long_text (id integer primary key, body text)")
+        conn.execute("insert into long_text values (1, ?)", ["word " * 2000])
+        conn.commit()
+    finally:
+        conn.close()
+    page.goto(f"{datasette_server}data/long_text/1")
+    field = page.locator('.row-field[data-column="body"]')
+    wrap = field.locator(".row-field-long")
+    value = field.locator(".row-field-value")
+    expand = field.locator(".row-field-expand")
+
+    # A long text value is clamped, with a toggle to show the rest
+    expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
+    expect(expand).to_be_visible()
+    clamped_height = value.bounding_box()["height"]
+    assert clamped_height < 300
+
+    # Marked-up text is still text
+    value.evaluate(
+        "el => { el.innerHTML = 'word '.repeat(2000) + '<a href=\"/\">link</a>'; }"
+    )
+    expect(expand).to_be_visible()
+    expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
+
+    # A plugin replaces the text with something that is not text, as
+    # a plugin that draws a map or a chart would
+    value.evaluate("""el => {
+        const div = document.createElement("div");
+        div.style.height = "400px";
+        el.replaceChildren(div);
+    }""")
+    expect(wrap).to_have_class(re.compile(r"\bis-rich\b"))
+    expect(expand).to_be_hidden()
+    assert value.bounding_box()["height"] == 400
+    assert value.evaluate("el => getComputedStyle(el).overflowY") == "visible"
+
+    # Back to text, back to being clamped
+    value.evaluate("el => { el.textContent = 'word '.repeat(2000); }")
+    expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
+    expect(expand).to_be_visible()
+    assert value.bounding_box()["height"] == clamped_height

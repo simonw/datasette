@@ -23,6 +23,7 @@ Unreleased
 - Output renderers registered with :ref:`plugin_register_output_renderer` can now list the :ref:`extras <json_api_extra>` they need, such as ``count`` or ``human_description_en``, using a new ``"extras"`` key. Datasette calculates those and passes them to the ``render`` function in a new ``page`` argument, a dictionary which also includes ``next`` and ``next_url`` on table pages. (:issue:`2770`, :issue:`2186`)
 - The total time spent calculating suggested facets for a page is now capped at ten times the :ref:`setting_facet_suggest_time_limit_ms` setting, so tables with a large number of columns can no longer spend several seconds suggesting facets. (:issue:`862`)
 - The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
+- Long values on the row page are no longer collapsed behind a "Show all 2,099 characters" toggle if plugin JavaScript has replaced the text with something else, such as a map. See :ref:`javascript_plugins_row_values`.
 - Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.
 
 .. _v1_0_a42:

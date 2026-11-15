@@ -1,6 +1,6 @@
 """
 Output renderers can declare the extras they need using "extras" in their
-register_output_renderer() dictionary, then receive them as extras=
+register_output_renderer() dictionary, then receive them in page=
 """
 
 import pytest
@@ -18,13 +18,13 @@ class _ExtrasRendererPlugin:
 
     @hookimpl
     def register_output_renderer(self):
-        def render_declared(extras, rows):
-            return Response.json({"extras": extras, "num_rows": len(rows)})
+        def render_declared(page, rows):
+            return Response.json({"page": page, "num_rows": len(rows)})
 
-        def render_none_declared(extras):
-            return Response.json({"extras": extras})
+        def render_none_declared(page):
+            return Response.json({"page": page})
 
-        def render_without_extras_argument():
+        def render_without_page_argument():
             return Response.text("ok")
 
         return [
@@ -36,7 +36,7 @@ class _ExtrasRendererPlugin:
             {"extension": "nonedeclared", "render": render_none_declared},
             {
                 "extension": "noargument",
-                "render": render_without_extras_argument,
+                "render": render_without_page_argument,
                 "extras": ["count"],
             },
         ]
@@ -69,7 +69,7 @@ async def test_table_renderer_receives_declared_extras(ds, db):
     response = await ds.client.get("/data/dogs.declared?age__gt=3&_size=1")
     assert response.status_code == 200
     assert response.json() == {
-        "extras": {
+        "page": {
             # Tables always include these two
             "next": "1",
             "next_url": "http://localhost/data/dogs.declared?age__gt=3&_size=1&_next=1",
@@ -88,7 +88,7 @@ async def test_query_renderer_omits_extras_not_available_for_queries(ds, db):
     # count, human_description_en and primary_keys are all table extras
     response = await ds.client.get("/data/-/query.declared?sql=select+*+from+dogs")
     assert response.status_code == 200
-    assert response.json() == {"extras": {}, "num_rows": 3}
+    assert response.json() == {"page": {}, "num_rows": 3}
 
 
 @pytest.mark.asyncio
@@ -97,13 +97,13 @@ async def test_row_renderer_omits_extras_not_available_for_rows(ds, db):
     assert response.status_code == 200
     data = response.json()
     assert data["num_rows"] == 1
-    extras = data["extras"]
+    page = data["page"]
     # count and human_description_en are not available for rows
-    assert "count" not in extras
-    assert "human_description_en" not in extras
+    assert "count" not in page
+    assert "human_description_en" not in page
     # Rows always include these
-    assert isinstance(extras.pop("query_ms"), float)
-    assert extras == {
+    assert isinstance(page.pop("query_ms"), float)
+    assert page == {
         "database": "data",
         "table": "dogs",
         "primary_keys": ["id"],
@@ -144,7 +144,7 @@ async def test_row_renderer_omits_extras_not_available_for_rows(ds, db):
 async def test_renderer_receives_extras_requested_in_url(ds, db, path, expected):
     response = await ds.client.get(path)
     assert response.status_code == 200
-    assert response.json()["extras"] == expected
+    assert response.json()["page"] == expected
 
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_unknown_requested_extra_is_still_an_error(ds, db):
 
 
 @pytest.mark.asyncio
-async def test_render_function_does_not_have_to_accept_extras(ds, db):
+async def test_render_function_does_not_have_to_accept_page(ds, db):
     response = await ds.client.get("/data/dogs.noargument")
     assert response.status_code == 200
     assert response.text == "ok"
@@ -197,4 +197,4 @@ def test_json_renderer_uses_documented_arguments_only(ds):
     render, _ = ds.renderers["json"]
     parameters = set(inspect.signature(render).parameters)
     assert not parameters & {"data", "args"}
-    assert {"rows", "columns", "extras"} <= parameters
+    assert {"rows", "columns", "page"} <= parameters

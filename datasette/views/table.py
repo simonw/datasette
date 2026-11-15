@@ -68,8 +68,8 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
-    extras_for_renderer,
     is_csv_format,
+    page_for_renderer,
     stream_csv,
     tsv_export_path,
 )
@@ -2041,7 +2041,7 @@ async def table_view_traced(datasette, request):
             view_name="table",
             truncated=False,
             error=None,
-            extras=extras_for_renderer(datasette, request, format_, data),
+            page=page_for_renderer(datasette, request, format_, data),
             # These will be deprecated in Datasette 1.0:
             args=request.args,
             data=data,

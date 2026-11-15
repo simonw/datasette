@@ -176,9 +176,9 @@ class BaseView:
         return view
 
 
-def extras_for_renderer(datasette, request, format_, data):
+def page_for_renderer(datasette, request, format_, data):
     """
-    The extras= dictionary passed to an output renderer's render function.
+    The page= dictionary passed to an output renderer's render function.
 
     This is everything the JSON for this page returns alongside its rows:
     the keys that type of page always includes (such as next and next_url

@@ -38,8 +38,8 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
-    extras_for_renderer,
     is_csv_format,
+    page_for_renderer,
     stream_csv,
     tsv_export_path,
 )
@@ -258,7 +258,7 @@ class RowView(BaseView):
                 view_name=self.name,
                 truncated=False,  # TODO: support this
                 error=data.get("error"),
-                extras=extras_for_renderer(self.ds, request, format_, data),
+                page=page_for_renderer(self.ds, request, format_, data),
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
                 data=data,

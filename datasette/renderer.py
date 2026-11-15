@@ -65,7 +65,7 @@ async def json_renderer(
     request,
     rows,
     columns,
-    extras,
+    page,
     error,
     database,
     table,
@@ -80,8 +80,8 @@ async def json_renderer(
         # Table pages apply transform_value() from any column types
         rows = await apply_column_type_transforms(datasette, database, table, rows)
 
-    # Everything other than the rows comes from the extras
-    data = {"ok": True, **extras, "rows": rows}
+    # Everything other than the rows comes from the page dictionary
+    data = {"ok": True, **page, "rows": rows}
 
     # Handle the _json= parameter which may modify data["rows"]
     json_cols = []

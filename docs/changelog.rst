@@ -4,29 +4,82 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a43:
 
-Unreleased
-----------
+1.0a43 (2026-11-15)
+-------------------
+
+This alpha includes security fixes for private stored queries and database downloads, streaming output renderers with CSV and TSV now implemented as renderers, a new JSON format for individual rows, and tables listed as cards on the homepage and database page.
+
+See `0.65.6 <https://docs.datasette.io/en/stable/changelog.html#v0-65-6>`__ for the database download fix backported to the stable 0.65.x branch.
+
+Security fixes
+~~~~~~~~~~~~~~
+
+- Fixed a security issue where the ``?owner_id=`` filter on the ``/-/queries`` and ``/<database>/-/queries`` pages, and their ``.json`` equivalents, returned private stored queries belonging to that owner - including their SQL - to any actor, including anonymous users. This affected Datasette 1.0a31 through 1.0a42.
+- Fixed a security issue where a database registered using ``add_database(db, name=..., route=...)`` with a route that differs from its name could be downloaded from ``/<route>.db`` by actors who were denied access to it. Permission rules for the ``view-database-download`` action that were written against the route no longer apply, and should use the database name like rules for every other action.
+- The example ``permission_resources_sql()`` hook in the :ref:`upgrade guide for 1.0a20 <upgrade_guide_v1_a20>` was missing its ``if action == "permissions-debug"`` check. A plugin that copied that example allowed every action, including write actions, for every actor including anonymous users. **If you used that example in your own plugin, add the missing check.**
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+- The JSON for an individual row, such as ``/database/table/1.json``, now returns ``{"row": {"id": 1, ...}}``. It previously returned ``{"rows": [{"id": 1, ...}]}``, a list that always contained exactly one row. Two other keys in that response changed to match:
+
+  - ``"truncated"`` is no longer included. That key says whether a list of rows was cut short at the page size limit, so for a single row it was always ``false``.
+  - ``?_extra=render_cell``, which returns the HTML that plugins rendered for each column, now returns ``"render_cell": {"column": "<html>"}``. It previously returned ``"render_cell": [{"column": "<html>"}]``, a list with one item for the one row.
+
+  Add ``?_shape=objects`` to the URL to get the previous format back. The other ``?_shape=`` options work as they do for table JSON. See :ref:`json_api_row` and the :ref:`upgrade guide <upgrade_guide_v1_row_json>`. (:issue:`2612`, :issue:`2137`)
+- Output renderer ``render`` functions must now return a :ref:`Response <internals_response>` object, or ``None``. Returning a dictionary with ``body``, ``content_type``, ``status_code`` and ``headers`` keys, deprecated since Datasette 0.49, is now an error. The ``"callback"`` key, the pre-0.49 name for ``"render"``, has also been removed. See :ref:`the upgrade guide <upgrade_guide_v1_renderer_response>`. (:issue:`954`)
+- The ``view_name`` passed to plugin hooks for SQL query pages, both arbitrary SQL and stored queries, is now ``"query"``. Template hooks such as :ref:`plugin_hook_extra_template_vars` were previously passed ``"database"`` for those pages. Output renderers were passed ``"table"`` by ``render`` and ``"database"`` by ``can_render``. See :ref:`the upgrade guide <upgrade_guide_v1_view_name_query>`.
+- An "include all rows" export that fails part of the way through, or that reaches the :ref:`setting_max_stream_mb` limit, now drops the connection so the download fails. Previously the error message was written as the last line of the file, which otherwise looked complete.
+- The ``datasette_allow_facet`` template variable has been removed from the table page. Custom ``table.html`` templates that use it should use ``{{ settings.default_allow_facet|tojson }}`` instead.
+
+Output renderers
+~~~~~~~~~~~~~~~~
 
 - New ``Response.stream(body)`` method for returning a response a chunk at a time from an async iterator of strings or bytes, for example from a :ref:`plugin_register_routes` view. See :ref:`internals_response_stream`.
 - Output renderers can now stream every row of a table or view. A ``render`` function that accepts the new ``row_stream`` argument - an async iterator of rows - and returns ``Response.stream()`` will be sent every row when the URL includes ``?_stream=1``. See :ref:`plugin_register_output_renderer_streaming`. (:issue:`1101`)
-- CSV and TSV export are now implemented as default output renderers using that mechanism, replacing the previous special case. Plugins can replace either of them by registering a renderer for the ``csv`` or ``tsv`` extension. (:issue:`1062`)
-- **Breaking change**: an "include all rows" export that fails part of the way through, or that reaches the :ref:`setting_max_stream_mb` limit, now drops the connection so the download fails. Previously the error message was written as the last line of the file, which otherwise looked complete.
-- The ``allow_csv_stream`` and ``max_csv_mb`` settings have been renamed to :ref:`setting_default_allow_stream` and :ref:`setting_max_stream_mb`, since they now apply to every format that can stream. The previous names continue to work.
-- The ``allow_facet`` and ``allow_download`` settings have been renamed to :ref:`setting_default_allow_facet` and :ref:`setting_default_allow_download`, matching :ref:`setting_default_allow_sql`. The previous names continue to work. (:issue:`1410`)
-- **Breaking change**: the ``datasette_allow_facet`` template variable has been removed from the table page. Custom ``table.html`` templates that use it should use ``{{ settings.default_allow_facet|tojson }}`` instead.
-- **Breaking change**: the JSON for an individual row, such as ``/database/table/1.json``, now returns that row as an object in a ``"row"`` key instead of as the only item in a ``"rows"`` list. The ``"truncated"`` key has been removed from that response and the ``render_cell`` extra is now a single object. Adding any ``?_shape=`` option, such as ``?_shape=objects``, returns the same shapes as table JSON. See :ref:`json_api_row` and the :ref:`upgrade guide <upgrade_guide_v1_row_json>`. (:issue:`2612`, :issue:`2137`)
-- **Breaking change**: the ``view_name`` passed to plugin hooks for SQL query pages, both arbitrary SQL and stored queries, is now ``"query"``. Template hooks such as :ref:`plugin_hook_extra_template_vars` were previously passed ``"database"`` for those pages. Output renderers were passed ``"table"`` by ``render`` and ``"database"`` by ``can_render``. See :ref:`the upgrade guide <upgrade_guide_v1_view_name_query>`.
-- **Breaking change**: output renderer ``render`` functions must now return a :ref:`Response <internals_response>` object, or ``None``. Returning a dictionary with ``body``, ``content_type``, ``status_code`` and ``headers`` keys, deprecated since Datasette 0.49, is now an error. The ``"callback"`` key, the pre-0.49 name for ``"render"``, has also been removed. See :ref:`the upgrade guide <upgrade_guide_v1_renderer_response>`. (:issue:`954`)
-- Output renderers whose ``render`` function accepts the undocumented ``data`` or ``args`` arguments now trigger a ``DeprecationWarning`` when Datasette starts. Those arguments will be removed before Datasette 1.0. Use the ``page`` argument in place of ``data``, and ``request.args`` in place of ``args``. (:issue:`2770`)
-- ``?_dl=1`` now adds a ``content-disposition: attachment`` header for every export format, not only CSV and TSV.
-- New ``?_extra=expanded_columns`` extra for table JSON, listing the foreign key columns that were expanded using ``?_labels=on``.
-- ``csv`` and ``tsv`` are now included in the ``?_extra=renderers`` extra.
+- CSV and TSV export are now implemented as default output renderers using that mechanism, replacing the previous special case. (:issue:`1062`)
 - Output renderers registered with :ref:`plugin_register_output_renderer` can now list the :ref:`extras <json_api_extra>` they need, such as ``count`` or ``human_description_en``, using a new ``"extras"`` key. Datasette calculates those and passes them to the ``render`` function in a new ``page`` argument, a dictionary which also includes ``next`` and ``next_url`` on table pages. (:issue:`2770`, :issue:`2186`)
+- Output renderer ``render`` and ``can_render`` functions can now accept ``path`` and ``full_path`` arguments: the path to the HTML version of the page without the ``.extension``, with and without the query string. See :ref:`plugin_register_output_renderer`. (:issue:`1179`, :pr:`2987`)
+- Output renderers whose ``render`` function accepts the undocumented ``data`` or ``args`` arguments now trigger a ``DeprecationWarning`` when Datasette starts. Those arguments will be removed before Datasette 1.0. Use the ``page`` argument in place of ``data``, and ``request.args`` in place of ``args``. (:issue:`2770`)
+- The ``allow_csv_stream`` and ``max_csv_mb`` settings have been renamed to :ref:`setting_default_allow_stream` and :ref:`setting_max_stream_mb`, since they now apply to every format that can stream. The previous names continue to work.
+- ``?_dl=1`` now adds a ``content-disposition: attachment`` header for every export format, not only CSV and TSV.
+- ``csv`` and ``tsv`` are now included in the ``?_extra=renderers`` extra.
+
+Features
+~~~~~~~~
+
+- Tables and views on the homepage and the database page are now listed as cards, each showing the row count, the column names and links to the tables it references. A "+N more" button reveals the rest of a table's columns. The database page now matches the design of the homepage. (:issue:`3067`)
+- JSON objects and arrays on the row page have a new button for switching between the value as stored and a pretty-printed version. The copy button copies whichever is displayed.
+- Filtering, faceting, sorting and paginating a table now crossfades the table and facets in place, in browsers that support CSS cross-document view transitions. Suggested facet links no longer jump to a ``#facet-...`` fragment. (:issue:`3061`)
+- New ``<datasette-copy-button>`` custom element that plugins and custom templates can use to add a copy to clipboard button. Datasette now uses it for the schema on the table and schema pages, as well as for values on the row page. See :ref:`javascript_plugins_copy_button`. (:pr:`3063`)
+- New ``DatasetteModal.confirm()`` JavaScript method for asking a question using an in-page dialog, returning a promise. See :ref:`javascript_plugins_modal_confirm`.
+- The ``beforeClose`` guard for a :ref:`modal dialog <javascript_plugins_modals>` can now return a promise. The dialog stays open until that promise resolves.
+- The list of columns in the Column statistics dialog now shows at most three rows of columns, with a "+N more" button to show the rest, and no longer truncates column names when there is room to show them. (:pr:`3064`)
+- The select boxes used to filter a table now look the same across different browsers. (:issue:`3060`)
+- New ``?_extra=expanded_columns`` extra for table JSON, listing the foreign key columns that were expanded using ``?_labels=on``.
 - The total time spent calculating suggested facets for a page is now capped at ten times the :ref:`setting_facet_suggest_time_limit_ms` setting, so tables with a large number of columns can no longer spend several seconds suggesting facets. (:issue:`862`)
 - The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
+- The ``allow_facet`` and ``allow_download`` settings have been renamed to :ref:`setting_default_allow_facet` and :ref:`setting_default_allow_download`, matching :ref:`setting_default_allow_sql`. The previous names continue to work. (:issue:`1410`)
+- ``datasette publish`` and ``datasette package`` now install the same version of Datasette as the one used to run the command, unless ``--branch`` is used or an ``--install`` option names Datasette. Previously they installed the latest stable release, which does not accept the ``--config`` option.
+- ``datasette publish cloudrun`` now deploys with a new ``content_length_workaround`` option enabled, which omits ``Content-Length`` from responses of 32,000,000 bytes or more because Cloud Run rejects larger responses that declare a length. See :ref:`publish_cloud_run_content_length`. (:issue:`749`)
+
+Bug fixes
+~~~~~~~~~
+
+- Fixed a bug where following ``next_url`` through a sorted table with a text or compound primary key could repeat some rows and skip others, if several rows shared the same value in the sort column. Thanks, `ZIHAN DAI <https://github.com/PDGGK>`__. (:issue:`3054`, :pr:`3055`)
+- Fixed a bug where following ``next_url`` through a table sorted by a column with no declared type, such as a column in a table created using ``CREATE TABLE ... AS SELECT``, could skip or repeat rows. The sort value in the ``next`` token was always compared as text, so numbers in those columns were compared against it incorrectly. The token now records whether the value is an integer, a floating point number or a BLOB. ``next`` tokens issued by previous versions are still accepted. Thanks, `peterolkhov <https://github.com/peterolkhov>`__. (:issue:`3056`, :pr:`3057`)
+- The ``gt``, ``gte``, ``lt`` and ``lte`` table filters no longer return a 500 error for an integer too large for SQLite's signed 64-bit integers, such as ``?id__gt=9223372036854775808``. Thanks, `IlyaKhalafi <https://github.com/IlyaKhalafi>`__. (:issue:`3035`, :pr:`3036`)
+- The create table, alter table and row edit dialogs no longer use the browser's native ``confirm()`` prompt when discarding unsaved changes or dropping a table. Browsers embedded in other applications can dismiss those prompts without showing them, which left the "Drop table" button doing nothing and the create table dialog impossible to close.
+- Database downloads now send a ``Content-Length`` header without also sending ``Transfer-Encoding: chunked``, so browsers can show download progress and clients that reject that invalid combination, such as Node.js, can download the file. (:issue:`2663`, :issue:`2317`)
+- ``If-None-Match`` headers are now compared against the ``ETag`` for database downloads and static files using the weak comparison specified by HTTP: a ``W/`` prefix is ignored, the header can list several values and ``*`` matches anything. Proxies that compress responses often turn a strong ``ETag`` into a weak one, which previously caused a full download on every request. The ``304`` response for a database download now includes the ``ETag`` and CORS headers.
+- A ``plugins`` block in metadata is now merged with the ``plugins`` block in configuration, instead of replacing it.
+- :ref:`OpenTelemetry <internals_telemetry>` spans for requests made using ``datasette.client`` are now nested under the span that was active when the request was made, sharing its trace ID. Thanks, `AnkitaAdvitot <https://github.com/AnkitaAdvitot>`__. (:issue:`2969`, :pr:`2980`)
 - Long values on the row page are no longer collapsed behind a "Show all 2,099 characters" toggle if plugin JavaScript has replaced the text with something else, such as a map. See :ref:`javascript_plugins_row_values`.
+- Fixed a bug where links generated by output renderers using ``path_with_format()``, and the URLs returned by ``?_extra=renderers`` on ``.json`` pages, used a ``?_format=`` parameter that Datasette no longer reads.
+- Plugins loaded using ``--plugins-dir`` now have ``__spec__`` and ``__loader__`` set on their module. Python 3.15 emitted a ``DeprecationWarning`` whenever an exception traceback passed through one of those plugins.
+- Fixed a scrolling bug on the ``/-/queries`` page. (:issue:`3053`)
 - Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.
 
 .. _v1_0_a42:

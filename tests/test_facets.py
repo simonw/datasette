@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
@@ -975,3 +976,63 @@ async def test_facet_only_considers_first_x_rows():
         assert data2["suggested_facets"] == []
     finally:
         Facet.suggest_consider = original_suggest_consider
+
+
+# https://github.com/simonw/datasette/issues/862
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "time_limit_ms,expected_suggested",
+    (
+        # Each suggestion query takes 30ms on the fake clock, so the total
+        # budget of 10 * 10ms runs out after four: id, c0, c1 and c2
+        (10, ["c0", "c1", "c2"]),
+        # 0 disables the total limit
+        (0, [f"c{i}" for i in range(20)]),
+    ),
+)
+async def test_facet_suggest_total_time_limit(
+    monkeypatch, time_limit_ms, expected_suggested
+):
+    ds = Datasette(
+        [], memory=True, settings={"facet_suggest_time_limit_ms": time_limit_ms}
+    )
+    db = ds.add_database(Database(ds, memory_name="suggest_total_time_limit"))
+    columns = [f"c{i}" for i in range(20)]
+    await db.execute_write(
+        "create table items (id integer primary key, {})".format(
+            ", ".join(f"{column} text" for column in columns)
+        )
+    )
+    for values in ("a", "a", "b"):
+        await db.execute_write(
+            "insert into items ({}) values ({})".format(
+                ", ".join(columns), ", ".join("?" for _ in columns)
+            ),
+            [values] * len(columns),
+        )
+
+    now = 1000.0
+    monkeypatch.setattr("datasette.facets.time", SimpleNamespace(monotonic=lambda: now))
+    execute = ds.execute
+    suggestion_queries = 0
+
+    async def slow_execute(*args, **kwargs):
+        nonlocal now, suggestion_queries
+        if "with limited as" in args[1]:
+            suggestion_queries += 1
+            now += 0.03
+        return await execute(*args, **kwargs)
+
+    monkeypatch.setattr(ds, "execute", slow_execute)
+    try:
+        response = await ds.client.get(
+            "/suggest_total_time_limit/items.json?_extra=suggested_facets"
+        )
+        assert response.status_code == 200
+        suggested = [facet["name"] for facet in response.json()["suggested_facets"]]
+        assert suggested == expected_suggested
+        if time_limit_ms:
+            # Remaining columns and facet types were never queried
+            assert suggestion_queries == 4
+    finally:
+        ds.close()

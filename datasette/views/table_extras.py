@@ -5,6 +5,7 @@ from typing import ClassVar
 from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
+from datasette.facets import start_suggest_deadline
 from datasette.plugins import pm
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
@@ -292,10 +293,11 @@ class SuggestedFacetsExtra(Extra):
             and not context.nofacet
             and not context.nosuggest
         ):
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await context.run_sequential(
-                *facet_suggest_awaitables
-            ):
+            start_suggest_deadline(context.datasette, facet_instances)
+            for facet in facet_instances:
+                if facet.suggest_time_exceeded():
+                    break
+                (suggest_result,) = await context.run_sequential(facet.suggest())
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 

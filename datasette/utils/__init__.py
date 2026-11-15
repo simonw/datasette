@@ -4,6 +4,8 @@ import binascii
 import copy
 import dataclasses
 import hashlib
+import importlib.machinery
+import importlib.util
 import inspect
 import json
 import os
@@ -1054,6 +1056,11 @@ def module_from_path(path, name):
     # Adapted from http://sayspy.blogspot.com/2011/07/how-to-import-module-from-just-file.html
     mod = types.ModuleType(name)
     mod.__file__ = path
+    # Give the module a loader, so tracebacks through it can show source
+    # lines. Python 3.15 warns about module globals with no __spec__.loader
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    mod.__loader__ = loader
+    mod.__spec__ = importlib.util.spec_from_loader(name, loader, origin=str(path))
     with open(path, "r") as file:
         code = compile(file.read(), path, "exec", dont_inherit=True)
     # Executing the file is the whole point - this is how --plugins-dir loads

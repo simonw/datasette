@@ -43,6 +43,27 @@ if view_name in ("database", "query"):
     ...
 ```
 
+(upgrade_guide_v1_row_json)=
+### Row JSON returns a single `"row"` object
+
+The JSON for an individual row, such as `/databasename/tablename/1.json`, previously returned that row as the only item in a `"rows"` list. It now returns it as an object in a `"row"` key:
+
+```json
+{
+  "ok": true,
+  "row": {
+    "id": 1,
+    "content": "hello"
+  }
+}
+```
+
+Two other keys changed to match. The response no longer includes `"truncated"`, which was always `false`. If you request `?_extra=render_cell`, the `"render_cell"` key is now a single object keyed by column name instead of a list containing one object.
+
+Add `?_shape=objects` to the URL to get the previous format, with a `"rows"` list containing that row, a `"truncated"` key and `"render_cell"` as a list. Any other `?_shape=` option returns the same shape as table JSON. See {ref}`json_api_row`.
+
+Output renderer plugins are not affected: on row pages they are still passed a `rows` list containing the one row.
+
 (upgrade_guide_v1_renderer_response)=
 ### Output renderers must return a `Response`
 

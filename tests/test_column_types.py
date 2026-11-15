@@ -748,7 +748,7 @@ async def test_row_endpoint_render_cell_with_column_types(ds_ct):
     response = await ds_ct.client.get("/data/posts/1.json?_extra=render_cell")
     assert response.status_code == 200
     data = response.json()
-    rendered = data["render_cell"][0]
+    rendered = data["render_cell"]
     assert "mailto:" in rendered["author_email"]
     assert "href" in rendered["website"]
 

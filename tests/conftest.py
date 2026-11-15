@@ -81,41 +81,11 @@ def bare_ds():
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def ds_client():
-    import secrets
+    from .fixtures import make_ds
 
-    from datasette.app import Datasette
-    from datasette.database import Database
-
-    from .fixtures import CONFIG, METADATA, PLUGINS_DIR
-
-    ds = Datasette(
-        metadata=METADATA,
-        config=CONFIG,
-        plugins_dir=PLUGINS_DIR,
-        settings={
-            "default_page_size": 50,
-            "max_returned_rows": 100,
-            "sql_time_limit_ms": 200,
-            "facet_suggest_time_limit_ms": 200,  # Up from 50 default
-            # Default is 3 but this results in "too many open files"
-            # errors when running the full test suite:
-            "num_sql_threads": 1,
-        },
+    ds = await make_ds(
+        settings={"facet_suggest_time_limit_ms": 200}  # Up from 50 default
     )
-    from datasette.fixtures import populate_fixture_database
-
-    # Use a unique memory_name to avoid collisions between different
-    # Datasette instances in the same process, but use "fixtures" for routing
-    unique_memory_name = f"fixtures_{secrets.token_hex(8)}"
-    db = ds.add_database(Database(ds, memory_name=unique_memory_name), name="fixtures")
-    ds.remove_database("_memory")
-
-    def prepare(conn):
-        if not conn.execute("select count(*) from sqlite_master").fetchone()[0]:
-            populate_fixture_database(conn)
-
-    await db.execute_write_fn(prepare)
-    await ds.invoke_startup()
     try:
         yield ds.client
     finally:
@@ -436,5 +406,11 @@ from .fixtures import (  # noqa: F401
     app_client_with_cors,
     app_client_with_dot,
     app_client_with_trace,
+    ds_client_base_url_prefix,
+    ds_client_no_files,
+    ds_client_shorter_time_limit,
+    ds_client_two_attached_databases,
+    ds_client_with_cors,
+    ds_client_with_trace,
     make_app_client,
 )

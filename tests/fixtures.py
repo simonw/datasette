@@ -2,15 +2,19 @@ import contextlib
 import json
 import os
 import pathlib
+import secrets
 import tempfile
 import textwrap
 
 import click
 import pytest
+import pytest_asyncio
 
 from datasette.app import Datasette
+from datasette.database import Database
 from datasette.fixtures import (
     EXTRA_DATABASE_SQL,
+    populate_fixture_database,
     write_extra_database,
     write_fixture_database,
 )
@@ -175,6 +179,93 @@ def make_app_client(
             ds.close()
 
 
+async def make_ds(
+    settings=None,
+    config=None,
+    metadata=None,
+    extra_databases=None,
+    **kwargs,
+):
+    """
+    Return a Datasette instance serving an in-memory copy of the fixtures
+    database, for tests that make requests using ``ds.client``.
+
+    This is the ``datasette.client`` equivalent of ``make_app_client()``, with
+    the same default settings, config, metadata and plugins. Nothing is written
+    to disk, so it is cheap enough to call from individual tests. Use
+    ``make_app_client()`` for tests that need a real database file, for example
+    immutable databases or database downloads.
+
+    ``extra_databases`` is a dictionary mapping database names to SQL scripts.
+    Other keyword arguments are passed to the ``Datasette`` constructor.
+
+    Instances created inside a test are closed automatically at the end of it.
+    """
+    settings = {
+        "default_page_size": 50,
+        "max_returned_rows": 100,
+        "sql_time_limit_ms": 200,
+        # Default is 3 but this results in "too many open files"
+        # errors when running the full test suite:
+        "num_sql_threads": 1,
+        **(settings or {}),
+    }
+    ds = Datasette(
+        metadata=metadata or METADATA,
+        config=config or CONFIG,
+        settings=settings,
+        **{"plugins_dir": PLUGINS_DIR, **kwargs},
+    )
+    # Extra databases are added first, like make_app_client(), so that they
+    # come before fixtures in /-/databases
+    for name, sql in (extra_databases or {}).items():
+        extra_db = ds.add_database(
+            Database(ds, memory_name=f"{name}_{secrets.token_hex(8)}"), name=name
+        )
+        await extra_db.execute_write_script(sql)
+    # A unique memory_name avoids collisions between Datasette instances in
+    # the same process - the database is still served as /fixtures
+    db = ds.add_database(
+        Database(ds, memory_name=f"fixtures_{secrets.token_hex(8)}"), name="fixtures"
+    )
+    if not kwargs.get("memory"):
+        ds.remove_database("_memory")
+    await db.execute_write_fn(populate_fixture_database)
+    await ds.invoke_startup()
+    return ds
+
+
+async def get_unprefixed(client, path, **kwargs):
+    """
+    GET a path using datasette.client without it adding the base_url prefix,
+    for tests that need to control exactly which path is requested.
+    """
+    return await client.request("GET", path, avoid_path_rewrites=True, **kwargs)
+
+
+def _session_ds_client(**kwargs):
+    # Builds a session-scoped fixture that yields the datasette.client
+    # of an in-memory fixtures instance created with make_ds(**kwargs)
+    @pytest_asyncio.fixture(scope="session", loop_scope="session")
+    async def fixture():
+        ds = await make_ds(**kwargs)
+        try:
+            yield ds.client
+        finally:
+            ds.close()
+
+    return fixture
+
+
+ds_client_with_trace = _session_ds_client(settings={"trace_debug": True})
+ds_client_with_cors = _session_ds_client(cors=True)
+ds_client_shorter_time_limit = _session_ds_client(settings={"sql_time_limit_ms": 20})
+ds_client_base_url_prefix = _session_ds_client(settings={"base_url": "/prefix/"})
+ds_client_two_attached_databases = _session_ds_client(
+    extra_databases={"extra database": EXTRA_DATABASE_SQL}
+)
+
+
 @pytest.fixture(scope="session")
 def app_client():
     with make_app_client() as client:
@@ -186,6 +277,15 @@ def app_client_no_files():
     ds = Datasette([])
     try:
         yield TestClient(ds)
+    finally:
+        ds.close()
+
+
+@pytest.fixture(scope="session")
+def ds_client_no_files():
+    ds = Datasette([])
+    try:
+        yield ds.client
     finally:
         ds.close()
 

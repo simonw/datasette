@@ -4,13 +4,14 @@ import urllib
 import pytest
 
 from datasette.app import Datasette
+from datasette.fixtures import EXTRA_DATABASE_SQL
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import UNSTABLE_API_MESSAGE, escape_sqlite, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
 
-from .fixtures import EXPECTED_PLUGINS, make_app_client
+from .fixtures import EXPECTED_PLUGINS, make_ds
 
 
 @pytest.mark.asyncio
@@ -252,9 +253,10 @@ async def test_database_page(ds_client):
         assert "outgoing" in table["foreign_keys"]
 
 
-def test_no_files_uses_memory_database(app_client_no_files):
-    response = app_client_no_files.get("/.json")
-    assert response.status == 200
+@pytest.mark.asyncio
+async def test_no_files_uses_memory_database(ds_client_no_files):
+    response = await ds_client_no_files.get("/.json")
+    assert response.status_code == 200
     assert {
         "ok": True,
         "unstable": UNSTABLE_API_MESSAGE,
@@ -276,15 +278,16 @@ def test_no_files_uses_memory_database(app_client_no_files):
             },
         ],
         "metadata": {},
-    } == response.json
+    } == response.json()
     # Try that SQL query
-    response = app_client_no_files.get(
+    response = await ds_client_no_files.get(
         "/_memory/-/query.json?sql=select+sqlite_version()&_shape=array"
     )
-    assert 1 == len(response.json)
-    assert ["sqlite_version()"] == list(response.json[0].keys())
+    assert 1 == len(response.json())
+    assert ["sqlite_version()"] == list(response.json()[0].keys())
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_redirect",
     (
@@ -295,15 +298,16 @@ def test_no_files_uses_memory_database(app_client_no_files):
         ("/:memory:.csv?sql=select+1", "/_memory.csv?sql=select+1"),
     ),
 )
-def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
-    response = app_client_no_files.get(path)
-    assert response.status == 301
+async def test_old_memory_urls_redirect(ds_client_no_files, path, expected_redirect):
+    response = await ds_client_no_files.get(path)
+    assert response.status_code == 301
     assert response.headers["location"] == expected_redirect
 
 
-def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
-    response = app_client_with_dot.get("/fixtures~2Edot.json")
-    assert response.status == 200
+@pytest.mark.asyncio
+async def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
+    response = await app_client_with_dot.ds.client.get("/fixtures~2Edot.json")
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -325,17 +329,18 @@ async def test_custom_sql(ds_client):
     }
 
 
+@pytest.mark.asyncio
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
-def test_sql_time_limit(app_client_shorter_time_limit):
-    response = app_client_shorter_time_limit.get(
+async def test_sql_time_limit(ds_client_shorter_time_limit):
+    response = await ds_client_shorter_time_limit.get(
         "/fixtures/-/query.json?sql=select+sleep(0.5)",
     )
-    assert 400 == response.status
+    assert 400 == response.status_code
     expected_message = (
         "SQL query took too long. The time limit is"
         " controlled by the sql_time_limit_ms setting."
     )
-    assert response.json == {
+    assert response.json() == {
         "ok": False,
         "error": expected_message,
         "errors": [expected_message],
@@ -680,9 +685,12 @@ async def test_row_extra_render_cell():
         ds.pm.unregister(name="TestRenderCellPlugin")
 
 
-def test_databases_json(app_client_two_attached_databases_one_immutable):
-    response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
-    databases = response.json["databases"]
+@pytest.mark.asyncio
+async def test_databases_json(app_client_two_attached_databases_one_immutable):
+    response = await app_client_two_attached_databases_one_immutable.ds.client.get(
+        "/-/databases.json"
+    )
+    databases = response.json()["databases"]
     assert 2 == len(databases)
     extra_database, fixtures_database = databases
     assert "extra database" == extra_database["name"]
@@ -993,27 +1001,31 @@ async def test_json_columns(ds_client, extra_args, expected):
     assert response.json() == expected
 
 
-def test_config_cache_size(app_client_larger_cache_size):
-    response = app_client_larger_cache_size.get("/fixtures/pragma_cache_size.json")
-    assert response.json["rows"] == [{"cache_size": -2500}]
+@pytest.mark.asyncio
+async def test_config_cache_size():
+    ds = await make_ds(settings={"cache_size_kb": 2500})
+    response = await ds.client.get("/fixtures/pragma_cache_size.json")
+    assert response.json()["rows"] == [{"cache_size": -2500}]
 
 
-def test_config_force_https_urls():
-    with make_app_client(settings={"force_https_urls": True}) as client:
-        response = client.get(
-            "/fixtures/facetable.json?_size=3&_facet=state&_extra=suggested_facets"
-        )
-        assert response.json["next_url"].startswith("https://")
-        assert response.json["facet_results"]["results"]["state"]["results"][0][
-            "toggle_url"
-        ].startswith("https://")
-        assert response.json["suggested_facets"][0]["toggle_url"].startswith("https://")
-        # Also confirm that request.url and request.scheme are set correctly
-        response = client.get("/")
-        assert client.ds._last_request.url.startswith("https://")
-        assert client.ds._last_request.scheme == "https"
+@pytest.mark.asyncio
+async def test_config_force_https_urls():
+    ds = await make_ds(settings={"force_https_urls": True})
+    response = await ds.client.get(
+        "/fixtures/facetable.json?_size=3&_facet=state&_extra=suggested_facets"
+    )
+    assert response.json()["next_url"].startswith("https://")
+    assert response.json()["facet_results"]["results"]["state"]["results"][0][
+        "toggle_url"
+    ].startswith("https://")
+    assert response.json()["suggested_facets"][0]["toggle_url"].startswith("https://")
+    # Also confirm that request.url and request.scheme are set correctly
+    response = await ds.client.get("/")
+    assert ds._last_request.url.startswith("https://")
+    assert ds._last_request.scheme == "https"
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,status_code",
     [
@@ -1028,16 +1040,15 @@ def test_config_force_https_urls():
         ("/fixtures/facetable/-/drop", 405),
     ],
 )
-def test_cors(
+async def test_cors(
     app_client_with_cors,
     app_client_two_attached_databases_one_immutable,
     path,
     status_code,
 ):
-    response = app_client_with_cors.get(
-        path,
-    )
-    assert response.status == status_code
+    # Both fixtures are on disk and immutable, so /fixtures.db can be downloaded
+    response = await app_client_with_cors.ds.client.get(path)
+    assert response.status_code == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert (
         response.headers["Access-Control-Allow-Headers"]
@@ -1052,10 +1063,9 @@ def test_cors(
     # should not have those headers - I'm using that fixture because
     # regular app_client doesn't have immutable fixtures.db which means
     # the test for /fixtures.db returns a 403 error
-    response = app_client_two_attached_databases_one_immutable.get(
-        path,
-    )
-    assert response.status == status_code
+    client = app_client_two_attached_databases_one_immutable.ds.client
+    response = await client.get(path)
+    assert response.status_code == status_code
     assert "Access-Control-Allow-Origin" not in response.headers
     assert "Access-Control-Allow-Headers" not in response.headers
     assert "Access-Control-Expose-Headers" not in response.headers
@@ -1063,17 +1073,19 @@ def test_cors(
     assert "Access-Control-Max-Age" not in response.headers
 
 
-def test_cors_query_redirect(app_client_with_cors):
+@pytest.mark.asyncio
+async def test_cors_query_redirect(ds_client_with_cors):
     # /db?sql= redirects to /db/-/query - the redirect itself needs CORS
     # headers, otherwise browsers refuse to follow it cross-origin
-    response = app_client_with_cors.get(
+    response = await ds_client_with_cors.get(
         "/fixtures?sql=select+1", follow_redirects=False
     )
-    assert response.status == 302
+    assert response.status_code == 302
     assert response.headers["Location"] == "/fixtures/-/query?sql=select+1"
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -1085,31 +1097,34 @@ def test_cors_query_redirect(app_client_with_cors):
         "/searchable_view.json",
     ),
 )
-def test_database_with_space_in_name(app_client_two_attached_databases, path):
-    response = app_client_two_attached_databases.get(
+async def test_database_with_space_in_name(ds_client_two_attached_databases, path):
+    response = await ds_client_two_attached_databases.get(
         "/extra~20database" + path, follow_redirects=True
     )
-    assert response.status == 200
+    assert response.status_code == 200
 
 
-def test_common_prefix_database_names(app_client_conflicting_database_names):
+@pytest.mark.asyncio
+async def test_common_prefix_database_names():
     # https://github.com/simonw/datasette/issues/597
+    ds = await make_ds(
+        extra_databases={"foo-bar": EXTRA_DATABASE_SQL, "foo": EXTRA_DATABASE_SQL}
+    )
     assert ["foo-bar", "foo", "fixtures"] == [
         d["name"]
-        for d in app_client_conflicting_database_names.get("/-/databases.json").json[
-            "databases"
-        ]
+        for d in (await ds.client.get("/-/databases.json")).json()["databases"]
     ]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
-        data = app_client_conflicting_database_names.get(path).json
+        data = (await ds.client.get(path)).json()
         assert db_name == data["database"]
 
 
-def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
-    response = app_client_immutable_and_inspect_file.get(
+@pytest.mark.asyncio
+async def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
+    response = await app_client_immutable_and_inspect_file.ds.client.get(
         "/fixtures/sortable.json?_extra=count"
     )
-    assert response.json["count"] == 100
+    assert response.json()["count"] == 100
 
 
 @pytest.mark.asyncio

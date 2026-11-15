@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.database import Database
 
-from .fixtures import make_app_client
+from .fixtures import get_unprefixed, make_app_client, make_ds
 from .utils import inner_html
 
 
@@ -128,43 +128,43 @@ async def test_table_definition_sql(path, expected_definition_sql, ds_client):
     assert soup.find("script", src=re.compile(r"copy-button\.js"))
 
 
-def test_table_cell_truncation():
-    with make_app_client(settings={"truncate_cells_html": 5}) as client:
-        response = client.get("/fixtures/facetable")
-        assert response.status == 200
-        table = Soup(response.body, "html.parser").find("table")
-        assert table["class"] == ["rows-and-columns"]
-        assert [
-            "Missi…",
-            "Dogpa…",
-            "SOMA",
-            "Tende…",
-            "Berna…",
-            "Hayes…",
-            "Holly…",
-            "Downt…",
-            "Los F…",
-            "Korea…",
-            "Downt…",
-            "Greek…",
-            "Corkt…",
-            "Mexic…",
-            "Arcad…",
-        ] == [
-            td.string
-            for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
-        ]
-        # URLs should be truncated too
-        response2 = client.get("/fixtures/roadside_attractions")
-        assert response2.status == 200
-        table = Soup(response2.body, "html.parser").find("table")
-        tds = table.find_all("td", {"class": "col-url"})
-        assert [str(td) for td in tds] == [
-            '<td class="col-url type-str"><a href="https://www.mysteryspot.com/">http…</a></td>',
-            '<td class="col-url type-str"><a href="https://winchestermysteryhouse.com/">http…</a></td>',
-            '<td class="col-url type-none">\xa0</td>',
-            '<td class="col-url type-str"><a href="https://www.bigfootdiscoveryproject.com/">http…</a></td>',
-        ]
+@pytest.mark.asyncio
+async def test_table_cell_truncation():
+    ds = await make_ds(settings={"truncate_cells_html": 5})
+    response = await ds.client.get("/fixtures/facetable")
+    assert response.status_code == 200
+    table = Soup(response.content, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    assert [
+        "Missi…",
+        "Dogpa…",
+        "SOMA",
+        "Tende…",
+        "Berna…",
+        "Hayes…",
+        "Holly…",
+        "Downt…",
+        "Los F…",
+        "Korea…",
+        "Downt…",
+        "Greek…",
+        "Corkt…",
+        "Mexic…",
+        "Arcad…",
+    ] == [
+        td.string for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
+    ]
+    # URLs should be truncated too
+    response2 = await ds.client.get("/fixtures/roadside_attractions")
+    assert response2.status_code == 200
+    table = Soup(response2.content, "html.parser").find("table")
+    tds = table.find_all("td", {"class": "col-url"})
+    assert [str(td) for td in tds] == [
+        '<td class="col-url type-str"><a href="https://www.mysteryspot.com/">http…</a></td>',
+        '<td class="col-url type-str"><a href="https://winchestermysteryhouse.com/">http…</a></td>',
+        '<td class="col-url type-none">\xa0</td>',
+        '<td class="col-url type-str"><a href="https://www.bigfootdiscoveryproject.com/">http…</a></td>',
+    ]
 
 
 @pytest.mark.asyncio
@@ -806,7 +806,8 @@ def _export_urls(soup):
     ]
 
 
-def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefix):
+@pytest.mark.asyncio
+async def test_base_url_export_links_are_not_double_prefixed(ds_client_base_url_prefix):
     for path, expected_json, expected_csv in (
         (
             "/prefix/fixtures/simple_primary_key?id__gt=2",
@@ -824,7 +825,7 @@ def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefi
             "/prefix/fixtures/-/query.csv",
         ),
     ):
-        response = app_client_base_url_prefix.get(path)
+        response = await get_unprefixed(ds_client_base_url_prefix, path)
         assert response.status_code == 200
         soup = Soup(response.text, "html.parser")
         hrefs = _export_urls(soup)
@@ -838,9 +839,15 @@ def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefi
         )
 
 
-def test_base_url_export_links_when_database_matches_prefix():
-    with make_app_client(settings={"base_url": "/data/"}, filename="data.db") as client:
-        response = client.get("/data/data/simple_primary_key?id__gt=2")
+@pytest.mark.asyncio
+async def test_base_url_export_links_when_database_matches_prefix():
+    with make_app_client(
+        settings={"base_url": "/data/"}, filename="data.db"
+    ) as app_client:
+        client = app_client.ds.client
+        response = await get_unprefixed(
+            client, "/data/data/simple_primary_key?id__gt=2"
+        )
         assert response.status_code == 200
         hrefs = _export_urls(Soup(response.text, "html.parser"))
         assert "/data/data/simple_primary_key.json?id__gt=2" in hrefs
@@ -2028,8 +2035,11 @@ async def test_row_update_sets_message():
         ds.close()
 
 
-def test_table_data_uses_base_url(app_client_base_url_prefix):
-    response = app_client_base_url_prefix.get("/prefix/fixtures/simple_primary_key")
+@pytest.mark.asyncio
+async def test_table_data_uses_base_url(ds_client_base_url_prefix):
+    response = await get_unprefixed(
+        ds_client_base_url_prefix, "/prefix/fixtures/simple_primary_key"
+    )
     assert response.status_code == 200
     import json
     import re
@@ -2058,37 +2068,39 @@ def test_table_data_uses_base_url(app_client_base_url_prefix):
     }
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("allow_sql", (True, False))
-def test_table_page_column_statistics_requires_execute_sql(allow_sql):
+async def test_table_page_column_statistics_requires_execute_sql(allow_sql):
     # The column statistics dialog builds SQL in JavaScript, so its script and
     # the URLs it needs are only included if the actor can execute SQL
     config = {} if allow_sql else {"allow_sql": {}}
-    with make_app_client(config=config) as client:
-        response = client.get("/fixtures/sortable")
-        assert response.status == 200
-        soup = Soup(response.text, "html.parser")
-        table_data = table_data_from_soup(soup)
-        # column-stats.js is never loaded up front: a small inline loader
-        # imports it the first time the dialog is opened
-        script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
-        assert not any("/column-stats.js" in src for src in script_srcs)
-        has_script = "/column-stats.js" in response.text
-        if allow_sql:
-            execute_sql = table_data["executeSql"]
-            assert execute_sql["queryUrl"] == "/fixtures/-/query.json"
-            assert execute_sql["editorUrl"] == "/fixtures/-/query"
-            assert "filter" not in execute_sql
-            assert has_script
-        else:
-            assert "executeSql" not in table_data
-            assert not has_script
+    ds = await make_ds(config=config)
+    response = await ds.client.get("/fixtures/sortable")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    table_data = table_data_from_soup(soup)
+    # column-stats.js is never loaded up front: a small inline loader
+    # imports it the first time the dialog is opened
+    script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
+    assert not any("/column-stats.js" in src for src in script_srcs)
+    has_script = "/column-stats.js" in response.text
+    if allow_sql:
+        execute_sql = table_data["executeSql"]
+        assert execute_sql["queryUrl"] == "/fixtures/-/query.json"
+        assert execute_sql["editorUrl"] == "/fixtures/-/query"
+        assert "filter" not in execute_sql
+        assert has_script
+    else:
+        assert "executeSql" not in table_data
+        assert not has_script
 
 
-def test_table_page_column_statistics_columns(app_client):
+@pytest.mark.asyncio
+async def test_table_page_column_statistics_columns(ds_client):
     # Every column is listed with its declared type, including columns hidden
     # with ?_nocol= and the rowid of a table without a primary key
-    response = app_client.get("/fixtures/no_primary_key?_nocol=content")
-    assert response.status == 200
+    response = await ds_client.get("/fixtures/no_primary_key?_nocol=content")
+    assert response.status_code == 200
     table_data = table_data_from_soup(Soup(response.text, "html.parser"))
     assert table_data["executeSql"]["columns"] == [
         {"name": "rowid", "type": "integer"},
@@ -2099,13 +2111,14 @@ def test_table_page_column_statistics_columns(app_client):
     ]
 
 
-def test_table_page_column_statistics_filter(app_client):
+@pytest.mark.asyncio
+async def test_table_page_column_statistics_filter(ds_client):
     # Column statistics use the table's current filters. Pagination from
     # ?_next= is not part of the filter and numeric parameters keep their type.
-    response = app_client.get(
+    response = await ds_client.get(
         "/fixtures/facetable?planet_int__gt=0&state=CA&_where=pk+<+10&_next=2"
     )
-    assert response.status == 200
+    assert response.status_code == 200
     table_data = table_data_from_soup(Soup(response.text, "html.parser"))
     assert table_data["executeSql"]["filter"] == {
         "where": '"planet_int" > :p0 and "state" = :p1 and pk < 10',
@@ -2114,17 +2127,20 @@ def test_table_page_column_statistics_filter(app_client):
     }
 
 
-def test_table_fragment_custom_table_include():
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_table_fragment_custom_table_include():
+    ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ) as client:
-        response = client.get("/fixtures/complex_foreign_keys/-/fragment?f1=1&f2=2")
-        assert response.status == 200
-        assert (
-            '<div class="custom-table-row">'
-            '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
-            "</div>"
-        ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+    )
+    response = await ds.client.get(
+        "/fixtures/complex_foreign_keys/-/fragment?f1=1&f2=2"
+    )
+    assert response.status_code == 200
+    assert (
+        '<div class="custom-table-row">'
+        '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
+        "</div>"
+    ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
 
 
 @pytest.mark.asyncio
@@ -2728,17 +2744,18 @@ async def test_binary_data_display_in_table(ds_client):
     ]
 
 
-def test_custom_table_include():
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_custom_table_include():
+    ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ) as client:
-        response = client.get("/fixtures/complex_foreign_keys")
-        assert response.status == 200
-        assert (
-            '<div class="custom-table-row">'
-            '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
-            "</div>"
-        ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+    )
+    response = await ds.client.get("/fixtures/complex_foreign_keys")
+    assert response.status_code == 200
+    assert (
+        '<div class="custom-table-row">'
+        '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
+        "</div>"
+    ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
 
 
 @pytest.mark.asyncio
@@ -2836,6 +2853,7 @@ async def test_metadata_sort_desc(ds_client):
     assert list(reversed(expected)) == rows
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "max_returned_rows,path,expected_num_facets,expected_ellipses,expected_ellipses_url",
     (
@@ -2874,41 +2892,42 @@ async def test_metadata_sort_desc(ds_client):
         ),
     ),
 )
-def test_facet_more_links(
+async def test_facet_more_links(
     max_returned_rows,
     path,
     expected_num_facets,
     expected_ellipses,
     expected_ellipses_url,
 ):
-    with make_app_client(
+    ds = await make_ds(
         settings={"max_returned_rows": max_returned_rows, "default_facet_size": 2}
-    ) as client:
-        response = client.get(path)
-        soup = Soup(response.body, "html.parser")
-        lis = soup.select("#facet-neighborhood-b352a7 ul li:not(.facet-truncated)")
-        facet_truncated = soup.select_one(".facet-truncated")
-        assert len(lis) == expected_num_facets
-        if not expected_ellipses:
-            assert facet_truncated is None
+    )
+    response = await ds.client.get(path)
+    soup = Soup(response.content, "html.parser")
+    lis = soup.select("#facet-neighborhood-b352a7 ul li:not(.facet-truncated)")
+    facet_truncated = soup.select_one(".facet-truncated")
+    assert len(lis) == expected_num_facets
+    if not expected_ellipses:
+        assert facet_truncated is None
+    else:
+        if expected_ellipses_url:
+            assert facet_truncated.find("a")["href"] == expected_ellipses_url
         else:
-            if expected_ellipses_url:
-                assert facet_truncated.find("a")["href"] == expected_ellipses_url
-            else:
-                assert facet_truncated.find("a") is None
+            assert facet_truncated.find("a") is None
 
 
-def test_unavailable_table_does_not_break_sort_relationships():
+@pytest.mark.asyncio
+async def test_unavailable_table_does_not_break_sort_relationships():
     # https://github.com/simonw/datasette/issues/1305
-    with make_app_client(
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {"tables": {"foreign_key_references": {"allow": False}}}
             }
         }
-    ) as client:
-        response = client.get("/?_sort=relationships")
-        assert response.status == 200
+    )
+    response = await ds.client.get("/?_sort=relationships")
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -2930,13 +2949,14 @@ async def test_column_metadata(ds_client):
     )
 
 
-def test_facet_total():
+@pytest.mark.asyncio
+async def test_facet_total():
     # https://github.com/simonw/datasette/issues/1423
     # https://github.com/simonw/datasette/issues/1556
-    with make_app_client(settings={"max_returned_rows": 100}) as client:
-        path = "/fixtures/sortable?_facet=content&_facet=pk1"
-        response = client.get(path)
-        assert response.status == 200
+    ds = await make_ds(settings={"max_returned_rows": 100})
+    path = "/fixtures/sortable?_facet=content&_facet=pk1"
+    response = await ds.client.get(path)
+    assert response.status_code == 200
     fragments = (
         '<span class="facet-info-total">&gt;30</span>',
         '<span class="facet-info-total">8</span>',
@@ -2983,18 +3003,17 @@ async def test_table_post_method_not_allowed(ds_client):
     assert "Method not allowed" in response.text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("allow_facet", (True, False))
-def test_allow_facet_off(allow_facet):
-    with make_app_client(settings={"default_allow_facet": allow_facet}) as client:
-        response = client.get("/fixtures/facetable")
-        expected = "DATASETTE_ALLOW_FACET = {};".format(
-            "true" if allow_facet else "false"
-        )
-        assert expected in response.text
-        if allow_facet:
-            assert "Suggested facets" in response.text
-        else:
-            assert "Suggested facets" not in response.text
+async def test_allow_facet_off(allow_facet):
+    ds = await make_ds(settings={"default_allow_facet": allow_facet})
+    response = await ds.client.get("/fixtures/facetable")
+    expected = "DATASETTE_ALLOW_FACET = {};".format("true" if allow_facet else "false")
+    assert expected in response.text
+    if allow_facet:
+        assert "Suggested facets" in response.text
+    else:
+        assert "Suggested facets" not in response.text
 
 
 @pytest.mark.asyncio
@@ -3131,7 +3150,9 @@ async def test_foreign_key_labels_obey_permissions(config):
     }
 
 
-def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
+@pytest.mark.asyncio
+async def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
     # https://github.com/simonw/datasette/pull/2476
-    response = app_client_with_dot.get("/fixtures~2Edot/complex_foreign_keys")
+    client = app_client_with_dot.ds.client
+    response = await client.get("/fixtures~2Edot/complex_foreign_keys")
     assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text

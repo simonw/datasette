@@ -54,9 +54,10 @@ async def test_table_csv(ds_client):
     assert response.text == EXPECTED_TABLE_CSV
 
 
-def test_table_csv_cors_headers(app_client_with_cors):
-    response = app_client_with_cors.get("/fixtures/simple_primary_key.csv")
-    assert response.status == 200
+@pytest.mark.asyncio
+async def test_table_csv_cors_headers(ds_client_with_cors):
+    response = await ds_client_with_cors.get("/fixtures/simple_primary_key.csv")
+    assert response.status_code == 200
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
@@ -289,8 +290,11 @@ async def test_view_csv_stream(ds_client):
     assert lines[0] == b"content,content_extra"
 
 
-def test_csv_trace(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
+@pytest.mark.asyncio
+async def test_csv_trace(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
+        "/fixtures/simple_primary_key.csv?_trace=1"
+    )
     assert response.headers["content-type"] == "text/html; charset=utf-8"
     soup = Soup(response.text, "html.parser")
     assert (
@@ -300,14 +304,20 @@ def test_csv_trace(app_client_with_trace):
     assert "select id, content from simple_primary_key" in soup.find("pre").text
 
 
-def test_table_csv_stream_does_not_calculate_facets(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
+@pytest.mark.asyncio
+async def test_table_csv_stream_does_not_calculate_facets(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
+        "/fixtures/simple_primary_key.csv?_trace=1"
+    )
     soup = Soup(response.text, "html.parser")
     assert "select content, count(*) as n" not in soup.find("pre").text
 
 
-def test_table_csv_stream_does_not_calculate_counts(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
+@pytest.mark.asyncio
+async def test_table_csv_stream_does_not_calculate_counts(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
+        "/fixtures/simple_primary_key.csv?_trace=1"
+    )
     soup = Soup(response.text, "html.parser")
     assert "select count(*)" not in soup.find("pre").text
 

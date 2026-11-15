@@ -8,7 +8,6 @@ from pprint import pprint
 
 import pytest
 import pytest_asyncio
-from asgiref.sync import async_to_sync
 from bs4 import BeautifulSoup as Soup
 from click.testing import CliRunner
 
@@ -17,12 +16,12 @@ from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
 from datasette.utils import UNSTABLE_API_MESSAGE
 
-from .fixtures import assert_permissions_checked, make_app_client
+from .fixtures import assert_permissions_checked, make_app_client, make_ds
 
 
-@pytest.fixture(scope="module")
-def padlock_client():
-    with make_app_client(
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def padlock_client():
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {
@@ -30,8 +29,9 @@ def padlock_client():
                 }
             }
         }
-    ) as client:
-        yield client
+    )
+    yield ds.client
+    ds.close()
 
 
 @pytest_asyncio.fixture
@@ -50,6 +50,7 @@ async def perms_ds():
     return ds
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -74,25 +75,26 @@ async def perms_ds():
         ),  # Query
     ),
 )
-def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
+async def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
     padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
-    anon_response = padlock_client.get(path)
-    assert expected_anon == anon_response.status
-    if allow and anon_response.status == 200:
+    anon_response = await padlock_client.get(path)
+    assert expected_anon == anon_response.status_code
+    if allow and anon_response.status_code == 200:
         # Should be no padlock
         assert fragment not in anon_response.text
-    auth_response = padlock_client.get(
+    auth_response = await padlock_client.get(
         path,
         cookies={"ds_actor": padlock_client.actor_cookie({"id": "root"})},
     )
-    assert expected_auth == auth_response.status
+    assert expected_auth == auth_response.status_code
     # Check for the padlock
     if allow and expected_anon == 403 and expected_auth == 200:
         assert fragment in auth_response.text
     del padlock_client.ds.config["allow"]
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -102,57 +104,56 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
     ],
 )
 @pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_database(allow, expected_anon, expected_auth, use_metadata):
+async def test_view_database(allow, expected_anon, expected_auth, use_metadata):
     key = "metadata" if use_metadata else "config"
     kwargs = {key: {"databases": {"fixtures": {"allow": allow}}}}
-    with make_app_client(**kwargs) as client:
-        for path in (
-            "/fixtures",
-            "/fixtures/compound_three_primary_keys",
-            "/fixtures/compound_three_primary_keys/a,a,a",
+    ds = await make_ds(**kwargs)
+    for path in (
+        "/fixtures",
+        "/fixtures/compound_three_primary_keys",
+        "/fixtures/compound_three_primary_keys/a,a,a",
+    ):
+        anon_response = await ds.client.get(path)
+        assert expected_anon == anon_response.status_code, path
+        if allow and path == "/fixtures" and anon_response.status_code == 200:
+            # Should be no padlock
+            assert ">fixtures 🔒</h1>" not in anon_response.text
+        auth_response = await ds.client.get(
+            path,
+            cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+        )
+        assert expected_auth == auth_response.status_code
+        if (
+            allow
+            and path == "/fixtures"
+            and expected_anon == 403
+            and expected_auth == 200
         ):
-            anon_response = client.get(path)
-            assert expected_anon == anon_response.status, path
-            if allow and path == "/fixtures" and anon_response.status == 200:
-                # Should be no padlock
-                assert ">fixtures 🔒</h1>" not in anon_response.text
-            auth_response = client.get(
-                path,
-                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-            )
-            assert expected_auth == auth_response.status
-            if (
-                allow
-                and path == "/fixtures"
-                and expected_anon == 403
-                and expected_auth == 200
-            ):
-                assert ">fixtures 🔒</h1>" in auth_response.text
+            assert ">fixtures 🔒</h1>" in auth_response.text
 
 
-def test_database_list_respects_view_database():
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_database_list_respects_view_database():
+    ds = await make_ds(
         config={"databases": {"fixtures": {"allow": {"id": "root"}}}},
-        extra_databases={"data.db": "create table names (name text)"},
-    ) as client:
-        anon_response = client.get("/")
-        anon_links = homepage_item_links(anon_response.text)
-        assert "/data/names" in anon_links
-        assert not any(link.startswith("/fixtures/") for link in anon_links)
-        # Only one database is visible, so there is no database filter
-        assert 'href="/?database=fixtures"' not in anon_response.text
-        auth_response = client.get(
-            "/",
-            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-        )
-        auth_links = homepage_item_links(auth_response.text)
-        assert "/data/names" in auth_links
-        assert any(link.startswith("/fixtures/") for link in auth_links)
-        soup = Soup(auth_response.text, "html.parser")
-        fixtures_chip = soup.select_one(
-            'a.homepage-database[href="/?database=fixtures"]'
-        )
-        assert "🔒" in fixtures_chip.text
+        extra_databases={"data": "create table names (name text)"},
+    )
+    anon_response = await ds.client.get("/")
+    anon_links = homepage_item_links(anon_response.text)
+    assert "/data/names" in anon_links
+    assert not any(link.startswith("/fixtures/") for link in anon_links)
+    # Only one database is visible, so there is no database filter
+    assert 'href="/?database=fixtures"' not in anon_response.text
+    auth_response = await ds.client.get(
+        "/",
+        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+    )
+    auth_links = homepage_item_links(auth_response.text)
+    assert "/data/names" in auth_links
+    assert any(link.startswith("/fixtures/") for link in auth_links)
+    soup = Soup(auth_response.text, "html.parser")
+    fixtures_chip = soup.select_one('a.homepage-database[href="/?database=fixtures"]')
+    assert "🔒" in fixtures_chip.text
 
 
 def homepage_item_links(html):
@@ -160,8 +161,9 @@ def homepage_item_links(html):
     return [a["href"] for a in soup.select("a.catalog-item-name")]
 
 
-def test_database_list_respects_view_table():
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_database_list_respects_view_table():
+    ds = await make_ds(
         config={
             "databases": {
                 "data": {
@@ -173,26 +175,29 @@ def test_database_list_respects_view_table():
             }
         },
         extra_databases={
-            "data.db": "create table names (name text); create view v as select * from names"
+            "data": "create table names (name text); create view v as select * from names"
         },
-    ) as client:
-        html_fragments = [
-            ">names</a> 🔒",
-            ">v</a> 🔒",
-        ]
-        anon_response_text = client.get("/").text
-        assert "/data/names" not in homepage_item_links(anon_response_text)
-        assert "/data/v" not in homepage_item_links(anon_response_text)
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response_text
-        auth_response_text = client.get(
+    )
+    html_fragments = [
+        ">names</a> 🔒",
+        ">v</a> 🔒",
+    ]
+    anon_response_text = (await ds.client.get("/")).text
+    assert "/data/names" not in homepage_item_links(anon_response_text)
+    assert "/data/v" not in homepage_item_links(anon_response_text)
+    for html_fragment in html_fragments:
+        assert html_fragment not in anon_response_text
+    auth_response_text = (
+        await ds.client.get(
             "/",
-            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-        ).text
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response_text
+            cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+        )
+    ).text
+    for html_fragment in html_fragments:
+        assert html_fragment in auth_response_text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -202,7 +207,7 @@ def test_database_list_respects_view_table():
     ],
 )
 @pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_table(allow, expected_anon, expected_auth, use_metadata):
+async def test_view_table(allow, expected_anon, expected_auth, use_metadata):
     key = "metadata" if use_metadata else "config"
     kwargs = {
         key: {
@@ -213,23 +218,24 @@ def test_view_table(allow, expected_anon, expected_auth, use_metadata):
             }
         }
     }
-    with make_app_client(**kwargs) as client:
-        anon_response = client.get("/fixtures/compound_three_primary_keys")
-        assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
-        auth_response = client.get(
-            "/fixtures/compound_three_primary_keys",
-            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-        )
-        assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
+    ds = await make_ds(**kwargs)
+    anon_response = await ds.client.get("/fixtures/compound_three_primary_keys")
+    assert expected_anon == anon_response.status_code
+    if allow and anon_response.status_code == 200:
+        # Should be no padlock
+        assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures/compound_three_primary_keys",
+        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+    )
+    assert expected_auth == auth_response.status_code
+    if allow and expected_anon == 403 and expected_auth == 200:
+        assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
 
 
-def test_table_list_respects_view_table():
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_table_list_respects_view_table():
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {
@@ -241,21 +247,22 @@ def test_table_list_respects_view_table():
                 }
             }
         }
-    ) as client:
-        html_fragments = [
-            ">compound_three_primary_keys</a> 🔒",
-            ">paginated_view</a> 🔒",
-        ]
-        anon_response = client.get("/fixtures")
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response.text
-        auth_response = client.get(
-            "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response.text
+    )
+    html_fragments = [
+        ">compound_three_primary_keys</a> 🔒",
+        ">paginated_view</a> 🔒",
+    ]
+    anon_response = await ds.client.get("/fixtures")
+    for html_fragment in html_fragments:
+        assert html_fragment not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    )
+    for html_fragment in html_fragments:
+        assert html_fragment in auth_response.text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -264,27 +271,28 @@ def test_table_list_respects_view_table():
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_query(allow, expected_anon, expected_auth):
-    with make_app_client(
+async def test_view_query(allow, expected_anon, expected_auth):
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {"queries": {"q": {"sql": "select 1 + 1", "allow": allow}}}
             }
         }
-    ) as client:
-        anon_response = client.get("/fixtures/q")
-        assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert "🔒</h1>" not in anon_response.text
-        auth_response = client.get(
-            "/fixtures/q", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">fixtures: q 🔒</h1>" in auth_response.text
+    )
+    anon_response = await ds.client.get("/fixtures/q")
+    assert expected_anon == anon_response.status_code
+    if allow and anon_response.status_code == 200:
+        # Should be no padlock
+        assert "🔒</h1>" not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures/q", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    )
+    assert expected_auth == auth_response.status_code
+    if allow and expected_anon == 403 and expected_auth == 200:
+        assert ">fixtures: q 🔒</h1>" in auth_response.text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config",
     [
@@ -292,42 +300,46 @@ def test_view_query(allow, expected_anon, expected_auth):
         {"databases": {"fixtures": {"allow_sql": {"id": "root"}}}},
     ],
 )
-def test_execute_sql(config):
+async def test_execute_sql(config):
     schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
-    with make_app_client(config=config) as client:
-        form_fragment = '<form class="sql core" action="/fixtures/-/query"'
+    ds = await make_ds(config=config)
+    form_fragment = '<form class="sql core" action="/fixtures/-/query"'
 
-        # Anonymous users - should not display the form:
-        anon_html = client.get("/fixtures").text
-        assert form_fragment not in anon_html
-        # And const schema should be an empty object:
-        assert "const schema = {};" in anon_html
-        # This should 403:
-        assert client.get("/fixtures/-/query?sql=select+1").status == 403
-        # ?_where= not allowed on tables:
-        assert client.get("/fixtures/facet_cities?_where=id=3").status == 403
+    # Anonymous users - should not display the form:
+    anon_html = (await ds.client.get("/fixtures")).text
+    assert form_fragment not in anon_html
+    # And const schema should be an empty object:
+    assert "const schema = {};" in anon_html
+    # This should 403:
+    assert (await ds.client.get("/fixtures/-/query?sql=select+1")).status_code == 403
+    # ?_where= not allowed on tables:
+    assert (
+        await ds.client.get("/fixtures/facet_cities?_where=id=3")
+    ).status_code == 403
 
-        # But for logged in user all of these should work:
-        cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
-        response_text = client.get("/fixtures", cookies=cookies).text
-        # Extract the schema= portion of the JavaScript
-        schema_json = schema_re.search(response_text).group(1)
-        schema = json.loads(schema_json)
-        assert set(schema["attraction_characteristic"]) == {"name", "pk"}
-        assert schema["paginated_view"] == []
-        assert form_fragment in response_text
-        query_response = client.get("/fixtures/-/query?sql=select+1", cookies=cookies)
-        assert query_response.status == 200
-        schema2 = json.loads(schema_re.search(query_response.text).group(1))
-        assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
-        assert (
-            client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies).status
-            == 200
-        )
+    # But for logged in user all of these should work:
+    cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    response_text = (await ds.client.get("/fixtures", cookies=cookies)).text
+    # Extract the schema= portion of the JavaScript
+    schema_json = schema_re.search(response_text).group(1)
+    schema = json.loads(schema_json)
+    assert set(schema["attraction_characteristic"]) == {"name", "pk"}
+    assert schema["paginated_view"] == []
+    assert form_fragment in response_text
+    query_response = await ds.client.get(
+        "/fixtures/-/query?sql=select+1", cookies=cookies
+    )
+    assert query_response.status_code == 200
+    schema2 = json.loads(schema_re.search(query_response.text).group(1))
+    assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
+    assert (
+        await ds.client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies)
+    ).status_code == 200
 
 
-def test_query_list_respects_view_query():
-    with make_app_client(
+@pytest.mark.asyncio
+async def test_query_list_respects_view_query():
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {
@@ -335,17 +347,18 @@ def test_query_list_respects_view_query():
                 }
             }
         }
-    ) as client:
-        html_fragment = '<a class="query-row-name" href="/fixtures/q">q</a> 🔒'
-        anon_response = client.get("/fixtures")
-        assert html_fragment not in anon_response.text
-        assert '"/fixtures/q"' not in anon_response.text
-        auth_response = client.get(
-            "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        assert html_fragment in auth_response.text
+    )
+    html_fragment = '<a class="query-row-name" href="/fixtures/q">q</a> 🔒'
+    anon_response = await ds.client.get("/fixtures")
+    assert html_fragment not in anon_response.text
+    assert '"/fixtures/q"' not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    )
+    assert html_fragment in auth_response.text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,permissions",
     [
@@ -389,10 +402,10 @@ def test_query_list_respects_view_query():
         ),
     ],
 )
-def test_permissions_checked(app_client, path, permissions):
+async def test_permissions_checked(app_client, path, permissions):
     # Needs file-backed app_client for /fixtures.db
     app_client.ds._permission_checks.clear()
-    response = app_client.get(path)
+    response = await app_client.ds.client.get(path)
     assert response.status_code in (200, 403)
     assert_permissions_checked(app_client.ds, permissions)
 
@@ -507,6 +520,7 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
     assert expected_fragment in response.text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected",
     [
@@ -514,17 +528,19 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
         ({"id": "root", "unauthenticated": True}, 200),
     ],
 )
-def test_allow_unauthenticated(allow, expected):
-    with make_app_client(config={"allow": allow}) as client:
-        assert expected == client.get("/").status
+async def test_allow_unauthenticated(allow, expected):
+    ds = await make_ds(config={"allow": allow})
+    assert expected == (await ds.client.get("/")).status_code
 
 
-@pytest.fixture(scope="session")
-def view_instance_client():
-    with make_app_client(config={"allow": {}}) as client:
-        yield client
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def view_instance_client():
+    ds = await make_ds(config={"allow": {}})
+    yield ds.client
+    ds.close()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -543,23 +559,25 @@ def view_instance_client():
         "/-/patterns/menus",
     ],
 )
-def test_view_instance(path, view_instance_client):
-    assert 403 == view_instance_client.get(path).status
+async def test_view_instance(path, view_instance_client):
+    assert 403 == (await view_instance_client.get(path)).status_code
     if path not in (
         "/-/permissions",
         "/-/messages",
         "/-/patterns",
         "/-/patterns/menus",
     ):
-        assert 403 == view_instance_client.get(path + ".json").status
+        assert 403 == (await view_instance_client.get(path + ".json")).status_code
 
 
 @pytest.fixture(scope="session")
 def cascade_app_client():
+    # Needs a file on disk, to test downloading /fixtures.db
     with make_app_client(is_immutable=True) as client:
-        yield client
+        yield client.ds.client
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,permissions,expected_status",
     [
@@ -597,7 +615,9 @@ def cascade_app_client():
         ("/fixtures.db", ["download"], 200),
     ],
 )
-def test_permissions_cascade(cascade_app_client, path, permissions, expected_status):
+async def test_permissions_cascade(
+    cascade_app_client, path, permissions, expected_status
+):
     """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
@@ -621,18 +641,19 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
             "allow"
         ] = (allow if "query" in permissions else deny)
         cascade_app_client.ds.config = updated_config
-        response = cascade_app_client.get(
+        response = await cascade_app_client.get(
             path,
             cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
         )
         assert (
-            response.status == expected_status
-        ), f"path: {path}, permissions: {permissions}, expected_status: {expected_status}, status: {response.status}"
+            response.status_code == expected_status
+        ), f"path: {path}, permissions: {permissions}, expected_status: {expected_status}, status: {response.status_code}"
     finally:
         cascade_app_client.ds.config = previous_config
 
 
-def test_padlocks_on_database_page(cascade_app_client):
+@pytest.mark.asyncio
+async def test_padlocks_on_database_page(cascade_app_client):
     config = {
         "databases": {
             "fixtures": {
@@ -648,11 +669,11 @@ def test_padlocks_on_database_page(cascade_app_client):
     previous_config = cascade_app_client.ds.config
     try:
         cascade_app_client.ds.config = config
-        async_to_sync(cascade_app_client.ds.invoke_startup)()
-        async_to_sync(cascade_app_client.ds.add_query)(
+        await cascade_app_client.ds.invoke_startup()
+        await cascade_app_client.ds.add_query(
             "fixtures", "query_two", "select 2", source="config"
         )
-        response = cascade_app_client.get(
+        response = await cascade_app_client.get(
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
         )
@@ -683,7 +704,7 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert link_and_padlock("catalog-item-name", "simple_view") == "simple_view"
     finally:
         cascade_app_client.ds.config = previous_config
-        async_to_sync(cascade_app_client.ds.remove_query)("fixtures", "query_two")
+        await cascade_app_client.ds.remove_query("fixtures", "query_two")
 
 
 @pytest.mark.asyncio

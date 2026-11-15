@@ -1,13 +1,16 @@
 import sqlite3
 import urllib
 
+import pytest
 from click.testing import CliRunner
 
 from datasette.cli import cli
 
 
-def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
-    app_client = app_client_two_attached_databases_crossdb_enabled
+@pytest.mark.asyncio
+async def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
+    # --crossdb attaches database files, so this uses the on-disk fixture
+    client = app_client_two_attached_databases_crossdb_enabled.ds.client
     sql = """
     select
       'extra database' as db,
@@ -25,12 +28,12 @@ def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
     from
       fixtures.searchable
     """
-    response = app_client.get(
+    response = await client.get(
         "/_memory/-/query.json?"
         + urllib.parse.urlencode({"sql": sql, "_shape": "array"})
     )
-    assert response.status == 200
-    assert response.json == [
+    assert response.status_code == 200
+    assert response.json() == [
         {"db": "extra database", "pk": 1, "text1": "barry cat", "text2": "terry dog"},
         {"db": "extra database", "pk": 2, "text1": "terry dog", "text2": "sara weasel"},
         {"db": "fixtures", "pk": 1, "text1": "barry cat", "text2": "terry dog"},
@@ -65,12 +68,12 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
     )
 
 
-def test_crossdb_attached_database_list_display(
+@pytest.mark.asyncio
+async def test_crossdb_attached_database_list_display(
     app_client_two_attached_databases_crossdb_enabled,
 ):
-    app_client = app_client_two_attached_databases_crossdb_enabled
-    response = app_client.get("/_memory")
-    app_client.get("/")
+    client = app_client_two_attached_databases_crossdb_enabled.ds.client
+    response = await client.get("/_memory")
     for fragment in (
         "databases are attached to this connection",
         "<li><strong>fixtures</strong> - ",

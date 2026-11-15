@@ -24,6 +24,7 @@ import threading
 import time
 import types
 import urllib.parse
+import warnings
 from concurrent import futures
 from pathlib import Path
 
@@ -241,12 +242,12 @@ SETTINGS = (
         "Time limit for calculating a suggested facet",
     ),
     Setting(
-        "allow_facet",
+        "default_allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
     ),
     Setting(
-        "allow_download",
+        "default_allow_download",
         True,
         "Allow users to download the original SQLite database files",
     ),
@@ -273,14 +274,14 @@ SETTINGS = (
     ),
     Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
     Setting(
-        "allow_csv_stream",
+        "default_allow_stream",
         True,
-        "Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)",
+        "Allow ?_stream=1 to export all rows (ignoring max_returned_rows)",
     ),
     Setting(
-        "max_csv_mb",
+        "max_stream_mb",
         100,
-        "Maximum size allowed for CSV export in MB - set 0 to disable this limit",
+        "Maximum size allowed for a streamed export in MB - set 0 to disable this limit",
     ),
     Setting(
         "truncate_cells_html",
@@ -304,12 +305,63 @@ SETTINGS = (
     ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
-_HASH_URLS_REMOVED = "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead"
-OBSOLETE_SETTINGS = {
-    "hash_urls": _HASH_URLS_REMOVED,
-    "default_cache_ttl_hashed": _HASH_URLS_REMOVED,
-}
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
+# Previous names of settings that have been renamed, mapped to their new
+# names. The old names are not documented but still work everywhere a
+# setting can be set or read.
+SETTING_ALIASES = {
+    "allow_facet": "default_allow_facet",
+    "allow_download": "default_allow_download",
+    "allow_csv_stream": "default_allow_stream",
+    "max_csv_mb": "max_stream_mb",
+}
+
+
+# Arguments that output renderer render functions should no longer accept,
+# mapped to what to use instead
+DEPRECATED_RENDER_ARGUMENTS = {
+    "data": "Declare the extras it needs and use the page argument instead",
+    "args": "Use request.args instead",
+}
+
+
+def _warn_deprecated_render_argument(render, extension, argument, replacement):
+    message = (
+        f"Output renderer '{extension}' accepts the {argument} argument, which is "
+        f"deprecated and will be removed before Datasette 1.0. {replacement}: "
+        "https://docs.datasette.io/en/latest/plugin_hooks.html"
+        "#register-output-renderer-datasette"
+    )
+    code = getattr(render, "__code__", None)
+    if code is None:
+        warnings.warn(message, DeprecationWarning, stacklevel=2)
+    else:
+        # Report the warning against the render function itself, so the
+        # plugin author can see which code needs to change
+        warnings.warn_explicit(
+            message,
+            DeprecationWarning,
+            filename=code.co_filename,
+            lineno=code.co_firstlineno,
+            # module must be a string or some warnings are silently dropped
+            module=getattr(render, "__module__", None) or "datasette",
+        )
+
+
+def resolve_setting_aliases(settings, source):
+    """
+    Return a copy of the settings dictionary with any old setting names
+    replaced by their new names. source says where the settings came from,
+    for the error raised if a setting is given under both of its names.
+    """
+    for old_name, name in SETTING_ALIASES.items():
+        if old_name in settings and name in settings:
+            raise StartupError(
+                f"Setting '{name}' and its previous name '{old_name}' "
+                f"are both set in {source}"
+            )
+    return {SETTING_ALIASES.get(key, key): value for key, value in settings.items()}
+
 
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
@@ -551,7 +603,9 @@ class Datasette:
             config = json.loads((config_dir / "datasette.json").read_text())
 
         config = config or {}
-        config_settings = config.get("settings") or {}
+        config_settings = resolve_setting_aliases(
+            config.get("settings") or {}, "config file"
+        )
 
         # Validate settings from config file
         for key, value in config_settings.items():
@@ -571,6 +625,7 @@ class Datasette:
 
         # Validate settings from constructor parameter
         if settings:
+            settings = resolve_setting_aliases(settings, "settings parameter")
             for key, value in settings.items():
                 if key not in DEFAULT_SETTINGS:
                     raise StartupError(f"Invalid setting '{key}' in settings parameter")
@@ -586,10 +641,16 @@ class Datasette:
 
         self.config = config
         # CLI settings should overwrite datasette.json settings
-        self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
+        self._settings = {
+            **DEFAULT_SETTINGS,
+            **config_settings,
+            **(settings or {}),
+        }
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         # File extension -> label, description, is_binary and is_webpage
         self._renderer_options = {}
+        self._renderer_extras = {}  # File extension -> extras the renderer declared
+        self._renderer_can_stream = {}  # File extension -> accepts row_stream
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
             self.executor = None
@@ -1008,11 +1069,15 @@ class Datasette:
             raise first_exception
 
     def setting(self, key):
-        return self._settings.get(key, None)
+        return self._settings.get(SETTING_ALIASES.get(key, key), None)
 
     def settings_dict(self):
         # Returns a fully resolved settings dictionary, useful for templates
-        return {option.name: self.setting(option.name) for option in SETTINGS}
+        settings = {option.name: self.setting(option.name) for option in SETTINGS}
+        # Custom templates may still use the previous name of a setting
+        for old_name, name in SETTING_ALIASES.items():
+            settings[old_name] = settings[name]
+        return settings
 
     def _metadata_recursive_update(self, orig, updated):
         if not isinstance(orig, dict) or not isinstance(updated, dict):
@@ -2567,11 +2632,37 @@ ORDER BY allowed.parent, allowed.child
 
         for renderer in hook_renderers:
             extension = renderer["extension"]
+            if not renderer.get("render"):
+                raise StartupError(
+                    f"Output renderer '{extension}' must have a 'render' function"
+                    + (
+                        " - the 'callback' key has been renamed to 'render'"
+                        if "callback" in renderer
+                        else ""
+                    )
+                )
             self.renderers[extension] = (
-                # It used to be called "callback" - remove this in Datasette 1.0
-                renderer.get("render") or renderer["callback"],
+                renderer["render"],
                 renderer.get("can_render") or (lambda: True),
             )
+            # Extras to resolve and pass to the render function as extras=
+            declared_extras = renderer.get("extras") or []
+            if isinstance(declared_extras, str) or not all(
+                isinstance(name, str) for name in declared_extras
+            ):
+                raise StartupError(
+                    f"Output renderer '{extension}' extras must be a list of strings"
+                )
+            self._renderer_extras[extension] = list(declared_extras)
+            render = self.renderers[extension][0]
+            render_parameters = inspect.signature(render).parameters
+            # Renderers that accept row_stream can stream every row
+            self._renderer_can_stream[extension] = "row_stream" in render_parameters
+            for deprecated, replacement in DEPRECATED_RENDER_ARGUMENTS.items():
+                if deprecated in render_parameters:
+                    _warn_deprecated_render_argument(
+                        render, extension, deprecated, replacement
+                    )
             # How the export dialog presents this format
             is_binary = bool(renderer.get("is_binary"))
             is_webpage = bool(renderer.get("is_webpage"))
@@ -3336,26 +3427,40 @@ class DatasetteRouter:
 
         new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
         request.scope = new_scope
+        response_started = False
+
+        async def tracking_send(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
             response = await view(request, send)
             if response:
                 self.ds._write_messages_to_response(request, response)
-                await response.asgi_send(send)
+                await response.asgi_send(tracking_send)
             return
-        except NotFound as exception:
-            return await self.handle_404(request, send, exception)
-        except Forbidden as exception:
-            # Try the forbidden() plugin hook
-            for custom_response in pm.hook.forbidden(
-                datasette=self.ds, request=request, message=exception.args[0]
-            ):
-                custom_response = await await_me_maybe(custom_response)
-                assert (
-                    custom_response
-                ), "Default forbidden() hook should have been called"
-                return await custom_response.asgi_send(send)
-        except Exception as exception:  # noqa: BLE001
+        except Exception as exception:
             # This IS the top-level error handler - it must catch everything
+            if response_started:
+                # A streaming response failed part way through. It is too
+                # late to send an error page, so re-raise and let the server
+                # drop the connection: the client then sees a failed
+                # response, not a truncated one that looks complete.
+                raise
+            if isinstance(exception, NotFound):
+                return await self.handle_404(request, send, exception)
+            if isinstance(exception, Forbidden):
+                # Try the forbidden() plugin hook
+                for custom_response in pm.hook.forbidden(
+                    datasette=self.ds, request=request, message=exception.args[0]
+                ):
+                    custom_response = await await_me_maybe(custom_response)
+                    assert (
+                        custom_response
+                    ), "Default forbidden() hook should have been called"
+                    return await custom_response.asgi_send(send)
             return await self.handle_exception(request, send, exception)
 
     async def handle_401(self, request, send, exception):

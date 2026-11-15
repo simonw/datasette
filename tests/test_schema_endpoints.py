@@ -1,5 +1,8 @@
+import re
+
 import pytest
 import pytest_asyncio
+from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
 
@@ -194,6 +197,31 @@ async def test_database_schema_with_multiple_tables(schema_ds):
     assert "CREATE TABLE users" in schema
     assert "CREATE TABLE posts" in schema
     assert "CREATE VIEW recent_posts" in schema
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_names",
+    [
+        # schema_empty_db has no schema, so nothing to copy
+        ("/-/schema", ["schema_public_db schema"]),
+        ("/schema_public_db/-/schema", ["schema_public_db schema"]),
+        ("/schema_public_db/users/-/schema", ["users schema"]),
+    ],
+)
+async def test_schema_html_copy_buttons(schema_ds, path, expected_names):
+    response = await schema_ds.client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.find("script", src=re.compile(r"copy-button\.js"))
+    buttons = soup.select(".copyable-sql > datasette-copy-button")
+    assert sorted(b["name"] for b in buttons) == expected_names
+    # Each button copies the text of the <pre> it sits next to
+    for button in buttons:
+        pre = button.find_previous_sibling("pre")
+        assert pre["id"] == button["for"]
+        assert "CREATE TABLE" in pre.text
+    assert len({b["for"] for b in buttons}) == len(buttons)
 
 
 @pytest.mark.asyncio

@@ -106,6 +106,94 @@ def datasette_server(tmp_path):
             process.wait()
 
 
+@pytest.fixture(scope="module")
+def name_collision_server(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("name-collisions")
+    db_paths = []
+    for database in ("data", "tag", "swatch", "table"):
+        db_path = tmp_path / f"{database}.db"
+        db_paths.append(str(db_path))
+        conn = sqlite3.connect(db_path)
+        try:
+            tables = ["items"]
+            if database == "data":
+                tables += [
+                    "create-column-headings",
+                    "alter-column-headings",
+                    "create-column-label",
+                    "alter-column-label",
+                    "create-icon-button",
+                    "alter-icon-button",
+                    "wrapper",
+                    "tools",
+                    "schema",
+                    "row-toolbar",
+                    "count",
+                ]
+            for table in tables:
+                conn.execute(f'create table "{table}" (id integer primary key)')
+                conn.executemany(
+                    f'insert into "{table}" values (?)',
+                    ((n,) for n in range(1, 10003 if table == "count" else 51)),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    config_path = tmp_path / "datasette.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "databases": {
+                    "data": {
+                        "queries": {
+                            name: {"sql": "select * from items"}
+                            for name in (
+                                "row-detail",
+                                "card-sql",
+                                "row",
+                                "cards",
+                                "list-filters",
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    )
+    port = find_free_port()
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "datasette",
+            *db_paths,
+            "--config",
+            str(config_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--setting",
+            "num_sql_threads",
+            "1",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        wait_for_server(process, url)
+        yield url
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
 def write_playwright_database(db_path):
     conn = sqlite3.connect(db_path)
     try:
@@ -163,6 +251,8 @@ def write_playwright_database(db_path):
             score integer,
             city text
         );
+        create table drop_demo (id integer primary key, name text);
+        insert into drop_demo (name) values ('one'), ('two');
         with recursive sequence(n) as (
             select 1 union all select n + 1 from sequence where n < 20
         )
@@ -284,6 +374,12 @@ def write_playwright_config(config_path):
                                 "permissions": {
                                     "insert-row": True,
                                     "update-row": True,
+                                },
+                            },
+                            "drop_demo": {
+                                "permissions": {
+                                    "alter-table": True,
+                                    "drop-table": True,
                                 },
                             },
                         },
@@ -1129,9 +1225,9 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
     page.evaluate("""
         () => {
             window.__discardConfirmMessages = [];
-            window.confirm = (message) => {
-                window.__discardConfirmMessages.push(message);
-                return false;
+            DatasetteModal.confirm = (options) => {
+                window.__discardConfirmMessages.push(options.message);
+                return Promise.resolve(false);
             };
         }
         """)
@@ -1159,6 +1255,55 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
         "Discard table changes?"
     ]
     assert dialog.evaluate("node => node.open") is True
+
+
+@pytest.mark.playwright
+def test_alter_table_drop_table_confirms_in_dialog(page, datasette_server):
+    # Embedded browsers can silently dismiss window.confirm(), so dropping a
+    # table must be confirmed in the dialog without any native prompt
+    native_prompts = []
+
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", dismiss)
+    page.goto(f"{datasette_server}data/drop_demo")
+    page.locator("details.actions-menu-links").evaluate("node => node.open = true")
+    page.locator('button[data-table-action="alter-table"]').click()
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    drop_button = dialog.locator(".table-alter-drop")
+    confirm_button = dialog.locator(".table-alter-drop-confirm")
+    assert drop_button.is_visible()
+    assert confirm_button.is_hidden()
+
+    drop_button.click()
+    assert dialog.locator(".table-alter-review-title").inner_text() == "Drop table"
+    assert dialog.locator(".table-alter-review-warning").inner_text() == (
+        'Permanently delete the table "drop_demo"? '
+        "This will delete all of its data and cannot be undone."
+    )
+    assert confirm_button.is_visible()
+    assert confirm_button.inner_text() == "Drop table"
+    assert drop_button.is_hidden()
+    assert dialog.locator(".table-alter-save").is_hidden()
+    assert dialog.locator(".table-alter-fields").is_hidden()
+    # Nothing is dropped until the confirmation button is clicked
+    assert httpx2.get(f"{datasette_server}data/drop_demo.json").status_code == 200
+
+    dialog.locator(".table-alter-back").click()
+    assert dialog.locator(".table-alter-fields").is_visible()
+    assert dialog.locator(".table-alter-save").is_visible()
+    assert drop_button.is_visible()
+    assert confirm_button.is_hidden()
+    assert httpx2.get(f"{datasette_server}data/drop_demo.json").status_code == 200
+
+    drop_button.click()
+    confirm_button.click()
+    page.wait_for_url(f"{datasette_server}data")
+    assert httpx2.get(f"{datasette_server}data/drop_demo.json").status_code == 404
+    assert native_prompts == []
 
 
 @pytest.mark.playwright
@@ -1849,6 +1994,79 @@ def test_count_all(page, datasette_server):
 
 
 @pytest.mark.playwright
+@pytest.mark.parametrize("width", (390, 1280))
+@pytest.mark.parametrize(
+    "path",
+    (
+        "data/create-column-headings",
+        "data/alter-column-headings",
+        "data/create-column-label",
+        "data/alter-column-label",
+        "data/create-icon-button",
+        "data/alter-icon-button",
+        "data/tools",
+        "data/schema",
+        "data/row-toolbar",
+        "data/row-detail",
+        "data/card-sql",
+        "data/row",
+        "data/cards",
+        "data/list-filters",
+        "tag/items",
+        "swatch/items",
+        "table/items",
+    ),
+)
+def test_resource_names_do_not_change_page_layout(
+    page, name_collision_server, width, path
+):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": width, "height": 664})
+    page.goto(name_collision_server + path)
+    expect(page.locator("h1")).to_be_visible()
+    assert page.locator("body").bounding_box()["width"] == pytest.approx(width, abs=1)
+    assert page.evaluate("document.documentElement.scrollWidth") <= width + 1
+    page.mouse.move(width / 2, 550)
+    page.mouse.wheel(0, 500)
+    page.wait_for_function("scrollY > 0")
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize(
+    "table",
+    (
+        "create-column-headings",
+        "alter-column-headings",
+        "create-column-label",
+        "alter-column-label",
+    ),
+)
+def test_row_pages_are_visible_with_component_table_names(
+    page, name_collision_server, table
+):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": 390, "height": 664})
+    page.goto(f"{name_collision_server}data/{table}/1")
+    expect(page.locator("h1")).to_be_visible()
+    expect(page.locator(".row-fields")).to_be_visible()
+    assert page.locator("body").bounding_box()["width"] == pytest.approx(390, abs=1)
+
+
+@pytest.mark.playwright
+def test_count_all_preserves_page_for_table_named_count(page, name_collision_server):
+    from playwright.sync_api import expect
+
+    page.goto(name_collision_server + "data/count?id__gt=1")
+    page.get_by_role("button", name="count all", exact=True).click()
+    expect(page.locator(".table-summary .table-count")).to_have_text("10,001 rows")
+    expect(page.locator("h1")).to_be_visible()
+    expect(page.locator("table.rows-and-columns")).to_be_visible()
+    expect(page.locator(".count-all")).to_have_count(0)
+
+
+@pytest.mark.playwright
 def test_count_all_error_retry(page, datasette_server):
     page.goto(datasette_server + "data/count_numbers?id__gt=1")
     page.route(
@@ -1990,7 +2208,10 @@ def test_modal_nested_escape_and_cleanup(page, datasette_server):
     field.fill("Unsaved title")
     page.evaluate("""() => {
         window.confirmations = [];
-        window.confirm = message => { confirmations.push(message); return false; };
+        DatasetteModal.confirm = options => {
+            confirmations.push(options.message);
+            return Promise.resolve(false);
+        };
     }""")
     # Plugin controls can consume Escape without closing their containing form.
     field.evaluate("""node => node.addEventListener('keydown', event => {
@@ -2112,6 +2333,105 @@ def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_modal_before_close_can_return_a_promise(page, datasette_server):
+    page.goto(datasette_server)
+    result = page.evaluate("""async () => {
+        const modal = DatasetteModal.create();
+        modal.dialog.innerHTML = "<button>Close</button>";
+        document.body.append(modal);
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+        const calls = [];
+        let answer;
+        const pendingGuard = (source) => {
+            calls.push(source);
+            return new Promise((resolve) => { answer = resolve; });
+        };
+        const out = {};
+
+        // The dialog stays open while the promise is pending
+        modal.beforeClose = pendingGuard;
+        modal.show();
+        out.returnedWhilePending = modal.requestClose("escape");
+        out.openWhilePending = modal.dialog.open;
+        // ... and further requests do not call the guard again
+        out.returnedForSecondRequest = modal.requestClose("backdrop");
+        out.callsWhilePending = calls.slice();
+
+        answer(false);
+        await tick();
+        out.openAfterFalse = modal.dialog.open;
+
+        modal.requestClose("backdrop");
+        out.callsAfterAnswer = calls.slice();
+        answer(true);
+        await tick();
+        out.openAfterTrue = modal.dialog.open;
+
+        // Like a synchronous guard, only false keeps the dialog open
+        modal.beforeClose = async () => {};
+        modal.show();
+        modal.requestClose();
+        await tick();
+        out.openAfterUndefined = modal.dialog.open;
+
+        // A rejected promise keeps the dialog open and is still reported
+        const rejection = new Promise((resolve) => {
+            window.addEventListener("unhandledrejection", (event) => {
+                event.preventDefault();
+                resolve(event.reason.message);
+            }, { once: true });
+        });
+        modal.beforeClose = () => Promise.reject(new Error("guard failed"));
+        modal.show();
+        modal.requestClose();
+        out.rejection = await rejection;
+        out.openAfterRejection = modal.dialog.open;
+
+        // Synchronous guards still close straight away
+        modal.beforeClose = () => true;
+        out.returnedForSyncGuard = modal.requestClose();
+        out.openAfterSyncGuard = modal.dialog.open;
+
+        // An answer that arrives after the dialog was closed and reopened is stale
+        modal.beforeClose = pendingGuard;
+        modal.show();
+        modal.requestClose();
+        modal.close();
+        modal.show();
+        answer(true);
+        await tick();
+        out.openAfterStaleAnswer = modal.dialog.open;
+
+        // Busy dialogs stay open even if the guard then allows closing
+        modal.requestClose();
+        modal.busy = true;
+        answer(true);
+        await tick();
+        out.openWhileBusy = modal.dialog.open;
+
+        modal.close();
+        modal.remove();
+        return out;
+    }""")
+    assert result == {
+        "returnedWhilePending": False,
+        "openWhilePending": True,
+        "returnedForSecondRequest": False,
+        "callsWhilePending": ["escape"],
+        "openAfterFalse": True,
+        "callsAfterAnswer": ["escape", "backdrop"],
+        "openAfterTrue": False,
+        "openAfterUndefined": False,
+        "rejection": "guard failed",
+        "openAfterRejection": True,
+        "returnedForSyncGuard": True,
+        "openAfterSyncGuard": False,
+        "openAfterStaleAnswer": True,
+        "openWhileBusy": True,
+    }
+
+
+@pytest.mark.playwright
 @pytest.mark.parametrize("kind", ["create", "alter"])
 def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind):
     from playwright.sync_api import expect
@@ -2127,23 +2447,78 @@ def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind
         dialog.locator('input[name="table"]').fill("unsaved_table")
     else:
         dialog.locator(".table-alter-add-column").click()
-    # Real browser confirms, including WebKit, should appear once and stay usable.
-    confirmations = []
+    # Embedded browsers can silently dismiss native prompts, so discarding is
+    # confirmed with an in-page dialog and never with window.confirm()
+    native_prompts = []
 
-    def reject(prompt):
-        confirmations.append(prompt.message)
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
         prompt.dismiss()
 
-    page.on("dialog", reject)
-    with page.expect_event("dialog"):
-        page.keyboard.press("Escape")
-    expect(dialog).to_be_visible()
-    assert len(confirmations) == 1
-    page.remove_listener("dialog", reject)
-    page.on("dialog", lambda prompt: prompt.accept())
+    page.on("dialog", dismiss)
+    confirmation = page.locator("dialog.modal-confirm-dialog[open]")
     page.keyboard.press("Escape")
+    expect(confirmation).to_be_visible()
+    expect(confirmation.locator(".modal-confirm-message")).to_have_text(
+        "Discard this new table?" if kind == "create" else "Discard table changes?"
+    )
+    expect(confirmation.locator(".modal-confirm-cancel")).to_have_text("Keep editing")
+    expect(confirmation.locator(".modal-confirm-ok")).to_have_text("Discard")
+    expect(confirmation.locator(".modal-confirm-ok")).to_be_focused()
+
+    # Escape answers the confirmation without closing the dialog behind it
+    page.keyboard.press("Escape")
+    expect(confirmation).to_have_count(0)
+    expect(dialog).to_be_visible()
+
+    page.keyboard.press("Escape")
+    confirmation.locator(".modal-confirm-cancel").click()
+    expect(confirmation).to_have_count(0)
+    expect(dialog).to_be_visible()
+
+    page.keyboard.press("Escape")
+    confirmation.locator(".modal-confirm-ok").click()
+    expect(confirmation).to_have_count(0)
     expect(dialog).not_to_be_visible()
     expect(menu.locator("summary")).to_be_focused()
+    assert native_prompts == []
+
+
+@pytest.mark.playwright
+def test_row_edit_discard_is_confirmed_in_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = []
+
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", dismiss)
+    page.goto(datasette_server + "data/projects")
+    page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
+    dialog = page.locator("#row-edit-dialog")
+    field = dialog.locator('input[name="title"]')
+    expect(field).to_be_visible()
+    original_title = field.input_value()
+    field.fill("Unsaved title")
+
+    confirmation = page.locator("dialog.modal-confirm-dialog[open]")
+    page.keyboard.press("Escape")
+    expect(confirmation.locator(".modal-confirm-message")).to_have_text(
+        "Discard unsaved changes to this row?"
+    )
+    confirmation.locator(".modal-confirm-cancel").click()
+    expect(dialog).to_be_visible()
+    expect(field).to_have_value("Unsaved title")
+    expect(field).to_be_focused()
+
+    # Clicking outside the dialog asks too, and Discard closes it unsaved
+    page.mouse.click(2, 2)
+    confirmation.locator(".modal-confirm-ok").click()
+    expect(dialog).not_to_be_visible()
+    assert native_prompts == []
+    assert project_row(datasette_server, 1)["title"] == original_title
 
 
 MENU_CASES = [
@@ -2869,6 +3244,85 @@ def test_column_statistics_switch_columns(page, datasette_server):
     assert page_errors == []
 
 
+@pytest.mark.playwright
+def test_column_statistics_more_columns_toggle(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.set_viewport_size({"width": 800, "height": 900})
+    names = [f"column_{i:02d}" for i in range(1, 31)]
+    sql = "select " + ", ".join(f"score as {name}" for name in names)
+    sql += " from stats_demo"
+    page.goto(datasette_server + "data/-/query?" + urllib.parse.urlencode({"sql": sql}))
+    dialog = page.locator("#column-stats-dialog")
+    tabs = dialog.get_by_role("tab")
+    more = dialog.locator(".column-stats-more")
+
+    def open_first_column():
+        page.locator("table.rows-and-columns th").nth(0).locator(
+            ".column-menu-trigger"
+        ).click()
+        page.locator("#column-actions-menu").get_by_role(
+            "menuitem", name="Column statistics", exact=True
+        ).click()
+        page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+
+    def visible_tabs():
+        return tabs.evaluate_all(
+            "tabs => tabs.filter(tab => !tab.hidden).map(tab => tab.dataset.column)"
+        )
+
+    def row_count():
+        return dialog.locator(".column-stats-columns").evaluate("""columns => new Set(
+                Array.from(columns.querySelectorAll(
+                    '.column-stats-column:not([hidden]), .column-stats-more'
+                )).map(node => node.offsetTop)
+            ).size""")
+
+    open_first_column()
+    # Collapsed: the first pills in three rows, ending in "+N more"
+    shown = visible_tabs()
+    hidden_count = len(names) - len(shown)
+    assert hidden_count > 0
+    assert shown == names[: len(shown)]
+    expect(more).to_have_text(f"+{hidden_count} more")
+    expect(more).to_have_attribute("aria-expanded", "false")
+    assert row_count() == 3
+    # The pill list never scrolls on its own
+    assert dialog.locator(".column-stats-columns").evaluate(
+        "columns => columns.scrollHeight <= columns.clientHeight"
+    )
+    # Arrow keys only move between the pills on show
+    expect(dialog.get_by_role("tab", name="column_01 integer")).to_be_focused()
+    page.keyboard.press("ArrowLeft")
+    expect(dialog.get_by_role("tab", name=f"{shown[-1]} integer")).to_be_focused()
+    # Expanded: every pill, and switching column stays expanded
+    more.click()
+    expect(more).to_have_text("Show fewer")
+    expect(more).to_have_attribute("aria-expanded", "true")
+    assert visible_tabs() == names
+    dialog.get_by_role("tab", name="column_30 integer").click()
+    page.locator('#column-stats-dialog[data-loading="false"]').wait_for()
+    expect(dialog).to_have_attribute("data-column", "column_30")
+    assert visible_tabs() == names
+    # Collapsing keeps the selected pill, after the others
+    more.click()
+    expect(more).to_have_attribute("aria-expanded", "false")
+    shown = visible_tabs()
+    assert shown[-1] == "column_30"
+    assert shown[:-1] == names[: len(shown) - 1]
+    expect(more).to_have_text(f"+{len(names) - len(shown)} more")
+    assert row_count() == 3
+    # Reopening starts collapsed
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    open_first_column()
+    expect(more).to_have_attribute("aria-expanded", "false")
+    assert "column_30" not in visible_tabs()
+    assert page_errors == []
+
+
 CLIPBOARD_STUB = """
 (() => {
     window.clipboardText = null;
@@ -3480,9 +3934,10 @@ def test_export_data_dialog_on_row_page(page, datasette_server):
     json_group = dialog.get_by_role("group", name="JSON", exact=True)
     json_group.get_by_role("button", name="Copy", exact=True).click()
     expect(json_group.get_by_role("button", name="Copied")).to_be_visible()
-    assert json.loads(page.evaluate("clipboardText"))["rows"] == [
-        {"id": 1, "content": "hello"}
-    ]
+    assert json.loads(page.evaluate("clipboardText"))["row"] == {
+        "id": 1,
+        "content": "hello",
+    }
     csv = dialog.get_by_role("group", name="CSV", exact=True)
     with page.expect_download() as download_info:
         csv.get_by_role("button", name="Download").click()
@@ -4018,3 +4473,262 @@ def test_homepage_sections_from_javascript_plugins(page, datasette_server):
     # Hidden while searching
     page.keyboard.type("proj")
     expect(section).to_be_hidden()
+
+
+def stub_clipboard(page):
+    # navigator.clipboard.readText() then returns whatever was last copied
+    page.add_init_script("""
+        (() => {
+            let clipboardText = "";
+            Object.defineProperty(navigator, "clipboard", {
+                configurable: true,
+                get: () => ({
+                    writeText: async (text) => {
+                        clipboardText = String(text);
+                    },
+                    readText: async () => clipboardText,
+                }),
+            });
+        })();
+        """)
+
+
+@pytest.mark.playwright
+def test_copy_button_copies_schema(page, datasette_server):
+    from playwright.sync_api import expect
+
+    stub_clipboard(page)
+    page.goto(f"{datasette_server}fixtures/-/schema")
+    button = page.get_by_role("button", name="Copy fixtures schema")
+    expect(button).to_have_attribute("title", "Copy to clipboard")
+    button.click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    expect(button).to_have_attribute("title", "Copied")
+    expect(page.locator(".datasette-copy-button-status")).to_have_text(
+        "Copied fixtures schema to clipboard"
+    )
+    copied = page.evaluate("navigator.clipboard.readText()")
+    assert "CREATE TABLE simple_primary_key" in copied
+    assert copied == page.locator("pre code").text_content()
+    # The tick goes away again
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(0)
+    expect(button).to_have_attribute("title", "Copy to clipboard")
+
+    # Schema for a single table
+    page.goto(f"{datasette_server}fixtures/simple_primary_key/-/schema")
+    page.get_by_role("button", name="Copy simple_primary_key schema").click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    table_schema = page.evaluate("navigator.clipboard.readText()")
+    assert table_schema.startswith("CREATE TABLE simple_primary_key (")
+
+    # The collapsed schema at the bottom of the table page
+    page.goto(f"{datasette_server}fixtures/simple_primary_key")
+    button = page.get_by_role("button", name="Copy table schema")
+    expect(button).to_be_hidden()
+    page.locator("details.table-schema > summary").click()
+    button.click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    # The table page adds a trailing semicolon
+    assert page.evaluate("navigator.clipboard.readText()") == table_schema + ";"
+
+    page.goto(f"{datasette_server}fixtures/simple_view")
+    page.locator("details.table-schema > summary").click()
+    page.get_by_role("button", name="Copy view definition").click()
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(1)
+    assert page.evaluate("navigator.clipboard.readText()").startswith(
+        "CREATE VIEW simple_view AS"
+    )
+
+
+@pytest.mark.playwright
+def test_copy_button_value_and_failure(page, datasette_server):
+    from playwright.sync_api import expect
+
+    stub_clipboard(page)
+    page.goto(f"{datasette_server}fixtures/simple_primary_key/1")
+    field = page.locator('.row-field[data-column="content"]')
+    button = field.get_by_role("button", name="Copy content")
+    status = page.locator(".datasette-copy-button-status")
+    button.click()
+    expect(status).to_have_text("Copied content to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "hello"
+
+    # The value can be changed from JavaScript
+    field.locator("datasette-copy-button").evaluate("el => el.value = 'changed'")
+    button.click()
+    expect(status).to_have_text("Copied content to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "changed"
+
+    # Neither the clipboard API nor the execCommand fallback works
+    page.evaluate("""() => {
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            get: () => ({ writeText: async () => { throw new Error("no"); } }),
+        });
+        document.execCommand = () => false;
+    }""")
+    page.locator("datasette-copy-button[copied]").wait_for(state="detached")
+    button.click()
+    expect(status).to_have_text("Could not copy content")
+    expect(page.locator("datasette-copy-button[copied]")).to_have_count(0)
+
+
+@pytest.mark.playwright
+def test_copy_button_for_plugins(page, datasette_server):
+    from playwright.sync_api import expect
+
+    stub_clipboard(page)
+    # Available on every page, here the homepage
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        document.querySelector("section.content").insertAdjacentHTML(
+            "beforeend",
+            `<input id="copy-input" value="initial">
+            <datasette-copy-button for="copy-input" name="input">
+            </datasette-copy-button>
+            <ol><li id="copy-li">list item</li></ol>
+            <datasette-copy-button for="copy-li"></datasette-copy-button>`
+        );
+    }""")
+    status = page.locator(".datasette-copy-button-status")
+    # for= reads the current value of a form field when clicked
+    page.locator("#copy-input").fill("typed later")
+    page.get_by_role("button", name="Copy input").click()
+    expect(status).to_have_text("Copied input to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "typed later"
+    # and the text content of anything else
+    page.get_by_role("button", name="Copy to clipboard").click()
+    expect(status).to_have_text("Copied to clipboard")
+    assert page.evaluate("navigator.clipboard.readText()") == "list item"
+    # copy() resolves to whether the text was copied
+    assert (
+        page.evaluate("document.querySelector('datasette-copy-button').copy()") is True
+    )
+
+
+@pytest.mark.playwright
+def test_row_page_json_pretty_print_toggle(page, datasette_server):
+    stub_clipboard(page)
+    page.goto(f"{datasette_server}fixtures/facetable/1")
+    toggles = page.locator(".row-field-json")
+    # Only object/array JSON values get a toggle: not "CA", not "n1"
+    assert [
+        toggle.evaluate("el => el.closest('.row-field').dataset.column")
+        for toggle in toggles.all()
+    ] == ["tags", "complex_array"]
+
+    field = page.locator('.row-field[data-column="complex_array"]')
+    toggle = field.locator(".row-field-json")
+    value = field.locator(".row-field-value")
+    copy = field.locator("datasette-copy-button")
+    pretty = '[\n  {\n    "foo": "bar"\n  }\n]'
+    assert toggle.get_attribute("aria-pressed") == "false"
+    assert value.text_content() == '[{"foo": "bar"}]'
+
+    toggle.click()
+    assert toggle.get_attribute("aria-pressed") == "true"
+    assert value.text_content() == pretty
+    copy.click()
+    assert page.evaluate("navigator.clipboard.readText()") == pretty
+
+    toggle.click()
+    assert toggle.get_attribute("aria-pressed") == "false"
+    assert value.text_content() == '[{"foo": "bar"}]'
+    copy.click()
+    assert page.evaluate("navigator.clipboard.readText()") == '[{"foo": "bar"}]'
+
+    # "[]" is already as pretty as it gets, so no toggle
+    page.goto(f"{datasette_server}fixtures/facetable/3")
+    assert page.locator(".row-field-json").count() == 0
+
+
+@pytest.mark.playwright
+def test_row_page_json_pretty_print_expands_long_value(
+    page, datasette_server, tmp_path
+):
+    # datasette_server shares this tmp_path, so this writes to its data.db
+    conn = sqlite3.connect(tmp_path / "data.db")
+    try:
+        conn.execute("create table json_docs (id integer primary key, doc text)")
+        conn.execute(
+            "insert into json_docs values (1, ?)",
+            [json.dumps({f"key{i}": "value " * 5 for i in range(30)})],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    page.goto(f"{datasette_server}data/json_docs/1")
+    field = page.locator('.row-field[data-column="doc"]')
+    toggle = field.locator(".row-field-json")
+    wrap = field.locator(".row-field-long")
+    expand = field.locator(".row-field-expand")
+
+    def is_expanded():
+        return "is-expanded" in wrap.get_attribute("class").split()
+
+    assert not is_expanded()
+    # Pretty-printing reveals the whole value, switching back collapses it
+    toggle.click()
+    assert is_expanded()
+    assert expand.get_attribute("aria-expanded") == "true"
+    toggle.click()
+    assert not is_expanded()
+    assert expand.get_attribute("aria-expanded") == "false"
+
+    # A value the user expanded themselves stays expanded
+    expand.click()
+    toggle.click()
+    toggle.click()
+    assert is_expanded()
+
+
+@pytest.mark.playwright
+def test_row_page_long_value_replaced_by_plugin_is_not_clamped(
+    page, datasette_server, tmp_path
+):
+    from playwright.sync_api import expect
+
+    # datasette_server shares this tmp_path, so this writes to its data.db
+    conn = sqlite3.connect(tmp_path / "data.db")
+    try:
+        conn.execute("create table long_text (id integer primary key, body text)")
+        conn.execute("insert into long_text values (1, ?)", ["word " * 2000])
+        conn.commit()
+    finally:
+        conn.close()
+    page.goto(f"{datasette_server}data/long_text/1")
+    field = page.locator('.row-field[data-column="body"]')
+    wrap = field.locator(".row-field-long")
+    value = field.locator(".row-field-value")
+    expand = field.locator(".row-field-expand")
+
+    # A long text value is clamped, with a toggle to show the rest
+    expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
+    expect(expand).to_be_visible()
+    clamped_height = value.bounding_box()["height"]
+    assert clamped_height < 300
+
+    # Marked-up text is still text
+    value.evaluate(
+        "el => { el.innerHTML = 'word '.repeat(2000) + '<a href=\"/\">link</a>'; }"
+    )
+    expect(expand).to_be_visible()
+    expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
+
+    # A plugin replaces the text with something that is not text, as
+    # a plugin that draws a map or a chart would
+    value.evaluate("""el => {
+        const div = document.createElement("div");
+        div.style.height = "400px";
+        el.replaceChildren(div);
+    }""")
+    expect(wrap).to_have_class(re.compile(r"\bis-rich\b"))
+    expect(expand).to_be_hidden()
+    assert value.bounding_box()["height"] == 400
+    assert value.evaluate("el => getComputedStyle(el).overflowY") == "visible"
+
+    # Back to text, back to being clamped
+    value.evaluate("el => { el.textContent = 'word '.repeat(2000); }")
+    expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
+    expect(expand).to_be_visible()
+    assert value.bounding_box()["height"] == clamped_height

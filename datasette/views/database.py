@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import itertools
 import json
@@ -27,6 +26,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
+    path_without_format,
     request_route_path,
     sqlite3,
     tilde_decode,
@@ -37,11 +37,22 @@ from datasette.utils import (
 from datasette.utils import (
     named_parameters as derive_named_parameters,
 )
-from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
+from datasette.utils.asgi import (
+    AsgiFileDownload,
+    Forbidden,
+    NotFound,
+    Response,
+    etag_matches,
+)
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, is_csv_format, stream_csv, tsv_export_path
+from .base import (
+    DatasetteError,
+    View,
+    render_with_output_renderer,
+    tsv_export_path,
+)
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -263,7 +274,7 @@ class DatabaseView(View):
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
-                    allow_download=datasette.setting("allow_download")
+                    allow_download=datasette.setting("default_allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
                     attached_databases=attached_databases,
@@ -585,7 +596,7 @@ async def database_download(request, datasette):
 
     if db.is_memory:
         raise DatasetteError("Cannot download in-memory databases", status=404)
-    if not datasette.setting("allow_download") or db.is_mutable:
+    if not datasette.setting("default_allow_download") or db.is_mutable:
         raise Forbidden("Database download is forbidden")
     if not db.path:
         raise DatasetteError("Cannot download database", status=404)
@@ -597,10 +608,8 @@ async def database_download(request, datasette):
         etag = f'"{db.hash}"'
         headers["Etag"] = etag
         # Has user seen this already?
-        if_none_match = request.headers.get("if-none-match")
-        if if_none_match and if_none_match == etag:
-            return Response("", status=304)
-    headers["Transfer-Encoding"] = "chunked"
+        if etag_matches(request.headers.get("if-none-match"), etag):
+            return Response("", status=304, headers=headers)
     return AsgiFileDownload(
         filepath,
         filename=os.path.basename(filepath),
@@ -889,25 +898,14 @@ class QueryView(View):
             return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
-        if is_csv_format(datasette, format_):
-            if not sql:
-                raise DatasetteError("?sql= is required", status=400)
-
-            async def fetch_data_for_csv(request, _next=None):
-                # Reuse the trusted magic parameter values prepared above.
-                results = await db.execute(sql, params_for_query, truncate=True)
-                data = {"rows": results.rows, "columns": results.columns}
-                return data, None, None
-
-            return await stream_csv(
-                datasette, fetch_data_for_csv, request, db.name, format_=format_
-            )
-        elif format_ in datasette.renderers:
+        if format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)
             table_extra_registry.validate_requested(extras, ExtraScope.QUERY)
+            # Plus any extras declared by the output renderer for this format
+            extras.update(datasette._renderer_extras.get(format_) or [])
             if extras:
                 query_extra_context = QueryExtraContext(
                     datasette=datasette,
@@ -925,43 +923,21 @@ class QueryView(View):
                     extra_registry=table_extra_registry,
                 )
                 data.update(await resolve_query_extras(extras, query_extra_context))
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                datasette.renderers[format_][0],
-                datasette=datasette,
+            r = await render_with_output_renderer(
+                datasette,
+                request,
+                format_,
+                data=data,
                 columns=columns,
                 rows=rows,
                 sql=sql,
                 query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
-                request=request,
-                view_name="table",
+                view_name="query",
                 truncated=results.truncated if results else False,
                 error=query_error,
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
             )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                r = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code") or 200,
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                r = result
-                # if status_code is not None:
-                #     # Over-ride the status code
-                #     r.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
         elif format_ == "html":
             headers = {}
             templates = [f"query-{to_css_class(database)}.html", "query.html"]
@@ -1010,7 +986,9 @@ class QueryView(View):
                     database=database,
                     table=data.get("table"),
                     request=request,
-                    view_name="database",
+                    path=path_without_format(request),
+                    full_path=path_without_format(request, include_query_string=True),
+                    view_name="query",
                 )
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
@@ -1216,7 +1194,7 @@ class QueryView(View):
                         query_actions=query_actions,
                     ),
                     request=request,
-                    view_name="database",
+                    view_name="query",
                 ),
                 headers=headers,
             )

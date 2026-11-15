@@ -53,6 +53,9 @@ def test_sign_unsign(datasette, value, namespace):
     "setting,expected",
     (
         ("base_url", "/"),
+        ("max_stream_mb", 100),
+        ("default_allow_stream", True),
+        # Previous names for those two settings still work
         ("max_csv_mb", 100),
         ("allow_csv_stream", True),
     ),

@@ -6,6 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 from datasette import cli
+from datasette.version import __version__
 
 
 class CaptureDockerfile:
@@ -19,12 +20,12 @@ COPY . /app
 WORKDIR /app
 
 ENV DATASETTE_SECRET 'sekrit'
-RUN pip install -U datasette
+RUN pip install -U datasette==VERSION
 RUN datasette inspect test.db --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --port $PORT
-""".strip()
+""".strip().replace("VERSION", __version__)
 
 
 @pytest.mark.serial

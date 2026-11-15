@@ -123,14 +123,14 @@ async def test_homepage_lists_tables_and_views_from_all_databases(ds):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "actor_id,expected_links,expected_title",
+    "actor_id,expected_links,expected_hrefs",
     (
         # secret also links to authors, but anonymous users cannot see it
-        (None, "links to 1 table", "authors"),
-        ("root", "links to 2 tables", "books, secret"),
+        (None, "links to authors", ["/books/authors"]),
+        ("root", "links to books, secret", ["/books/books", "/books/secret"]),
     ),
 )
-async def test_homepage_linked_tables(ds, actor_id, expected_links, expected_title):
+async def test_homepage_linked_tables(ds, actor_id, expected_links, expected_hrefs):
     response = await ds.client.get(
         "/", cookies=cookies(ds, actor_id) if actor_id else None
     )
@@ -141,16 +141,72 @@ async def test_homepage_linked_tables(ds, actor_id, expected_links, expected_tit
         return item.select_one(".catalog-item-links")
 
     if actor_id is None:
-        books = links("/books/books")
-        assert books.text == expected_links
-        assert books["title"] == "Linked by foreign keys to: " + expected_title
-        assert "secret" not in links("/books/authors")["title"]
+        linked = links("/books/books")
+        assert "secret" not in links("/books/authors").text
     else:
-        authors = links("/books/authors")
-        assert authors.text == expected_links
-        assert authors["title"] == "Linked by foreign keys to: " + expected_title
+        linked = links("/books/authors")
+    assert linked.text == expected_links
+    assert [a["href"] for a in linked.select("a")] == expected_hrefs
+    # The full list is only needed as a tooltip when it has been cut short
+    assert not linked.has_attr("title")
     # Tables with no foreign keys show nothing
     assert links("/music/albums") is None
+
+
+@pytest.mark.asyncio
+async def test_homepage_linked_tables_truncated():
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("linked")
+    await db.execute_write("create table hub (id integer primary key)")
+    for name in ("a", "b", "c", "d", "e"):
+        await db.execute_write(
+            f"create table {name} (id integer primary key, "
+            "hub_id integer references hub(id))"
+        )
+    await ds.refresh_schemas()
+    soup = Soup((await ds.client.get("/")).text, "html.parser")
+    hub = soup.select_one('a.catalog-item-name[href="/linked/hub"]').find_parent("li")
+    linked = hub.select_one(".catalog-item-links")
+    assert linked.text == "links to a, b, c and 2 more"
+    assert linked["title"] == "Linked by foreign keys to: a, b, c, d, e"
+    assert [a["href"] for a in linked.select("a")] == [
+        "/linked/a",
+        "/linked/b",
+        "/linked/c",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ("/", "/wide"))
+async def test_more_columns_button_reveals_the_rest(path):
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("wide")
+    names = [f"c{i:02d}" for i in range(11)]
+    await db.execute_write(
+        "create table t (id integer primary key, {})".format(", ".join(names))
+    )
+    await db.execute_write("create table narrow (id integer primary key, name text)")
+    await ds.refresh_schemas()
+    soup = Soup((await ds.client.get(path)).text, "html.parser")
+    assert soup.select_one('script[src*="catalog-cards.js"]') is not None
+    card = soup.select_one('a.catalog-item-name[href="/wide/t"]').find_parent("li")
+    columns = card.select_one(".catalog-item-columns")
+    # The first eight columns show, the other four wait behind the button
+    rest = columns.select_one(".catalog-columns-rest")
+    assert rest.has_attr("hidden")
+    assert [c.text for c in rest.select(".catalog-column")] == names[-4:]
+    assert [c.text for c in columns.select(".catalog-column")] == ["id"] + names
+    button = columns.select_one("button[data-catalog-columns-more]")
+    assert button.text == "+4 more"
+    assert button["aria-expanded"] == "false"
+    # A table with few columns has no button
+    narrow = soup.select_one('a.catalog-item-name[href="/wide/narrow"]').find_parent(
+        "li"
+    )
+    assert narrow.select_one("button") is None
+    assert narrow.select_one(".catalog-columns-rest") is None
 
 
 @pytest.mark.asyncio
@@ -207,7 +263,7 @@ async def test_homepage_queries_default_selection(ds):
     assert "Books under five pounds" in rows[0].text
     # Inputs derived from the SQL
     assert "inputs: author" in " ".join(rows[1].text.split())
-    assert "All 3 queries" in response.text
+    assert ">3 queries →</a>" in response.text
 
 
 @pytest.mark.asyncio

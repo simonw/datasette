@@ -567,7 +567,14 @@ def view_names_client(tmp_path_factory):
     conn.executescript(TABLES)
     conn.close()
     return _TestClient(
-        Datasette([db_path], template_dir=str(templates), plugins_dir=str(plugins))
+        Datasette(
+            [db_path],
+            template_dir=str(templates),
+            plugins_dir=str(plugins),
+            config={
+                "databases": {"fixtures": {"queries": {"stored_query": "select 1"}}}
+            },
+        )
     )
 
 
@@ -579,13 +586,66 @@ def view_names_client(tmp_path_factory):
         ("/fixtures/facetable", "table"),
         ("/fixtures/facetable/1", "row"),
         ("/-/versions", "json_data"),
-        ("/fixtures/-/query?sql=select+1", "database"),
+        ("/fixtures/-/query?sql=select+1", "query"),
+        ("/fixtures/stored_query", "query"),
     ),
 )
 def test_view_names(view_names_client, path, view_name):
     response = view_names_client.get(path)
     assert response.status_code == 200
     assert f"view_name:{view_name}" == response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,html_path,expected_view_name,expected_query_name",
+    (
+        ("/fixtures/facetable.testall", "/fixtures/facetable", "table", None),
+        (
+            "/fixtures/simple_primary_key/1.testall",
+            "/fixtures/simple_primary_key/1",
+            "row",
+            None,
+        ),
+        # Arbitrary SQL
+        (
+            "/fixtures/-/query.testall?sql=select+1+as+one",
+            "/fixtures/-/query?sql=select+1+as+one",
+            "query",
+            None,
+        ),
+        # Stored query
+        (
+            "/fixtures/neighborhood_search.testall?text=town",
+            "/fixtures/neighborhood_search?text=town",
+            "query",
+            "neighborhood_search",
+        ),
+    ),
+)
+async def test_hook_register_output_renderer_view_name(
+    ds_client, path, html_path, expected_view_name, expected_query_name
+):
+    # render() is told which kind of page it is rendering
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["view_name"] == expected_view_name
+    assert data["query_name"] == expected_query_name
+    # can_render() is passed the same view_name, when the HTML page
+    # checks which formats to offer in its export dialog
+    ds_client.ds._can_render_saw = None
+    response = await ds_client.get(html_path)
+    assert response.status_code == 200
+    assert ds_client.ds._can_render_saw["view_name"] == expected_view_name
+
+
+@pytest.mark.asyncio
+async def test_hook_register_output_renderer_view_name_for_renderers_extra(ds_client):
+    ds_client.ds._can_render_saw = None
+    response = await ds_client.get("/fixtures/facetable.json?_extra=renderers")
+    assert response.status_code == 200
+    assert ds_client.ds._can_render_saw["view_name"] == "table"
 
 
 @pytest.mark.asyncio
@@ -639,9 +699,48 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
         "database": "fixtures",
         "table": "facetable",
         "request": '<asgi.Request method="GET" url="http://localhost/fixtures/facetable.testall">',
+        "path": "/fixtures/facetable",
+        "full_path": "/fixtures/facetable",
         "view_name": "table",
         "1+1": 2,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_path,expected_full_path",
+    (
+        (
+            "/fixtures/facetable.testall?_sort_desc=pk&_size=2",
+            "/fixtures/facetable",
+            "/fixtures/facetable?_sort_desc=pk&_size=2",
+        ),
+        (
+            "/fixtures/simple_primary_key/1.testall",
+            "/fixtures/simple_primary_key/1",
+            "/fixtures/simple_primary_key/1",
+        ),
+        (
+            "/fixtures/-/query.testall?sql=select+1",
+            "/fixtures/-/query",
+            "/fixtures/-/query?sql=select+1",
+        ),
+        (
+            "/fixtures/pragma_cache_size.testall",
+            "/fixtures/pragma_cache_size",
+            "/fixtures/pragma_cache_size",
+        ),
+    ),
+)
+async def test_hook_register_output_renderer_path_and_full_path(
+    ds_client, path, expected_path, expected_full_path
+):
+    # https://github.com/simonw/datasette/issues/1179
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    data = json.loads(response.text)
+    assert data["path"] == expected_path
+    assert data["full_path"] == expected_full_path
 
 
 @pytest.mark.asyncio
@@ -680,7 +779,64 @@ async def test_hook_register_output_renderer_returning_response(ds_client):
 async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse?_broken=1")
     assert response.status_code == 500
-    assert "this should break should be dict or Response" in response.text
+    assert (
+        "Output renderer &#39;testresponse&#39; returned str: render functions "
+        "must return a datasette.Response object, or None if they cannot "
+        "render the data"
+    ) in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/facetable.testresponse?_dict=1",
+        "/fixtures/simple_primary_key/1.testresponse?_dict=1",
+        "/fixtures/-/query.testresponse?sql=select+1&_dict=1",
+    ),
+)
+async def test_hook_register_output_renderer_returning_dict_is_an_error(
+    ds_client, path
+):
+    # Returning a dictionary was deprecated in Datasette 0.49 and has
+    # since been removed
+    response = await ds_client.get(path)
+    assert response.status_code == 500
+    assert "Output renderer &#39;testresponse&#39; returned dict" in response.text
+    assert "must return a datasette.Response object" in response.text
+
+
+@pytest.mark.parametrize(
+    "renderer,expected",
+    (
+        (
+            {"extension": "old", "callback": lambda: Response.text("x")},
+            (
+                "Output renderer 'old' must have a 'render' function - "
+                "the 'callback' key has been renamed to 'render'"
+            ),
+        ),
+        (
+            {"extension": "old"},
+            "Output renderer 'old' must have a 'render' function",
+        ),
+    ),
+)
+def test_hook_register_output_renderer_requires_render(renderer, expected):
+    class Plugin:
+        __name__ = "Plugin"
+
+        @hookimpl
+        def register_output_renderer(self):
+            return renderer
+
+    pm.register(Plugin(), name="renderer_without_render")
+    try:
+        with pytest.raises(StartupError) as ex:
+            Datasette(memory=True)
+        assert str(ex.value) == expected
+    finally:
+        pm.unregister(name="renderer_without_render")
 
 
 @pytest.mark.asyncio
@@ -808,8 +964,32 @@ async def test_hook_register_output_renderer_can_render(ds_client):
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",
+        "path": "/fixtures/facetable",
+        "full_path": "/fixtures/facetable?_no_can_render=1",
         "view_name": "table",
     }.items() <= ds_client.ds._can_render_saw.items()
+
+
+@pytest.mark.asyncio
+async def test_hook_register_output_renderer_renderers_extra_links(ds_client):
+    # https://github.com/simonw/datasette/issues/1179
+    # Links from a .json page previously came out as
+    # /fixtures/facetable.json?_format=testall - which returned JSON
+    response = await ds_client.get("/fixtures/facetable.json?_extra=renderers")
+    assert response.status_code == 200
+    renderers = response.json()["renderers"]
+    assert renderers["json"] == "/fixtures/facetable.json?_extra=renderers&_labels=on"
+    assert (
+        renderers["testall"]
+        == "/fixtures/facetable.testall?_extra=renderers&_labels=on"
+    )
+    saw = ds_client.ds._can_render_saw
+    assert saw["path"] == "/fixtures/facetable"
+    assert saw["full_path"] == "/fixtures/facetable?_extra=renderers"
+    # Following the link should run the renderer
+    response = await ds_client.get(renderers["testall"])
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain"
 
 
 @pytest.mark.asyncio

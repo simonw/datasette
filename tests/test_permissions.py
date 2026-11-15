@@ -336,7 +336,7 @@ def test_query_list_respects_view_query():
             }
         }
     ) as client:
-        html_fragment = '<li><a href="/fixtures/q" title="select 1 + 1">q</a> 🔒</li>'
+        html_fragment = '<a class="query-row-name" href="/fixtures/q">q</a> 🔒'
         anon_response = client.get("/fixtures")
         assert html_fragment not in anon_response.text
         assert '"/fixtures/q"' not in anon_response.text
@@ -656,14 +656,31 @@ def test_padlocks_on_database_page(cascade_app_client):
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
         )
+        soup = Soup(response.text, "html.parser")
+
+        def link_and_padlock(css_class, name):
+            link = soup.find("a", class_=css_class, string=name)
+            following = link.next_sibling
+            padlock = isinstance(following, str) and "🔒" in following
+            return name + (" 🔒" if padlock else "")
+
         # Tables
-        assert ">123_starts_with_digits</a></h3>" in response.text
-        assert ">Table With Space In Name</a> 🔒</h3>" in response.text
+        assert (
+            link_and_padlock("catalog-item-name", "123_starts_with_digits")
+            == "123_starts_with_digits"
+        )
+        assert (
+            link_and_padlock("catalog-item-name", "Table With Space In Name")
+            == "Table With Space In Name 🔒"
+        )
         # Queries
-        assert ">query_two</a></li>" in response.text
+        assert link_and_padlock("query-row-name", "query_two") == "query_two"
         # Views
-        assert ">paginated_view</a> 🔒</li>" in response.text
-        assert ">simple_view</a></li>" in response.text
+        assert (
+            link_and_padlock("catalog-item-name", "paginated_view")
+            == "paginated_view 🔒"
+        )
+        assert link_and_padlock("catalog-item-name", "simple_view") == "simple_view"
     finally:
         cascade_app_client.ds.config = previous_config
         async_to_sync(cascade_app_client.ds.remove_query)("fixtures", "query_two")

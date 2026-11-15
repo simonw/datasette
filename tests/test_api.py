@@ -368,10 +368,54 @@ async def test_invalid_custom_sql(ds_client):
 
 @pytest.mark.asyncio
 async def test_row(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key/1.json?_shape=objects")
+    response = await ds_client.get("/fixtures/simple_primary_key/1.json")
     assert response.status_code == 200
-    assert response.json()["ok"] is True
-    assert response.json()["rows"] == [{"id": 1, "content": "hello"}]
+    data = response.json()
+    assert data["ok"] is True
+    assert data["row"] == {"id": 1, "content": "hello"}
+    assert "rows" not in data
+    assert "truncated" not in data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "shape,expected",
+    (
+        ("objects", [{"id": 1, "content": "hello"}]),
+        ("arrays", [[1, "hello"]]),
+        ("array", [{"id": 1, "content": "hello"}]),
+        ("arrayfirst", [1]),
+        ("object", {"1": {"id": 1, "content": "hello"}}),
+    ),
+)
+async def test_row_shape(ds_client, shape, expected):
+    # Any ?_shape= returns the same shapes as the table JSON
+    response = await ds_client.get(
+        f"/fixtures/simple_primary_key/1.json?_shape={shape}"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    if shape in ("objects", "arrays"):
+        assert "row" not in data
+        assert data["truncated"] is False
+        data = data["rows"]
+    assert data == expected
+
+
+@pytest.mark.asyncio
+async def test_row_json_cols(ds_client):
+    response = await ds_client.get("/fixtures/facetable/1.json?_json=tags")
+    assert response.status_code == 200
+    assert response.json()["row"]["tags"] == ["tag1", "tag2"]
+
+
+@pytest.mark.asyncio
+async def test_row_not_found_is_an_error(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/missing.json")
+    assert response.status_code == 404
+    data = response.json()
+    assert data["ok"] is False
+    assert "row" not in data
 
 
 @pytest.mark.asyncio
@@ -618,22 +662,18 @@ async def test_row_extra_render_cell():
         assert response.status_code == 200
         data = response.json()
 
-        # Verify the response structure
-        assert "render_cell" in data
-        assert "rows" in data
+        # render_cell is a single object to match "row". Only columns
+        # modified by plugins are included, so there is no "id" key
+        assert data["render_cell"] == {"name": "<strong>Alice</strong>"}
+        # The row itself still contains raw values
+        assert data["row"] == {"id": 1, "name": "Alice"}
 
-        # render_cell should be a list with one row (since this is a row page)
-        # Only columns modified by plugins are included (sparse output)
-        render_cell = data["render_cell"]
-        assert len(render_cell) == 1
-
-        # The row: id=1, name='Alice'
-        # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
-        assert render_cell[0]["name"] == "<strong>Alice</strong>"
-        # The 'id' column is not included since no plugin modified it
-        assert "id" not in render_cell[0]
-
-        # The regular rows should still contain raw values
+        # With a ?_shape= render_cell is a list, matching "rows"
+        response = await ds.client.get(
+            "/test_row_render/test_render/1.json?_extra=render_cell&_shape=objects"
+        )
+        data = response.json()
+        assert data["render_cell"] == [{"name": "<strong>Alice</strong>"}]
         assert data["rows"] == [{"id": 1, "name": "Alice"}]
 
     finally:
@@ -757,16 +797,16 @@ async def test_settings_json(ds_client):
         "max_insert_rows": 100,
         "max_post_body_bytes": 10 * 1024 * 1024,
         "sql_time_limit_ms": 200,
-        "allow_download": True,
+        "default_allow_download": True,
         "allow_signed_tokens": True,
         "max_signed_tokens_ttl": 0,
-        "allow_facet": True,
+        "default_allow_facet": True,
         "suggest_facets": True,
         "default_cache_ttl": 5,
         "num_sql_threads": 1,
         "cache_size_kb": 0,
-        "allow_csv_stream": True,
-        "max_csv_mb": 100,
+        "default_allow_stream": True,
+        "max_stream_mb": 100,
         "truncate_cells_html": 2048,
         "force_https_urls": False,
         "template_debug": False,
@@ -840,9 +880,11 @@ async def test_json_columns_preserve_other_values(endpoint, value, expected):
     try:
         response = await ds.client.get(path + "?_json=value")
         assert response.status_code == 200
-        assert response.json()["rows"] == [
-            {"id": 1, "value": expected, "other": '{"keep": true}'}
-        ]
+        row = {"id": 1, "value": expected, "other": '{"keep": true}'}
+        if endpoint == "row":
+            assert response.json()["row"] == row
+        else:
+            assert response.json()["rows"] == [row]
     finally:
         ds.close()
 

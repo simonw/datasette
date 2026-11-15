@@ -11,6 +11,7 @@
 window.datasetteRecentContext = {{ {"base": urls.path("/"), "actor": (actor or {}).get("id")}|tojson }};</script>
 <script src="{{ static('recent.js') }}" defer></script>
 <script src="{{ static('modal.js') }}" defer></script>
+<script src="{{ static('copy-button.js') }}" defer></script>
 <script src="{{ static('menus.js') }}" defer></script>
 <script src="{{ static('datasette-manager.js') }}" defer></script>
 {% for url in extra_js_urls %}

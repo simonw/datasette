@@ -308,6 +308,51 @@ Each of the helper methods take optional ``status=`` and ``headers=`` arguments,
 
 ``Response.error(messages, status=400)`` returns a JSON error in the :ref:`standard Datasette error format <json_api_errors>`. ``messages`` can be a single string or a list of strings. Use this for JSON-only endpoints; if your error should content-negotiate between JSON and HTML, raise ``Forbidden``, ``NotFound``, ``BadRequest`` or ``DatasetteError`` instead and Datasette's error handling will build the appropriate response.
 
+.. _internals_response_stream:
+
+Streaming responses with Response.stream()
+------------------------------------------
+
+Use ``Response.stream(body)`` to send a response a piece at a time, without first building all of it in memory. This is useful for large exports, and for responses that take a long time to generate.
+
+``body`` is an async iterator - usually an async generator - that yields strings or bytes. Strings are encoded as UTF-8.
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+
+    async def all_rows(datasette, request):
+        db = datasette.get_database()
+
+        async def body():
+            last_id = 0
+            while True:
+                rows = (
+                    await db.execute(
+                        "select id, name from items where id > ? order by id limit 100",
+                        [last_id],
+                    )
+                ).rows
+                if not rows:
+                    break
+                for row in rows:
+                    yield f"{row['id']}\t{row['name']}\n"
+                last_id = rows[-1]["id"]
+
+        return Response.stream(
+            body(),
+            content_type="text/tab-separated-values; charset=utf-8",
+        )
+
+``Response.stream()`` also accepts the optional ``status=`` and ``headers=`` arguments. ``content_type=`` defaults to ``text/plain; charset=utf-8``. ``response.set_cookie()`` works as it does for any other response.
+
+Three things to keep in mind when streaming:
+
+- The status and headers are sent before the first chunk, so they cannot depend on anything the iterator works out later. Code that might fail in a way the client should see as an error - checking permissions, validating arguments, running the first query - should run in the view function before it returns the response, where raising an exception still produces a regular error page.
+- If the iterator raises an exception part way through, Datasette cannot send an error page because the response has already started. The exception is passed on to the server, which drops the connection without completing the response, so the client sees a failed request instead of a truncated response that looks complete.
+- If the client disconnects, Datasette closes the iterator. For an async generator this runs any ``finally:`` blocks, which is the place to release resources.
+
 .. _internals_response_asgi_send:
 
 Returning a response with .asgi_send(send)
@@ -1531,7 +1576,9 @@ For example:
 
 .. code-block:: python
 
-    downloads_are_allowed = datasette.setting("allow_download")
+    downloads_are_allowed = datasette.setting(
+        "default_allow_download"
+    )
 
 .. _datasette_resolve_database:
 

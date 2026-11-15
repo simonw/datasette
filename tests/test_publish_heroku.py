@@ -6,6 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 from datasette import cli
+from datasette.version import __version__
 
 
 @pytest.mark.serial
@@ -171,7 +172,7 @@ def test_publish_heroku_generate_dir(
         "test.db",
     }
     for name, expected in (
-        ("requirements.txt", "datasette"),
+        ("requirements.txt", f"datasette=={__version__}"),
         ("runtime.txt", "python-3.11.0"),
         (
             "Procfile",

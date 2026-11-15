@@ -27,6 +27,7 @@ from datasette.utils import (
     path_from_row_pks,
     path_with_format,
     path_with_removed_args,
+    path_without_format,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -38,8 +39,7 @@ from . import Context, from_extra
 from .base import (
     BaseView,
     DatasetteError,
-    is_csv_format,
-    stream_csv,
+    render_with_output_renderer,
     tsv_export_path,
 )
 from .table import (
@@ -175,22 +175,18 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def as_csv(self, request, database, format_="csv"):
-        return await stream_csv(self.ds, self.data, request, database, format_=format_)
-
     async def get(self, request):
         db = await self.ds.resolve_database(request)
         database = db.name
-        database_route = db.route
         format_ = request.url_vars.get("format") or "html"
         data_kwargs = {}
-
-        if is_csv_format(self.ds, format_):
-            return await self.as_csv(request, database_route, format_=format_)
 
         if format_ == "html":
             # HTML views default to expanding all foreign key labels
             data_kwargs["default_labels"] = True
+        elif self.ds._renderer_extras.get(format_):
+            # Extras declared by the output renderer for this format
+            data_kwargs["renderer_extras"] = self.ds._renderer_extras[format_]
 
         extra_template_data = {}
         start = time.perf_counter()
@@ -239,43 +235,24 @@ class RowView(BaseView):
         data["query_ms"] = (end - start) * 1000
 
         if format_ in self.ds.renderers:
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                self.ds.renderers[format_][0],
-                datasette=self.ds,
+            response = await render_with_output_renderer(
+                self.ds,
+                request,
+                format_,
+                data=data,
                 columns=data.get("columns") or [],
                 rows=data.get("rows") or [],
                 sql=data.get("query", {}).get("sql", None),
                 query_name=data.get("query_name"),
                 database=database,
                 table=data.get("table"),
-                request=request,
                 view_name=self.name,
                 truncated=False,  # TODO: support this
                 error=data.get("error"),
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
             )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                response = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code", status_code or 200),
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                response = result
-                if status_code is not None:
-                    # Over-ride the status code
-                    response.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
+            if status_code is not None:
+                # Over-ride the status code
+                response.status = status_code
         elif format_ == "html":
             response = await self.html(request, data, extra_template_data, templates)
             if status_code is not None:
@@ -314,6 +291,8 @@ class RowView(BaseView):
                 database=data.get("database"),
                 table=data.get("table"),
                 request=request,
+                path=path_without_format(request),
+                full_path=path_without_format(request, include_query_string=True),
                 view_name=self.name,
             )
             it_can_render = await await_me_maybe(it_can_render)
@@ -423,7 +402,7 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def data(self, request, default_labels=False):
+    async def data(self, request, default_labels=False, renderer_extras=None):
         db, table, resource = await _database_and_table_resource_from_request(
             self.ds, request
         )
@@ -642,6 +621,9 @@ class RowView(BaseView):
         if request.url_vars.get("format"):
             # Data formats reject unknown extras; HTML ignores them
             table_extra_registry.validate_requested(extras, ExtraScope.ROW)
+        if renderer_extras:
+            # Any that are not available for rows are skipped when resolved
+            extras.update(renderer_extras)
 
         # Process extras
         row_extra_context = RowExtraContext(

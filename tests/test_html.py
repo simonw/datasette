@@ -3,6 +3,7 @@ import hashlib
 import json
 import pathlib
 import re
+import sqlite3
 import urllib.parse
 
 import pytest
@@ -171,6 +172,52 @@ async def test_static_hash_cache_control(ds_client):
     assert "cache-control" not in response.headers
 
 
+IF_NONE_MATCH_FORMATS = (
+    # format string for the If-None-Match header, expected status
+    ("{etag}", 304),
+    ("W/{etag}", 304),
+    ('"other", {etag}', 304),
+    ('"other",W/{etag}', 304),
+    ("*", 304),
+    ('"other"', 200),
+    ('W/"other", "another"', 200),
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("if_none_match,expected_status", IF_NONE_MATCH_FORMATS)
+async def test_static_if_none_match(ds_client, if_none_match, expected_status):
+    etag = (await ds_client.get("/-/static/app.css")).headers["etag"]
+    response = await ds_client.get(
+        "/-/static/app.css",
+        headers={"if-none-match": if_none_match.format(etag=etag)},
+    )
+    assert response.status_code == expected_status
+    assert response.headers["etag"] == etag
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("if_none_match,expected_status", IF_NONE_MATCH_FORMATS)
+async def test_database_download_if_none_match(
+    tmp_path, if_none_match, expected_status
+):
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    datasette = Datasette([], immutables=[path], cors=True)
+    etag = (await datasette.client.get("/data.db")).headers["etag"]
+    response = await datasette.client.get(
+        "/data.db", headers={"if-none-match": if_none_match.format(etag=etag)}
+    )
+    assert response.status_code == expected_status
+    # A 304 should carry the same ETag and CORS headers as the 200
+    assert response.headers["etag"] == etag
+    assert response.headers["access-control-allow-origin"] == "*"
+    if expected_status == 304:
+        assert response.content == b""
+
+
 def test_static_mounts():
     with make_app_client(
         static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
@@ -218,17 +265,25 @@ async def test_database_page(ds_client):
     # Should have a <textarea> for executing SQL
     assert "<textarea" in response.text
 
-    # And a list of tables
-    for fragment in (
-        '<h2 id="tables">Tables',
-        '<h3><a href="/fixtures/sortable">sortable</a></h3>',
-        "<p><em>pk, foreign_key_with_label, foreign_key_with_blank_label, ",
-    ):
-        assert fragment in response.text
-
-    # And views
-    views_ul = soup.find("h2", string="Views").find_next_sibling("ul")
-    assert views_ul is not None
+    # And a card for each table, then each view
+    assert soup.select_one("h2#tables").text == "Tables and views"
+    rows = {
+        li.select_one("a.catalog-item-name")["href"]: li
+        for li in soup.select("ul.catalog-list li.catalog-item")
+    }
+    sortable = rows["/fixtures/sortable"]
+    assert sortable.select_one("a.catalog-item-name").text == "sortable"
+    assert "catalog-item-table" in sortable["class"]
+    assert sortable.select_one(".catalog-item-count").text == "201 rows"
+    assert (
+        " ".join(sortable.select_one(".catalog-item-columns").text.split())
+        == "pk1, pk2, content, sortable, sortable_with_nulls, "
+        "sortable_with_nulls_2, text"
+    )
+    assert (
+        rows["/fixtures/foreign_key_references"].select_one(".catalog-item-links").text
+        == "links to primary_key_multiple_columns, simple_primary_key"
+    )
     assert [
         ("/fixtures/binary_data_view", "binary_data_view"),
         ("/fixtures/paginated_view", "paginated_view"),
@@ -238,10 +293,14 @@ async def test_database_page(ds_client):
             "searchable_view_configured_by_metadata",
         ),
         ("/fixtures/simple_view", "simple_view"),
-    ] == sorted([(a["href"], a.text) for a in views_ul.find_all("a")])
+    ] == sorted(
+        (href, li.select_one("a.catalog-item-name").text)
+        for href, li in rows.items()
+        if "catalog-item-view" in li["class"]
+    )
 
     # And a list of stored queries
-    queries_ul = soup.find("h2", string="Queries").find_next_sibling("ul")
+    queries_ul = soup.find("h2", string="Queries").find_next("ul")
     assert queries_ul is not None
     assert [
         ("/fixtures/magic_parameters", "magic_parameters"),
@@ -593,11 +652,12 @@ async def test_row_html_no_primary_key(ds_client):
 async def test_row_html_copy_buttons(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     soup = Soup(response.text, "html.parser")
-    buttons = soup.select(".row-field .row-field-copy")
-    assert [(b["aria-label"], b["data-copy-value"], b["title"]) for b in buttons] == [
-        ("Copy id", "1", "Copy to clipboard"),
-        ("Copy content", "hello", "Copy to clipboard"),
+    buttons = soup.select(".row-field datasette-copy-button")
+    assert [(b["name"], b["value"]) for b in buttons] == [
+        ("id", "1"),
+        ("content", "hello"),
     ]
+    assert soup.find("script", src=re.compile(r"copy-button\.js"))
 
 
 @pytest.mark.asyncio
@@ -627,9 +687,9 @@ async def test_row_html_null_values_have_no_copy_button(ds_client):
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     fields = soup.select(".row-field")
-    assert [f["data-column"] for f in fields if f.select_one(".row-field-copy")] == [
-        "pk"
-    ]
+    assert [
+        f["data-column"] for f in fields if f.select_one("datasette-copy-button")
+    ] == ["pk"]
     nulls = [f.select_one(".row-field-empty") for f in fields[1:]]
     # The label comes from CSS so it is left out when the page is copied
     assert [(n["data-label"], n.text) for n in nulls] == [("null", "")] * (
@@ -812,7 +872,8 @@ def test_database_download_for_immutable():
             download_response.headers["content-disposition"]
             == 'attachment; filename="fixtures.db"'
         )
-        assert download_response.headers["transfer-encoding"] == "chunked"
+        # The ASGI server chooses the framing, see #2663
+        assert "transfer-encoding" not in download_response.headers
         # ETag header should be present and match db.hash
         assert "etag" in download_response.headers
         etag = download_response.headers["etag"]
@@ -842,7 +903,7 @@ def test_database_download_disallowed_for_memory():
 
 def test_allow_download_off():
     with make_app_client(
-        is_immutable=True, settings={"allow_download": False}
+        is_immutable=True, settings={"default_allow_download": False}
     ) as client:
         response = client.get("/fixtures")
         soup = Soup(response.content, "html.parser")

@@ -923,7 +923,7 @@ function countTableRows(countUrl) {
 }
 
 function showTableCount(count) {
-  var countEl = document.querySelector(".table-count");
+  var countEl = document.querySelector(".table-summary .table-count");
   if (countEl) {
     countEl.textContent =
       count.toLocaleString("en-US") + (count === 1 ? " row" : " rows");

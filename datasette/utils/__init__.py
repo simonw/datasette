@@ -27,6 +27,7 @@ import markupsafe
 import mergedeep
 import yaml
 
+from ..version import __version__
 from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
@@ -607,6 +608,29 @@ def escape_sqlite(s):
     return '"{}"'.format(s.replace('"', '""'))
 
 
+_datasette_requirement_re = re.compile(
+    # A requirement named datasette, or a path or URL to a datasette wheel or sdist
+    r"^datasette(\[[^\]]*\])?\s*($|[=<>!~;@])"
+    r"|(^|/)datasette-\d[^/]*\.(whl|tar\.gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def datasette_install_requirements(install, branch=None):
+    """
+    Requirements to pip install for a published Datasette: Datasette itself
+    followed by any extras from --install. Datasette defaults to the version
+    that is running this command, unless --branch was used or one of the
+    --install values is itself a requirement for Datasette.
+    """
+    install = list(install)
+    if branch:
+        return [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + install
+    if any(_datasette_requirement_re.search(item.strip()) for item in install):
+        return install
+    return [f"datasette=={__version__}"] + install
+
+
 def make_dockerfile(
     files,
     metadata_file,
@@ -648,12 +672,7 @@ def make_dockerfile(
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
+    install = datasette_install_requirements(install, branch)
 
     apt_get_extras_ = []
     apt_get_extras_.extend(apt_get_extras)
@@ -1049,12 +1068,12 @@ def path_with_format(
     qs = extra_qs or {}
     if path is None and request:
         path = request.path
+    if replace_format is None and request:
+        # Drop the extension the current request used, e.g. .json
+        replace_format = request.url_vars.get("format")
     if replace_format and path.endswith(f".{replace_format}"):
         path = path[: -(1 + len(replace_format))]
-    if "." in path:
-        qs["_format"] = format
-    else:
-        path = f"{path}.{format}"
+    path = f"{path}.{format}"
     if qs:
         extra = urllib.parse.urlencode(sorted(qs.items()))
         if request and request.query_string:
@@ -1062,6 +1081,17 @@ def path_with_format(
         else:
             path = f"{path}?{extra}"
     elif request and request.query_string:
+        path = f"{path}?{request.query_string}"
+    return path
+
+
+def path_without_format(request, *, include_query_string=False):
+    "Path for this request with any ``.format`` removed, e.g. ``/db/table.json`` -> ``/db/table``"
+    path = request.path
+    format = request.url_vars.get("format")
+    if format and path.endswith(f".{format}"):
+        path = path[: -(1 + len(format))]
+    if include_query_string and request.query_string:
         path = f"{path}?{request.query_string}"
     return path
 
@@ -1093,31 +1123,6 @@ def value_as_boolean(value):
 
 class ValueAsBooleanError(ValueError):
     pass
-
-
-class WriteLimitExceeded(Exception):
-    pass
-
-
-class LimitedWriter:
-    def __init__(self, writer, limit_mb):
-        self.writer = writer
-        self.limit_bytes = limit_mb * 1024 * 1024
-        self.bytes_count = 0
-
-    async def write(self, bytes):
-        self.bytes_count += len(bytes)
-        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
-            raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
-        await self.writer.write(bytes)
-
-
-class EscapeHtmlWriter:
-    def __init__(self, writer):
-        self.writer = writer
-
-    async def write(self, content):
-        await self.writer.write(markupsafe.escape(content))
 
 
 _infinities = {float("inf"), float("-inf")}
@@ -1705,8 +1710,9 @@ def prune_empty_dicts(d: dict):
 def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
-    hierarchy in destination if needed. After moving, recursively remove any keys
-    in the source that are left empty.
+    hierarchy in destination if needed. A 'plugins' block is merged by plugin name
+    with one already in the destination, the source winning for a name in both.
+    After moving, recursively remove any keys in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1721,8 +1727,16 @@ def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]
                 d = dest
                 for step in path:
                     d = d.setdefault(step, {})
-                # Move the plugins
-                d[key] = value
+                # Move the plugins, keeping any the destination already has
+                # for other plugin names
+                if (
+                    key == "plugins"
+                    and isinstance(value, dict)
+                    and isinstance(d.get(key), dict)
+                ):
+                    d[key] = {**d[key], **value}
+                else:
+                    d[key] = value
                 # Remove the plugins from source
                 src.pop(key, None)
             elif isinstance(value, dict):

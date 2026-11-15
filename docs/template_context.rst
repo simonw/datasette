@@ -95,7 +95,7 @@ The homepage, listing the tables, views and queries across every database. Rende
     Links for the homepage actions menu, from plugins implementing :ref:`plugin_hook_homepage_actions`
 
 ``items`` - ``list[dict]``
-    The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long
+    The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``more_columns`` (the rest of the column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long
 
 ``metadata`` - ``dict``
     Instance metadata, such as ``title``, ``description`` and ``license``
@@ -368,9 +368,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``database_color`` - ``str``
     Color assigned to the database
-
-``datasette_allow_facet`` - ``str``
-    The string "true" or "false" reflecting the allow_facet setting
 
 ``display_columns`` - ``list``
     Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.

@@ -226,33 +226,29 @@ async def test_hook_render_cell_demo(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_hook_render_cell_pks_single_pk(ds_client):
-    """pks should be ["id"] for a table with a single primary key"""
-    response = await ds_client.get("/fixtures/simple_primary_key?id=4")
+@pytest.mark.parametrize(
+    "path,expected_pks",
+    (
+        pytest.param("/fixtures/simple_primary_key?id=4", ["id"], id="single_pk"),
+        pytest.param(
+            "/fixtures/compound_primary_key?pk1=d&pk2=e",
+            ["pk1", "pk2"],
+            id="compound_pk",
+        ),
+        # A table with no explicit primary key
+        pytest.param(
+            "/fixtures/no_primary_key?content=RENDER_CELL_DEMO",
+            ["rowid"],
+            id="rowid_table",
+        ),
+    ),
+)
+async def test_hook_render_cell_pks(ds_client, path, expected_pks):
+    response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
     td = soup.find("td", {"class": "col-content"})
     data = json.loads(td.string)
-    assert data["pks"] == ["id"]
-
-
-@pytest.mark.asyncio
-async def test_hook_render_cell_pks_compound_pk(ds_client):
-    """pks should list all primary key columns for a compound pk table"""
-    response = await ds_client.get("/fixtures/compound_primary_key?pk1=d&pk2=e")
-    soup = Soup(response.text, "html.parser")
-    td = soup.find("td", {"class": "col-content"})
-    data = json.loads(td.string)
-    assert data["pks"] == ["pk1", "pk2"]
-
-
-@pytest.mark.asyncio
-async def test_hook_render_cell_pks_rowid_table(ds_client):
-    """pks should be ["rowid"] for a table with no explicit primary key"""
-    response = await ds_client.get("/fixtures/no_primary_key?content=RENDER_CELL_DEMO")
-    soup = Soup(response.text, "html.parser")
-    td = soup.find("td", {"class": "col-content"})
-    data = json.loads(td.string)
-    assert data["pks"] == ["rowid"]
+    assert data["pks"] == expected_pks
 
 
 @pytest.mark.asyncio

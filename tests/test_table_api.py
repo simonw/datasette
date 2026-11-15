@@ -221,15 +221,45 @@ async def test_table_shape_objects(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_table_shape_array(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=array")
-    assert response.json() == [
-        {"id": 1, "content": "hello"},
-        {"id": 2, "content": "world"},
-        {"id": 3, "content": ""},
-        {"id": 4, "content": "RENDER_CELL_DEMO"},
-        {"id": 5, "content": "RENDER_CELL_ASYNC"},
-    ]
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        pytest.param(
+            "/fixtures/simple_primary_key.json?_shape=array",
+            [
+                {"id": 1, "content": "hello"},
+                {"id": 2, "content": "world"},
+                {"id": 3, "content": ""},
+                {"id": 4, "content": "RENDER_CELL_DEMO"},
+                {"id": 5, "content": "RENDER_CELL_ASYNC"},
+            ],
+            id="array",
+        ),
+        pytest.param(
+            "/fixtures/simple_primary_key.json?_shape=object",
+            {
+                "1": {"id": 1, "content": "hello"},
+                "2": {"id": 2, "content": "world"},
+                "3": {"id": 3, "content": ""},
+                "4": {"id": 4, "content": "RENDER_CELL_DEMO"},
+                "5": {"id": 5, "content": "RENDER_CELL_ASYNC"},
+            },
+            id="object",
+        ),
+        pytest.param(
+            "/fixtures/compound_primary_key.json?_shape=object",
+            {
+                "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
+                "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
+                "d,e": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"},
+            },
+            id="object_compound_primary_key",
+        ),
+    ),
+)
+async def test_table_shape_array_and_object(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.json() == expected
 
 
 @pytest.mark.asyncio
@@ -256,28 +286,6 @@ async def test_table_shape_invalid(ds_client):
         "error": "Invalid _shape: invalid",
         "errors": ["Invalid _shape: invalid"],
         "status": 400,
-    }
-
-
-@pytest.mark.asyncio
-async def test_table_shape_object(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=object")
-    assert response.json() == {
-        "1": {"id": 1, "content": "hello"},
-        "2": {"id": 2, "content": "world"},
-        "3": {"id": 3, "content": ""},
-        "4": {"id": 4, "content": "RENDER_CELL_DEMO"},
-        "5": {"id": 5, "content": "RENDER_CELL_ASYNC"},
-    }
-
-
-@pytest.mark.asyncio
-async def test_table_shape_object_compound_primary_key(ds_client):
-    response = await ds_client.get("/fixtures/compound_primary_key.json?_shape=object")
-    assert response.json() == {
-        "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
-        "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
-        "d,e": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"},
     }
 
 
@@ -1297,12 +1305,22 @@ async def test_ttl_parameter(ds_client, path, expected_cache_control):
 
 
 @pytest.mark.asyncio
-async def test_infinity_returned_as_null(ds_client):
-    response = await ds_client.get("/fixtures/infinity.json?_shape=array")
+@pytest.mark.parametrize(
+    "querystring,expected_values",
+    (
+        pytest.param("", [None, None, 1.5], id="returned_as_null"),
+        pytest.param(
+            "&_json_infinity=1",
+            [float("inf"), float("-inf"), 1.5],
+            id="returned_as_invalid_json_if_requested",
+        ),
+    ),
+)
+async def test_infinity(ds_client, querystring, expected_values):
+    response = await ds_client.get("/fixtures/infinity.json?_shape=array" + querystring)
     assert response.json() == [
-        {"rowid": 1, "value": None},
-        {"rowid": 2, "value": None},
-        {"rowid": 3, "value": 1.5},
+        {"rowid": rowid, "value": value}
+        for rowid, value in enumerate(expected_values, 1)
     ]
 
 
@@ -1337,18 +1355,6 @@ async def test_infinity_with_array_shapes(ds_client, path, shape, expected):
     assert response.status_code == 200
     data = response.json()
     assert (data["rows"] if shape == "arrays" else data) == expected
-
-
-@pytest.mark.asyncio
-async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
-    response = await ds_client.get(
-        "/fixtures/infinity.json?_shape=array&_json_infinity=1"
-    )
-    assert response.json() == [
-        {"rowid": 1, "value": float("inf")},
-        {"rowid": 2, "value": float("-inf")},
-        {"rowid": 3, "value": 1.5},
-    ]
 
 
 @pytest.mark.asyncio

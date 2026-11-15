@@ -25,17 +25,18 @@ async def custom_pages_client_with_base_url():
 
 
 @pytest.mark.asyncio
-async def test_custom_pages_view_name(custom_pages_client):
-    response = await custom_pages_client.get("/about")
-    assert response.status_code == 200
-    assert response.text == "ABOUT! view_name:page"
-
-
-@pytest.mark.asyncio
-async def test_request_is_available(custom_pages_client):
-    response = await custom_pages_client.get("/request")
-    assert response.status_code == 200
-    assert response.text == "path:/request"
+@pytest.mark.parametrize(
+    "path,expected_status,expected_text",
+    (
+        pytest.param("/about", 200, "ABOUT! view_name:page", id="view_name"),
+        pytest.param("/request", 200, "path:/request", id="request_is_available"),
+        pytest.param("/202", 202, "202!", id="custom_status"),
+    ),
+)
+async def test_custom_page(custom_pages_client, path, expected_status, expected_text):
+    response = await custom_pages_client.get(path)
+    assert response.status_code == expected_status
+    assert response.text == expected_text
 
 
 @pytest.mark.asyncio
@@ -56,13 +57,6 @@ async def test_custom_pages_nested(custom_pages_client):
 
 
 @pytest.mark.asyncio
-async def test_custom_status(custom_pages_client):
-    response = await custom_pages_client.get("/202")
-    assert response.status_code == 202
-    assert response.text == "202!"
-
-
-@pytest.mark.asyncio
 async def test_custom_headers(custom_pages_client):
     response = await custom_pages_client.get("/headers")
     assert response.status_code == 200
@@ -80,17 +74,19 @@ async def test_custom_content_type(custom_pages_client):
 
 
 @pytest.mark.asyncio
-async def test_redirect(custom_pages_client):
-    response = await custom_pages_client.get("/redirect")
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/example"
-
-
-@pytest.mark.asyncio
-async def test_redirect2(custom_pages_client):
-    response = await custom_pages_client.get("/redirect2")
-    assert response.status_code == 301
-    assert response.headers["Location"] == "/example"
+@pytest.mark.parametrize(
+    "path,expected_status,expected_location",
+    (
+        ("/redirect", 302, "/example"),
+        ("/redirect2", 301, "/example"),
+        # https://github.com/simonw/datasette/issues/2429
+        ("//example.com/", 302, "/example.com"),
+    ),
+)
+async def test_redirect(custom_pages_client, path, expected_status, expected_location):
+    response = await custom_pages_client.get(path)
+    assert response.status_code == expected_status
+    assert response.headers["location"] == expected_location
 
 
 @pytest.mark.asyncio
@@ -114,14 +110,6 @@ async def test_custom_route_pattern_404(custom_pages_client):
     assert response.status_code == 404
     assert "<h1>Error 404</h1>" in response.text
     assert ">Oh no</" in response.text
-
-
-@pytest.mark.asyncio
-async def test_custom_route_pattern_with_slash_slash_302(custom_pages_client):
-    # https://github.com/simonw/datasette/issues/2429
-    response = await custom_pages_client.get("//example.com/")
-    assert response.status_code == 302
-    assert response.headers["location"] == "/example.com"
 
 
 @pytest.mark.asyncio

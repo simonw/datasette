@@ -242,13 +242,20 @@ async def test_table_csv_error(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_table_csv_download(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.csv?_dl=1")
+@pytest.mark.parametrize(
+    "extension,expected_content_type",
+    (
+        ("csv", "text/csv; charset=utf-8"),
+        ("tsv", "text/tab-separated-values; charset=utf-8"),
+    ),
+)
+async def test_table_csv_tsv_download(ds_client, extension, expected_content_type):
+    response = await ds_client.get(f"/fixtures/simple_primary_key.{extension}?_dl=1")
     assert response.status_code == 200
-    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-type"] == expected_content_type
     assert (
         response.headers["content-disposition"]
-        == 'attachment; filename="simple_primary_key.csv"'
+        == f'attachment; filename="simple_primary_key.{extension}"'
     )
 
 
@@ -328,19 +335,6 @@ async def test_table_tsv(ds_client):
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_CSV.replace(",", "\t")
-
-
-@pytest.mark.asyncio
-async def test_table_tsv_download(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.tsv?_dl=1")
-    assert response.status_code == 200
-    assert (
-        response.headers["content-type"] == "text/tab-separated-values; charset=utf-8"
-    )
-    assert (
-        response.headers["content-disposition"]
-        == 'attachment; filename="simple_primary_key.tsv"'
-    )
 
 
 @pytest.mark.asyncio

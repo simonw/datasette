@@ -270,26 +270,26 @@ async def test_bearer_with_cookie_does_not_bypass():
 
 
 @pytest.mark.asyncio
-async def test_origin_scheme_must_match():
-    # http Origin against an https request must be blocked even when host matches.
-    scope = _http_scope({"origin": "http://example.com", "host": "example.com"})
-    scope["scheme"] = "https"
-    assert await _run_middleware(scope) == ("blocked", 403)
-
-
-@pytest.mark.asyncio
-async def test_origin_port_must_match():
-    scope = _http_scope({"origin": "http://example.com:8001", "host": "example.com"})
-    scope["scheme"] = "http"
-    assert await _run_middleware(scope) == ("blocked", 403)
-
-
-@pytest.mark.asyncio
-async def test_origin_default_port_normalized():
-    # http://example.com:80 == http://example.com
-    scope = _http_scope({"origin": "http://example.com:80", "host": "example.com"})
-    scope["scheme"] = "http"
-    assert await _run_middleware(scope) == ("allowed",)
+@pytest.mark.parametrize(
+    "origin,scheme,expected",
+    (
+        # http Origin against an https request must be blocked even when host matches
+        pytest.param(
+            "http://example.com", "https", ("blocked", 403), id="scheme_must_match"
+        ),
+        pytest.param(
+            "http://example.com:8001", "http", ("blocked", 403), id="port_must_match"
+        ),
+        # http://example.com:80 == http://example.com
+        pytest.param(
+            "http://example.com:80", "http", ("allowed",), id="default_port_normalized"
+        ),
+    ),
+)
+async def test_origin_scheme_and_port(origin, scheme, expected):
+    scope = _http_scope({"origin": origin, "host": "example.com"})
+    scope["scheme"] = scheme
+    assert await _run_middleware(scope) == expected
 
 
 @pytest.mark.asyncio

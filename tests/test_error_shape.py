@@ -161,18 +161,20 @@ async def test_sql_error_shape_keeps_context_keys(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_invalid_shape_error_shape(ds_client):
-    response = await ds_client.get("/fixtures/-/query.json?sql=select+1&_shape=bananas")
+@pytest.mark.parametrize(
+    "shape,expected_error",
+    (
+        ("bananas", "Invalid _shape: bananas"),
+        # Previously returned HTTP 200 with an ok: false body
+        ("object", "_shape=object is only available on tables"),
+    ),
+)
+async def test_invalid_shape_error_shape(ds_client, shape, expected_error):
+    response = await ds_client.get(
+        f"/fixtures/-/query.json?sql=select+1&_shape={shape}"
+    )
     data = assert_canonical_error(response, 400)
-    assert data["errors"] == ["Invalid _shape: bananas"]
-
-
-@pytest.mark.asyncio
-async def test_shape_object_on_query_is_a_400_error(ds_client):
-    # Previously returned HTTP 200 with an ok: false body
-    response = await ds_client.get("/fixtures/-/query.json?sql=select+1&_shape=object")
-    data = assert_canonical_error(response, 400)
-    assert data["errors"] == ["_shape=object is only available on tables"]
+    assert data["errors"] == [expected_error]
 
 
 # Shape 4: bare {"error": ...} from the permission debug endpoints
@@ -665,17 +667,17 @@ async def test_query_list_size_supports_max_keyword(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_query_list_size_rejects_out_of_range(ds_client):
-    response = await ds_client.get("/fixtures/-/queries.json?_size=5000")
+@pytest.mark.parametrize(
+    "size,expected_error",
+    (
+        ("5000", "_size must be <= 100"),
+        ("bananas", "_size must be a positive integer"),
+    ),
+)
+async def test_query_list_size_rejects_invalid(ds_client, size, expected_error):
+    response = await ds_client.get(f"/fixtures/-/queries.json?_size={size}")
     data = assert_canonical_error(response, 400)
-    assert data["errors"] == ["_size must be <= 100"]
-
-
-@pytest.mark.asyncio
-async def test_query_list_size_rejects_non_integer(ds_client):
-    response = await ds_client.get("/fixtures/-/queries.json?_size=bananas")
-    data = assert_canonical_error(response, 400)
-    assert data["errors"] == ["_size must be a positive integer"]
+    assert data["errors"] == [expected_error]
 
 
 @pytest.mark.asyncio

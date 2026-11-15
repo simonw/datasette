@@ -2790,63 +2790,53 @@ async def test_sort_errors(ds_client, json, params, error):
 
 
 @pytest.mark.asyncio
-async def test_metadata_sort(ds_client):
-    response = await ds_client.get("/fixtures/facet_cities")
+@pytest.mark.parametrize(
+    "table_name,expected_headers,expected_cells,reverse_querystring",
+    (
+        pytest.param(
+            "facet_cities",
+            ["id", "name\xa0▼"],
+            [
+                ("id", 3, "name", "Detroit"),
+                ("id", 2, "name", "Los Angeles"),
+                ("id", 4, "name", "Memnonia"),
+                ("id", 1, "name", "San Francisco"),
+            ],
+            "?_sort_desc=name",
+            id="sort",
+        ),
+        pytest.param(
+            "attraction_characteristic",
+            ["pk\xa0▲", "name"],
+            [
+                ("pk", 2, "name", "Paranormal"),
+                ("pk", 1, "name", "Museum"),
+            ],
+            "?_sort=pk",
+            id="sort_desc",
+        ),
+    ),
+)
+async def test_metadata_sort(
+    ds_client, table_name, expected_headers, expected_cells, reverse_querystring
+):
+    response = await ds_client.get(f"/fixtures/{table_name}")
     assert response.status_code == 200
     table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.find_all("th")
-    assert ["id", "name\xa0▼"] == [th.find("a").string.strip() for th in ths]
+    assert expected_headers == [th.find("a").string.strip() for th in ths]
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     expected = [
         [
-            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/3">3</a></td>',
-            '<td class="col-name type-str">Detroit</td>',
-        ],
-        [
-            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/2">2</a></td>',
-            '<td class="col-name type-str">Los Angeles</td>',
-        ],
-        [
-            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/4">4</a></td>',
-            '<td class="col-name type-str">Memnonia</td>',
-        ],
-        [
-            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/1">1</a></td>',
-            '<td class="col-name type-str">San Francisco</td>',
-        ],
+            f'<td class="col-{pk_col} type-pk"><a href="/fixtures/{table_name}/{pk}">{pk}</a></td>',
+            f'<td class="col-{name_col} type-str">{name}</td>',
+        ]
+        for pk_col, pk, name_col, name in expected_cells
     ]
     assert expected == rows
     # Make sure you can reverse that sort order
-    response = await ds_client.get("/fixtures/facet_cities?_sort_desc=name")
-    assert response.status_code == 200
-    table = Soup(response.text, "html.parser").find("table")
-    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
-    assert list(reversed(expected)) == rows
-
-
-@pytest.mark.asyncio
-async def test_metadata_sort_desc(ds_client):
-    response = await ds_client.get("/fixtures/attraction_characteristic")
-    assert response.status_code == 200
-    table = Soup(response.text, "html.parser").find("table")
-    assert table["class"] == ["rows-and-columns"]
-    ths = table.find_all("th")
-    assert ["pk\xa0▲", "name"] == [th.find("a").string.strip() for th in ths]
-    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
-    expected = [
-        [
-            '<td class="col-pk type-pk"><a href="/fixtures/attraction_characteristic/2">2</a></td>',
-            '<td class="col-name type-str">Paranormal</td>',
-        ],
-        [
-            '<td class="col-pk type-pk"><a href="/fixtures/attraction_characteristic/1">1</a></td>',
-            '<td class="col-name type-str">Museum</td>',
-        ],
-    ]
-    assert expected == rows
-    # Make sure you can reverse that sort order
-    response = await ds_client.get("/fixtures/attraction_characteristic?_sort=pk")
+    response = await ds_client.get(f"/fixtures/{table_name}{reverse_querystring}")
     assert response.status_code == 200
     table = Soup(response.text, "html.parser").find("table")
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]

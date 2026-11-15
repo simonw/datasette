@@ -701,46 +701,26 @@ class TestMultipartEdgeCases:
         assert uploaded_file.filename == "doc.txt"
 
     @pytest.mark.asyncio
-    async def test_missing_content_type_header(self):
-        """Missing content-type in request should raise BadRequest."""
-        body = b"some body"
-        scope = {
-            "type": "http",
-            "method": "POST",
-            "headers": [],
-        }
-        request = Request(scope, make_receive(body))
-
-        with pytest.raises(BadRequest):
-            await request.form()
-
-    @pytest.mark.asyncio
-    async def test_invalid_content_type(self):
-        """Non-form content-type should raise BadRequest."""
-        body = b'{"key": "value"}'
-        scope = {
-            "type": "http",
-            "method": "POST",
-            "headers": [
-                (b"content-type", b"application/json"),
-            ],
-        }
-        request = Request(scope, make_receive(body))
-
-        with pytest.raises(BadRequest):
-            await request.form()
-
-    @pytest.mark.asyncio
-    async def test_missing_boundary(self):
-        """Multipart without boundary should raise BadRequest."""
-        body = b"some body"
-        scope = {
-            "type": "http",
-            "method": "POST",
-            "headers": [
-                (b"content-type", b"multipart/form-data"),
-            ],
-        }
+    @pytest.mark.parametrize(
+        "headers,body",
+        (
+            pytest.param([], b"some body", id="missing_content_type_header"),
+            # Non-form content-type
+            pytest.param(
+                [(b"content-type", b"application/json")],
+                b'{"key": "value"}',
+                id="invalid_content_type",
+            ),
+            # Multipart without boundary
+            pytest.param(
+                [(b"content-type", b"multipart/form-data")],
+                b"some body",
+                id="missing_boundary",
+            ),
+        ),
+    )
+    async def test_bad_content_type_raises_bad_request(self, headers, body):
+        scope = {"type": "http", "method": "POST", "headers": headers}
         request = Request(scope, make_receive(body))
 
         with pytest.raises(BadRequest):

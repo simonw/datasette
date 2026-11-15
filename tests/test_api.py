@@ -446,22 +446,26 @@ async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
 
 
 @pytest.mark.asyncio
-async def test_row_compound_pk_correct_arity(ds_client):
-    # The valid two-component URL still resolves the row.
-    response = await ds_client.get(
-        "/fixtures/compound_primary_key/a,b.json?_shape=objects"
-    )
+@pytest.mark.parametrize(
+    "path,expected_rows",
+    (
+        # The valid two-component URL still resolves the row.
+        pytest.param(
+            "/fixtures/compound_primary_key/a,b.json?_shape=objects",
+            [{"pk1": "a", "pk2": "b", "content": "c"}],
+            id="compound_pk_correct_arity",
+        ),
+        pytest.param(
+            "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects",
+            [{"pk": "3", "content": "hey"}],
+            id="strange_table_name",
+        ),
+    ),
+)
+async def test_row_resolves(ds_client, path, expected_rows):
+    response = await ds_client.get(path)
     assert response.status_code == 200
-    assert response.json()["rows"] == [{"pk1": "a", "pk2": "b", "content": "c"}]
-
-
-@pytest.mark.asyncio
-async def test_row_strange_table_name(ds_client):
-    response = await ds_client.get(
-        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects"
-    )
-    assert response.status_code == 200
-    assert response.json()["rows"] == [{"pk": "3", "content": "hey"}]
+    assert response.json()["rows"] == expected_rows
 
 
 @pytest.mark.asyncio

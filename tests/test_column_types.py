@@ -595,91 +595,81 @@ async def test_json_render_cell(ds_ct):
 
 
 @pytest.mark.asyncio
-async def test_email_validation_on_insert(ds_ct):
+@pytest.mark.parametrize(
+    "path,body,expected_status,invalid_column",
+    (
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": "not-an-email"}},
+            400,
+            "author_email",
+            id="insert-invalid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "website": "not-a-url"}},
+            400,
+            "website",
+            id="insert-invalid-url",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "metadata": "not-json{"}},
+            400,
+            "metadata",
+            id="insert-invalid-json",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": "valid@example.com"}},
+            201,
+            None,
+            id="insert-valid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": None}},
+            201,
+            None,
+            id="insert-null",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": ""}},
+            201,
+            None,
+            id="insert-empty-string",
+        ),
+        pytest.param(
+            "/data/posts/1/-/update",
+            {"update": {"author_email": "invalid"}},
+            400,
+            "author_email",
+            id="update-invalid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/upsert",
+            {"rows": [{"id": 1, "title": "Updated", "author_email": "invalid"}]},
+            400,
+            "author_email",
+            id="upsert-invalid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/upsert",
+            {"rows": [{"id": 1, "title": "Updated", "author_email": "valid@test.com"}]},
+            200,
+            None,
+            id="upsert-valid-email",
+        ),
+    ),
+)
+async def test_validation_on_write(ds_ct, path, body, expected_status, invalid_column):
     await ds_ct.invoke_startup()
     token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": "not-an-email"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "author_email" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_email_validation_passes_valid(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": "valid@example.com"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 201
-
-
-@pytest.mark.asyncio
-async def test_url_validation_on_insert(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "website": "not-a-url"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "website" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_json_validation_on_insert(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "metadata": "not-json{"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "metadata" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_validation_on_update(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/1/-/update",
-        json={"update": {"author_email": "invalid"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "author_email" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_validation_allows_null(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": None}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 201
-
-
-@pytest.mark.asyncio
-async def test_validation_allows_empty_string(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": ""}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 201
+    response = await ds_ct.client.post(path, json=body, headers=_headers(token))
+    assert response.status_code == expected_status
+    if invalid_column:
+        assert invalid_column in response.json()["errors"][0]
 
 
 # --- ColumnType base class ---
@@ -956,38 +946,6 @@ async def test_set_column_type_ui_data_includes_applicable_types(
             {"name": "url", "description": "URL"},
         ],
     }
-
-
-# --- Validation on upsert ---
-
-
-@pytest.mark.asyncio
-async def test_validation_on_upsert(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/upsert",
-        json={
-            "rows": [{"id": 1, "title": "Updated", "author_email": "invalid"}],
-        },
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "author_email" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_validation_on_upsert_passes_valid(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/upsert",
-        json={
-            "rows": [{"id": 1, "title": "Updated", "author_email": "valid@test.com"}],
-        },
-        headers=_headers(token),
-    )
-    assert response.status_code == 200
 
 
 # --- Unknown type warning logged ---

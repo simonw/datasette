@@ -81,41 +81,11 @@ def bare_ds():
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def ds_client():
-    import secrets
+    from .fixtures import make_ds
 
-    from datasette.app import Datasette
-    from datasette.database import Database
-
-    from .fixtures import CONFIG, METADATA, PLUGINS_DIR
-
-    ds = Datasette(
-        metadata=METADATA,
-        config=CONFIG,
-        plugins_dir=PLUGINS_DIR,
-        settings={
-            "default_page_size": 50,
-            "max_returned_rows": 100,
-            "sql_time_limit_ms": 200,
-            "facet_suggest_time_limit_ms": 200,  # Up from 50 default
-            # Default is 3 but this results in "too many open files"
-            # errors when running the full test suite:
-            "num_sql_threads": 1,
-        },
+    ds = await make_ds(
+        settings={"facet_suggest_time_limit_ms": 200}  # Up from 50 default
     )
-    from datasette.fixtures import populate_fixture_database
-
-    # Use a unique memory_name to avoid collisions between different
-    # Datasette instances in the same process, but use "fixtures" for routing
-    unique_memory_name = f"fixtures_{secrets.token_hex(8)}"
-    db = ds.add_database(Database(ds, memory_name=unique_memory_name), name="fixtures")
-    ds.remove_database("_memory")
-
-    def prepare(conn):
-        if not conn.execute("select count(*) from sqlite_master").fetchone()[0]:
-            populate_fixture_database(conn)
-
-    await db.execute_write_fn(prepare)
-    await ds.invoke_startup()
     try:
         yield ds.client
     finally:
@@ -171,16 +141,6 @@ def pytest_collection_modifyitems(config, items):
             if "playwright" in item.keywords:
                 item.add_marker(skip_playwright)
 
-    # Ensure test_cli.py and test_black.py and test_inspect.py run first before any asyncio code kicks in
-    move_to_front(items, "test_cli")
-    move_to_front(items, "test_black")
-    move_to_front(items, "test_inspect_cli")
-    move_to_front(items, "test_serve_with_get")
-    move_to_front(items, "test_serve_with_get_exit_code_for_error")
-    move_to_front(items, "test_inspect_cli_writes_to_file")
-    move_to_front(items, "test_spatialite_error_if_attempt_to_open_spatialite")
-    move_to_front(items, "test_package")
-    move_to_front(items, "test_package_with_port")
     # These start subprocesses, which can crash on macOS/CPython 3.13 late in
     # a test run once the pytest process has started many threads
     move_to_front(items, "test_datasette_package_never_imports_the_sdk")
@@ -192,22 +152,6 @@ def move_to_front(items, test_name):
     test = [fn for fn in items if fn.name == test_name]
     if test:
         items.insert(0, items.pop(items.index(test[0])))
-
-
-@pytest.fixture
-def restore_working_directory(tmpdir, request):
-    try:
-        previous_cwd = os.getcwd()
-    except OSError:
-        # https://github.com/simonw/datasette/issues/1361
-        previous_cwd = None
-    tmpdir.chdir()
-
-    def return_to_previous():
-        os.chdir(previous_cwd)
-
-    if previous_cwd is not None:
-        request.addfinalizer(return_to_previous)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -422,19 +366,16 @@ def serve_with_plugins(tmp_path):
 # Import fixtures from fixtures.py to make them available
 from .fixtures import (  # noqa: F401
     TEMP_PLUGIN_SECRET_FILE,
-    app_client,
-    app_client_base_url_prefix,
-    app_client_conflicting_database_names,
-    app_client_immutable_and_inspect_file,
-    app_client_larger_cache_size,
-    app_client_no_files,
-    app_client_returned_rows_matches_page_size,
-    app_client_shorter_time_limit,
-    app_client_two_attached_databases,
-    app_client_two_attached_databases_crossdb_enabled,
-    app_client_two_attached_databases_one_immutable,
-    app_client_with_cors,
-    app_client_with_dot,
-    app_client_with_trace,
-    make_app_client,
+    ds_client_base_url_prefix,
+    ds_client_shorter_time_limit,
+    ds_client_two_attached_databases,
+    ds_client_with_cors,
+    ds_client_with_trace,
+    ds_on_disk,
+    ds_on_disk_immutable_and_inspect_file,
+    ds_on_disk_two_databases_crossdb,
+    ds_on_disk_two_databases_one_immutable,
+    ds_on_disk_with_cors,
+    ds_on_disk_with_dot,
+    make_ds_on_disk,
 )

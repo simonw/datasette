@@ -27,10 +27,7 @@ from datasette.utils.sqlite import sqlite3
 from .fixtures import (
     PLUGINS_DIR,
     TEMP_PLUGIN_SECRET_FILE,
-    make_app_client,
-)
-from .fixtures import (
-    TestClient as _TestClient,
+    make_ds,
 )
 
 at_memory_re = re.compile(r" at 0x\w+")
@@ -61,7 +58,6 @@ def test_hook_shutdown():
     assert "shutdown" in dir(pm.hook)
 
 
-@pytest.mark.asyncio
 async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?_shape=arrayfirst&sql=select+convert_units(100%2C+'m'%2C+'ft')"
@@ -69,14 +65,13 @@ async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     assert response.json()[0] == pytest.approx(328.0839)
 
 
-@pytest.mark.asyncio
 async def test_hook_plugin_prepare_connection_arguments(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
     )
-    assert [
+    assert response.json() == [
         "database=fixtures, datasette.plugin_config(\"name-of-plugin\")={'depth': 'root'}"
-    ] == response.json()
+    ]
 
     # Function should not be available on the internal database
     db = ds_client.ds.get_internal_database()
@@ -84,7 +79,6 @@ async def test_hook_plugin_prepare_connection_arguments(ds_client):
         await db.execute("select prepare_connection_args()")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_decoded_object",
     [
@@ -146,10 +140,9 @@ async def test_hook_extra_css_urls(ds_client, path, expected_decoded_object):
     # This link has a base64-encoded JSON blob in it
     encoded = special_href.split("/")[3]
     actual_decoded_object = json.loads(base64.b64decode(encoded).decode("utf8"))
-    assert expected_decoded_object == actual_decoded_object
+    assert actual_decoded_object == expected_decoded_object
 
 
-@pytest.mark.asyncio
 async def test_hook_extra_js_urls(ds_client):
     response = await ds_client.get("/")
     scripts = Soup(response.text, "html.parser").find_all("script")
@@ -168,7 +161,6 @@ async def test_hook_extra_js_urls(ds_client):
         assert any(s == attrs for s in script_attrs), f"Expected: {attrs}"
 
 
-@pytest.mark.asyncio
 async def test_plugins_with_duplicate_js_urls(ds_client):
     # If two plugins both require jQuery, jQuery should be loaded only once
     response = await ds_client.get("/fixtures")
@@ -182,10 +174,10 @@ async def test_plugins_with_duplicate_js_urls(ds_client):
     # No duplicates allowed:
     assert len(srcs) == len(set(srcs))
     # jquery.js loaded once:
-    assert 1 == srcs.count("https://plugin-example.datasette.io/jquery.js")
+    assert srcs.count("https://plugin-example.datasette.io/jquery.js") == 1
     # plugin1.js and plugin2.js are both there:
-    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin1.js")
-    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin2.js")
+    assert srcs.count("https://plugin-example.datasette.io/plugin1.js") == 1
+    assert srcs.count("https://plugin-example.datasette.io/plugin2.js") == 1
     # jquery comes before them both
     assert srcs.index("https://plugin-example.datasette.io/jquery.js") < srcs.index(
         "https://plugin-example.datasette.io/plugin1.js"
@@ -195,7 +187,6 @@ async def test_plugins_with_duplicate_js_urls(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_hook_render_cell_link_from_json(ds_client):
     sql = """
         select '{"href": "http://example.com/", "label":"Example"}'
@@ -210,7 +201,6 @@ async def test_hook_render_cell_link_from_json(ds_client):
     assert a.text == "Example"
 
 
-@pytest.mark.asyncio
 async def test_hook_render_cell_demo(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key?id=4&_render_cell_extra=1"
@@ -228,37 +218,31 @@ async def test_hook_render_cell_demo(ds_client):
     }
 
 
-@pytest.mark.asyncio
-async def test_hook_render_cell_pks_single_pk(ds_client):
-    """pks should be ["id"] for a table with a single primary key"""
-    response = await ds_client.get("/fixtures/simple_primary_key?id=4")
+@pytest.mark.parametrize(
+    "path,expected_pks",
+    (
+        pytest.param("/fixtures/simple_primary_key?id=4", ["id"], id="single_pk"),
+        pytest.param(
+            "/fixtures/compound_primary_key?pk1=d&pk2=e",
+            ["pk1", "pk2"],
+            id="compound_pk",
+        ),
+        # A table with no explicit primary key
+        pytest.param(
+            "/fixtures/no_primary_key?content=RENDER_CELL_DEMO",
+            ["rowid"],
+            id="rowid_table",
+        ),
+    ),
+)
+async def test_hook_render_cell_pks(ds_client, path, expected_pks):
+    response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
     td = soup.find("td", {"class": "col-content"})
     data = json.loads(td.string)
-    assert data["pks"] == ["id"]
+    assert data["pks"] == expected_pks
 
 
-@pytest.mark.asyncio
-async def test_hook_render_cell_pks_compound_pk(ds_client):
-    """pks should list all primary key columns for a compound pk table"""
-    response = await ds_client.get("/fixtures/compound_primary_key?pk1=d&pk2=e")
-    soup = Soup(response.text, "html.parser")
-    td = soup.find("td", {"class": "col-content"})
-    data = json.loads(td.string)
-    assert data["pks"] == ["pk1", "pk2"]
-
-
-@pytest.mark.asyncio
-async def test_hook_render_cell_pks_rowid_table(ds_client):
-    """pks should be ["rowid"] for a table with no explicit primary key"""
-    response = await ds_client.get("/fixtures/no_primary_key?content=RENDER_CELL_DEMO")
-    soup = Soup(response.text, "html.parser")
-    td = soup.find("td", {"class": "col-content"})
-    data = json.loads(td.string)
-    assert data["pks"] == ["rowid"]
-
-
-@pytest.mark.asyncio
 async def test_hook_render_cell_pks_custom_sql(ds_client):
     """pks should be [] for custom SQL queries"""
     response = await ds_client.get(
@@ -271,7 +255,6 @@ async def test_hook_render_cell_pks_custom_sql(ds_client):
     assert data["table"] is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -284,21 +267,20 @@ async def test_hook_render_cell_async(ds_client, path):
     assert b"RENDER_CELL_ASYNC_RESULT" in response.content
 
 
-@pytest.mark.asyncio
 async def test_plugin_config(ds_client):
-    assert {"depth": "table"} == ds_client.ds.plugin_config(
+    assert ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="sortable"
-    )
-    assert {"depth": "database"} == ds_client.ds.plugin_config(
+    ) == {"depth": "table"}
+    assert ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="unknown_table"
-    )
-    assert {"depth": "database"} == ds_client.ds.plugin_config(
-        "name-of-plugin", database="fixtures"
-    )
-    assert {"depth": "root"} == ds_client.ds.plugin_config(
+    ) == {"depth": "database"}
+    assert ds_client.ds.plugin_config("name-of-plugin", database="fixtures") == {
+        "depth": "database"
+    }
+    assert ds_client.ds.plugin_config(
         "name-of-plugin", database="unknown_database"
-    )
-    assert {"depth": "root"} == ds_client.ds.plugin_config("name-of-plugin")
+    ) == {"depth": "root"}
+    assert ds_client.ds.plugin_config("name-of-plugin") == {"depth": "root"}
     assert None is ds_client.ds.plugin_config("unknown-plugin")
 
 
@@ -310,19 +292,17 @@ def test_plugin_config_database_without_plugins_falls_back_to_top():
             "databases": {"fixtures": {"tables": {"t": {"allow": True}}}},
         },
     )
-    assert {"depth": "root"} == ds.plugin_config("name-of-plugin", database="fixtures")
+    assert ds.plugin_config("name-of-plugin", database="fixtures") == {"depth": "root"}
     assert None is ds.plugin_config(
         "name-of-plugin", database="fixtures", fallback=False
     )
 
 
-@pytest.mark.asyncio
 async def test_plugin_config_env(ds_client, monkeypatch):
     monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")
     assert ds_client.ds.plugin_config("env-plugin") == {"foo": "FROM_ENVIRONMENT"}
 
 
-@pytest.mark.asyncio
 async def test_plugin_config_env_from_config(monkeypatch):
     monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT_2")
     datasette = Datasette(
@@ -331,21 +311,19 @@ async def test_plugin_config_env_from_config(monkeypatch):
     assert datasette.plugin_config("env-plugin") == {"setting": "FROM_ENVIRONMENT_2"}
 
 
-@pytest.mark.asyncio
 async def test_plugin_config_env_from_list(ds_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
-    assert [{"in_a_list": "FROM_ENVIRONMENT"}] == ds_client.ds.plugin_config(
-        "env-plugin-list"
-    )
+    assert ds_client.ds.plugin_config("env-plugin-list") == [
+        {"in_a_list": "FROM_ENVIRONMENT"}
+    ]
     del os.environ["FOO_ENV"]
 
 
-@pytest.mark.asyncio
 async def test_plugin_config_file(ds_client):
     # Blocking write is fine here - it is tiny test setup, not request handling
     with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:  # noqa: ASYNC230
         fp.write("FROM_FILE")
-    assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
+    assert ds_client.ds.plugin_config("file-plugin") == {"foo": "FROM_FILE"}
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 
@@ -401,50 +379,48 @@ async def test_plugin_config_file(ds_client):
         ),
     ],
 )
-def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
+async def test_hook_extra_body_script(ds_client, path, expected_extra_body_script):
     r = re.compile(r"<script type=\"module\">var extra_body_script = (.*?);</script>")
-    response = app_client.get(path)
+    response = await ds_client.get(path)
     assert response.status_code == 200, response.text
     match = r.search(response.text)
     assert match is not None, "No extra_body_script found in HTML"
     json_data = match.group(1)
     actual_data = json.loads(json_data)
-    assert expected_extra_body_script == actual_data
+    assert actual_data == expected_extra_body_script
 
 
-@pytest.mark.asyncio
 async def test_hook_asgi_wrapper(ds_client):
     response = await ds_client.get("/fixtures")
-    assert "fixtures" == response.headers["x-databases"]
+    assert response.headers["x-databases"] == "fixtures"
 
 
-def test_hook_extra_template_vars(restore_working_directory):
-    with make_app_client(
+async def test_hook_extra_template_vars():
+    ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ) as client:
-        response = client.get("/-/versions")
-        assert response.status_code == 200
-        extra_template_vars = json.loads(
-            Soup(response.text, "html.parser").select("pre.extra_template_vars")[0].text
-        )
-        assert {
-            "template": "show_json.html",
-            "scope_path": "/-/versions",
-            "columns": None,
-        } == extra_template_vars
-        extra_template_vars_from_awaitable = json.loads(
-            Soup(response.text, "html.parser")
-            .select("pre.extra_template_vars_from_awaitable")[0]
-            .text
-        )
-        assert {
-            "template": "show_json.html",
-            "awaitable": True,
-            "scope_path": "/-/versions",
-        } == extra_template_vars_from_awaitable
+    )
+    response = await ds.client.get("/-/versions")
+    assert response.status_code == 200
+    extra_template_vars = json.loads(
+        Soup(response.text, "html.parser").select("pre.extra_template_vars")[0].text
+    )
+    assert extra_template_vars == {
+        "template": "show_json.html",
+        "scope_path": "/-/versions",
+        "columns": None,
+    }
+    extra_template_vars_from_awaitable = json.loads(
+        Soup(response.text, "html.parser")
+        .select("pre.extra_template_vars_from_awaitable")[0]
+        .text
+    )
+    assert extra_template_vars_from_awaitable == {
+        "template": "show_json.html",
+        "awaitable": True,
+        "scope_path": "/-/versions",
+    }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "return_style", ["direct", "callable", "async_callable", "awaitable"]
 )
@@ -492,7 +468,6 @@ async def test_hook_extra_template_vars_none(ds_client, return_style):
         pm.unregister(other_plugin)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("invalid_value", [False, 0, "", [], ()])
 async def test_hook_extra_template_vars_invalid(ds_client, invalid_value):
     class InvalidPlugin:
@@ -510,21 +485,21 @@ async def test_hook_extra_template_vars_invalid(ds_client, invalid_value):
         pm.unregister(plugin)
 
 
-def test_plugins_async_template_function(restore_working_directory):
-    with make_app_client(
+async def test_plugins_async_template_function():
+    ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ) as client:
-        response = client.get("/-/versions")
-        assert response.status_code == 200
-        extra_from_awaitable_function = (
-            Soup(response.text, "html.parser")
-            .select("pre.extra_from_awaitable_function")[0]
-            .text
-        )
-        conn = sqlite3.connect(":memory:")
-        expected = conn.execute("select sqlite_version()").fetchone()[0]
-        conn.close()
-        assert expected == extra_from_awaitable_function
+    )
+    response = await ds.client.get("/-/versions")
+    assert response.status_code == 200
+    extra_from_awaitable_function = (
+        Soup(response.text, "html.parser")
+        .select("pre.extra_from_awaitable_function")[0]
+        .text
+    )
+    conn = sqlite3.connect(":memory:")
+    expected = conn.execute("select sqlite_version()").fetchone()[0]
+    conn.close()
+    assert extra_from_awaitable_function == expected
 
 
 def test_default_plugins_have_no_templates_path_or_static_path():
@@ -573,7 +548,7 @@ def view_names_client(tmp_path_factory):
         config={"databases": {"fixtures": {"queries": {"stored_query": "select 1"}}}},
     )
     try:
-        yield _TestClient(ds)
+        yield ds.client
     finally:
         # plugins_dir plugins are registered on the global plugin manager
         pm.unregister(name="extra_vars.py")
@@ -592,13 +567,12 @@ def view_names_client(tmp_path_factory):
         ("/fixtures/stored_query", "query"),
     ),
 )
-def test_view_names(view_names_client, path, view_name):
-    response = view_names_client.get(path)
+async def test_view_names(view_names_client, path, view_name):
+    response = await view_names_client.get(path)
     assert response.status_code == 200
     assert f"view_name:{view_name}" == response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,html_path,expected_view_name,expected_query_name",
     (
@@ -642,7 +616,6 @@ async def test_hook_register_output_renderer_view_name(
     assert ds_client.ds._can_render_saw["view_name"] == expected_view_name
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_view_name_for_renderers_extra(ds_client):
     ds_client.ds._can_render_saw = None
     response = await ds_client.get("/fixtures/facetable.json?_extra=renderers")
@@ -650,14 +623,12 @@ async def test_hook_register_output_renderer_view_name_for_renderers_extra(ds_cl
     assert ds_client.ds._can_render_saw["view_name"] == "table"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_no_parameters(ds_client):
     response = await ds_client.get("/fixtures/facetable.testnone")
     assert response.status_code == 200
-    assert b"Hello" == response.content
+    assert response.content == b"Hello"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_all_parameters(ds_client):
     response = await ds_client.get("/fixtures/facetable.testall")
     assert response.status_code == 200
@@ -708,7 +679,6 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_path,expected_full_path",
     (
@@ -745,7 +715,6 @@ async def test_hook_register_output_renderer_path_and_full_path(
     assert data["full_path"] == expected_full_path
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_status_code(ds_client):
     response = await ds_client.get(
         "/fixtures/pragma_cache_size.testall?status_code=202"
@@ -753,31 +722,27 @@ async def test_hook_register_output_renderer_custom_status_code(ds_client):
     assert response.status_code == 202
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_content_type(ds_client):
     response = await ds_client.get(
         "/fixtures/pragma_cache_size.testall?content_type=text/blah"
     )
-    assert "text/blah" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/blah"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_headers(ds_client):
     response = await ds_client.get(
         "/fixtures/pragma_cache_size.testall?header=x-wow:1&header=x-gosh:2"
     )
-    assert "1" == response.headers["x-wow"]
-    assert "2" == response.headers["x-gosh"]
+    assert response.headers["x-wow"] == "1"
+    assert response.headers["x-gosh"] == "2"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_returning_response(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse")
     assert response.status_code == 200
     assert response.json() == {"this_is": "json"}
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse?_broken=1")
     assert response.status_code == 500
@@ -788,7 +753,6 @@ async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     ) in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -841,7 +805,6 @@ def test_hook_register_output_renderer_requires_render(renderer, expected):
         pm.unregister(name="renderer_without_render")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -913,7 +876,6 @@ async def test_hook_register_output_renderer_export_options(path):
         pm.unregister(plugin, name="options_demo")
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_binary_and_webpage_is_an_error():
     class BothPlugin:
         @hookimpl
@@ -937,7 +899,6 @@ async def test_hook_register_output_renderer_binary_and_webpage_is_an_error():
         pm.unregister(plugin, name="both_demo")
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_can_render(ds_client):
     response = await ds_client.get("/fixtures/facetable?_no_can_render=1")
     assert response.status_code == 200
@@ -972,7 +933,6 @@ async def test_hook_register_output_renderer_can_render(ds_client):
     }.items() <= ds_client.ds._can_render_saw.items()
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_renderers_extra_links(ds_client):
     # https://github.com/simonw/datasette/issues/1179
     # Links from a .json page previously came out as
@@ -994,7 +954,6 @@ async def test_hook_register_output_renderer_renderers_extra_links(ds_client):
     assert response.headers["content-type"] == "text/plain"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_output_renderer_can_render_canned_query(ds_client):
     # https://github.com/simonw/datasette/issues/2711
     # can_render for a canned query must be passed the query's columns, rows
@@ -1015,7 +974,6 @@ async def test_hook_register_output_renderer_can_render_canned_query(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_hook_prepare_jinja2_environment(ds_client):
     ds_client.ds._HELLO = "HI"
     await ds_client.ds.invoke_startup()
@@ -1025,7 +983,7 @@ async def test_hook_prepare_jinja2_environment(ds_client):
         {"a": 3412341, "b": 5},
     )
     rendered = await ds_client.ds.render_template(template)
-    assert "Hello there, 3,412,341, HI, 15" == rendered
+    assert rendered == "Hello there, 3,412,341, HI, 15"
 
 
 def test_hook_publish_subcommand():
@@ -1034,10 +992,9 @@ def test_hook_publish_subcommand():
     # to be installed using "pip install". So I'm cheating and taking
     # advantage of the fact that cloudrun/heroku use the plugin hook
     # to register themselves as default plugins.
-    assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
+    assert cli.publish.list_commands({}) == ["cloudrun", "heroku"]
 
 
-@pytest.mark.asyncio
 async def test_hook_register_facet_classes(ds_client):
     response = await ds_client.get(
         "/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets"
@@ -1078,7 +1035,6 @@ async def test_hook_register_facet_classes(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_hook_actor_from_request(ds_client):
     await ds_client.get("/")
     # Should have no actor
@@ -1088,7 +1044,6 @@ async def test_hook_actor_from_request(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "bot"}
 
 
-@pytest.mark.asyncio
 async def test_hook_actor_from_request_async(ds_client):
     await ds_client.get("/")
     # Should have no actor
@@ -1098,13 +1053,11 @@ async def test_hook_actor_from_request_async(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "bot2", "1+1": 2}
 
 
-@pytest.mark.asyncio
 async def test_existing_scope_actor_respected(ds_client):
     await ds_client.get("/?_actor_in_scope=1")
     assert ds_client.ds._last_request.scope["actor"] == {"id": "from-scope"}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action,expected",
     [
@@ -1119,10 +1072,9 @@ async def test_hook_custom_allowed(action, expected):
     ds = Datasette(plugins_dir=PLUGINS_DIR)
     await ds.invoke_startup()
     actual = await ds.allowed(action=action, actor={"id": "actor"})
-    assert expected == actual
+    assert actual == expected
 
 
-@pytest.mark.asyncio
 async def test_hook_permission_resources_sql():
     ds = Datasette()
     await ds.invoke_startup()
@@ -1145,7 +1097,6 @@ async def test_hook_permission_resources_sql():
     assert all(isinstance(item, PermissionSQL) for item in collected)
 
 
-@pytest.mark.asyncio
 async def test_actor_json(ds_client):
     assert (await ds_client.get("/-/actor.json")).json() == {
         "ok": True,
@@ -1157,7 +1108,6 @@ async def test_actor_json(ds_client):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,body",
     [
@@ -1173,8 +1123,8 @@ async def test_hook_register_routes(ds_client, path, body):
 
 
 @pytest.mark.parametrize("configured_path", ("path1", "path2"))
-def test_hook_register_routes_with_datasette(configured_path):
-    with make_app_client(
+async def test_hook_register_routes_with_datasette(configured_path):
+    ds = await make_ds(
         config={
             "plugins": {
                 "register-route-demo": {
@@ -1182,18 +1132,20 @@ def test_hook_register_routes_with_datasette(configured_path):
                 }
             }
         }
-    ) as client:
-        response = client.get(f"/{configured_path}/")
-        assert response.status_code == 200
-        assert configured_path.upper() == response.text
-        # Other one should 404
-        other_path = next(p for p in ("path1", "path2") if configured_path != p)
-        assert client.get(f"/{other_path}/", follow_redirects=True).status_code == 404
+    )
+    response = await ds.client.get(f"/{configured_path}/")
+    assert response.status_code == 200
+    assert configured_path.upper() == response.text
+    # Other one should 404
+    other_path = next(p for p in ("path1", "path2") if configured_path != p)
+    assert (
+        await ds.client.get(f"/{other_path}/", follow_redirects=True)
+    ).status_code == 404
 
 
-def test_hook_register_routes_override():
+async def test_hook_register_routes_override():
     "Plugins can over-ride default paths such as /db/table"
-    with make_app_client(
+    ds = await make_ds(
         config={
             "plugins": {
                 "register-route-demo": {
@@ -1201,45 +1153,42 @@ def test_hook_register_routes_override():
                 }
             }
         }
-    ) as client:
-        response = client.get("/db/table")
-        assert response.status_code == 200
-        assert (
-            response.text
-            == "/db/table: [('db_name', 'db'), ('table_and_format', 'table')]"
-        )
-
-
-def test_hook_register_routes_post(app_client):
-    response = app_client.post("/post/", {"this is": "post data"})
+    )
+    response = await ds.client.get("/db/table")
     assert response.status_code == 200
-    assert response.json["this is"] == "post data"
+    assert (
+        response.text == "/db/table: [('db_name', 'db'), ('table_and_format', 'table')]"
+    )
 
 
-def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+async def test_hook_register_routes_post(ds_client):
+    response = await ds_client.post("/post/", data={"this is": "post data"})
+    assert response.status_code == 200
+    assert response.json()["this is"] == "post data"
+
+
+async def test_hook_register_routes_csrftoken(tmpdir_factory):
     # csrftoken() is a legacy compatibility shim that returns a
     # per-request random value - it is no longer used for CSRF enforcement.
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
         "CSRFTOKEN:{{ csrftoken() }}:END", "utf-8"
     )
-    with make_app_client(template_dir=templates) as client:
-        response = client.get("/csrftoken-form/")
-        assert response.text.startswith("CSRFTOKEN:")
-        assert response.text.endswith(":END")
-        token = response.text[len("CSRFTOKEN:") : -len(":END")]
-        assert len(token) >= 20
-        assert "ds_csrftoken" not in response.cookies
+    ds = await make_ds(template_dir=templates)
+    response = await ds.client.get("/csrftoken-form/")
+    assert response.text.startswith("CSRFTOKEN:")
+    assert response.text.endswith(":END")
+    token = response.text[len("CSRFTOKEN:") : -len(":END")]
+    assert len(token) >= 20
+    assert "ds_csrftoken" not in response.cookies
 
 
-@pytest.mark.asyncio
 async def test_hook_register_routes_asgi(ds_client):
     response = await ds_client.get("/three/")
-    assert {"hello": "world"} == response.json()
-    assert "1" == response.headers["x-three"]
+    assert response.json() == {"hello": "world"}
+    assert response.headers["x-three"] == "1"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_routes_add_message(ds_client):
     response = await ds_client.get("/add-message/")
     assert response.status_code == 200
@@ -1248,36 +1197,32 @@ async def test_hook_register_routes_add_message(ds_client):
     assert decoded == [["Hello from messages", 1]]
 
 
-def test_hook_register_routes_render_message(restore_working_directory, tmpdir_factory):
+async def test_hook_register_routes_render_message(tmpdir_factory):
     templates = tmpdir_factory.mktemp("templates")
     (templates / "render_message.html").write_text('{% extends "base.html" %}', "utf-8")
-    with make_app_client(template_dir=templates) as client:
-        response1 = client.get("/add-message/")
-        response2 = client.get("/render-message/", cookies=response1.cookies)
-        assert 200 == response2.status
-        assert "Hello from messages" in response2.text
+    ds = await make_ds(template_dir=templates)
+    response1 = await ds.client.get("/add-message/")
+    response2 = await ds.client.get("/render-message/", cookies=response1.cookies)
+    assert response2.status_code == 200
+    assert "Hello from messages" in response2.text
 
 
-@pytest.mark.asyncio
 async def test_hook_startup(ds_client):
     await ds_client.ds.invoke_startup()
     assert ds_client.ds._startup_hook_fired
-    assert 2 == ds_client.ds._startup_hook_calculation
+    assert ds_client.ds._startup_hook_calculation == 2
 
 
-@pytest.mark.asyncio
 async def test_hook_startup_metadata_available(ds_client):
     # Metadata from metadata.yaml should be populated before startup() fires
     assert "title" in ds_client.ds._startup_metadata_keys
 
 
-@pytest.mark.asyncio
 async def test_hook_startup_catalog_populated(ds_client):
     # Internal catalog tables should be populated before startup() fires
     assert "fixtures" in ds_client.ds._startup_catalog_databases
 
 
-@pytest.mark.asyncio
 async def test_plugin_startup_can_add_queries():
     ds = Datasette(memory=True)
     ds.add_memory_database("plugin_startup_queries", name="data")
@@ -1310,7 +1255,6 @@ async def test_plugin_startup_can_add_queries():
     assert queries_by_name["from_startup"]["private"] is False
 
 
-@pytest.mark.asyncio
 async def test_plugin_startup_query_can_execute():
     ds = Datasette(memory=True)
     ds.add_memory_database("plugin_startup_query_execute", name="data")
@@ -1333,12 +1277,12 @@ async def test_plugin_startup_query_can_execute():
     finally:
         ds.pm.unregister(name="add_query_plugin")
 
-    assert [{"2": 2}] == response.json()
+    assert response.json() == [{"2": 2}]
 
 
-def test_hook_register_magic_parameters(restore_working_directory):
-    with make_app_client(
-        extra_databases={"data.db": "create table logs (line text)"},
+async def test_hook_register_magic_parameters():
+    ds = await make_ds(
+        extra_databases={"data": "create table logs (line text)"},
         config={
             "databases": {
                 "data": {
@@ -1357,42 +1301,42 @@ def test_hook_register_magic_parameters(restore_working_directory):
                 }
             }
         },
-    ) as client:
-        response = client.post("/data/runme", {}, csrftoken_from=True)
-        assert response.status_code == 302
-        actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
-        assert [{"rowid": 1, "line": "1.1"}] == actual
-        # Now try the GET request against get_uuid
-        response_get = client.get("/data/get_uuid.json?_shape=array")
-        assert 200 == response_get.status
-        new_uuid = response_get.json[0][":_uuid_new"]
-        assert 4 == new_uuid.count("-")
-        # And test the async one
-        response_async = client.get("/data/asyncrequest.json?_shape=array")
-        assert 200 == response_async.status
-        assert response_async.json[0][":_asyncrequest_key"] == "key"
+    )
+    response = await ds.client.post("/data/runme", data={})
+    assert response.status_code == 302
+    actual = (
+        await ds.client.get("/data/logs.json?_sort_desc=rowid&_shape=array")
+    ).json()
+    assert actual == [{"rowid": 1, "line": "1.1"}]
+    # Now try the GET request against get_uuid
+    response_get = await ds.client.get("/data/get_uuid.json?_shape=array")
+    assert response_get.status_code == 200
+    new_uuid = response_get.json()[0][":_uuid_new"]
+    assert new_uuid.count("-") == 4
+    # And test the async one
+    response_async = await ds.client.get("/data/asyncrequest.json?_shape=array")
+    assert response_async.status_code == 200
+    assert response_async.json()[0][":_asyncrequest_key"] == "key"
 
 
-def test_hook_forbidden(restore_working_directory):
-    with make_app_client(
-        extra_databases={"data2.db": "create table logs (line text)"},
+async def test_hook_forbidden():
+    ds = await make_ds(
+        extra_databases={"data2": "create table logs (line text)"},
         config={"allow": {}},
-    ) as client:
-        response = client.get("/")
-        assert response.status_code == 403
-        response2 = client.get("/data2")
-        assert 302 == response2.status
-        assert (
-            response2.headers["Location"]
-            == "/login?message=You do not have permission to view this database"
-        )
-        assert (
-            client.ds._last_forbidden_message
-            == "You do not have permission to view this database"
-        )
+    )
+    response = await ds.client.get("/")
+    assert response.status_code == 403
+    response2 = await ds.client.get("/data2")
+    assert response2.status_code == 302
+    assert (
+        response2.headers["Location"]
+        == "/login?message=You do not have permission to view this database"
+    )
+    assert (
+        ds._last_forbidden_message == "You do not have permission to view this database"
+    )
 
 
-@pytest.mark.asyncio
 async def test_hook_handle_exception(ds_client):
     await ds_client.get("/trigger-error?x=123")
     assert hasattr(ds_client.ds, "_exception_hook_fired")
@@ -1401,14 +1345,12 @@ async def test_hook_handle_exception(ds_client):
     assert isinstance(exception, ZeroDivisionError)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("param", ("_custom_error", "_custom_error_async"))
 async def test_hook_handle_exception_custom_response(ds_client, param):
     response = await ds_client.get(f"/trigger-error?{param}=1")
     assert response.text == param
 
 
-@pytest.mark.asyncio
 async def test_hook_menu_links(ds_client):
     def get_menu_links(html):
         soup = Soup(html, "html.parser")
@@ -1426,7 +1368,6 @@ async def test_hook_menu_links(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_hook_table_actions(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert get_actions_links(response.text) == []
@@ -1459,7 +1400,6 @@ async def test_hook_table_actions(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_hook_view_actions(ds_client):
     response = await ds_client.get("/fixtures/simple_view")
     assert get_actions_links(response.text) == []
@@ -1516,7 +1456,6 @@ def get_actions_buttons(html):
     return buttons
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_url",
     (
@@ -1545,7 +1484,6 @@ async def test_hook_query_actions(ds_client, path, expected_url):
         ]
 
 
-@pytest.mark.asyncio
 async def test_hook_row_actions(ds_client):
     response = await ds_client.get("/fixtures/facet_cities/1")
     assert get_actions_links(response.text) == []
@@ -1563,7 +1501,6 @@ async def test_hook_row_actions(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_hook_database_actions(ds_client):
     response = await ds_client.get("/fixtures")
     assert get_actions_links(response.text) == []
@@ -1574,7 +1511,6 @@ async def test_hook_database_actions(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_hook_homepage_actions(ds_client):
     response = await ds_client.get("/")
     # No button for anonymous users
@@ -1646,7 +1582,6 @@ def test_hook_register_commands():
     importlib.reload(cli)
 
 
-@pytest.mark.asyncio
 async def test_hook_filters_from_request(ds_client):
     class ReturnNothingPlugin:
         __name__ = "ReturnNothingPlugin"
@@ -1665,7 +1600,6 @@ async def test_hook_filters_from_request(ds_client):
     ds_client.ds.pm.unregister(name="ReturnNothingPlugin")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("extra_metadata", (False, True))
 async def test_hook_register_actions(extra_metadata):
 
@@ -1706,7 +1640,6 @@ async def test_hook_register_actions(extra_metadata):
         assert "extra-from-metadata" not in ds.actions
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("duplicate", ("name", "abbr"))
 async def test_hook_register_actions_no_duplicates(duplicate):
     name1, name2 = "name1", "name2"
@@ -1743,7 +1676,6 @@ async def test_hook_register_actions_no_duplicates(duplicate):
     assert f"Duplicate action {duplicate}" in str(ex.value)
 
 
-@pytest.mark.asyncio
 async def test_hook_register_actions_allows_identical_duplicates():
     ds = Datasette(
         config={
@@ -1771,7 +1703,6 @@ async def test_hook_register_actions_allows_identical_duplicates():
     assert len([p for p in ds.actions.values() if p.abbr == "abbr1"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_hook_actors_from_ids():
     # Without the hook should return default {"id": id} list
     ds = Datasette()
@@ -1833,7 +1764,6 @@ async def test_hook_actors_from_ids():
         ds.pm.unregister(name="ActorsFromIdsPlugin")
 
 
-@pytest.mark.asyncio
 async def test_plugin_is_installed():
     datasette = Datasette(memory=True)
 
@@ -1855,7 +1785,6 @@ async def test_plugin_is_installed():
         datasette.pm.unregister(name="DummyPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_jinja2_environment_from_request(tmpdir):
     templates = pathlib.Path(tmpdir / "templates")
     templates.mkdir()
@@ -1928,7 +1857,6 @@ class SlotPlugin:
         )
 
 
-@pytest.mark.asyncio
 async def test_hook_top_homepage():
     datasette = Datasette(memory=True)
     try:
@@ -1940,7 +1868,6 @@ async def test_hook_top_homepage():
         datasette.pm.unregister(name="SlotPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_top_database():
     datasette = Datasette(memory=True)
     try:
@@ -1952,7 +1879,6 @@ async def test_hook_top_database():
         datasette.pm.unregister(name="SlotPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_top_table(ds_client):
     try:
         ds_client.ds.pm.register(SlotPlugin(), name="SlotPlugin")
@@ -1963,7 +1889,6 @@ async def test_hook_top_table(ds_client):
         ds_client.ds.pm.unregister(name="SlotPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_top_row(ds_client):
     try:
         ds_client.ds.pm.register(SlotPlugin(), name="SlotPlugin")
@@ -1974,7 +1899,6 @@ async def test_hook_top_row(ds_client):
         ds_client.ds.pm.unregister(name="SlotPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_top_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")
@@ -1985,7 +1909,6 @@ async def test_hook_top_query(ds_client):
         pm.unregister(name="SlotPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_top_stored_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")
@@ -1996,7 +1919,6 @@ async def test_hook_top_stored_query(ds_client):
         pm.unregister(name="SlotPlugin")
 
 
-@pytest.mark.asyncio
 async def test_hook_track_event():
     datasette = Datasette(memory=True)
     from .conftest import TrackEventPlugin
@@ -2016,14 +1938,12 @@ async def test_hook_track_event():
     assert created.tzinfo == datetime.UTC
 
 
-@pytest.mark.asyncio
 async def test_hook_register_events():
     datasette = Datasette(memory=True)
     await datasette.invoke_startup()
     assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)
 
 
-@pytest.mark.asyncio
 async def test_hook_register_token_handler(ds_client):
     handlers = ds_client.ds._token_handlers()
     handler_names = [h.name for h in handlers]
@@ -2055,7 +1975,6 @@ async def test_hook_register_token_handler(ds_client):
     assert signed_actor["token"] == "dstok"
 
 
-@pytest.mark.asyncio
 async def test_hook_write_wrapper():
     datasette = Datasette(memory=True)
     log = []
@@ -2085,7 +2004,6 @@ async def test_hook_write_wrapper():
         pm.unregister(name="WrapWritePluginTest")
 
 
-@pytest.mark.asyncio
 async def test_hook_register_actions_view_collection():
     datasette = Datasette(memory=True, plugins_dir=PLUGINS_DIR)
     await datasette.invoke_startup()
@@ -2096,7 +2014,6 @@ async def test_hook_register_actions_view_collection():
     assert action.description == "View a collection"
 
 
-@pytest.mark.asyncio
 async def test_hook_register_actions_with_custom_resources():
     """
     Test registering actions with custom Resource classes:
@@ -2395,7 +2312,6 @@ def test_metadata_plugin_config_treated_as_config(
     assert ds.config == expected_config
 
 
-@pytest.mark.asyncio
 async def test_hook_register_column_types():
     ds = Datasette()
     await ds.invoke_startup()

@@ -43,7 +43,6 @@ from .utils import (
     value_as_boolean,
 )
 from .utils.sqlite import sqlite3
-from .utils.testing import TestClient
 from .version import __version__
 
 
@@ -686,23 +685,31 @@ def serve(
         except StartupError as e:
             raise click.ClickException(e.args[0])
 
-        # --get never launches background tasks: TestClient's request below
-        # flows through the full ASGI stack, including the
-        # AsgiRunOnFirstRequest fallback, which would otherwise launch them.
+        # --get never launches background tasks: the request below flows
+        # through the full ASGI stack, including the AsgiRunOnFirstRequest
+        # fallback, which would otherwise launch them.
         ds._suppress_background_tasks = True
 
-        client = TestClient(ds)
         request_headers = {}
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
         cookies = {}
         if actor:
-            cookies["ds_actor"] = client.actor_cookie(json.loads(actor))
-        response = client.get(get, headers=request_headers, cookies=cookies)
+            cookies["ds_actor"] = ds.client.actor_cookie(json.loads(actor))
+        response = run_sync(
+            lambda: ds.client.request(
+                "GET",
+                get,
+                headers=request_headers,
+                cookies=cookies,
+                # Request the path exactly as given, without the base_url prefix
+                avoid_path_rewrites=True,
+            )
+        )
 
         if headers:
             # Output HTTP status code, headers, two newlines, then the response body
-            click.echo(f"HTTP/1.1 {response.status}")
+            click.echo(f"HTTP/1.1 {response.status_code}")
             for key, value in response.headers.items():
                 click.echo(f"{key}: {value}")
             if response.text:
@@ -711,7 +718,7 @@ def serve(
         else:
             click.echo(response.text)
 
-        exit_code = 0 if response.status == 200 else 1
+        exit_code = 0 if response.status_code == 200 else 1
         sys.exit(exit_code)
         return
 

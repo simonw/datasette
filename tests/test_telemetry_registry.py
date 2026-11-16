@@ -194,7 +194,6 @@ def _keys_by_span(records):
     return by_span
 
 
-@pytest.mark.asyncio
 async def test_workload_emits_exactly_the_expected_names(emitted):
     "Emitted span and attribute names match the expected literals."
     static, server = _partition(emitted)
@@ -229,7 +228,6 @@ def test_registry_matches_the_expected_names():
         } == EXPECTED_REGISTRY_ATTRIBUTES[str(span)], f"{span} attributes have drifted"
 
 
-@pytest.mark.asyncio
 async def test_every_emitted_span_is_registered(emitted):
     "A span added without a registry entry would be missing from the docs."
     unregistered = sorted(
@@ -240,7 +238,6 @@ async def test_every_emitted_span_is_registered(emitted):
     ), f"these spans are emitted but not in telemetry_registry.SPANS: {unregistered}"
 
 
-@pytest.mark.asyncio
 async def test_every_emitted_attribute_is_registered(emitted):
     "An attribute added without a registry entry would be missing from the docs."
     unregistered = sorted(
@@ -258,7 +255,6 @@ async def test_every_emitted_attribute_is_registered(emitted):
     )
 
 
-@pytest.mark.asyncio
 async def test_every_registered_span_is_emitted(emitted):
     "The docs should not describe a span that is no longer emitted."
     # Compare by identity: the request span's registry name never appears on
@@ -271,7 +267,6 @@ async def test_every_registered_span_is_emitted(emitted):
     )
 
 
-@pytest.mark.asyncio
 async def test_every_registered_attribute_is_emitted(emitted):
     """
     Every registered attribute, including optional ones, is emitted at least
@@ -331,7 +326,6 @@ def test_registry_entries_survive_deepcopy_and_pickle():
         assert entry.description.strip()
 
 
-@pytest.mark.asyncio
 async def test_console_metric_exporter_renders_core_metric_points(otel_metrics):
     from opentelemetry.sdk.metrics.export import (
         ConsoleMetricExporter,
@@ -434,7 +428,6 @@ async def emitted_metrics(otel_metrics):
     return {"names": set(snapshot), "pairs": pairs, "collector": otel_metrics}
 
 
-@pytest.mark.asyncio
 async def test_metrics_conform_to_the_registry(emitted_metrics):
     """
     Emitted metric names, kinds, units, attribute keys and enum values match
@@ -445,14 +438,12 @@ async def test_metrics_conform_to_the_registry(emitted_metrics):
     )
 
 
-@pytest.mark.asyncio
 async def test_every_registered_metric_is_emitted(emitted_metrics):
     assert_metrics_covered(
         reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
     )
 
 
-@pytest.mark.asyncio
 async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
     "Every registered metric attribute, including optional ones, is emitted."
     emitted_keys_by_metric = {}

@@ -5,13 +5,10 @@ This test currently FAILS, demonstrating the bug where database-level
 config allow blocks can bypass table-level restrictions.
 """
 
-import pytest
-
 from datasette.app import Datasette
 from datasette.resources import TableResource
 
 
-@pytest.mark.asyncio
 async def test_table_restrictions_not_bypassed_by_database_level_config():
     """
     Actor restrictions should act as hard limits that config cannot override.
@@ -94,7 +91,6 @@ async def test_table_restrictions_not_bypassed_by_database_level_config():
     ), "table4 should be DENIED - not in restriction allowlist, config cannot override"
 
 
-@pytest.mark.asyncio
 async def test_database_restrictions_with_database_level_config():
     """
     Verify that database-level restrictions work correctly with database-level config.

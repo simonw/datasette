@@ -741,6 +741,7 @@ class Database:
                 record_exception=False,
                 set_status_on_exception=False,
             ) as execute_span:
+                cursor = None
                 try:
                     with sqlite_timelimit(conn, time_limit_ms):
                         try:
@@ -757,6 +758,12 @@ class Database:
                                 rows = cursor.fetchall()
                                 truncated = False
                         except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                            # The traceback keeps this frame, and so the cursor,
+                            # alive until the garbage collector runs. An open
+                            # cursor stops SQLite from really closing the
+                            # connection, so release it now.
+                            if cursor is not None:
+                                cursor.close()
                             if e.args == ("interrupted",):
                                 raise QueryInterrupted(e, sql, params)
                             if log_sql_errors:

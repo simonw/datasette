@@ -93,7 +93,6 @@ def query_links(html):
     return [a["href"] for a in soup.select("a.query-row-name")]
 
 
-@pytest.mark.asyncio
 async def test_homepage_lists_tables_and_views_from_all_databases(ds):
     response = await ds.client.get("/")
     assert response.status_code == 200
@@ -121,7 +120,6 @@ async def test_homepage_lists_tables_and_views_from_all_databases(ds):
     assert view_item.select_one(".type-tag-view").text == "view"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor_id,expected_links,expected_hrefs",
     (
@@ -153,7 +151,6 @@ async def test_homepage_linked_tables(ds, actor_id, expected_links, expected_hre
     assert links("/music/albums") is None
 
 
-@pytest.mark.asyncio
 async def test_homepage_linked_tables_truncated():
     ds = Datasette()
     await ds.invoke_startup()
@@ -177,7 +174,6 @@ async def test_homepage_linked_tables_truncated():
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ("/", "/wide"))
 async def test_more_columns_button_reveals_the_rest(path):
     ds = Datasette()
@@ -209,7 +205,6 @@ async def test_more_columns_button_reveals_the_rest(path):
     assert narrow.select_one(".catalog-columns-rest") is None
 
 
-@pytest.mark.asyncio
 async def test_homepage_private_table_shown_with_permission(ds):
     response = await ds.client.get("/", cookies=cookies(ds, "root"))
     soup = Soup(response.text, "html.parser")
@@ -218,7 +213,6 @@ async def test_homepage_private_table_shown_with_permission(ds):
     assert "🔒" in secret.find_parent("li").text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "q,expected_link,expected_mark",
     (
@@ -242,7 +236,6 @@ async def test_homepage_search(ds, q, expected_link, expected_mark):
         assert marks == [expected_mark]
 
 
-@pytest.mark.asyncio
 async def test_homepage_search_never_shows_private_tables(ds):
     response = await ds.client.get("/", params={"q": "password"})
     assert "/books/secret" not in item_links(response.text)
@@ -252,7 +245,6 @@ async def test_homepage_search_never_shows_private_tables(ds):
     assert item_links(response.text) == ["/books/secret"]
 
 
-@pytest.mark.asyncio
 async def test_homepage_queries_default_selection(ds):
     # Without a search: config queries, not other people's saved queries
     response = await ds.client.get("/")
@@ -266,7 +258,6 @@ async def test_homepage_queries_default_selection(ds):
     assert ">3 queries →</a>" in response.text
 
 
-@pytest.mark.asyncio
 async def test_homepage_queries_include_your_own(ds):
     response = await ds.client.get("/", cookies=cookies(ds, "alice"))
     links = query_links(response.text)
@@ -276,7 +267,6 @@ async def test_homepage_queries_include_your_own(ds):
     assert row.select_one(".type-tag-mine").text == "yours"
 
 
-@pytest.mark.asyncio
 async def test_homepage_search_finds_queries_by_sql(ds):
     # Other people's saved queries show up when they match a search
     response = await ds.client.get("/", params={"q": "price > 1"})
@@ -291,7 +281,6 @@ async def test_homepage_search_finds_queries_by_sql(ds):
     assert sections == ["homepage-tables", "homepage-queries"]
 
 
-@pytest.mark.asyncio
 async def test_homepage_database_filter(ds):
     response = await ds.client.get("/", params={"database": "music"})
     assert item_links(response.text) == ["/music/albums"]
@@ -303,7 +292,6 @@ async def test_homepage_database_filter(ds):
     assert "/books/books" in item_links(response.text)
 
 
-@pytest.mark.asyncio
 async def test_homepage_pagination():
     ds = Datasette()
     await ds.invoke_startup()
@@ -327,7 +315,6 @@ async def test_homepage_pagination():
     assert nav.select_one("a.page-position-next") is None
 
 
-@pytest.mark.asyncio
 async def test_homepage_single_database_links_to_it():
     ds = Datasette()
     await ds.invoke_startup()
@@ -343,7 +330,6 @@ async def test_homepage_single_database_links_to_it():
     assert soup.select_one("li.catalog-item .db-tag") is None
 
 
-@pytest.mark.asyncio
 async def test_homepage_results_fragment(ds):
     response = await ds.client.get("/", params={"q": "auth", "_fragment": "results"})
     assert response.status_code == 200
@@ -355,7 +341,6 @@ async def test_homepage_results_fragment(ds):
     assert results.select_one('a.catalog-item-name[href="/books/authors"]')
 
 
-@pytest.mark.asyncio
 async def test_homepage_json_unchanged(ds):
     response = await ds.client.get("/.json")
     data = response.json()
@@ -376,7 +361,6 @@ class JumpItemsPlugin:
         )
 
 
-@pytest.mark.asyncio
 async def test_homepage_search_includes_plugin_jump_items(ds):
     ds.pm.register(JumpItemsPlugin(), name="JumpItemsPlugin")
     try:
@@ -404,7 +388,6 @@ async def test_homepage_search_includes_plugin_jump_items(ds):
         ds.pm.unregister(name="JumpItemsPlugin")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -458,7 +441,6 @@ async def test_recent_item_marker(ds, path, expected):
     assert data["color"] == ds.get_database("books").color
 
 
-@pytest.mark.asyncio
 async def test_recent_context_in_base_template(ds):
     response = await ds.client.get("/", cookies=cookies(ds, "alice"))
     assert (

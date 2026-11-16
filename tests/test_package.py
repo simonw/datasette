@@ -40,7 +40,7 @@ def test_package(mock_call, mock_which, tmp_path_factory):
     with open("test.db", "w") as fp:
         fp.write("data")
     result = runner.invoke(cli.cli, ["package", "test.db", "--secret", "sekrit"])
-    assert 0 == result.exit_code
+    assert result.exit_code == 0
     mock_call.assert_has_calls([mock.call(["docker", "build", "."])])
     assert EXPECTED_DOCKERFILE.format(port=8001) == capture.captured
 
@@ -58,5 +58,5 @@ def test_package_with_port(mock_call, mock_which, tmp_path_factory):
     result = runner.invoke(
         cli.cli, ["package", "test.db", "-p", "8080", "--secret", "sekrit"]
     )
-    assert 0 == result.exit_code
+    assert result.exit_code == 0
     assert EXPECTED_DOCKERFILE.format(port=8080) == capture.captured

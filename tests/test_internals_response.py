@@ -10,32 +10,31 @@ from datasette.utils.asgi import Response
 
 def test_response_html():
     response = Response.html("Hello from HTML")
-    assert 200 == response.status
-    assert "Hello from HTML" == response.body
-    assert "text/html; charset=utf-8" == response.content_type
+    assert response.status == 200
+    assert response.body == "Hello from HTML"
+    assert response.content_type == "text/html; charset=utf-8"
 
 
 def test_response_text():
     response = Response.text("Hello from text")
-    assert 200 == response.status
-    assert "Hello from text" == response.body
-    assert "text/plain; charset=utf-8" == response.content_type
+    assert response.status == 200
+    assert response.body == "Hello from text"
+    assert response.content_type == "text/plain; charset=utf-8"
 
 
 def test_response_json():
     response = Response.json({"this_is": "json"})
-    assert 200 == response.status
-    assert '{"this_is": "json"}' == response.body
-    assert "application/json; charset=utf-8" == response.content_type
+    assert response.status == 200
+    assert response.body == '{"this_is": "json"}'
+    assert response.content_type == "application/json; charset=utf-8"
 
 
 def test_response_redirect():
     response = Response.redirect("/foo")
-    assert 302 == response.status
-    assert "/foo" == response.headers["Location"]
+    assert response.status == 302
+    assert response.headers["Location"] == "/foo"
 
 
-@pytest.mark.asyncio
 async def test_response_set_cookie():
     events = []
 
@@ -46,7 +45,7 @@ async def test_response_set_cookie():
     response.set_cookie("foo", "bar", max_age=10, httponly=True)
     await response.asgi_send(send)
 
-    assert [
+    assert events == [
         {
             "type": "http.response.start",
             "status": 302,
@@ -57,7 +56,7 @@ async def test_response_set_cookie():
             ],
         },
         {"type": "http.response.body", "body": b""},
-    ] == events
+    ]
 
 
 def test_response_error_single_message():
@@ -93,7 +92,6 @@ async def _collect(response):
     return events
 
 
-@pytest.mark.asyncio
 async def test_response_stream():
     async def body():
         yield "one\n"
@@ -127,7 +125,6 @@ async def test_response_stream():
     ]
 
 
-@pytest.mark.asyncio
 async def test_response_stream_status_and_content_type():
     async def body():
         yield "{}"
@@ -138,7 +135,6 @@ async def test_response_stream_status_and_content_type():
     assert [b"content-type", b"application/x-ndjson"] in events[0]["headers"]
 
 
-@pytest.mark.asyncio
 async def test_response_stream_any_async_iterator():
     class Countdown:
         def __init__(self):
@@ -163,7 +159,6 @@ def test_response_stream_requires_async_iterator(body):
         Response.stream(body)
 
 
-@pytest.mark.asyncio
 async def test_response_stream_error_ends_without_final_chunk():
     cleaned_up = []
 
@@ -190,7 +185,6 @@ async def test_response_stream_error_ends_without_final_chunk():
     assert cleaned_up == [True]
 
 
-@pytest.mark.asyncio
 async def test_response_stream_closes_generator_on_disconnect():
     cleaned_up = []
 
@@ -253,7 +247,6 @@ def stream_routes():
         pm.unregister(name="stream_routes")
 
 
-@pytest.mark.asyncio
 async def test_response_stream_from_view(stream_routes):
     ds = Datasette(memory=True)
     try:
@@ -270,7 +263,6 @@ async def test_response_stream_from_view(stream_routes):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_response_stream_error_in_view_is_not_an_error_page(stream_routes):
     ds = Datasette(memory=True)
     try:

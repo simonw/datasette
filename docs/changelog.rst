@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
+- File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
+
 .. _v1_0_a43:
 
 1.0a43 (2026-11-15)

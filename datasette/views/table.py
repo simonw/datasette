@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 import markupsafe
 import sqlite_utils
+from jinja2.filters import do_filesizeformat
 
 from datasette import tracer
 from datasette.column_types import SQLiteType
@@ -37,7 +38,6 @@ from datasette.utils import (
     decode_write_json_rows,
     escape_sqlite,
     filters_should_redirect,
-    format_bytes,
     is_url,
     make_slot_function,
     path_from_row_pks,
@@ -932,7 +932,7 @@ async def display_columns_and_rows(
             if plugin_display_value:
                 display_value = plugin_display_value
             elif isinstance(value, bytes):
-                formatted = format_bytes(len(value))
+                formatted = do_filesizeformat(len(value))
                 if pks or has_rowid_column or request is None:
                     blob_url = datasette.urls.row_blob(
                         database_name,
@@ -954,7 +954,7 @@ async def display_columns_and_rows(
                 display_value = markupsafe.Markup(
                     '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                         blob_url,
-                        (f' title="{formatted}"' if "bytes" not in formatted else ""),
+                        (f' title="{formatted}"' if len(value) >= 1000 else ""),
                         len(value),
                         "" if len(value) == 1 else "s",
                     )

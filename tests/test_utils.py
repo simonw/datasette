@@ -649,21 +649,6 @@ def test_path_without_format(path, url_vars, expected_path, expected_full_path):
 
 
 @pytest.mark.parametrize(
-    "bytes,expected",
-    [
-        (120, "120 bytes"),
-        (1024, "1.0 KB"),
-        (1024 * 1024, "1.0 MB"),
-        (1024 * 1024 * 1024, "1.0 GB"),
-        (1024 * 1024 * 1024 * 1.3, "1.3 GB"),
-        (1024 * 1024 * 1024 * 1024, "1.0 TB"),
-    ],
-)
-def test_format_bytes(bytes, expected):
-    assert utils.format_bytes(bytes) == expected
-
-
-@pytest.mark.parametrize(
     "query,expected",
     [
         ("dog", '"dog"'),

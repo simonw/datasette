@@ -14,10 +14,6 @@ from .fixtures import make_app_client, make_ds
 FORM_CONTENT_TYPE = {"content-type": "application/x-www-form-urlencoded"}
 
 
-async def update_query(client, name, **kwargs):
-    await client.ds.update_query("data", name, **kwargs)
-
-
 @pytest_asyncio.fixture
 async def stored_write_client(tmpdir):
     template_dir = tmpdir / "stored_write_templates"
@@ -163,8 +159,8 @@ async def test_insert_error(stored_write_client):
     )
     assert messages == [["UNIQUE constraint failed: names.rowid", 3]]
     # How about with a custom error message?
-    await update_query(
-        stored_write_client, "add_name_specify_id", on_error_message="ERROR"
+    await stored_write_client.ds.update_query(
+        "data", "add_name_specify_id", on_error_message="ERROR"
     )
     response = await stored_write_client.post(
         "/data/add_name_specify_id",
@@ -385,13 +381,13 @@ async def test_magic_actor_missing_key(bare_ds, actor, key):
     ],
 )
 async def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
-    await update_query(
-        magic_parameters_client,
+    await magic_parameters_client.ds.update_query(
+        "data",
         "runme_post",
         sql=f"insert into logs (line) values (:{magic_parameter})",
     )
-    await update_query(
-        magic_parameters_client,
+    await magic_parameters_client.ds.update_query(
+        "data",
         "runme_get",
         sql=f"select :{magic_parameter} as result",
     )
@@ -432,8 +428,8 @@ async def test_magic_parameters(magic_parameters_client, magic_parameter, expect
 async def test_magic_parameters_csrf_json(
     magic_parameters_client, use_csrf, return_json
 ):
-    await update_query(
-        magic_parameters_client,
+    await magic_parameters_client.ds.update_query(
+        "data",
         "runme_post",
         sql="insert into logs (line) values (:_header_host)",
     )

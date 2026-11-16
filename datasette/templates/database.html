@@ -38,7 +38,7 @@
     <span>{{ "{:,}".format(shown_tables|length) }} table{% if shown_tables|length != 1 %}s{% endif %}</span>
     {%- if views %}<span>{{ "{:,}".format(views|length) }} view{% if views|length != 1 %}s{% endif %}</span>{% endif -%}
     {%- if queries %}<span>{{ "{:,}".format(queries_count) }} quer{% if queries_count != 1 %}ies{% else %}y{% endif %}</span>{% endif -%}
-    {%- if size %}<span>{{ format_bytes(size) }}</span>{% endif -%}
+    {%- if size %}<span>{{ size|filesizeformat }}</span>{% endif -%}
 </p>
 
 {% if allow_execute_sql %}
@@ -141,7 +141,7 @@
                 <path d="m7 10 5 5 5-5"></path>
             </svg>
             <span>Download SQLite database</span>
-            <span class="download-sqlite-size">{{ format_bytes(size) }}</span>
+            <span class="download-sqlite-size">{{ size|filesizeformat }}</span>
         </a>
     </p>
 {% endif %}

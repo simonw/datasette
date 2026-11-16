@@ -1915,6 +1915,8 @@ To return the newly inserted rows, add the ``"return": true`` key to the request
 
 This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
 
+If the table does not have an explicit primary key, each returned row will include the ``rowid`` that SQLite assigned to it. You can also set the ``rowid`` yourself by including it as a key in the row.
+
 If any of your rows have a primary key that is already in use, you will get an error and none of the rows will be inserted:
 
 .. code-block:: json

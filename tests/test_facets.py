@@ -197,7 +197,7 @@ async def test_column_facet_suggest(ds_client):
         table="facetable",
     )
     suggestions = await facet.suggest()
-    assert [
+    assert suggestions == [
         {"name": "created", "toggle_url": "http://localhost/?_facet=created"},
         {"name": "planet_int", "toggle_url": "http://localhost/?_facet=planet_int"},
         {"name": "on_earth", "toggle_url": "http://localhost/?_facet=on_earth"},
@@ -212,7 +212,7 @@ async def test_column_facet_suggest(ds_client):
             "name": "complex_array",
             "toggle_url": "http://localhost/?_facet=complex_array",
         },
-    ] == suggestions
+    ]
 
 
 async def test_column_facet_suggest_skip_if_already_selected(ds_client):
@@ -224,7 +224,7 @@ async def test_column_facet_suggest_skip_if_already_selected(ds_client):
         table="facetable",
     )
     suggestions = await facet.suggest()
-    assert [
+    assert suggestions == [
         {
             "name": "created",
             "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=created",
@@ -249,7 +249,7 @@ async def test_column_facet_suggest_skip_if_already_selected(ds_client):
             "name": "complex_array",
             "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=complex_array",
         },
-    ] == suggestions
+    ]
 
 
 async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
@@ -262,7 +262,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
         table_config={"facets": ["_city_id"]},
     )
     suggestions = [s["name"] for s in await facet.suggest()]
-    assert [
+    assert suggestions == [
         "created",
         "planet_int",
         "on_earth",
@@ -270,7 +270,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
         "_neighborhood",
         "tags",
         "complex_array",
-    ] == suggestions
+    ]
 
 
 async def test_column_facet_results(ds_client):
@@ -282,8 +282,8 @@ async def test_column_facet_results(ds_client):
         table="facetable",
     )
     buckets, timed_out = await facet.facet_results()
-    assert [] == timed_out
-    assert [
+    assert timed_out == []
+    assert buckets == [
         {
             "name": "_city_id",
             "type": "column",
@@ -321,7 +321,7 @@ async def test_column_facet_results(ds_client):
             ],
             "truncated": False,
         }
-    ] == buckets
+    ]
 
 
 @pytest.mark.parametrize(
@@ -388,7 +388,7 @@ async def test_column_facet_results_column_starts_with_underscore(ds_client):
         table="facetable",
     )
     buckets, timed_out = await facet.facet_results()
-    assert [] == timed_out
+    assert timed_out == []
     assert buckets == [
         {
             "name": "_neighborhood",
@@ -510,8 +510,8 @@ async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
         table_config={"facets": ["_city_id"]},
     )
     buckets, timed_out = await facet.facet_results()
-    assert [] == timed_out
-    assert [
+    assert timed_out == []
+    assert buckets == [
         {
             "name": "_city_id",
             "type": "column",
@@ -549,7 +549,7 @@ async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
             ],
             "truncated": False,
         }
-    ] == buckets
+    ]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -562,13 +562,13 @@ async def test_array_facet_suggest(ds_client):
         table="facetable",
     )
     suggestions = await facet.suggest()
-    assert [
+    assert suggestions == [
         {
             "name": "tags",
             "type": "array",
             "toggle_url": "http://localhost/?_facet_array=tags",
         }
-    ] == suggestions
+    ]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -581,7 +581,7 @@ async def test_array_facet_suggest_not_if_all_empty_arrays(ds_client):
         table="facetable",
     )
     suggestions = await facet.suggest()
-    assert [] == suggestions
+    assert suggestions == []
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -594,8 +594,8 @@ async def test_array_facet_results(ds_client):
         table="facetable",
     )
     buckets, timed_out = await facet.facet_results()
-    assert [] == timed_out
-    assert [
+    assert timed_out == []
+    assert buckets == [
         {
             "name": "tags",
             "type": "array",
@@ -626,7 +626,7 @@ async def test_array_facet_results(ds_client):
             "toggle_url": "/",
             "truncated": False,
         }
-    ] == buckets
+    ]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -692,8 +692,8 @@ async def test_date_facet_results(ds_client):
         table="facetable",
     )
     buckets, timed_out = await facet.facet_results()
-    assert [] == timed_out
-    assert [
+    assert timed_out == []
+    assert buckets == [
         {
             "name": "created",
             "type": "date",
@@ -731,7 +731,7 @@ async def test_date_facet_results(ds_client):
             "toggle_url": "/",
             "truncated": False,
         }
-    ] == buckets
+    ]
 
 
 async def test_json_array_with_blanks_and_nulls():

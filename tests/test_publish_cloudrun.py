@@ -52,14 +52,14 @@ def test_publish_cloudrun_prompts_for_service(
     result = runner.invoke(
         cli.cli, ["publish", "cloudrun", "test.db"], input="input-service"
     )
-    assert (
+    assert result.output.strip() == (
         "Please provide a service name for this deployment\n\n"
         "Using an existing service name will over-write it\n\n"
         "Your existing services:\n\n"
         "  existing - created 2019-01-01 - http://www.example.com/\n\n"
         "Service name: input-service"
-    ) == result.output.strip()
-    assert 0 == result.exit_code
+    )
+    assert result.exit_code == 0
     tag = "us-docker.pkg.dev/myproject/datasette/datasette-input-service"
     mock_call.assert_has_calls(
         [
@@ -94,7 +94,7 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
     result = runner.invoke(
         cli.cli, ["publish", "cloudrun", "test.db", "--service", "test"]
     )
-    assert 0 == result.exit_code
+    assert result.exit_code == 0
     tag = f"us-docker.pkg.dev/{mock_output.return_value}/datasette/datasette-test"
     mock_call.assert_has_calls(
         [
@@ -179,9 +179,9 @@ def test_publish_cloudrun_memory_cpu(
         args.extend(["--timeout", str(timeout)])
     result = runner.invoke(cli.cli, args)
     if expected_gcloud_args is None:
-        assert 2 == result.exit_code
+        assert result.exit_code == 2
         return
-    assert 0 == result.exit_code
+    assert result.exit_code == 0
     tag = f"us-docker.pkg.dev/{mock_output.return_value}/datasette/datasette-test"
     expected_call = (
         "gcloud run deploy --allow-unauthenticated --platform=managed"
@@ -279,13 +279,13 @@ def test_publish_cloudrun_plugin_secrets(
         .strip()
         .replace("VERSION", __version__)
     )
-    assert expected == dockerfile
+    assert dockerfile == expected
     metadata = (
         result.output.split("=== metadata.json ===\n")[1]
         .split("\n==== Dockerfile ====\n")[0]
         .strip()
     )
-    assert {
+    assert json.loads(metadata) == {
         "title": "Hello from metadata YAML",
         "plugins": {
             "datasette-auth-github": {
@@ -293,7 +293,7 @@ def test_publish_cloudrun_plugin_secrets(
                 "foo": "bar",
             },
         },
-    } == json.loads(metadata)
+    }
     config = (
         result.output.split("=== config.json ===\n")[1]
         .split("\n=== metadata.json ===\n")[0]
@@ -357,7 +357,7 @@ def test_publish_cloudrun_apt_get_install(
     EXPOSE 8001
     CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --config config.json --port $PORT
     """).strip().replace("VERSION", __version__)
-    assert expected == dockerfile
+    assert dockerfile == expected
 
 
 @pytest.mark.serial

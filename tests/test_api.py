@@ -17,7 +17,7 @@ from .fixtures import EXPECTED_PLUGINS, make_ds
 async def test_homepage(ds_client):
     response = await ds_client.get("/.json")
     assert response.status_code == 200
-    assert "application/json; charset=utf-8" == response.headers["content-type"]
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
     data = response.json()
     assert sorted(data.get("metadata").keys()) == [
         "about",
@@ -119,8 +119,8 @@ async def test_database_page(ds_client):
     # Verify hidden status
     visible_tables = {t["name"] for t in tables if not t["hidden"]}
     hidden_tables = {t["name"] for t in tables if t["hidden"]}
-    assert expected_visible_tables == visible_tables
-    assert expected_hidden_tables == hidden_tables
+    assert visible_tables == expected_visible_tables
+    assert hidden_tables == expected_hidden_tables
 
     # Helper to compare foreign keys (order-insensitive)
     def fk_set(fks):
@@ -254,7 +254,7 @@ async def test_no_files_uses_memory_database():
     ds = Datasette([])
     response = await ds.client.get("/.json")
     assert response.status_code == 200
-    assert {
+    assert response.json() == {
         "ok": True,
         "unstable": UNSTABLE_API_MESSAGE,
         "databases": [
@@ -275,13 +275,13 @@ async def test_no_files_uses_memory_database():
             },
         ],
         "metadata": {},
-    } == response.json()
+    }
     # Try that SQL query
     response = await ds.client.get(
         "/_memory/-/query.json?sql=select+sqlite_version()&_shape=array"
     )
-    assert 1 == len(response.json())
-    assert ["sqlite_version()"] == list(response.json()[0].keys())
+    assert len(response.json()) == 1
+    assert list(response.json()[0].keys()) == ["sqlite_version()"]
 
 
 @pytest.mark.parametrize(
@@ -328,7 +328,7 @@ async def test_sql_time_limit(ds_client_shorter_time_limit):
     response = await ds_client_shorter_time_limit.get(
         "/fixtures/-/query.json?sql=select+sleep(0.1)",
     )
-    assert 400 == response.status_code
+    assert response.status_code == 400
     expected_message = (
         "SQL query took too long. The time limit is"
         " controlled by the sql_time_limit_ms setting."
@@ -359,7 +359,7 @@ async def test_invalid_custom_sql(ds_client):
     )
     assert response.status_code == 400
     assert response.json()["ok"] is False
-    assert "Statement must be a SELECT" == response.json()["error"]
+    assert response.json()["error"] == "Statement must be a SELECT"
 
 
 async def test_row(ds_client):
@@ -674,14 +674,14 @@ async def test_databases_json(app_client_two_attached_databases_one_immutable):
         "/-/databases.json"
     )
     databases = response.json()["databases"]
-    assert 2 == len(databases)
+    assert len(databases) == 2
     extra_database, fixtures_database = databases
-    assert "extra database" == extra_database["name"]
+    assert extra_database["name"] == "extra database"
     assert extra_database["hash"] is None
     assert extra_database["is_mutable"] is True
     assert extra_database["is_memory"] is False
 
-    assert "fixtures" == fixtures_database["name"]
+    assert fixtures_database["name"] == "fixtures"
     assert fixtures_database["hash"] is not None
     assert fixtures_database["is_mutable"] is False
     assert fixtures_database["is_memory"] is False
@@ -709,7 +709,7 @@ async def test_plugins_json(ds_client):
         [p for p in response.json() if p["name"] != "TrackEventPlugin"],
         key=lambda p: p["name"],
     )
-    assert EXPECTED_PLUGINS == actual_plugins
+    assert actual_plugins == EXPECTED_PLUGINS
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
     names = {p["name"] for p in response.json()}
@@ -721,7 +721,7 @@ async def test_versions_json(ds_client):
     response = await ds_client.get("/-/versions.json")
     data = response.json()
     assert "python" in data
-    assert "3.0" == data.get("asgi")
+    assert data.get("asgi") == "3.0"
     assert "version" in data["python"]
     assert "full" in data["python"]
     assert "datasette" in data
@@ -1077,10 +1077,10 @@ async def test_common_prefix_database_names():
     ds = await make_ds(
         extra_databases={"foo-bar": EXTRA_DATABASE_SQL, "foo": EXTRA_DATABASE_SQL}
     )
-    assert ["foo-bar", "foo", "fixtures"] == [
+    assert [
         d["name"]
         for d in (await ds.client.get("/-/databases.json")).json()["databases"]
-    ]
+    ] == ["foo-bar", "foo", "fixtures"]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
         data = (await ds.client.get(path)).json()
         assert db_name == data["database"]

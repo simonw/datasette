@@ -41,7 +41,7 @@ def db(app_client):
 async def test_execute(db):
     results = await db.execute("select * from facetable")
     assert isinstance(results, Results)
-    assert 15 == len(results)
+    assert len(results) == 15
 
 
 async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
@@ -103,7 +103,7 @@ async def test_results_dicts(db):
 async def test_results_single_value(db, query, expected):
     results = await db.execute(query)
     if expected:
-        assert expected == results.single_value()
+        assert results.single_value() == expected
     else:
         with pytest.raises(MultipleValues):
             results.single_value()
@@ -113,7 +113,7 @@ async def test_execute_fn(db):
     def get_1_plus_1(conn):
         return conn.execute("select 1 + 1").fetchall()[0][0]
 
-    assert 2 == await db.execute_fn(get_1_plus_1)
+    assert await db.execute_fn(get_1_plus_1) == 2
 
 
 async def test_execute_fn_transaction_false():
@@ -526,7 +526,7 @@ async def test_execute_write_block_true(db):
     assert result.description is None
     assert result.truncated is False
     assert result.fetchall() == []
-    assert "Mystery!" == rows.rows[0][0]
+    assert rows.rows[0][0] == "Mystery!"
 
 
 @requires_sqlite_returning
@@ -655,7 +655,7 @@ async def test_execute_write_block_false(db):
     )
     await asyncio.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")
-    assert "Mystery!" == rows.rows[0][0]
+    assert rows.rows[0][0] == "Mystery!"
 
 
 @requires_sqlite_returning
@@ -764,7 +764,7 @@ async def test_execute_write_fn_block_true(db):
         return row[0]
 
     new_count = await db.execute_write_fn(write_fn)
-    assert 3 == new_count
+    assert new_count == 3
 
 
 async def test_execute_write_fn_exception(db):

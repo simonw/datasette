@@ -36,16 +36,16 @@ def test_inspect_cli(fixtures_db_in_cwd):
     runner = CliRunner()
     result = runner.invoke(cli, ["inspect", "fixtures.db"])
     data = json.loads(result.output)
-    assert ["fixtures"] == list(data.keys())
+    assert list(data.keys()) == ["fixtures"]
     database = data["fixtures"]
-    assert "fixtures.db" == database["file"]
+    assert database["file"] == "fixtures.db"
     assert isinstance(database["hash"], str)
-    assert 64 == len(database["hash"])
+    assert len(database["hash"]) == 64
     for table_name, expected_count in {
         "Table With Space In Name": 0,
         "facetable": 15,
     }.items():
-        assert expected_count == database["tables"][table_name]["count"]
+        assert database["tables"][table_name]["count"] == expected_count
 
 
 def test_inspect_cli_counts_all_rows(tmp_path):
@@ -72,7 +72,7 @@ def test_inspect_cli_writes_to_file(fixtures_db_in_cwd):
     assert result.exit_code == 0, result.output
     with open("foo.json") as fp:
         data = json.load(fp)
-    assert ["fixtures"] == list(data.keys())
+    assert list(data.keys()) == ["fixtures"]
 
 
 def test_serve_with_inspect_file_prepopulates_table_counts_cache():
@@ -80,7 +80,7 @@ def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     with make_app_client(inspect_data=inspect_data, is_immutable=True) as client:
         assert inspect_data == client.ds.inspect_data
         db = client.ds.databases["fixtures"]
-        assert {"hithere": 44} == db.cached_table_counts
+        assert db.cached_table_counts == {"hithere": 44}
 
 
 @pytest.mark.parametrize(
@@ -186,7 +186,7 @@ def test_metadata_yaml():
     )
     client = _TestClient(ds)
     response = client.get("/.json")
-    assert {"title": "Hello from YAML"} == response.json["metadata"]
+    assert response.json["metadata"] == {"title": "Hello from YAML"}
 
 
 @mock.patch("datasette.cli.run_module")

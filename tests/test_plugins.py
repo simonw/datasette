@@ -69,9 +69,9 @@ async def test_hook_plugin_prepare_connection_arguments(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
     )
-    assert [
+    assert response.json() == [
         "database=fixtures, datasette.plugin_config(\"name-of-plugin\")={'depth': 'root'}"
-    ] == response.json()
+    ]
 
     # Function should not be available on the internal database
     db = ds_client.ds.get_internal_database()
@@ -140,7 +140,7 @@ async def test_hook_extra_css_urls(ds_client, path, expected_decoded_object):
     # This link has a base64-encoded JSON blob in it
     encoded = special_href.split("/")[3]
     actual_decoded_object = json.loads(base64.b64decode(encoded).decode("utf8"))
-    assert expected_decoded_object == actual_decoded_object
+    assert actual_decoded_object == expected_decoded_object
 
 
 async def test_hook_extra_js_urls(ds_client):
@@ -174,10 +174,10 @@ async def test_plugins_with_duplicate_js_urls(ds_client):
     # No duplicates allowed:
     assert len(srcs) == len(set(srcs))
     # jquery.js loaded once:
-    assert 1 == srcs.count("https://plugin-example.datasette.io/jquery.js")
+    assert srcs.count("https://plugin-example.datasette.io/jquery.js") == 1
     # plugin1.js and plugin2.js are both there:
-    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin1.js")
-    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin2.js")
+    assert srcs.count("https://plugin-example.datasette.io/plugin1.js") == 1
+    assert srcs.count("https://plugin-example.datasette.io/plugin2.js") == 1
     # jquery comes before them both
     assert srcs.index("https://plugin-example.datasette.io/jquery.js") < srcs.index(
         "https://plugin-example.datasette.io/plugin1.js"
@@ -268,19 +268,19 @@ async def test_hook_render_cell_async(ds_client, path):
 
 
 async def test_plugin_config(ds_client):
-    assert {"depth": "table"} == ds_client.ds.plugin_config(
+    assert ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="sortable"
-    )
-    assert {"depth": "database"} == ds_client.ds.plugin_config(
+    ) == {"depth": "table"}
+    assert ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="unknown_table"
-    )
-    assert {"depth": "database"} == ds_client.ds.plugin_config(
-        "name-of-plugin", database="fixtures"
-    )
-    assert {"depth": "root"} == ds_client.ds.plugin_config(
+    ) == {"depth": "database"}
+    assert ds_client.ds.plugin_config("name-of-plugin", database="fixtures") == {
+        "depth": "database"
+    }
+    assert ds_client.ds.plugin_config(
         "name-of-plugin", database="unknown_database"
-    )
-    assert {"depth": "root"} == ds_client.ds.plugin_config("name-of-plugin")
+    ) == {"depth": "root"}
+    assert ds_client.ds.plugin_config("name-of-plugin") == {"depth": "root"}
     assert None is ds_client.ds.plugin_config("unknown-plugin")
 
 
@@ -292,7 +292,7 @@ def test_plugin_config_database_without_plugins_falls_back_to_top():
             "databases": {"fixtures": {"tables": {"t": {"allow": True}}}},
         },
     )
-    assert {"depth": "root"} == ds.plugin_config("name-of-plugin", database="fixtures")
+    assert ds.plugin_config("name-of-plugin", database="fixtures") == {"depth": "root"}
     assert None is ds.plugin_config(
         "name-of-plugin", database="fixtures", fallback=False
     )
@@ -313,9 +313,9 @@ async def test_plugin_config_env_from_config(monkeypatch):
 
 async def test_plugin_config_env_from_list(ds_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
-    assert [{"in_a_list": "FROM_ENVIRONMENT"}] == ds_client.ds.plugin_config(
-        "env-plugin-list"
-    )
+    assert ds_client.ds.plugin_config("env-plugin-list") == [
+        {"in_a_list": "FROM_ENVIRONMENT"}
+    ]
     del os.environ["FOO_ENV"]
 
 
@@ -323,7 +323,7 @@ async def test_plugin_config_file(ds_client):
     # Blocking write is fine here - it is tiny test setup, not request handling
     with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:  # noqa: ASYNC230
         fp.write("FROM_FILE")
-    assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
+    assert ds_client.ds.plugin_config("file-plugin") == {"foo": "FROM_FILE"}
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 
@@ -387,12 +387,12 @@ async def test_hook_extra_body_script(ds_client, path, expected_extra_body_scrip
     assert match is not None, "No extra_body_script found in HTML"
     json_data = match.group(1)
     actual_data = json.loads(json_data)
-    assert expected_extra_body_script == actual_data
+    assert actual_data == expected_extra_body_script
 
 
 async def test_hook_asgi_wrapper(ds_client):
     response = await ds_client.get("/fixtures")
-    assert "fixtures" == response.headers["x-databases"]
+    assert response.headers["x-databases"] == "fixtures"
 
 
 async def test_hook_extra_template_vars():
@@ -404,21 +404,21 @@ async def test_hook_extra_template_vars():
     extra_template_vars = json.loads(
         Soup(response.text, "html.parser").select("pre.extra_template_vars")[0].text
     )
-    assert {
+    assert extra_template_vars == {
         "template": "show_json.html",
         "scope_path": "/-/versions",
         "columns": None,
-    } == extra_template_vars
+    }
     extra_template_vars_from_awaitable = json.loads(
         Soup(response.text, "html.parser")
         .select("pre.extra_template_vars_from_awaitable")[0]
         .text
     )
-    assert {
+    assert extra_template_vars_from_awaitable == {
         "template": "show_json.html",
         "awaitable": True,
         "scope_path": "/-/versions",
-    } == extra_template_vars_from_awaitable
+    }
 
 
 @pytest.mark.parametrize(
@@ -499,7 +499,7 @@ async def test_plugins_async_template_function():
     conn = sqlite3.connect(":memory:")
     expected = conn.execute("select sqlite_version()").fetchone()[0]
     conn.close()
-    assert expected == extra_from_awaitable_function
+    assert extra_from_awaitable_function == expected
 
 
 def test_default_plugins_have_no_templates_path_or_static_path():
@@ -626,7 +626,7 @@ async def test_hook_register_output_renderer_view_name_for_renderers_extra(ds_cl
 async def test_hook_register_output_renderer_no_parameters(ds_client):
     response = await ds_client.get("/fixtures/facetable.testnone")
     assert response.status_code == 200
-    assert b"Hello" == response.content
+    assert response.content == b"Hello"
 
 
 async def test_hook_register_output_renderer_all_parameters(ds_client):
@@ -726,15 +726,15 @@ async def test_hook_register_output_renderer_custom_content_type(ds_client):
     response = await ds_client.get(
         "/fixtures/pragma_cache_size.testall?content_type=text/blah"
     )
-    assert "text/blah" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/blah"
 
 
 async def test_hook_register_output_renderer_custom_headers(ds_client):
     response = await ds_client.get(
         "/fixtures/pragma_cache_size.testall?header=x-wow:1&header=x-gosh:2"
     )
-    assert "1" == response.headers["x-wow"]
-    assert "2" == response.headers["x-gosh"]
+    assert response.headers["x-wow"] == "1"
+    assert response.headers["x-gosh"] == "2"
 
 
 async def test_hook_register_output_renderer_returning_response(ds_client):
@@ -983,7 +983,7 @@ async def test_hook_prepare_jinja2_environment(ds_client):
         {"a": 3412341, "b": 5},
     )
     rendered = await ds_client.ds.render_template(template)
-    assert "Hello there, 3,412,341, HI, 15" == rendered
+    assert rendered == "Hello there, 3,412,341, HI, 15"
 
 
 def test_hook_publish_subcommand():
@@ -992,7 +992,7 @@ def test_hook_publish_subcommand():
     # to be installed using "pip install". So I'm cheating and taking
     # advantage of the fact that cloudrun/heroku use the plugin hook
     # to register themselves as default plugins.
-    assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
+    assert cli.publish.list_commands({}) == ["cloudrun", "heroku"]
 
 
 async def test_hook_register_facet_classes(ds_client):
@@ -1072,7 +1072,7 @@ async def test_hook_custom_allowed(action, expected):
     ds = Datasette(plugins_dir=PLUGINS_DIR)
     await ds.invoke_startup()
     actual = await ds.allowed(action=action, actor={"id": "actor"})
-    assert expected == actual
+    assert actual == expected
 
 
 async def test_hook_permission_resources_sql():
@@ -1185,8 +1185,8 @@ async def test_hook_register_routes_csrftoken(tmpdir_factory):
 
 async def test_hook_register_routes_asgi(ds_client):
     response = await ds_client.get("/three/")
-    assert {"hello": "world"} == response.json()
-    assert "1" == response.headers["x-three"]
+    assert response.json() == {"hello": "world"}
+    assert response.headers["x-three"] == "1"
 
 
 async def test_hook_register_routes_add_message(ds_client):
@@ -1203,14 +1203,14 @@ async def test_hook_register_routes_render_message(tmpdir_factory):
     ds = await make_ds(template_dir=templates)
     response1 = await ds.client.get("/add-message/")
     response2 = await ds.client.get("/render-message/", cookies=response1.cookies)
-    assert 200 == response2.status_code
+    assert response2.status_code == 200
     assert "Hello from messages" in response2.text
 
 
 async def test_hook_startup(ds_client):
     await ds_client.ds.invoke_startup()
     assert ds_client.ds._startup_hook_fired
-    assert 2 == ds_client.ds._startup_hook_calculation
+    assert ds_client.ds._startup_hook_calculation == 2
 
 
 async def test_hook_startup_metadata_available(ds_client):
@@ -1277,7 +1277,7 @@ async def test_plugin_startup_query_can_execute():
     finally:
         ds.pm.unregister(name="add_query_plugin")
 
-    assert [{"2": 2}] == response.json()
+    assert response.json() == [{"2": 2}]
 
 
 async def test_hook_register_magic_parameters():
@@ -1307,15 +1307,15 @@ async def test_hook_register_magic_parameters():
     actual = (
         await ds.client.get("/data/logs.json?_sort_desc=rowid&_shape=array")
     ).json()
-    assert [{"rowid": 1, "line": "1.1"}] == actual
+    assert actual == [{"rowid": 1, "line": "1.1"}]
     # Now try the GET request against get_uuid
     response_get = await ds.client.get("/data/get_uuid.json?_shape=array")
-    assert 200 == response_get.status_code
+    assert response_get.status_code == 200
     new_uuid = response_get.json()[0][":_uuid_new"]
-    assert 4 == new_uuid.count("-")
+    assert new_uuid.count("-") == 4
     # And test the async one
     response_async = await ds.client.get("/data/asyncrequest.json?_shape=array")
-    assert 200 == response_async.status_code
+    assert response_async.status_code == 200
     assert response_async.json()[0][":_asyncrequest_key"] == "key"
 
 
@@ -1327,7 +1327,7 @@ async def test_hook_forbidden():
     response = await ds.client.get("/")
     assert response.status_code == 403
     response2 = await ds.client.get("/data2")
-    assert 302 == response2.status_code
+    assert response2.status_code == 302
     assert (
         response2.headers["Location"]
         == "/login?message=You do not have permission to view this database"

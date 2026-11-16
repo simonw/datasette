@@ -79,7 +79,7 @@ from datasette.utils.asgi import Request
 def test_build_where(args, expected_where, expected_params):
     f = Filters(sorted(args))
     sql_bits, actual_params = f.build_where_clauses("table")
-    assert expected_where == sql_bits
+    assert sql_bits == expected_where
     assert {f"p{i}": param for i, param in enumerate(expected_params)} == actual_params
 
 

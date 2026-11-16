@@ -21,10 +21,10 @@ async def test_auth_token(ds_client):
     path = f"/-/auth-token?token={ds_client.ds._root_token}"
     response = await ds_client.get(path)
     assert response.status_code == 302
-    assert "/" == response.headers["Location"]
-    assert {"a": {"id": "root"}} == ds_client.ds.unsign(
-        response.cookies["ds_actor"], "actor"
-    )
+    assert response.headers["Location"] == "/"
+    assert ds_client.ds.unsign(response.cookies["ds_actor"], "actor") == {
+        "a": {"id": "root"}
+    }
     # Should have recorded a login event
     event = last_event(ds_client.ds)
     assert event.name == "login"
@@ -78,20 +78,20 @@ async def test_logout(ds_client):
     response = await ds_client.get(
         "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"id": "test"})}
     )
-    assert 200 == response.status_code
+    assert response.status_code == 200
     assert "<p>You are logged in as <strong>test</strong></p>" in response.text
     # Actors without an id get full serialization
     response2 = await ds_client.get(
         "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"name2": "bob"})}
     )
-    assert 200 == response2.status_code
+    assert response2.status_code == 200
     assert (
         "<p>You are logged in as <strong>{&#39;name2&#39;: &#39;bob&#39;}</strong></p>"
         in response2.text
     )
     # If logged out you get a redirect to /
     response3 = await ds_client.get("/-/logout")
-    assert 302 == response3.status_code
+    assert response3.status_code == 302
     # A POST to that page should log the user out
     response4 = await ds_client.post(
         "/-/logout",
@@ -105,7 +105,7 @@ async def test_logout(ds_client):
     assert cookie_was_deleted(response4, "ds_actor")
     # Should also have set a message
     messages = ds_client.ds.unsign(response4.cookies["ds_messages"], "messages")
-    assert [["You are now logged out", 2]] == messages
+    assert messages == [["You are now logged out", 2]]
 
 
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])

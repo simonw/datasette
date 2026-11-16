@@ -128,13 +128,13 @@ async def test_insert_blocked_cross_site(stored_write_client):
         data={"name": "Hello"},
         headers={"sec-fetch-site": "cross-site"},
     )
-    assert 403 == response.status_code
+    assert response.status_code == 403
 
 
 async def test_insert_no_cookies_no_csrf(stored_write_client):
     response = await stored_write_client.post("/data/add_name", data={"name": "Hello"})
-    assert 302 == response.status_code
-    assert "/data/add_name?success" == response.headers["Location"]
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/data/add_name?success"
 
 
 async def test_custom_success_message(stored_write_client):
@@ -143,11 +143,11 @@ async def test_custom_success_message(stored_write_client):
         data={"rowid": 1},
         cookies={"ds_actor": stored_write_client.actor_cookie({"id": "root"})},
     )
-    assert 302 == response.status_code
+    assert response.status_code == 302
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
-    assert [["Name deleted", 1]] == messages
+    assert messages == [["Name deleted", 1]]
 
 
 async def test_insert_error(stored_write_client):
@@ -156,12 +156,12 @@ async def test_insert_error(stored_write_client):
         "/data/add_name_specify_id",
         data={"rowid": 1, "name": "Should fail"},
     )
-    assert 302 == response.status_code
-    assert "/data/add_name_specify_id?error" == response.headers["Location"]
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/data/add_name_specify_id?error"
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
-    assert [["UNIQUE constraint failed: names.rowid", 3]] == messages
+    assert messages == [["UNIQUE constraint failed: names.rowid", 3]]
     # How about with a custom error message?
     await update_query(
         stored_write_client, "add_name_specify_id", on_error_message="ERROR"
@@ -170,9 +170,9 @@ async def test_insert_error(stored_write_client):
         "/data/add_name_specify_id",
         data={"rowid": 1, "name": "Should fail"},
     )
-    assert [["ERROR", 3]] == stored_write_client.ds.unsign(
+    assert stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
-    )
+    ) == [["ERROR", 3]]
 
 
 async def test_on_success_message_sql(stored_write_client):
@@ -223,8 +223,8 @@ async def test_json_post_body(stored_write_client):
         content=json.dumps({"name": ["Hello", "there"]}),
         headers=FORM_CONTENT_TYPE,
     )
-    assert 302 == response.status_code
-    assert "/data/add_name?success" == response.headers["Location"]
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/data/add_name?success"
     rows = (await stored_write_client.get("/data/names.json?_shape=array")).json()
     assert rows == [{"rowid": 1, "name": "['Hello', 'there']"}]
 
@@ -244,7 +244,7 @@ async def test_json_response(stored_write_client, headers, body, querystring):
         content=body,
         headers={**FORM_CONTENT_TYPE, **(headers or {})},
     )
-    assert 200 == response.status_code
+    assert response.status_code == 200
     assert response.headers["content-type"] == "application/json; charset=utf-8"
     assert response.json() == {
         "ok": True,
@@ -320,21 +320,15 @@ async def test_stored_query_permissions_on_database_page(stored_write_client):
 
 
 async def test_stored_query_permissions(stored_write_client):
-    assert 403 == (await stored_write_client.get("/data/delete_name")).status_code
-    assert 200 == (await stored_write_client.get("/data/update_name")).status_code
+    assert (await stored_write_client.get("/data/delete_name")).status_code == 403
+    assert (await stored_write_client.get("/data/update_name")).status_code == 200
     cookies = {"ds_actor": stored_write_client.actor_cookie({"id": "root"})}
     assert (
-        200
-        == (
-            await stored_write_client.get("/data/delete_name", cookies=cookies)
-        ).status_code
-    )
+        await stored_write_client.get("/data/delete_name", cookies=cookies)
+    ).status_code == 200
     assert (
-        200
-        == (
-            await stored_write_client.get("/data/update_name", cookies=cookies)
-        ).status_code
-    )
+        await stored_write_client.get("/data/update_name", cookies=cookies)
+    ).status_code == 200
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -458,7 +452,7 @@ async def test_magic_parameters_csrf_json(
         messages = magic_parameters_client.ds.unsign(
             response.cookies["ds_messages"], "messages"
         )
-        assert [["Query executed, 1 row affected", 1]] == messages
+        assert messages == [["Query executed, 1 row affected", 1]]
     post_actual = (
         await magic_parameters_client.get(
             "/data/logs.json?_sort_desc=rowid&_shape=array"
@@ -473,7 +467,7 @@ async def test_magic_parameters_cannot_be_used_in_arbitrary_queries(
     response = await magic_parameters_client.get(
         "/data/-/query.json?sql=select+:_header_host&_shape=array"
     )
-    assert 400 == response.status_code
+    assert response.status_code == 400
     assert response.json()["error"].startswith("You did not supply a value for binding")
 
 

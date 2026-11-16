@@ -254,13 +254,13 @@ async def test_table_shape_array_nl(ds_client):
     )
     lines = response.text.split("\n")
     results = [json.loads(line) for line in lines]
-    assert [
+    assert results == [
         {"id": 1, "content": "hello"},
         {"id": 2, "content": "world"},
         {"id": 3, "content": ""},
         {"id": 4, "content": "RENDER_CELL_DEMO"},
         {"id": 5, "content": "RENDER_CELL_ASYNC"},
-    ] == results
+    ]
 
 
 async def test_table_shape_invalid(ds_client):
@@ -332,8 +332,8 @@ async def test_paginate_tables_and_views(
             path = path.replace("http://localhost", "")
         assert count < 30, "Possible infinite loop detected"
 
-    assert expected_rows == len(fetched)
-    assert expected_pages == count
+    assert len(fetched) == expected_rows
+    assert count == expected_pages
 
 
 @pytest.mark.parametrize(
@@ -346,7 +346,7 @@ async def test_paginate_tables_and_views(
 )
 async def test_validate_page_size(ds_client, path, expected_error):
     response = await ds_client.get(path)
-    assert expected_error == response.json()["error"]
+    assert response.json()["error"] == expected_error
     assert response.status_code == 400
 
 
@@ -354,8 +354,8 @@ async def test_page_size_zero(ds_client):
     """For _size=0 we return the counts, empty rows and no continuation token"""
     response = await ds_client.get("/fixtures/no_primary_key.json?_size=0&_extra=count")
     assert response.status_code == 200
-    assert [] == response.json()["rows"]
-    assert 202 == response.json()["count"]
+    assert response.json()["rows"] == []
+    assert response.json()["count"] == 202
     assert None is response.json()["next"]
     assert None is response.json()["next_url"]
 
@@ -372,12 +372,12 @@ async def test_paginate_compound_keys(ds_client):
         if path:
             path = path.replace("http://localhost", "")
         assert page < 100
-    assert 1001 == len(fetched)
-    assert 21 == page
+    assert len(fetched) == 1001
+    assert page == 21
     # Should be correctly ordered
     contents = [f["content"] for f in fetched]
     expected = [r[3] for r in generate_compound_rows(1001)]
-    assert expected == contents
+    assert contents == expected
 
 
 async def test_paginate_compound_keys_with_extra_filters(ds_client):
@@ -394,9 +394,9 @@ async def test_paginate_compound_keys_with_extra_filters(ds_client):
         path = response.json()["next_url"]
         if path:
             path = path.replace("http://localhost", "")
-    assert 2 == page
+    assert page == 2
     expected = [r[3] for r in generate_compound_rows(1001) if "d" in r[3]]
-    assert expected == [f["content"] for f in fetched]
+    assert [f["content"] for f in fetched] == expected
 
 
 @pytest.mark.parametrize(
@@ -463,8 +463,8 @@ async def test_sortable_and_filtered(ds_client):
     response = await ds_client.get(path)
     fetched = response.json()["rows"]
     assert (
-        'where content contains "d" sorted by sortable descending'
-        == response.json()["human_description_en"]
+        response.json()["human_description_en"]
+        == 'where content contains "d" sorted by sortable descending'
     )
     expected = [row for row in generate_sortable_rows(201) if "d" in row["content"]]
     assert len(expected) == response.json()["count"]
@@ -474,20 +474,20 @@ async def test_sortable_and_filtered(ds_client):
 
 async def test_sortable_argument_errors(ds_client):
     response = await ds_client.get("/fixtures/sortable.json?_sort=badcolumn")
-    assert "Cannot sort table by badcolumn" == response.json()["error"]
+    assert response.json()["error"] == "Cannot sort table by badcolumn"
     response = await ds_client.get("/fixtures/sortable.json?_sort_desc=badcolumn2")
-    assert "Cannot sort table by badcolumn2" == response.json()["error"]
+    assert response.json()["error"] == "Cannot sort table by badcolumn2"
     response = await ds_client.get(
         "/fixtures/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable"
     )
     assert (
-        "Cannot use _sort and _sort_desc at the same time" == response.json()["error"]
+        response.json()["error"] == "Cannot use _sort and _sort_desc at the same time"
     )
 
 
 async def test_sortable_columns_metadata(ds_client):
     response = await ds_client.get("/fixtures/sortable.json?_sort=content")
-    assert "Cannot sort table by content" == response.json()["error"]
+    assert response.json()["error"] == "Cannot sort table by content"
     # no_primary_key has ALL sort options disabled
     for column in ("content", "a", "b", "c"):
         response = await ds_client.get(f"/fixtures/sortable.json?_sort={column}")
@@ -546,7 +546,7 @@ async def test_sortable_columns_metadata(ds_client):
 )
 async def test_searchable(ds_client, path, expected_rows):
     response = await ds_client.get(path)
-    assert expected_rows == response.json()["rows"]
+    assert response.json()["rows"] == expected_rows
 
 
 _SEARCHMODE_RAW_RESULTS = [
@@ -588,7 +588,7 @@ async def test_searchmode(table_metadata, querystring, expected_rows):
     response = await ds.client.get(
         "/fixtures/searchable.json?_shape=arrays&" + querystring
     )
-    assert expected_rows == response.json()["rows"]
+    assert response.json()["rows"] == expected_rows
 
 
 @pytest.mark.parametrize(
@@ -670,11 +670,11 @@ async def test_table_filter_queries_multiple_of_same_type(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key.json?_shape=arrays&content__not=world&content__not=hello"
     )
-    assert [
+    assert response.json()["rows"] == [
         [3, ""],
         [4, "RENDER_CELL_DEMO"],
         [5, "RENDER_CELL_ASYNC"],
-    ] == response.json()["rows"]
+    ]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -766,7 +766,7 @@ async def test_table_filter_extra_where(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_shape=arrays&_where=_neighborhood='Dogpatch'"
     )
-    assert [
+    assert response.json()["rows"] == [
         [
             2,
             "2019-01-14 08:00:00",
@@ -780,7 +780,7 @@ async def test_table_filter_extra_where(ds_client):
             "two",
             "n2",
         ]
-    ] == response.json()["rows"]
+    ]
 
 
 async def test_table_filter_extra_where_invalid(ds_client):
@@ -797,7 +797,7 @@ async def test_table_filter_extra_where_disabled_if_no_sql_allowed():
         "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
     )
     assert response.status_code == 403
-    assert "_where= is not allowed" == response.json()["error"]
+    assert response.json()["error"] == "_where= is not allowed"
 
 
 async def test_table_through(ds_client):
@@ -838,7 +838,7 @@ async def test_max_returned_rows(ds_client):
     )
     data = response.json()
     assert data["truncated"]
-    assert 100 == len(data["rows"])
+    assert len(data["rows"]) == 100
 
 
 async def test_view(ds_client):
@@ -1041,7 +1041,7 @@ async def test_facets(ds_client, path, expected_facet_results):
         assert False is facet_info["truncated"]
         for facet_value in facet_info["results"]:
             facet_value["toggle_url"] = facet_value["toggle_url"].split("?")[1]
-    assert expected_facet_results == facet_results["results"]
+    assert facet_results["results"] == expected_facet_results
 
 
 @pytest.mark.skipif(not detect_json1(), reason="requires JSON1 extension")
@@ -1110,7 +1110,7 @@ async def test_suggested_facets(ds_client):
         expected.append(
             {"name": "tags", "querystring": "_extra=suggested_facets&_facet_array=tags"}
         )
-    assert expected == suggestions
+    assert suggestions == expected
 
 
 async def test_allow_facet_off():
@@ -1124,18 +1124,15 @@ async def test_allow_facet_off():
         await ds.client.get("/fixtures/facetable.json?_extra=suggested_facets")
     ).json()
     # Should not suggest any facets either:
-    assert [] == data["suggested_facets"]
+    assert data["suggested_facets"] == []
 
 
 async def test_suggest_facets_off():
     ds = await make_ds(settings={"suggest_facets": False})
     # Now suggested_facets should be []
     assert (
-        []
-        == (
-            await ds.client.get("/fixtures/facetable.json?_extra=suggested_facets")
-        ).json()["suggested_facets"]
-    )
+        await ds.client.get("/fixtures/facetable.json?_extra=suggested_facets")
+    ).json()["suggested_facets"] == []
 
 
 @pytest.mark.parametrize("nofacet", (True, False))

@@ -146,7 +146,7 @@ def test_serve_with_get_and_token():
             token,
         ],
     )
-    assert 0 == result2.exit_code, result2.output
+    assert result2.exit_code == 0, result2.output
     assert json.loads(result2.output) == {
         "ok": True,
         "actor": {"id": "root", "token": "dstok"},

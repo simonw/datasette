@@ -100,7 +100,7 @@ async def test_request_post_vars():
         }
 
     request = Request(scope, receive)
-    assert {"foo": "bar", "baz": "1", "empty": ""} == await request.post_vars()
+    assert await request.post_vars() == {"foo": "bar", "baz": "1", "empty": ""}
 
 
 async def test_request_post_body():
@@ -243,20 +243,20 @@ async def test_request_json_too_large():
 
 def test_request_args():
     request = Request.fake("/foo?multi=1&multi=2&single=3")
-    assert "1" == request.args.get("multi")
-    assert "3" == request.args.get("single")
-    assert "1" == request.args["multi"]
-    assert "3" == request.args["single"]
-    assert ["1", "2"] == request.args.getlist("multi")
-    assert [] == request.args.getlist("missing")
+    assert request.args.get("multi") == "1"
+    assert request.args.get("single") == "3"
+    assert request.args["multi"] == "1"
+    assert request.args["single"] == "3"
+    assert request.args.getlist("multi") == ["1", "2"]
+    assert request.args.getlist("missing") == []
     assert "multi" in request.args
     assert "single" in request.args
     assert "missing" not in request.args
     expected = ["multi", "single"]
-    assert expected == list(request.args.keys())
+    assert list(request.args.keys()) == expected
     for i, key in enumerate(request.args):
         assert expected[i] == key
-    assert 2 == len(request.args)
+    assert len(request.args) == 2
     with pytest.raises(KeyError):
         request.args["missing"]
 
@@ -287,10 +287,10 @@ def test_request_url_vars():
         "type": "http",
         "headers": [[b"content-type", b"application/x-www-form-urlencoded"]],
     }
-    assert {} == Request(scope, None).url_vars
-    assert {"name": "cleo"} == Request(
+    assert Request(scope, None).url_vars == {}
+    assert Request(
         dict(scope, url_route={"kwargs": {"name": "cleo"}}), None
-    ).url_vars
+    ).url_vars == {"name": "cleo"}
 
 
 @pytest.mark.parametrize(

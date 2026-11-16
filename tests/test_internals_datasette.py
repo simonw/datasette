@@ -27,7 +27,7 @@ def datasette(ds_client):
 
 def test_get_database(datasette):
     db = datasette.get_database("fixtures")
-    assert "fixtures" == db.name
+    assert db.name == "fixtures"
     with pytest.raises(KeyError):
         datasette.get_database("missing")
 
@@ -35,7 +35,7 @@ def test_get_database(datasette):
 def test_get_database_no_argument(datasette):
     # Returns the first available database:
     db = datasette.get_database()
-    assert "fixtures" == db.name
+    assert db.name == "fixtures"
 
 
 @pytest.mark.parametrize("value", ["hello", 123, {"key": "value"}])

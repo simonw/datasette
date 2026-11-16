@@ -119,7 +119,7 @@ async def test_table_definition_sql(path, expected_definition_sql, ds_client):
     response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
     pre = soup.select_one("pre.wrapped-sql")
-    assert expected_definition_sql == pre.string
+    assert pre.string == expected_definition_sql
     # With a button to copy it
     button = soup.select_one("details.table-schema datasette-copy-button")
     assert button["for"] == pre["id"]
@@ -133,6 +133,8 @@ async def test_table_cell_truncation():
     table = Soup(response.content, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     assert [
+        td.string for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
+    ] == [
         "Missi…",
         "Dogpa…",
         "SOMA",
@@ -148,8 +150,6 @@ async def test_table_cell_truncation():
         "Corkt…",
         "Mexic…",
         "Arcad…",
-    ] == [
-        td.string for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
     ]
     # URLs should be truncated too
     response2 = await ds.client.get("/fixtures/roadside_attractions")
@@ -289,8 +289,9 @@ async def test_searchable_view_persists_fts_table(ds_client):
     )
     inputs = Soup(response.text, "html.parser").find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_fts_table", "searchable_fts"), ("_fts_pk", "pk")] == [
-        (hidden["name"], hidden["value"]) for hidden in hiddens
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
+        ("_fts_table", "searchable_fts"),
+        ("_fts_pk", "pk"),
     ]
 
 
@@ -598,13 +599,13 @@ async def test_table_html_simple_primary_key(ds_client):
     table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.find_all("th")
-    assert "id\xa0▼" == ths[0].find("a").string.strip()
+    assert ths[0].find("a").string.strip() == "id\xa0▼"
     for expected_col, th in zip(("content",), ths[1:]):
         a = th.find("a")
-        assert expected_col == a.string
+        assert a.string == expected_col
         assert a["href"].endswith(f"/simple_primary_key?_size=3&_sort={expected_col}")
-        assert ["nofollow"] == a["rel"]
-    assert [
+        assert a["rel"] == ["nofollow"]
+    assert [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")] == [
         [
             '<td class="col-id type-pk"><a href="/fixtures/simple_primary_key/1">1</a></td>',
             '<td class="col-content type-str">hello</td>',
@@ -617,7 +618,7 @@ async def test_table_html_simple_primary_key(ds_client):
             '<td class="col-id type-pk"><a href="/fixtures/simple_primary_key/3">3</a></td>',
             '<td class="col-content type-str">\xa0</td>',
         ],
-    ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    ]
 
 
 async def test_table_csv_json_export_interface(ds_client):
@@ -728,10 +729,10 @@ async def test_table_csv_json_export_interface(ds_client):
     assert form["action"] == "/fixtures/simple_primary_key.csv"
     assert form["method"] == "get"
     inputs = [str(input) for input in form.find_all("input")]
-    assert [
+    assert inputs == [
         '<input name="id__gt" type="hidden" value="2"/>',
         '<input name="_size" type="hidden" value="max"/>',
-    ] == inputs
+    ]
     for format, formaction in (
         ("tsv", "/fixtures/simple_primary_key.tsv"),
         ("csv", None),
@@ -854,7 +855,7 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
         "/fixtures/facetable.testnone?_labels=on",
         "/fixtures/facetable.testresponse?_labels=on",
     ]
-    assert expected == actual
+    assert actual == expected
     # The TSV and CSV form expands labels by default
     labels = soup.select_one("form.export-csv-form input[name=_labels]")
     assert labels.has_attr("checked")
@@ -869,8 +870,11 @@ async def test_table_html_no_primary_key(ds_client):
     assert response.status_code == 200
     table = Soup(response.text, "html.parser").find("table")
     # We have disabled sorting for this table using metadata.json
-    assert ["content", "a", "b", "c"] == [
-        th.string.strip() for th in table.select("thead th")[2:]
+    assert [th.string.strip() for th in table.select("thead th")[2:]] == [
+        "content",
+        "a",
+        "b",
+        "c",
     ]
     expected = [
         [
@@ -883,9 +887,9 @@ async def test_table_html_no_primary_key(ds_client):
         ]
         for i in range(1, 51)
     ]
-    assert expected == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected
 
 
 async def test_rowid_sortable_no_primary_key(ds_client):
@@ -894,7 +898,7 @@ async def test_rowid_sortable_no_primary_key(ds_client):
     table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.find_all("th")
-    assert "rowid\xa0▼" == ths[1].find("a").string.strip()
+    assert ths[1].find("a").string.strip() == "rowid\xa0▼"
 
 
 async def test_table_html_compound_primary_key(ds_client):
@@ -902,10 +906,10 @@ async def test_table_html_compound_primary_key(ds_client):
     assert response.status_code == 200
     table = Soup(response.text, "html.parser").find("table")
     ths = table.find_all("th")
-    assert "Link" == ths[0].string.strip()
+    assert ths[0].string.strip() == "Link"
     for expected_col, th in zip(("pk1", "pk2", "content"), ths[1:]):
         a = th.find("a")
-        assert expected_col == a.string
+        assert a.string == expected_col
         assert th["class"] == [f"col-{expected_col}"]
         assert a["href"].endswith(f"/compound_primary_key?_sort={expected_col}")
     expected = [
@@ -1072,9 +1076,9 @@ async def test_table_html_foreign_key_custom_label_column(ds_client):
             '<td class="col-foreign_key_with_custom_label type-str"><a href="/fixtures/primary_key_multiple_columns_explicit_label/1">world2</a>\xa0<em>1</em></td>',
         ]
     ]
-    assert expected == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected
 
 
 @pytest.mark.parametrize(
@@ -1098,7 +1102,7 @@ async def test_table_html_filter_form_column_options(
         o.attrs.get("value") or o.string
         for o in form.select("select[name=_filter_column] option")
     ]
-    assert expected_column_options == column_options
+    assert column_options == expected_column_options
 
 
 async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
@@ -2081,11 +2085,13 @@ async def test_table_fragment_custom_table_include():
         "/fixtures/complex_foreign_keys/-/fragment?f1=1&f2=2"
     )
     assert response.status_code == 200
-    assert (
+    assert str(
+        Soup(response.text, "html.parser").select_one("div.custom-table-row")
+    ) == (
         '<div class="custom-table-row">'
         '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
         "</div>"
-    ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+    )
 
 
 async def test_table_fragment_uses_render_cell_hook():
@@ -2189,9 +2195,9 @@ async def test_compound_primary_key_with_foreign_key_references(ds_client):
             '<td class="col-tag type-str"><a href="/fixtures/tags/canine">canine</a></td>',
         ],
     ]
-    assert expected == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected
 
 
 async def test_view_html(ds_client):
@@ -2199,7 +2205,7 @@ async def test_view_html(ds_client):
     assert response.status_code == 200
     table = Soup(response.text, "html.parser").find("table")
     ths = table.select("thead th")
-    assert 2 == len(ths)
+    assert len(ths) == 2
     assert ths[0].find("a") is not None
     assert ths[0].find("a")["href"].endswith("/simple_view?_size=3&_sort=content")
     assert ths[0].find("a").string.strip() == "content"
@@ -2219,9 +2225,9 @@ async def test_view_html(ds_client):
             '<td class="col-upper_content type-str">\xa0</td>',
         ],
     ]
-    assert expected == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected
 
 
 async def test_table_metadata(ds_client):
@@ -2229,10 +2235,11 @@ async def test_table_metadata(ds_client):
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     # Page title should be custom and should be HTML escaped
-    assert "This &lt;em&gt;HTML&lt;/em&gt; is escaped" == inner_html(soup.find("h1"))
+    assert inner_html(soup.find("h1")) == "This &lt;em&gt;HTML&lt;/em&gt; is escaped"
     # Description should be custom and NOT escaped (we used description_html)
-    assert "Simple <em>primary</em> key" == inner_html(
-        soup.find("div", {"class": "metadata-description"})
+    assert (
+        inner_html(soup.find("div", {"class": "metadata-description"}))
+        == "Simple <em>primary</em> key"
     )
 
 
@@ -2588,17 +2595,18 @@ async def test_extra_where_clauses(ds_client):
     )
     soup = Soup(response.text, "html.parser")
     div = soup.select(".extra-wheres")[0]
-    assert "2 extra where clauses" == div.find("h3").text
+    assert div.find("h3").text == "2 extra where clauses"
     hrefs = [a["href"] for a in div.find_all("a")]
-    assert [
+    assert hrefs == [
         "/fixtures/facetable?_where=_city_id%3D1",
         "/fixtures/facetable?_where=_neighborhood%3D%27Dogpatch%27",
-    ] == hrefs
+    ]
     # These should also be persisted as hidden fields
     inputs = soup.find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_where", "_neighborhood='Dogpatch'"), ("_where", "_city_id=1")] == [
-        (hidden["name"], hidden["value"]) for hidden in hiddens
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
+        ("_where", "_neighborhood='Dogpatch'"),
+        ("_where", "_city_id=1"),
     ]
 
 
@@ -2663,9 +2671,9 @@ async def test_binary_data_display_in_table(ds_client):
             '<td class="col-data type-none">\xa0</td>',
         ],
     ]
-    assert expected_tds == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected_tds
 
 
 async def test_custom_table_include():
@@ -2674,11 +2682,13 @@ async def test_custom_table_include():
     )
     response = await ds.client.get("/fixtures/complex_foreign_keys")
     assert response.status_code == 200
-    assert (
+    assert str(
+        Soup(response.text, "html.parser").select_one("div.custom-table-row")
+    ) == (
         '<div class="custom-table-row">'
         '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
         "</div>"
-    ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+    )
 
 
 @pytest.mark.parametrize("json", (True, False))
@@ -2746,7 +2756,7 @@ async def test_metadata_sort(
     table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.find_all("th")
-    assert expected_headers == [th.find("a").string.strip() for th in ths]
+    assert [th.find("a").string.strip() for th in ths] == expected_headers
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     expected = [
         [
@@ -2755,7 +2765,7 @@ async def test_metadata_sort(
         ]
         for pk_col, pk, name_col, name in expected_cells
     ]
-    assert expected == rows
+    assert rows == expected
     # Make sure you can reverse that sort order
     response = await ds_client.get(f"/fixtures/{table_name}{reverse_querystring}")
     assert response.status_code == 200

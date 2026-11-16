@@ -78,7 +78,7 @@ async def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_c
     padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
     anon_response = await padlock_client.get(path)
-    assert expected_anon == anon_response.status_code
+    assert anon_response.status_code == expected_anon
     if allow and anon_response.status_code == 200:
         # Should be no padlock
         assert fragment not in anon_response.text
@@ -86,7 +86,7 @@ async def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_c
         path,
         cookies={"ds_actor": padlock_client.actor_cookie({"id": "root"})},
     )
-    assert expected_auth == auth_response.status_code
+    assert auth_response.status_code == expected_auth
     # Check for the padlock
     if allow and expected_anon == 403 and expected_auth == 200:
         assert fragment in auth_response.text
@@ -112,7 +112,7 @@ async def test_view_database(allow, expected_anon, expected_auth, use_metadata):
         "/fixtures/compound_three_primary_keys/a,a,a",
     ):
         anon_response = await ds.client.get(path)
-        assert expected_anon == anon_response.status_code, path
+        assert anon_response.status_code == expected_anon, path
         if allow and path == "/fixtures" and anon_response.status_code == 200:
             # Should be no padlock
             assert ">fixtures 🔒</h1>" not in anon_response.text
@@ -120,7 +120,7 @@ async def test_view_database(allow, expected_anon, expected_auth, use_metadata):
             path,
             cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
         )
-        assert expected_auth == auth_response.status_code
+        assert auth_response.status_code == expected_auth
         if (
             allow
             and path == "/fixtures"
@@ -215,7 +215,7 @@ async def test_view_table(allow, expected_anon, expected_auth, use_metadata):
     }
     ds = await make_ds(**kwargs)
     anon_response = await ds.client.get("/fixtures/compound_three_primary_keys")
-    assert expected_anon == anon_response.status_code
+    assert anon_response.status_code == expected_anon
     if allow and anon_response.status_code == 200:
         # Should be no padlock
         assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
@@ -223,7 +223,7 @@ async def test_view_table(allow, expected_anon, expected_auth, use_metadata):
         "/fixtures/compound_three_primary_keys",
         cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
     )
-    assert expected_auth == auth_response.status_code
+    assert auth_response.status_code == expected_auth
     if allow and expected_anon == 403 and expected_auth == 200:
         assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
 
@@ -273,14 +273,14 @@ async def test_view_query(allow, expected_anon, expected_auth):
         }
     )
     anon_response = await ds.client.get("/fixtures/q")
-    assert expected_anon == anon_response.status_code
+    assert anon_response.status_code == expected_anon
     if allow and anon_response.status_code == 200:
         # Should be no padlock
         assert "🔒</h1>" not in anon_response.text
     auth_response = await ds.client.get(
         "/fixtures/q", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
     )
-    assert expected_auth == auth_response.status_code
+    assert auth_response.status_code == expected_auth
     if allow and expected_anon == 403 and expected_auth == 200:
         assert ">fixtures: q 🔒</h1>" in auth_response.text
 
@@ -516,7 +516,7 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
 )
 async def test_allow_unauthenticated(allow, expected):
     ds = await make_ds(config={"allow": allow})
-    assert expected == (await ds.client.get("/")).status_code
+    assert (await ds.client.get("/")).status_code == expected
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -545,14 +545,14 @@ async def view_instance_client():
     ],
 )
 async def test_view_instance(path, view_instance_client):
-    assert 403 == (await view_instance_client.get(path)).status_code
+    assert (await view_instance_client.get(path)).status_code == 403
     if path not in (
         "/-/permissions",
         "/-/messages",
         "/-/patterns",
         "/-/patterns/menus",
     ):
-        assert 403 == (await view_instance_client.get(path + ".json")).status_code
+        assert (await view_instance_client.get(path + ".json")).status_code == 403
 
 
 @pytest.fixture(scope="session")
@@ -1176,7 +1176,7 @@ def test_cli_create_token(options, expected):
             token,
         ],
     )
-    assert 0 == result2.exit_code, result2.output
+    assert result2.exit_code == 0, result2.output
     assert json.loads(result2.output) == {"ok": True, "actor": expected}
 
 

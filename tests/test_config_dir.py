@@ -106,13 +106,13 @@ def config_dir_client(config_dir):
 
 async def test_settings(config_dir_client):
     response = await config_dir_client.get("/-/settings.json")
-    assert 200 == response.status_code
-    assert 60 == response.json()["default_cache_ttl"]
+    assert response.status_code == 200
+    assert response.json()["default_cache_ttl"] == 60
 
 
 async def test_plugins(config_dir_client):
     response = await config_dir_client.get("/-/plugins.json")
-    assert 200 == response.status_code
+    assert response.status_code == 200
     plugins = response.json()
     assert "hooray.py" in {p["name"] for p in plugins}
     assert "non_py_file.txt" not in {p["name"] for p in plugins}
@@ -121,31 +121,31 @@ async def test_plugins(config_dir_client):
 
 async def test_templates_and_plugin(config_dir_client):
     response = await config_dir_client.get("/demo/cities/1")
-    assert 200 == response.status_code
-    assert "Show row here. Plugin says hooray" == response.text
+    assert response.status_code == 200
+    assert response.text == "Show row here. Plugin says hooray"
 
 
 async def test_static(config_dir_client):
     response = await config_dir_client.get("/static/hello.css")
-    assert 200 == response.status_code
+    assert response.status_code == 200
     assert CSS == response.text
-    assert "text/css" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/css"
 
 
 async def test_static_directory_browsing_not_allowed(config_dir_client):
     response = await config_dir_client.get("/static/")
-    assert 403 == response.status_code
-    assert "403: Directory listing is not allowed" == response.text
+    assert response.status_code == 403
+    assert response.text == "403: Directory listing is not allowed"
 
 
 async def test_databases(config_dir_client):
     response = await config_dir_client.get("/-/databases.json")
-    assert 200 == response.status_code
+    assert response.status_code == 200
     databases = response.json()["databases"]
-    assert 4 == len(databases)
+    assert len(databases) == 4
     databases.sort(key=lambda d: d["name"])
     for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):
-        assert expected_name == db["name"]
+        assert db["name"] == expected_name
         assert db["is_mutable"] == (expected_name != "immutable")
 
 

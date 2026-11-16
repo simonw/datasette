@@ -34,7 +34,7 @@ from datasette.utils.sqlite import (
     ],
 )
 def test_urlsafe_components(path, expected):
-    assert expected == utils.urlsafe_components(path)
+    assert utils.urlsafe_components(path) == expected
 
 
 @pytest.mark.parametrize(
@@ -65,7 +65,7 @@ def test_urlsafe_components(path, expected):
 def test_path_with_added_args(path, added_args, expected):
     request = Request.fake(path)
     actual = utils.path_with_added_args(request, added_args)
-    assert expected == actual
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -79,11 +79,11 @@ def test_path_with_added_args(path, added_args, expected):
 def test_path_with_removed_args(path, args, expected):
     request = Request.fake(path)
     actual = utils.path_with_removed_args(request, args)
-    assert expected == actual
+    assert actual == expected
     # Run the test again but this time use the path= argument
     request = Request.fake("/")
     actual = utils.path_with_removed_args(request, args, path=path)
-    assert expected == actual
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -96,7 +96,7 @@ def test_path_with_removed_args(path, args, expected):
 def test_path_with_replaced_args(path, args, expected):
     request = Request.fake(path)
     actual = utils.path_with_replaced_args(request, args)
-    assert expected == actual
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ def test_path_with_replaced_args(path, args, expected):
 )
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = utils.path_from_row_pks(row, pks, False)
-    assert expected_path == actual_path
+    assert actual_path == expected_path
 
 
 @pytest.mark.parametrize(
@@ -144,7 +144,7 @@ def test_path_from_row_pks(row, pks, expected_path):
 )
 def test_custom_json_encoder(obj, expected):
     actual = json.dumps(obj, cls=utils.CustomJSONEncoder, sort_keys=True)
-    assert expected == actual
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -224,7 +224,7 @@ def test_detect_fts(open_quote, close_quote):
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
     assert None is utils.detect_fts(conn, "Street_Tree")
-    assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
+    assert utils.detect_fts(conn, "Street_Tree_List") == "Street_Tree_List_fts"
     conn.close()
 
 
@@ -426,7 +426,7 @@ def test_sqlite_derived_table_dependencies():
     ],
 )
 def test_is_url(url, expected):
-    assert expected == utils.is_url(url)
+    assert utils.is_url(url) == expected
 
 
 @pytest.mark.parametrize(
@@ -442,7 +442,7 @@ def test_is_url(url, expected):
     ],
 )
 def test_to_css_class(s, expected):
-    assert expected == utils.to_css_class(s)
+    assert utils.to_css_class(s) == expected
 
 
 def test_temporary_docker_directory_uses_hard_link():
@@ -467,9 +467,9 @@ def test_temporary_docker_directory_uses_hard_link():
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
             with open(hello) as fp:
-                assert "world" == fp.read()
+                assert fp.read() == "world"
             # It should be a hard link
-            assert 2 == os.stat(hello).st_nlink
+            assert os.stat(hello).st_nlink == 2
 
 
 @patch("os.link")
@@ -497,9 +497,9 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
             with open(hello) as fp:
-                assert "world" == fp.read()
+                assert fp.read() == "world"
             # It should be a copy, not a hard link
-            assert 1 == os.stat(hello).st_nlink
+            assert os.stat(hello).st_nlink == 1
 
 
 def test_temporary_docker_directory_quotes_args():
@@ -530,7 +530,7 @@ def test_temporary_docker_directory_quotes_args():
 
 
 def test_compound_keys_after_sql():
-    assert "((a > :p0))" == utils.compound_keys_after_sql(["a"])
+    assert utils.compound_keys_after_sql(["a"]) == "((a > :p0))"
     assert """
 ((a > :p0)
   or
@@ -546,7 +546,7 @@ def test_compound_keys_after_sql():
 
 
 def test_compound_keys_at_or_before_sql():
-    assert "((a <= :p0))" == utils.compound_keys_at_or_before_sql(["a"])
+    assert utils.compound_keys_at_or_before_sql(["a"]) == "((a <= :p0))"
     assert """
 ((a < :p0)
   or
@@ -566,7 +566,7 @@ def test_table_columns():
     conn.executescript("""
     create table places (id integer primary key, name text, bob integer)
     """)
-    assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
+    assert utils.table_columns(conn, "places") == ["id", "name", "bob"]
     conn.close()
 
 
@@ -589,13 +589,13 @@ def test_table_columns():
 def test_path_with_format(path, format, extra_qs, expected):
     request = Request.fake(path)
     actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
-    assert expected == actual
+    assert actual == expected
 
 
 def test_path_with_format_can_override_request_path():
     request = Request.fake("/prefix/foo?x=1")
     actual = utils.path_with_format(request=request, path="/foo", format="json")
-    assert "/foo.json?x=1" == actual
+    assert actual == "/foo.json?x=1"
 
 
 @pytest.mark.parametrize(
@@ -660,7 +660,7 @@ def test_path_without_format(path, url_vars, expected_path, expected_full_path):
     ],
 )
 def test_format_bytes(bytes, expected):
-    assert expected == utils.format_bytes(bytes)
+    assert utils.format_bytes(bytes) == expected
 
 
 @pytest.mark.parametrize(
@@ -678,7 +678,7 @@ def test_format_bytes(bytes, expected):
     ],
 )
 def test_escape_fts(query, expected):
-    assert expected == utils.escape_fts(query)
+    assert utils.escape_fts(query) == expected
 
 
 @pytest.mark.parametrize(
@@ -690,7 +690,7 @@ def test_escape_fts(query, expected):
     ],
 )
 def test_escape_css_string(input, expected):
-    assert expected == utils.escape_css_string(input)
+    assert utils.escape_css_string(input) == expected
 
 
 def test_check_connection_spatialite_raises():
@@ -711,8 +711,8 @@ def test_call_with_supported_arguments():
     def foo(a, b):
         return f"{a}+{b}"
 
-    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2)
-    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2, c=3)
+    assert utils.call_with_supported_arguments(foo, a=1, b=2) == "1+2"
+    assert utils.call_with_supported_arguments(foo, a=1, b=2, c=3) == "1+2"
 
     with pytest.raises(TypeError):
         utils.call_with_supported_arguments(foo, a=1)
@@ -736,8 +736,8 @@ def test_multi_params(data, should_raise):
             utils.MultiParams(data)
         return
     p1 = utils.MultiParams(data)
-    assert "bar" == p1["foo"]
-    assert ["bar", "baz"] == list(p1.getlist("foo"))
+    assert p1["foo"] == "bar"
+    assert list(p1.getlist("foo")) == ["bar", "baz"]
 
 
 @pytest.mark.parametrize(
@@ -783,7 +783,7 @@ def test_multi_params(data, should_raise):
     ],
 )
 def test_actor_matches_allow(actor, allow, expected):
-    assert expected == utils.actor_matches_allow(actor, allow)
+    assert utils.actor_matches_allow(actor, allow) == expected
 
 
 @pytest.mark.parametrize(
@@ -797,7 +797,7 @@ def test_actor_matches_allow(actor, allow, expected):
     ],
 )
 def test_resolve_env_secrets(config, expected):
-    assert expected == utils.resolve_env_secrets(config, {"FOO": "x"})
+    assert utils.resolve_env_secrets(config, {"FOO": "x"}) == expected
 
 
 @pytest.mark.parametrize(
@@ -815,7 +815,7 @@ def test_resolve_env_secrets(config, expected):
     ],
 )
 def test_display_actor(actor, expected):
-    assert expected == utils.display_actor(actor)
+    assert utils.display_actor(actor) == expected
 
 
 @pytest.mark.parametrize(
@@ -998,7 +998,7 @@ async def test_calculate_etag(tmp_path):
     assert etag == await utils.calculate_etag(path)
     assert utils._etag_cache[path] == etag
     utils._etag_cache[path] = "hash"
-    assert "hash" == await utils.calculate_etag(path)
+    assert await utils.calculate_etag(path) == "hash"
     utils._etag_cache.clear()
 
 

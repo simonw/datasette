@@ -1055,11 +1055,10 @@ async def test_attached_databases(ds_on_disk_two_databases_crossdb):
 
 
 async def test_database_memory_name(bare_ds):
-    ds = bare_ds
-    foo1 = ds.add_database(Database(ds, memory_name="foo"))
-    foo2 = ds.add_memory_database("foo")
-    bar1 = ds.add_database(Database(ds, memory_name="bar"))
-    bar2 = ds.add_memory_database("bar")
+    foo1 = bare_ds.add_database(Database(bare_ds, memory_name="foo"))
+    foo2 = bare_ds.add_memory_database("foo")
+    bar1 = bare_ds.add_database(Database(bare_ds, memory_name="bar"))
+    bar2 = bare_ds.add_memory_database("bar")
     for db in (foo1, foo2, bar1, bar2):
         table_names = await db.table_names()
         assert table_names == []
@@ -1072,8 +1071,7 @@ async def test_database_memory_name(bare_ds):
 
 
 async def test_in_memory_databases_forbid_writes(bare_ds):
-    ds = bare_ds
-    db = ds.add_database(Database(ds, memory_name="test"))
+    db = bare_ds.add_database(Database(bare_ds, memory_name="test"))
     with pytest.raises(sqlite3.OperationalError):
         await db.execute("create table foo (t text)")
     assert await db.table_names() == []
@@ -1083,8 +1081,7 @@ async def test_in_memory_databases_forbid_writes(bare_ds):
 
 
 async def test_hidden_tables(bare_ds):
-    ds = bare_ds
-    db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
+    db = bare_ds.add_database(Database(bare_ds, is_memory=True, is_mutable=True))
     assert await db.hidden_table_names() == []
     await db.execute("create virtual table f using fts5(a)")
     assert await db.hidden_table_names() == [

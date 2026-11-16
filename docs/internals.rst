@@ -1811,9 +1811,6 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
-``datasette.urls.static(path)``
-    Returns the URL of one of Datasette's default static assets, for example ``"/-/static/app.css"``
-
 ``datasette.urls.database(database_name, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
@@ -1823,6 +1820,29 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 ``datasette.urls.query(database_name, query_name, format=None)``
     Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
 
+``datasette.urls.row(database_name, table_name, row_path, format=None)``
+    Returns the URL to a row page, for example ``"/fixtures/facetable/1"``
+
+    ``row_path`` is the string that identifies the row in the URL. Datasette does not encode it for you. For a table with a single primary key it is that value passed through :ref:`tilde_encode() <internals_tilde_encoding>`. For a table with a compound primary key, tilde-encode each value separately and join them with commas. For a table without a primary key, use the ``rowid``.
+
+    .. code-block:: python
+
+        from datasette.utils import tilde_encode
+
+        row_path = ",".join(
+            tilde_encode(str(value)) for value in ("a/b", "c")
+        )
+        # "a~2Fb,c"
+        datasette.urls.row(
+            "fixtures", "compound_primary_key", row_path
+        )
+        # "/fixtures/compound_primary_key/a~2Fb,c"
+
+``datasette.urls.row_blob(database_name, table_name, row_path, column)``
+    Returns the URL that serves the binary content of a single ``BLOB`` column for a row, for example ``"/fixtures/binary_data/1.blob?_blob_column=data"``
+
+    ``row_path`` follows the same rules as for ``datasette.urls.row()``. The column name is URL-encoded for you.
+
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
 
 .. code-block:: jinja
@@ -1831,6 +1851,7 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.database("fixtures") }}">Fixtures database</a>
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
+    <a href="{{ urls.row("fixtures", "facetable", "1") }}">facetable row 1</a>
 
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 

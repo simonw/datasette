@@ -75,7 +75,6 @@ async def ds_for_jump():
     return ds
 
 
-@pytest.mark.asyncio
 async def test_jump_searches_tables_databases_views_and_stored_queries(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=content", actor={"id": "user"}
@@ -97,7 +96,6 @@ async def test_jump_searches_tables_databases_views_and_stored_queries(ds_for_ju
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "type_args,expected_types",
     (
@@ -117,7 +115,6 @@ async def test_jump_filter_by_type(ds_for_jump, type_args, expected_types):
     assert types == expected_types
 
 
-@pytest.mark.asyncio
 async def test_jump_includes_url_fields(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=comment", actor={"id": "user"}
@@ -156,7 +153,6 @@ async def test_jump_includes_url_fields(ds_for_jump):
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_excludes_hidden_tables(ds_for_jump):
     content_db = ds_for_jump.get_database("content")
     await content_db.execute_write(
@@ -173,7 +169,6 @@ async def test_jump_excludes_hidden_tables(ds_for_jump):
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_excludes_tables_hidden_in_config():
     ds = Datasette(
         config={"databases": {"data": {"tables": {"secret_stuff": {"hidden": True}}}}}
@@ -189,7 +184,6 @@ async def test_jump_excludes_tables_hidden_in_config():
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_uses_stored_query_names_not_titles(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=datasette", actor={"id": "user"}
@@ -214,7 +208,6 @@ async def test_jump_uses_stored_query_names_not_titles(ds_for_jump):
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_respects_resource_permissions(ds_for_jump):
     regular = await ds_for_jump.client.get(
         "/-/jump.json?q=articles", actor={"id": "regular"}
@@ -236,7 +229,6 @@ async def test_jump_respects_resource_permissions(ds_for_jump):
     assert private.json()["matches"] == []
 
 
-@pytest.mark.asyncio
 async def test_jump_sql_menu_item_helper(ds_for_jump):
     assert JumpSQL("SELECT 1").database is None
     assert JumpSQL("SELECT 1", database="content").database == "content"
@@ -263,7 +255,6 @@ async def test_jump_sql_menu_item_helper(ds_for_jump):
     }
 
 
-@pytest.mark.asyncio
 async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
     ds = Datasette(
         config={
@@ -300,7 +291,6 @@ async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
     )
 
 
-@pytest.mark.asyncio
 async def test_debug_menu_items_are_hidden_without_debug_menu_permission():
     ds = Datasette()
     await ds.invoke_startup()
@@ -311,7 +301,6 @@ async def test_debug_menu_items_are_hidden_without_debug_menu_permission():
     ] == []
 
 
-@pytest.mark.asyncio
 async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
     class JumpPlugin:
         @hookimpl
@@ -353,7 +342,6 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_sql_unions_fragments_by_database(ds_for_jump, monkeypatch):
     class JumpPlugin:
         @hookimpl
@@ -448,7 +436,6 @@ async def test_jump_sql_unions_fragments_by_database(ds_for_jump, monkeypatch):
     }
 
 
-@pytest.mark.asyncio
 async def test_jump_sql_can_query_named_database(ds_for_jump):
     content_db = ds_for_jump.get_database("content")
     await content_db.execute_write(
@@ -504,7 +491,6 @@ async def test_jump_sql_can_query_named_database(ds_for_jump):
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_resolves_url_descriptors_from_sql(ds_for_jump):
     class JumpPlugin:
         @hookimpl
@@ -548,7 +534,6 @@ async def test_jump_resolves_url_descriptors_from_sql(ds_for_jump):
     ]
 
 
-@pytest.mark.asyncio
 async def test_jump_url_descriptor_errors(ds_for_jump):
     view = JumpView(ds_for_jump)
     with pytest.raises(AttributeError):
@@ -559,7 +544,6 @@ async def test_jump_url_descriptor_errors(ds_for_jump):
         )
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_removed(ds_for_jump):
     response = await ds_for_jump.client.get("/-/tables.json")
     assert response.status_code == 404

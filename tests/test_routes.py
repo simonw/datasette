@@ -74,7 +74,6 @@ async def ds_with_route():
     return ds
 
 
-@pytest.mark.asyncio
 async def test_db_with_route_databases(ds_with_route):
     response = await ds_with_route.client.get("/-/databases.json")
     assert response.json()["databases"][0] == {
@@ -88,7 +87,6 @@ async def test_db_with_route_databases(ds_with_route):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status",
     (
@@ -113,7 +111,6 @@ async def test_db_with_route_that_does_not_match_name(
         assert "/original-name" not in response.text
 
 
-@pytest.mark.asyncio
 async def test_db_with_route_download_checks_permissions_against_name(tmp_path):
     # Permission rules refer to a database by its name, so the download at
     # /<route>.db needs to check them against the name, not the route
@@ -147,7 +144,6 @@ async def test_db_with_route_download_checks_permissions_against_name(tmp_path):
         assert (await ds.client.get(missing, actor=root)).status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_db_download_checks_permission_before_404():
     # An actor denied for the whole instance gets a 403 for a database that
     # does not exist, not a 404

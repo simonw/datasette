@@ -3245,7 +3245,7 @@ ORDER BY allowed.parent, allowed.child
         a chance to register work - the ordering guarantee that makes
         ``add_background_task`` useful. No-ops when
         ``_suppress_background_tasks`` is set (the ``--get`` CLI path: its
-        one-shot TestClient request flows through the full ASGI stack,
+        one-shot request flows through the full ASGI stack,
         including the first-request fallback, but must never launch
         long-lived background work).
         """

@@ -64,7 +64,6 @@ async def db(ds):
     return db
 
 
-@pytest.mark.asyncio
 async def test_table_renderer_receives_declared_extras(ds, db):
     response = await ds.client.get("/data/dogs.declared?age__gt=3&_size=1")
     assert response.status_code == 200
@@ -83,7 +82,6 @@ async def test_table_renderer_receives_declared_extras(ds, db):
     }
 
 
-@pytest.mark.asyncio
 async def test_query_renderer_omits_extras_not_available_for_queries(ds, db):
     # count, human_description_en and primary_keys are all table extras
     response = await ds.client.get("/data/-/query.declared?sql=select+*+from+dogs")
@@ -91,7 +89,6 @@ async def test_query_renderer_omits_extras_not_available_for_queries(ds, db):
     assert response.json() == {"page": {}, "num_rows": 3}
 
 
-@pytest.mark.asyncio
 async def test_row_renderer_omits_extras_not_available_for_rows(ds, db):
     response = await ds.client.get("/data/dogs/1.declared")
     assert response.status_code == 200
@@ -111,7 +108,6 @@ async def test_row_renderer_omits_extras_not_available_for_rows(ds, db):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -147,20 +143,17 @@ async def test_renderer_receives_extras_requested_in_url(ds, db, path, expected)
     assert response.json()["page"] == expected
 
 
-@pytest.mark.asyncio
 async def test_unknown_requested_extra_is_still_an_error(ds, db):
     response = await ds.client.get("/data/dogs.declared?_extra=nope")
     assert response.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_render_function_does_not_have_to_accept_page(ds, db):
     response = await ds.client.get("/data/dogs.noargument")
     assert response.status_code == 200
     assert response.text == "ok"
 
 
-@pytest.mark.asyncio
 async def test_declared_extras_do_not_leak_into_json(ds, db):
     # Declaring an extra for one format must not add it to any other format
     data = (await ds.client.get("/data/dogs.json")).json()
@@ -248,7 +241,6 @@ def test_render_function_accepting_data_or_args_is_deprecated(
     )
 
 
-@pytest.mark.asyncio
 async def test_deprecated_data_and_args_are_still_passed():
     def render(data, args):
         return Response.json({"ok": data["ok"], "one": args["one"]})

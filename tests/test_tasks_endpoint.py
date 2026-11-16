@@ -27,7 +27,6 @@ class ExampleWorker:
         pass
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "func, qualified_name",
     [
@@ -57,7 +56,6 @@ async def test_task_function_path(func, qualified_name):
         await ds.invoke_shutdown()
 
 
-@pytest.mark.asyncio
 async def test_tasks_requires_permissions_debug():
     ds = Datasette(memory=True)
     ds.root_enabled = True
@@ -73,7 +71,6 @@ async def test_tasks_requires_permissions_debug():
     assert "launched" in data
 
 
-@pytest.mark.asyncio
 async def test_running_and_crashed_task_states():
     ds = Datasette(memory=True)
     ds.root_enabled = True

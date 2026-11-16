@@ -261,7 +261,6 @@ def res_denied(rows, parent=None):
 
 
 # ---------- Tests ----------
-@pytest.mark.asyncio
 async def test_alice_global_allow_with_specific_denies_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -286,7 +285,6 @@ async def test_alice_global_allow_with_specific_denies_catalog(db):
             assert r["allow"] == 1
 
 
-@pytest.mark.asyncio
 async def test_carol_parent_allow_but_child_conflict_deny_wins_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -310,7 +308,6 @@ async def test_carol_parent_allow_but_child_conflict_deny_wins_catalog(db):
     assert len(allowed_analytics) == 9
 
 
-@pytest.mark.asyncio
 async def test_specificity_child_allow_overrides_parent_deny_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -337,7 +334,6 @@ async def test_specificity_child_allow_overrides_parent_deny_catalog(db):
     )
 
 
-@pytest.mark.asyncio
 async def test_root_deny_all_but_parent_allow_rescues_specific_parent_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -356,7 +352,6 @@ async def test_root_deny_all_but_parent_allow_rescues_specific_parent_catalog(db
             assert r["allow"] == 0
 
 
-@pytest.mark.asyncio
 async def test_parent_scoped_candidates(db):
     await seed_catalog(db)
     plugins = [
@@ -376,7 +371,6 @@ async def test_parent_scoped_candidates(db):
     assert d["/hr"] == 0
 
 
-@pytest.mark.asyncio
 async def test_implicit_deny_behavior(db):
     await seed_catalog(db)
     plugins = []  # no rules at all
@@ -404,7 +398,6 @@ async def test_implicit_deny_behavior(db):
     assert all(r["allow"] is None and r["reason"] is None for r in rows2)
 
 
-@pytest.mark.asyncio
 async def test_candidate_filters_via_params(db):
     await seed_catalog(db)
     # Add some metadata to test filtering
@@ -462,7 +455,6 @@ async def test_candidate_filters_via_params(db):
     assert all(r["allow"] in (0, 1) for r in rows2)
 
 
-@pytest.mark.asyncio
 async def test_action_specific_rules(db):
     await seed_catalog(db)
     plugins = [plugin_allow_all_for_action("dana", VIEW_TABLE)]
@@ -491,7 +483,6 @@ async def test_action_specific_rules(db):
     assert all(r["action"] == "insert-row" for r in insert_rows)
 
 
-@pytest.mark.asyncio
 async def test_actor_actor_id_action_parameters_available(db):
     """Test that :actor (JSON), :actor_id, and :action are all available in SQL"""
     await seed_catalog(db)
@@ -533,7 +524,6 @@ async def test_actor_actor_id_action_parameters_available(db):
     assert "Actor JSON:" in reason
 
 
-@pytest.mark.asyncio
 async def test_multiple_plugins_with_own_parameters(db):
     """
     Test that multiple plugins can use their own parameter names without conflict.

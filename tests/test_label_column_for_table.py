@@ -4,7 +4,6 @@ from datasette.app import Datasette
 from datasette.database import Database
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "create_sql,table_name,config,expected_label_column",
     [

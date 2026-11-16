@@ -12,22 +12,22 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
 
-from .fixtures import make_app_client
+from .fixtures import get_unprefixed, make_ds, make_ds_on_disk
 from .utils import assert_footer_links, inner_html
 
 
-def test_homepage(app_client_two_attached_databases):
-    client = app_client_two_attached_databases
-    response = client.get("/")
+async def test_homepage(ds_client_two_attached_databases):
+    client = ds_client_two_attached_databases
+    response = await client.get("/")
     assert response.status_code == 200
-    assert "text/html; charset=utf-8" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
     # Should have a html lang="en" attribute
     assert '<html lang="en">' in response.text
     soup = Soup(response.content, "html.parser")
-    assert "Datasette Fixtures" == soup.find("h1").text
+    assert soup.find("h1").text == "Datasette Fixtures"
     assert (
-        "An example SQLite database demonstrating Datasette. Sign in as root user"
-        == soup.select(".metadata-description")[0].text.strip()
+        soup.select(".metadata-description")[0].text.strip()
+        == "An example SQLite database demonstrating Datasette. Sign in as root user"
     )
     # The database filter lists both databases, plus "All"
     chips = soup.select("nav.homepage-databases a.homepage-database")
@@ -54,8 +54,8 @@ def test_homepage(app_client_two_attached_databases):
     assert view_item.select_one(".db-tag").text == "extra database"
 
 
-def test_homepage_database_filter(app_client_two_attached_databases):
-    response = app_client_two_attached_databases.get("/?database=extra+database")
+async def test_homepage_database_filter(ds_client_two_attached_databases):
+    response = await ds_client_two_attached_databases.get("/?database=extra+database")
     soup = Soup(response.content, "html.parser")
     selected = soup.select_one("a.homepage-database.selected")
     assert selected["href"] == "/?database=extra+database"
@@ -65,7 +65,6 @@ def test_homepage_database_filter(app_client_two_attached_databases):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sql,expected",
     (
@@ -98,7 +97,6 @@ async def test_homepage_summary_counts(sql, expected):
     assert spans == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ("/", "/-/"))
 async def test_homepage_alternative_location(path, tmp_path_factory):
     template_dir = tmp_path_factory.mktemp("templates")
@@ -113,26 +111,22 @@ async def test_homepage_alternative_location(path, tmp_path_factory):
         assert '<meta name="robots" content="noindex">' in html
 
 
-@pytest.mark.asyncio
 async def test_homepage_alternative_redirect(ds_client):
     response = await ds_client.get("/-")
     assert response.status_code == 301
 
 
-@pytest.mark.asyncio
 async def test_http_head(ds_client):
     response = await ds_client.head("/")
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_homepage_options(ds_client):
     response = await ds_client.options("/")
     assert response.status_code == 200
     assert response.text == "ok"
 
 
-@pytest.mark.asyncio
 async def test_favicon(ds_client):
     response = await ds_client.get("/favicon.ico")
     assert response.status_code == 200
@@ -141,20 +135,18 @@ async def test_favicon(ds_client):
     assert response.headers["content-type"] == "image/png"
 
 
-@pytest.mark.asyncio
 async def test_static(ds_client):
     response = await ds_client.get("/-/static/app2.css")
     assert response.status_code == 404
     response = await ds_client.get("/-/static/app.css")
     assert response.status_code == 200
-    assert "text/css" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/css"
     assert "etag" in response.headers
     etag = response.headers.get("etag")
     response = await ds_client.get("/-/static/app.css", headers={"if-none-match": etag})
     assert response.status_code == 304
 
 
-@pytest.mark.asyncio
 async def test_static_hash_cache_control(ds_client):
     hashed_url = ds_client.ds.static("app.css")
     response = await ds_client.get(hashed_url)
@@ -184,7 +176,6 @@ IF_NONE_MATCH_FORMATS = (
 )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("if_none_match,expected_status", IF_NONE_MATCH_FORMATS)
 async def test_static_if_none_match(ds_client, if_none_match, expected_status):
     etag = (await ds_client.get("/-/static/app.css")).headers["etag"]
@@ -196,7 +187,6 @@ async def test_static_if_none_match(ds_client, if_none_match, expected_status):
     assert response.headers["etag"] == etag
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("if_none_match,expected_status", IF_NONE_MATCH_FORMATS)
 async def test_database_download_if_none_match(
     tmp_path, if_none_match, expected_status
@@ -218,47 +208,46 @@ async def test_database_download_if_none_match(
         assert response.content == b""
 
 
-def test_static_mounts():
-    with make_app_client(
+async def test_static_mounts():
+    ds = await make_ds(
         static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
-    ) as client:
-        response = client.get("/custom-static/test_html.py")
-        assert response.status_code == 200
-        response = client.get("/custom-static/not_exists.py")
-        assert response.status_code == 404
-        response = client.get("/custom-static/../LICENSE")
-        assert response.status_code == 404
+    )
+    response = await ds.client.get("/custom-static/test_html.py")
+    assert response.status_code == 200
+    response = await ds.client.get("/custom-static/not_exists.py")
+    assert response.status_code == 404
+    response = await ds.client.get("/custom-static/../LICENSE")
+    assert response.status_code == 404
 
 
-def test_static_mounts_hash_cache_control():
+async def test_static_mounts_hash_cache_control():
     mount_path = pathlib.Path(__file__).parent
-    with make_app_client(static_mounts=[("custom-static", str(mount_path))]) as client:
-        response = client.get(client.ds.static("test_html.py", mount="custom-static"))
-        assert response.status_code == 200
-        assert (
-            response.headers["cache-control"] == "max-age=31536000, immutable, public"
-        )
+    ds = await make_ds(static_mounts=[("custom-static", str(mount_path))])
+    response = await ds.client.get(ds.static("test_html.py", mount="custom-static"))
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "max-age=31536000, immutable, public"
 
-        incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
-        response = client.get(f"/custom-static/test_html.py?_hash={incorrect_hash}")
-        assert response.status_code == 200
-        assert "cache-control" not in response.headers
-
-
-def test_memory_database_page():
-    with make_app_client(memory=True) as client:
-        response = client.get("/_memory")
-        assert response.status_code == 200
+    incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
+    response = await ds.client.get(
+        f"/custom-static/test_html.py?_hash={incorrect_hash}"
+    )
+    assert response.status_code == 200
+    assert "cache-control" not in response.headers
 
 
-def test_not_allowed_methods():
-    with make_app_client(memory=True) as client:
-        for method in ("post", "put", "patch", "delete"):
-            response = client.request(path="/_memory", method=method.upper())
-            assert response.status_code == 405
+async def test_memory_database_page():
+    ds = await make_ds(memory=True)
+    response = await ds.client.get("/_memory")
+    assert response.status_code == 200
 
 
-@pytest.mark.asyncio
+async def test_not_allowed_methods():
+    ds = await make_ds(memory=True)
+    for method in ("post", "put", "patch", "delete"):
+        response = await ds.client.request(path="/_memory", method=method.upper())
+        assert response.status_code == 405
+
+
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures")
     soup = Soup(response.text, "html.parser")
@@ -284,7 +273,11 @@ async def test_database_page(ds_client):
         rows["/fixtures/foreign_key_references"].select_one(".catalog-item-links").text
         == "links to primary_key_multiple_columns, simple_primary_key"
     )
-    assert [
+    assert sorted(
+        (href, li.select_one("a.catalog-item-name").text)
+        for href, li in rows.items()
+        if "catalog-item-view" in li["class"]
+    ) == [
         ("/fixtures/binary_data_view", "binary_data_view"),
         ("/fixtures/paginated_view", "paginated_view"),
         ("/fixtures/searchable_view", "searchable_view"),
@@ -293,16 +286,14 @@ async def test_database_page(ds_client):
             "searchable_view_configured_by_metadata",
         ),
         ("/fixtures/simple_view", "simple_view"),
-    ] == sorted(
-        (href, li.select_one("a.catalog-item-name").text)
-        for href, li in rows.items()
-        if "catalog-item-view" in li["class"]
-    )
+    ]
 
     # And a list of stored queries
     queries_ul = soup.find("h2", string="Queries").find_next("ul")
     assert queries_ul is not None
-    assert [
+    assert sorted(
+        [(a["href"], a.text) for a in queries_ul.find_all("a")], key=lambda p: p[0]
+    ) == [
         ("/fixtures/magic_parameters", "magic_parameters"),
         ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
         ("/fixtures/pragma_cache_size", "pragma_cache_size"),
@@ -310,19 +301,15 @@ async def test_database_page(ds_client):
             "/fixtures/~F0~9D~90~9C~F0~9D~90~A2~F0~9D~90~AD~F0~9D~90~A2~F0~9D~90~9E~F0~9D~90~AC",
             "𝐜𝐢𝐭𝐢𝐞𝐬",
         ),
-    ] == sorted(
-        [(a["href"], a.text) for a in queries_ul.find_all("a")], key=lambda p: p[0]
-    )
+    ]
 
 
-@pytest.mark.asyncio
 async def test_invalid_custom_sql(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=.schema")
     assert response.status_code == 400
     assert "Statement must be a SELECT" in response.text
 
 
-@pytest.mark.asyncio
 async def test_disallowed_custom_sql_pragma(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query?sql=SELECT+*+FROM+pragma_not_on_allow_list('idx52')"
@@ -336,51 +323,48 @@ async def test_disallowed_custom_sql_pragma(ds_client):
 
 
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
-def test_sql_time_limit(app_client_shorter_time_limit):
-    response = app_client_shorter_time_limit.get(
-        "/fixtures/-/query?sql=select+sleep(0.5)"
+async def test_sql_time_limit(ds_client_shorter_time_limit):
+    response = await ds_client_shorter_time_limit.get(
+        "/fixtures/-/query?sql=select+sleep(0.1)"
     )
-    assert 400 == response.status
+    assert response.status_code == 400
     expected_html_fragments = [
         """
         <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
     """.strip(),
-        '<textarea style="width: 90%">select sleep(0.5)</textarea>',
+        '<textarea style="width: 90%">select sleep(0.1)</textarea>',
     ]
     for expected_html_fragment in expected_html_fragments:
         assert expected_html_fragment in response.text
 
 
-def test_row_page_does_not_truncate():
-    with make_app_client(settings={"truncate_cells_html": 5}) as client:
-        response = client.get("/fixtures/facetable/1")
-        assert response.status_code == 200
-        value = Soup(response.content, "html.parser").select_one(
-            ".row-field.col-neighborhood-b352a7 .row-field-value"
+async def test_row_page_does_not_truncate():
+    ds = await make_ds(settings={"truncate_cells_html": 5})
+    response = await ds.client.get("/fixtures/facetable/1")
+    assert response.status_code == 200
+    value = Soup(response.content, "html.parser").select_one(
+        ".row-field.col-neighborhood-b352a7 .row-field-value"
+    )
+    assert value.string == "Mission"
+
+
+async def test_query_page_truncates():
+    ds = await make_ds(settings={"truncate_cells_html": 5})
+    response = await ds.client.get(
+        "/fixtures/-/query?"
+        + urllib.parse.urlencode(
+            {"sql": "select 'this is longer than 5' as a, 'https://example.com/' as b"}
         )
-        assert value.string == "Mission"
+    )
+    assert response.status_code == 200
+    table = Soup(response.content, "html.parser").find("table")
+    tds = table.find_all("td")
+    assert [str(td) for td in tds] == [
+        '<td class="col-a">this …</td>',
+        '<td class="col-b"><a href="https://example.com/">http…</a></td>',
+    ]
 
 
-def test_query_page_truncates():
-    with make_app_client(settings={"truncate_cells_html": 5}) as client:
-        response = client.get(
-            "/fixtures/-/query?"
-            + urllib.parse.urlencode(
-                {
-                    "sql": "select 'this is longer than 5' as a, 'https://example.com/' as b"
-                }
-            )
-        )
-        assert response.status_code == 200
-        table = Soup(response.content, "html.parser").find("table")
-        tds = table.find_all("td")
-        assert [str(td) for td in tds] == [
-            '<td class="col-a">this …</td>',
-            '<td class="col-b"><a href="https://example.com/">http…</a></td>',
-        ]
-
-
-@pytest.mark.asyncio
 async def test_query_page_with_no_sql(ds_client):
     # https://github.com/simonw/datasette/issues/2743
     response = await ds_client.get("/fixtures/-/query")
@@ -389,14 +373,12 @@ async def test_query_page_with_no_sql(ds_client):
     assert 'class="rows-and-columns"' not in response.text
 
 
-@pytest.mark.asyncio
 async def test_query_csv_with_no_sql_is_400(ds_client):
     # https://github.com/simonw/datasette/issues/2743
     response = await ds_client.get("/fixtures/-/query.csv")
     assert response.status_code == 400
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_classes",
     [
@@ -431,7 +413,6 @@ async def test_css_classes_on_body(ds_client, path, expected_classes):
 templates_considered_re = re.compile(r"<!-- Templates considered: (.*?) -->")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_considered",
     [
@@ -460,7 +441,6 @@ async def test_templates_considered(ds_client, path, expected_considered):
     assert actual_considered == expected_considered
 
 
-@pytest.mark.asyncio
 async def test_row_json_export_link(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     assert response.status_code == 200
@@ -471,7 +451,6 @@ async def test_row_json_export_link(ds_client):
     assert view["href"] == "/fixtures/simple_primary_key/1.json"
 
 
-@pytest.mark.asyncio
 async def test_query_export_dialog(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query?sql=select+:name+as+n&name=hello&_hide_sql=1"
@@ -536,7 +515,6 @@ async def test_query_export_dialog(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_query_export_dialog_truncated(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query?sql=select+*+from+compound_three_primary_keys"
@@ -554,7 +532,6 @@ async def test_query_export_dialog_truncated(ds_client):
     } == {("First 100 rows", "true")}
 
 
-@pytest.mark.asyncio
 async def test_stored_query_export_scope(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search?text=town")
     soup = Soup(response.text, "html.parser")
@@ -563,7 +540,6 @@ async def test_stored_query_export_scope(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_query_export_dialog_keeps_blank_parameters(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+:name+as+n&name=")
     soup = Soup(response.text, "html.parser")
@@ -575,7 +551,6 @@ async def test_query_export_dialog_keeps_blank_parameters(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_query_export_dialog_not_shown_without_rows(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+1+where+0")
     assert response.status_code == 200
@@ -584,7 +559,6 @@ async def test_query_export_dialog_not_shown_without_rows(ds_client):
     assert soup.select_one(".export-data-button") is None
 
 
-@pytest.mark.asyncio
 async def test_query_parameter_form_fields(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+:name")
     assert response.status_code == 200
@@ -603,7 +577,6 @@ async def test_query_parameter_form_fields(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_database_page_sql_parameter_refresh_markup(ds_client):
     response = await ds_client.get("/fixtures")
     assert response.status_code == 200
@@ -629,7 +602,6 @@ def row_fields(html):
     return fields
 
 
-@pytest.mark.asyncio
 async def test_row_html_simple_primary_key(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     assert response.status_code == 200
@@ -639,7 +611,6 @@ async def test_row_html_simple_primary_key(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_row_html_no_primary_key(ds_client):
     response = await ds_client.get("/fixtures/no_primary_key/1")
     assert response.status_code == 200
@@ -652,7 +623,6 @@ async def test_row_html_no_primary_key(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_row_html_copy_buttons(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     soup = Soup(response.text, "html.parser")
@@ -664,7 +634,6 @@ async def test_row_html_copy_buttons(ds_client):
     assert soup.find("script", src=re.compile(r"copy-button\.js"))
 
 
-@pytest.mark.asyncio
 async def test_row_html_long_value_toggle():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_row_html_long_value_toggle")
@@ -684,7 +653,6 @@ async def test_row_html_long_value_toggle():
     assert button["aria-expanded"] == "false"
 
 
-@pytest.mark.asyncio
 async def test_row_html_null_values_have_no_copy_button(ds_client):
     # Row 2 has a primary key and nulls in every other column
     response = await ds_client.get("/fixtures/foreign_key_references/2")
@@ -701,7 +669,6 @@ async def test_row_html_null_values_have_no_copy_button(ds_client):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_text,expected_link",
     (
@@ -730,7 +697,6 @@ async def test_row_links_from_other_tables(
     assert link == expected_link
 
 
-@pytest.mark.asyncio
 async def test_row_foreign_key_links(ds_client):
     # Row detail page should render foreign key values as hyperlinks
     response = await ds_client.get("/fixtures/foreign_key_references/1")
@@ -748,7 +714,6 @@ async def test_row_foreign_key_links(ds_client):
     assert first_field.find("strong") is not None, "PK value should be bold"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -767,35 +732,33 @@ async def test_row_html_compound_primary_key(ds_client, path, expected):
     ]
 
 
-@pytest.mark.asyncio
 async def test_index_metadata(ds_client):
     response = await ds_client.get("/")
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    assert "Datasette Fixtures" == soup.find("h1").text
+    assert soup.find("h1").text == "Datasette Fixtures"
     assert (
-        'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>'
-        == inner_html(soup.find("div", {"class": "metadata-description"}))
+        inner_html(soup.find("div", {"class": "metadata-description"}))
+        == 'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>'
     )
     assert_footer_links(soup)
 
 
-@pytest.mark.asyncio
 async def test_database_metadata(ds_client):
     response = await ds_client.get("/fixtures")
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     # Page title should be the default
-    assert "fixtures" == soup.find("h1").text
+    assert soup.find("h1").text == "fixtures"
     # Description should be custom
-    assert "Test tables description" == inner_html(
-        soup.find("div", {"class": "metadata-description"})
+    assert (
+        inner_html(soup.find("div", {"class": "metadata-description"}))
+        == "Test tables description"
     )
     # The source/license should be inherited
     # assert_footer_links(soup) TODO(alex) ensure
 
 
-@pytest.mark.asyncio
 async def test_database_metadata_with_custom_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query?sql=select+*+from+simple_primary_key"
@@ -803,14 +766,13 @@ async def test_database_metadata_with_custom_sql(ds_client):
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     # Page title should be the default
-    assert "fixtures" == soup.find("h1").text
+    assert soup.find("h1").text == "fixtures"
     # Description should be custom
     assert "Custom SQL query returning" in soup.find("h3").text
     # The source/license should be inherited
     # assert_footer_links(soup)TODO(alex) ensure
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,metadata,expected_text,expected_href",
     (
@@ -856,15 +818,16 @@ async def test_about_without_source_or_license(
         assert links == []
 
 
-def test_database_download_for_immutable():
-    with make_app_client(is_immutable=True) as client:
-        assert not client.ds.databases["fixtures"].is_mutable
+async def test_database_download_for_immutable():
+    with make_ds_on_disk(is_immutable=True) as ds:
+        client = ds.client
+        assert not ds.databases["fixtures"].is_mutable
         # Regular page should have a download link
-        response = client.get("/fixtures")
+        response = await client.get("/fixtures")
         soup = Soup(response.content, "html.parser")
         assert len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
-        download_response = client.get("/fixtures.db")
+        download_response = await client.get("/fixtures.db")
         assert download_response.status_code == 200
         # Check the content-length header exists
         assert "content-length" in download_response.headers
@@ -883,48 +846,52 @@ def test_database_download_for_immutable():
         etag = download_response.headers["etag"]
         assert etag == '"{}"'.format(client.ds.databases["fixtures"].hash)
         # Try a second download with If-None-Match: current-etag
-        download_response2 = client.get("/fixtures.db", if_none_match=etag)
-        assert download_response2.body == b""
-        assert download_response2.status == 304
+        download_response2 = await client.get(
+            "/fixtures.db", headers={"if-none-match": etag}
+        )
+        assert download_response2.content == b""
+        assert download_response2.status_code == 304
 
 
-def test_database_download_disallowed_for_mutable(app_client):
-    # Use app_client because we need a file database, not in-memory
-    response = app_client.get("/fixtures")
+async def test_database_download_disallowed_for_mutable(ds_on_disk):
+    # Use ds_on_disk because we need a file database, not in-memory
+    client = ds_on_disk.client
+    response = await client.get("/fixtures")
     soup = Soup(response.content, "html.parser")
     assert len(soup.find_all("a", {"href": re.compile(r"\.db$")})) == 0
-    assert app_client.get("/fixtures.db").status_code == 403
+    assert (await client.get("/fixtures.db")).status_code == 403
 
 
-def test_database_download_disallowed_for_memory():
-    with make_app_client(memory=True) as client:
-        # Memory page should NOT have a download link
-        response = client.get("/_memory")
-        soup = Soup(response.content, "html.parser")
-        assert 0 == len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
-        assert 404 == client.get("/_memory.db").status
+async def test_database_download_disallowed_for_memory():
+    ds = await make_ds(memory=True)
+    # Memory page should NOT have a download link
+    response = await ds.client.get("/_memory")
+    soup = Soup(response.content, "html.parser")
+    assert len(soup.find_all("a", {"href": re.compile(r"\.db$")})) == 0
+    assert (await ds.client.get("/_memory.db")).status_code == 404
 
 
-def test_allow_download_off():
-    with make_app_client(
+async def test_allow_download_off():
+    with make_ds_on_disk(
         is_immutable=True, settings={"default_allow_download": False}
-    ) as client:
-        response = client.get("/fixtures")
+    ) as ds:
+        client = ds.client
+        response = await client.get("/fixtures")
         soup = Soup(response.content, "html.parser")
         assert not len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
         # Accessing URL directly should 403
-        response = client.get("/fixtures.db")
-        assert 403 == response.status
+        response = await client.get("/fixtures.db")
+        assert response.status_code == 403
 
 
-def test_allow_sql_off():
-    with make_app_client(config={"allow_sql": {}}) as client:
-        response = client.get("/fixtures")
-        soup = Soup(response.content, "html.parser")
-        assert not len(soup.find_all("textarea", {"name": "sql"}))
-        # The table page should no longer show "View and edit SQL"
-        response = client.get("/fixtures/sortable")
-        assert b"View and edit SQL" not in response.content
+async def test_allow_sql_off():
+    ds = await make_ds(config={"allow_sql": {}})
+    response = await ds.client.get("/fixtures")
+    soup = Soup(response.content, "html.parser")
+    assert not len(soup.find_all("textarea", {"name": "sql"}))
+    # The table page should no longer show "View and edit SQL"
+    response = await ds.client.get("/fixtures/sortable")
+    assert b"View and edit SQL" not in response.content
 
 
 def query_page_data(response):
@@ -934,7 +901,7 @@ def query_page_data(response):
     return json.loads(match.group(1)) if match else None
 
 
-def test_query_page_column_statistics_data(app_client):
+async def test_query_page_column_statistics_data(ds_client):
     # The column statistics dialog wraps the query in a CTE, so duplicate
     # column names (compared case-insensitively) are made unique and the
     # storage type seen in the returned rows is included
@@ -942,10 +909,10 @@ def test_query_page_column_statistics_data(app_client):
         "select id, id as ID, content from simple_primary_key"
         " where content != :skip order by id"
     )
-    response = app_client.get(
+    response = await ds_client.get(
         "/fixtures/-/query?" + urllib.parse.urlencode({"sql": sql, "skip": "world"})
     )
-    assert response.status == 200
+    assert response.status_code == 200
     assert "/column-stats.js" in response.text
     assert "/query-column-actions.js" in response.text
     assert query_page_data(response) == {
@@ -963,9 +930,9 @@ def test_query_page_column_statistics_data(app_client):
     }
 
 
-def test_stored_query_page_column_statistics_data(app_client):
-    response = app_client.get("/fixtures/neighborhood_search?text=ber")
-    assert response.status == 200
+async def test_stored_query_page_column_statistics_data(ds_client):
+    response = await ds_client.get("/fixtures/neighborhood_search?text=ber")
+    assert response.status_code == 200
     execute_sql = query_page_data(response)["executeSql"]
     assert "where _neighborhood like '%' || :text || '%'" in (
         execute_sql["query"]["sql"]
@@ -989,15 +956,14 @@ def test_stored_query_page_column_statistics_data(app_client):
         "/fixtures/-/query?sql=select+*+from+simple_primary_key+where+0",
     ),
 )
-def test_query_page_column_statistics_not_available(app_client, path):
-    response = app_client.get(path)
-    assert response.status == 200
+async def test_query_page_column_statistics_not_available(ds_client, path):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
     assert query_page_data(response) is None
     assert "/column-stats.js" not in response.text
     assert "/query-column-actions.js" not in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/404", "/fixtures/404"])
 async def test_404(ds_client, path):
     response = await ds_client.get(path)
@@ -1008,7 +974,6 @@ async def test_404(ds_client, path):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_redirect",
     [("/fixtures/", "/fixtures"), ("/fixtures/simple_view/", "/fixtures/simple_view")],
@@ -1019,27 +984,24 @@ async def test_404_trailing_slash_redirect(ds_client, path, expected_redirect):
     assert response.headers["Location"] == expected_redirect
 
 
-@pytest.mark.asyncio
 async def test_404_content_type(ds_client):
     response = await ds_client.get("/404")
     assert response.status_code == 404
-    assert "text/html; charset=utf-8" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
 
 
-@pytest.mark.asyncio
 async def test_stored_query_default_title(ds_client):
     response = await ds_client.get("/fixtures/magic_parameters")
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
-    assert "fixtures: magic_parameters" == soup.find("h1").text
+    assert soup.find("h1").text == "fixtures: magic_parameters"
 
 
-@pytest.mark.asyncio
 async def test_stored_query_with_custom_metadata(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search?text=town")
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
-    assert "Search neighborhoods" == soup.find("h1").text
+    assert soup.find("h1").text == "Search neighborhoods"
     assert (
         """
 <div class="metadata-description">
@@ -1052,7 +1014,6 @@ async def test_stored_query_with_custom_metadata(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_urlify_custom_queries(ds_client):
     path = "/fixtures/-/query?" + urllib.parse.urlencode(
         {"sql": "select ('https://twitter.com/' || 'simonw') as user_url;"}
@@ -1060,14 +1021,16 @@ async def test_urlify_custom_queries(ds_client):
     response = await ds_client.get(path)
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
-    assert """<td class="col-user_url">
+    assert (
+        soup.find("td", {"class": "col-user_url"}).prettify().strip()
+        == """<td class="col-user_url">
  <a href="https://twitter.com/simonw">
   https://twitter.com/simonw
  </a>
-</td>""" == soup.find("td", {"class": "col-user_url"}).prettify().strip()
+</td>"""
+    )
 
 
-@pytest.mark.asyncio
 async def test_show_hide_sql_query(ds_client):
     path = "/fixtures/-/query?" + urllib.parse.urlencode(
         {"sql": "select ('https://twitter.com/' || 'simonw') as user_url;"}
@@ -1076,33 +1039,32 @@ async def test_show_hide_sql_query(ds_client):
     soup = Soup(response.content, "html.parser")
     span = soup.select(".show-hide-sql")[0]
     assert span.find("a")["href"].endswith("&_hide_sql=1")
-    assert "(hide)" == span.getText()
+    assert span.getText() == "(hide)"
     assert soup.find("textarea") is not None
     # Now follow the link to hide it
     response = await ds_client.get(span.find("a")["href"])
     soup = Soup(response.content, "html.parser")
     span = soup.select(".show-hide-sql")[0]
     assert not span.find("a")["href"].endswith("&_hide_sql=1")
-    assert "(show)" == span.getText()
+    assert span.getText() == "(show)"
     assert soup.find("textarea") is None
     # The SQL should still be there in a hidden form field
     hiddens = soup.find("form").select("input[type=hidden]")
-    assert [
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("sql", "select ('https://twitter.com/' || 'simonw') as user_url;"),
         ("_hide_sql", "1"),
-    ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
+    ]
 
 
-@pytest.mark.asyncio
 async def test_stored_query_with_hide_has_no_hidden_sql(ds_client):
     # For a stored query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
     response = await ds_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
     soup = Soup(response.content, "html.parser")
     hiddens = soup.find("form").select("input[type=hidden]")
-    assert [
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("_hide_sql", "1"),
-    ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1114,14 +1076,14 @@ async def test_stored_query_with_hide_has_no_hidden_sql(ds_client):
         (True, "?_show_sql=1", "_show_sql", "/_memory/one", "hide"),
     ),
 )
-def test_stored_query_show_hide_metadata_option(
+async def test_stored_query_show_hide_metadata_option(
     hide_sql,
     querystring,
     expected_hidden,
     expected_show_hide_link,
     expected_show_hide_text,
 ):
-    with make_app_client(
+    ds = await make_ds(
         config={
             "databases": {
                 "_memory": {
@@ -1135,28 +1097,25 @@ def test_stored_query_show_hide_metadata_option(
             }
         },
         memory=True,
-    ) as client:
-        expected_show_hide_fragment = (
-            f'(<a href="{expected_show_hide_link}">{expected_show_hide_text}</a>)'
-        )
-        response = client.get("/_memory/one" + querystring)
-        html = response.text
-        show_hide_fragment = html.split('<span class="show-hide-sql">')[1].split(
-            "</span>"
-        )[0]
-        assert show_hide_fragment == expected_show_hide_fragment
-        # The export dialog's CSV form has hidden inputs too, so only look
-        # at the SQL form
-        sql_form = html.split('<form class="sql core"')[1].split("</form>")[0]
-        if expected_hidden:
-            assert (
-                f'<input type="hidden" name="{expected_hidden}" value="1">' in sql_form
-            )
-        else:
-            assert '<input type="hidden" ' not in sql_form
+    )
+    expected_show_hide_fragment = (
+        f'(<a href="{expected_show_hide_link}">{expected_show_hide_text}</a>)'
+    )
+    response = await ds.client.get("/_memory/one" + querystring)
+    html = response.text
+    show_hide_fragment = html.split('<span class="show-hide-sql">')[1].split("</span>")[
+        0
+    ]
+    assert show_hide_fragment == expected_show_hide_fragment
+    # The export dialog's CSV form has hidden inputs too, so only look
+    # at the SQL form
+    sql_form = html.split('<form class="sql core"')[1].split("</form>")[0]
+    if expected_hidden:
+        assert f'<input type="hidden" name="{expected_hidden}" value="1">' in sql_form
+    else:
+        assert '<input type="hidden" ' not in sql_form
 
 
-@pytest.mark.asyncio
 async def test_binary_data_display_in_query(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+*+from+binary_data")
     assert response.status_code == 200
@@ -1170,12 +1129,11 @@ async def test_binary_data_display_in_query(ds_client):
         ],
         ['<td class="col-data">\xa0</td>'],
     ]
-    assert expected_tds == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected_tds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_filename",
     [
@@ -1198,7 +1156,6 @@ async def test_blob_download(ds_client, path, expected_filename):
     assert response.headers["content-type"] == "application/binary"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_message",
     [
@@ -1216,7 +1173,6 @@ async def test_blob_download_invalid_messages(ds_client, path, expected_message)
     assert expected_message in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -1227,11 +1183,10 @@ async def test_blob_download_invalid_messages(ds_client, path, expected_message)
 async def test_zero_results(ds_client, path):
     response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
-    assert 0 == len(soup.select("table tbody tr"))
-    assert 1 == len(soup.select("p.zero-results"))
+    assert len(soup.select("table tbody tr")) == 0
+    assert len(soup.select("p.zero-results")) == 1
 
 
-@pytest.mark.asyncio
 async def test_query_error(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+*+from+notatable")
     html = response.text
@@ -1241,26 +1196,25 @@ async def test_query_error(ds_client):
     assert "0 results" not in html
 
 
-def test_config_template_debug_on():
-    with make_app_client(settings={"template_debug": True}) as client:
-        response = client.get("/fixtures/facetable?_context=1")
-        assert response.status_code == 200
-        assert response.text.startswith("<pre>{")
+async def test_config_template_debug_on():
+    ds = await make_ds(settings={"template_debug": True})
+    response = await ds.client.get("/fixtures/facetable?_context=1")
+    assert response.status_code == 200
+    assert response.text.startswith("<pre>{")
 
 
-@pytest.mark.asyncio
 async def test_config_template_debug_off(ds_client):
     response = await ds_client.get("/fixtures/facetable?_context=1")
     assert response.status_code == 200
     assert not response.text.startswith("<pre>{")
 
 
-def test_debug_context_includes_extra_template_vars():
+async def test_debug_context_includes_extra_template_vars():
     # https://github.com/simonw/datasette/issues/693
-    with make_app_client(settings={"template_debug": True}) as client:
-        response = client.get("/fixtures/facetable?_context=1")
-        # scope_path is added by PLUGIN1
-        assert "scope_path" in response.text
+    ds = await make_ds(settings={"template_debug": True})
+    response = await ds.client.get("/fixtures/facetable?_context=1")
+    # scope_path is added by PLUGIN1
+    assert "scope_path" in response.text
 
 
 @pytest.mark.parametrize(
@@ -1287,12 +1241,11 @@ def test_debug_context_includes_extra_template_vars():
     ],
 )
 @pytest.mark.parametrize("use_prefix", (True, False))
-def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
-    client = app_client_base_url_prefix
+async def test_base_url_config(ds_client_base_url_prefix, path, use_prefix):
     path_to_get = path
     if use_prefix:
         path_to_get = "/prefix/" + path.lstrip("/")
-    response = client.get(path_to_get)
+    response = await get_unprefixed(ds_client_base_url_prefix, path_to_get)
     soup = Soup(response.content, "html.parser")
     for form in soup.select("form"):
         action = form.get("action")
@@ -1382,11 +1335,11 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
         ),
     ),
 )
-def test_base_url_affects_filter_redirects(
-    app_client_base_url_prefix, prefix, path, expected_location
+async def test_base_url_affects_filter_redirects(
+    ds_client_base_url_prefix, prefix, path, expected_location
 ):
     # Works whether or not a proxy strips the prefix, see #2347 and #1633
-    response = app_client_base_url_prefix.get(prefix + path)
+    response = await get_unprefixed(ds_client_base_url_prefix, prefix + path)
     assert response.status_code == 302
     assert response.headers["location"] == expected_location
 
@@ -1401,41 +1354,40 @@ def test_base_url_affects_filter_redirects(
         "/fixtures/paginated_view.json?_size=2",
     ),
 )
-def test_base_url_json_urls_not_double_prefixed(
-    app_client_base_url_prefix, prefix, path
+async def test_base_url_json_urls_not_double_prefixed(
+    ds_client_base_url_prefix, prefix, path
 ):
     # https://github.com/simonw/datasette/issues/2347
-    response = app_client_base_url_prefix.get(prefix + path)
+    response = await get_unprefixed(ds_client_base_url_prefix, prefix + path)
     assert response.status_code == 200
     assert "/prefix/prefix/" not in response.text
-    assert response.json["next_url"].startswith("http://localhost/prefix/fixtures/")
+    assert response.json()["next_url"].startswith("http://localhost/prefix/fixtures/")
 
 
-def test_base_url_affects_database_sql_redirect(app_client_base_url_prefix):
-    response = app_client_base_url_prefix.get(
-        "/prefix/fixtures?sql=select+1", follow_redirects=False
+async def test_base_url_affects_database_sql_redirect(ds_client_base_url_prefix):
+    response = await get_unprefixed(
+        ds_client_base_url_prefix, "/prefix/fixtures?sql=select+1"
     )
     assert response.status_code == 302
     assert response.headers["location"] == "/prefix/fixtures/-/query?sql=select+1"
 
 
-def test_base_url_affects_permanent_redirects():
-    with make_app_client(memory=True, settings={"base_url": "/prefix/"}) as client:
-        response = client.get("/prefix/-", follow_redirects=False)
-        assert response.status_code == 301
-        assert response.headers["location"] == "/prefix/-/"
+async def test_base_url_affects_permanent_redirects():
+    ds = await make_ds(memory=True, settings={"base_url": "/prefix/"})
+    response = await get_unprefixed(ds.client, "/prefix/-")
+    assert response.status_code == 301
+    assert response.headers["location"] == "/prefix/-/"
 
-        response2 = client.get("/prefix/:memory:", follow_redirects=False)
-        assert response2.status_code == 301
-        assert response2.headers["location"] == "/prefix/_memory"
+    response2 = await get_unprefixed(ds.client, "/prefix/:memory:")
+    assert response2.status_code == 301
+    assert response2.headers["location"] == "/prefix/_memory"
 
 
-def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
-    html = app_client_base_url_prefix.get("/").text
+async def test_base_url_affects_metadata_extra_css_urls(ds_client_base_url_prefix):
+    html = (await get_unprefixed(ds_client_base_url_prefix, "/")).text
     assert '<link rel="stylesheet" href="/prefix/static/extra-css-urls.css">' in html
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     [
@@ -1475,21 +1427,20 @@ async def test_edit_sql_link_on_stored_queries(ds_client, path, expected):
         False,
     ],
 )
-def test_edit_sql_link_not_shown_if_user_lacks_permission(has_permission):
-    with make_app_client(
+async def test_edit_sql_link_not_shown_if_user_lacks_permission(has_permission):
+    ds = await make_ds(
         config={
             "allow_sql": None if has_permission else {"id": "not-you"},
             "databases": {"fixtures": {"queries": {"simple": "select 1 + 1"}}},
         }
-    ) as client:
-        response = client.get("/fixtures/simple")
-        if has_permission:
-            assert "Edit SQL" in response.text
-        else:
-            assert "Edit SQL" not in response.text
+    )
+    response = await ds.client.get("/fixtures/simple")
+    if has_permission:
+        assert "Edit SQL" in response.text
+    else:
+        assert "Edit SQL" not in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor_id,should_have_links,should_not_have_links",
     [
@@ -1549,14 +1500,12 @@ async def test_navigation_menu_links(
             ), f"{link} found but should not have been in nav menu"
 
 
-@pytest.mark.asyncio
 async def test_trace_correctly_escaped(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+'<h1>Hello'&_trace=1")
     assert "select '<h1>Hello" not in response.text
     assert "select &#39;&lt;h1&gt;Hello" in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -1606,7 +1555,6 @@ async def test_alternate_url_json(ds_client, path, expected):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -1625,7 +1573,6 @@ async def test_no_alternate_url_json(ds_client, path):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -1647,7 +1594,6 @@ async def test_redirect_percent_encoding_to_tilde_encoding(ds_client, path, expe
     assert response.headers["location"] == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,config,expected_links",
     (
@@ -1685,7 +1631,7 @@ async def test_breadcrumbs_respect_permissions(ds_client, path, config, expected
     ds_client.ds.config = updated_config
 
     try:
-        response = await ds_client.ds.client.get(path)
+        response = await ds_client.get(path)
         soup = Soup(response.text, "html.parser")
         breadcrumbs = soup.select("p.crumbs a")
         actual = [(a["href"], a.text) for a in breadcrumbs]
@@ -1694,7 +1640,6 @@ async def test_breadcrumbs_respect_permissions(ds_client, path, config, expected
         ds_client.ds.config = previous_config
 
 
-@pytest.mark.asyncio
 async def test_database_color(ds_client):
     expected_color = ds_client.ds.get_database("fixtures").color
     # Should be something like #9403e5
@@ -1717,7 +1662,6 @@ async def test_database_color(ds_client):
         ), f"Color fragments not found in {path}. Expected: {expected_fragments}"
 
 
-@pytest.mark.asyncio
 async def test_custom_csrf_error(ds_client):
     response = await ds_client.post(
         "/-/messages",
@@ -1732,7 +1676,6 @@ async def test_custom_csrf_error(ds_client):
     assert "cross-site" in response.text
 
 
-@pytest.mark.asyncio
 async def test_actions_page(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
@@ -1747,7 +1690,6 @@ async def test_actions_page(ds_client):
         ds_client.ds.root_enabled = original_root_enabled
 
 
-@pytest.mark.asyncio
 async def test_actions_page_does_not_display_none_string(ds_client):
     """Ensure the Resource column doesn't display the string 'None' for null values."""
     # https://github.com/simonw/datasette/issues/2599
@@ -1761,7 +1703,6 @@ async def test_actions_page_does_not_display_none_string(ds_client):
         ds_client.ds.root_enabled = original_root_enabled
 
 
-@pytest.mark.asyncio
 async def test_permission_debug_tabs_with_query_string(ds_client):
     """Test that navigation tabs persist query strings across Check, Allowed, and Rules pages"""
     original_root_enabled = ds_client.ds.root_enabled

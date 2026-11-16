@@ -13,7 +13,7 @@ from datasette.app import DEFAULT_SETTINGS, SETTING_ALIASES, Datasette
 from datasette.cli import cli
 from datasette.utils import StartupError
 
-from .fixtures import make_app_client
+from .fixtures import make_ds, make_ds_on_disk
 
 
 def test_aliases_point_at_real_settings():
@@ -54,7 +54,6 @@ def test_settings_parameter_overrides_config_using_either_name():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_settings_json_only_lists_current_names():
     ds = Datasette(memory=True, settings={"max_csv_mb": 7})
     try:
@@ -134,7 +133,6 @@ def test_help_settings_only_lists_current_names():
     assert not set(SETTING_ALIASES) & listed
 
 
-@pytest.mark.asyncio
 async def test_previous_name_still_disables_streaming():
     ds = Datasette(memory=True, settings={"allow_csv_stream": False})
     try:
@@ -164,18 +162,17 @@ def test_default_allow_settings_previous_names(old_name, name):
         ds.close()
 
 
-def test_previous_name_still_disables_facets():
-    with make_app_client(settings={"allow_facet": False}) as client:
-        response = client.get("/fixtures/facetable.json?_facet=state")
-        assert response.status == 400
-        assert response.json["error"] == "_facet= is not allowed"
+async def test_previous_name_still_disables_facets():
+    ds = await make_ds(settings={"allow_facet": False})
+    response = await ds.client.get("/fixtures/facetable.json?_facet=state")
+    assert response.status_code == 400
+    assert response.json()["error"] == "_facet= is not allowed"
 
 
-def test_previous_name_still_disables_downloads():
-    with make_app_client(
-        is_immutable=True, settings={"allow_download": False}
-    ) as client:
-        assert client.get("/fixtures.db").status == 403
+async def test_previous_name_still_disables_downloads():
+    with make_ds_on_disk(is_immutable=True, settings={"allow_download": False}) as ds:
+        client = ds.client
+        assert (await client.get("/fixtures.db")).status_code == 403
 
 
 def test_allow_stream_is_not_a_setting():

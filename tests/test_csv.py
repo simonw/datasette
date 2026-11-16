@@ -45,7 +45,6 @@ pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_blank_la
 """.lstrip().replace("\n", "\r\n")
 
 
-@pytest.mark.asyncio
 async def test_table_csv(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_oh=1")
     assert response.status_code == 200
@@ -54,13 +53,12 @@ async def test_table_csv(ds_client):
     assert response.text == EXPECTED_TABLE_CSV
 
 
-def test_table_csv_cors_headers(app_client_with_cors):
-    response = app_client_with_cors.get("/fixtures/simple_primary_key.csv")
-    assert response.status == 200
+async def test_table_csv_cors_headers(ds_client_with_cors):
+    response = await ds_client_with_cors.get("/fixtures/simple_primary_key.csv")
+    assert response.status_code == 200
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
-@pytest.mark.asyncio
 async def test_table_csv_no_header(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_header=off")
     assert response.status_code == 200
@@ -69,7 +67,6 @@ async def test_table_csv_no_header(ds_client):
     assert response.text == EXPECTED_TABLE_CSV.split("\r\n", 1)[1]
 
 
-@pytest.mark.asyncio
 async def test_table_csv_with_labels(ds_client):
     response = await ds_client.get("/fixtures/facetable.csv?_labels=1")
     assert response.status_code == 200
@@ -77,7 +74,6 @@ async def test_table_csv_with_labels(ds_client):
     assert response.text == EXPECTED_TABLE_WITH_LABELS_CSV
 
 
-@pytest.mark.asyncio
 async def test_table_csv_with_nullable_labels(ds_client):
     response = await ds_client.get("/fixtures/foreign_key_references.csv?_labels=1")
     assert response.status_code == 200
@@ -85,7 +81,6 @@ async def test_table_csv_with_nullable_labels(ds_client):
     assert response.text == EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV
 
 
-@pytest.mark.asyncio
 async def test_table_csv_with_invalid_labels():
     # https://github.com/simonw/datasette/issues/2214
     ds = Datasette(
@@ -129,7 +124,6 @@ async def test_table_csv_with_invalid_labels():
     )
 
 
-@pytest.mark.asyncio
 async def test_table_csv_blob_columns(ds_client):
     response = await ds_client.get("/fixtures/binary_data.csv")
     assert response.status_code == 200
@@ -142,7 +136,6 @@ async def test_table_csv_blob_columns(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_view_csv_blob_columns(ds_client):
     # https://github.com/simonw/datasette/issues/2601
     response = await ds_client.get("/fixtures/binary_data_view.csv")
@@ -155,7 +148,6 @@ async def test_view_csv_blob_columns(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_csv_blob_columns(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.csv?sql=select+rowid,+data+from+binary_data"
@@ -170,7 +162,6 @@ async def test_custom_sql_csv_blob_columns(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_csv(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.csv?sql=select+content+from+simple_primary_key+limit+2"
@@ -180,7 +171,6 @@ async def test_custom_sql_csv(ds_client):
     assert response.text == EXPECTED_CUSTOM_CSV
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("download", (False, True))
 @pytest.mark.parametrize(
     "query_string,expected_error",
@@ -212,7 +202,6 @@ async def test_custom_sql_csv_errors(ds_client, query_string, expected_error, do
     assert response.text == expected_error
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_csv_error_head(ds_client):
     response = await ds_client.head("/fixtures/-/query.csv?sql=select+blah")
     assert response.status_code == 400
@@ -220,7 +209,6 @@ async def test_custom_sql_csv_error_head(ds_client):
     assert response.content == b""
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_csv_error_cors():
     ds = Datasette(cors=True)
     response = await ds.client.get("/_memory/-/query.csv?sql=select+blah")
@@ -230,7 +218,6 @@ async def test_custom_sql_csv_error_cors():
     assert response.text == "no such column: blah"
 
 
-@pytest.mark.asyncio
 async def test_table_csv_error(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key.csv?_where=blah&_stream=1"
@@ -240,18 +227,23 @@ async def test_table_csv_error(ds_client):
     assert response.text == "no such column: blah"
 
 
-@pytest.mark.asyncio
-async def test_table_csv_download(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.csv?_dl=1")
+@pytest.mark.parametrize(
+    "extension,expected_content_type",
+    (
+        ("csv", "text/csv; charset=utf-8"),
+        ("tsv", "text/tab-separated-values; charset=utf-8"),
+    ),
+)
+async def test_table_csv_tsv_download(ds_client, extension, expected_content_type):
+    response = await ds_client.get(f"/fixtures/simple_primary_key.{extension}?_dl=1")
     assert response.status_code == 200
-    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-type"] == expected_content_type
     assert (
         response.headers["content-disposition"]
-        == 'attachment; filename="simple_primary_key.csv"'
+        == f'attachment; filename="simple_primary_key.{extension}"'
     )
 
 
-@pytest.mark.asyncio
 async def test_csv_with_non_ascii_characters(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.csv?sql=select%0D%0A++%27%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC%27+as+text%2C%0D%0A++1+as+number%0D%0Aunion%0D%0Aselect%0D%0A++%27bob%27+as+text%2C%0D%0A++2+as+number%0D%0Aorder+by%0D%0A++number"
@@ -261,7 +253,6 @@ async def test_csv_with_non_ascii_characters(ds_client):
     assert response.text == "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n"
 
 
-@pytest.mark.asyncio
 async def test_table_csv_stream(ds_client):
     # Without _stream should return header + 100 rows:
     response = await ds_client.get(
@@ -275,7 +266,6 @@ async def test_table_csv_stream(ds_client):
     assert len([b for b in response.content.split(b"\r\n") if b]) == 1002
 
 
-@pytest.mark.asyncio
 async def test_view_csv_stream(ds_client):
     # Without _stream should return header + 100 rows:
     response = await ds_client.get("/fixtures/paginated_view.csv?_size=max")
@@ -289,8 +279,10 @@ async def test_view_csv_stream(ds_client):
     assert lines[0] == b"content,content_extra"
 
 
-def test_csv_trace(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
+async def test_csv_trace(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
+        "/fixtures/simple_primary_key.csv?_trace=1"
+    )
     assert response.headers["content-type"] == "text/html; charset=utf-8"
     soup = Soup(response.text, "html.parser")
     assert (
@@ -300,19 +292,22 @@ def test_csv_trace(app_client_with_trace):
     assert "select id, content from simple_primary_key" in soup.find("pre").text
 
 
-def test_table_csv_stream_does_not_calculate_facets(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
+async def test_table_csv_stream_does_not_calculate_facets(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
+        "/fixtures/simple_primary_key.csv?_trace=1"
+    )
     soup = Soup(response.text, "html.parser")
     assert "select content, count(*) as n" not in soup.find("pre").text
 
 
-def test_table_csv_stream_does_not_calculate_counts(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
+async def test_table_csv_stream_does_not_calculate_counts(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
+        "/fixtures/simple_primary_key.csv?_trace=1"
+    )
     soup = Soup(response.text, "html.parser")
     assert "select count(*)" not in soup.find("pre").text
 
 
-@pytest.mark.asyncio
 async def test_table_tsv(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.tsv")
     assert response.status_code == 200
@@ -320,20 +315,6 @@ async def test_table_tsv(ds_client):
     assert response.text == EXPECTED_TABLE_CSV.replace(",", "\t")
 
 
-@pytest.mark.asyncio
-async def test_table_tsv_download(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.tsv?_dl=1")
-    assert response.status_code == 200
-    assert (
-        response.headers["content-type"] == "text/tab-separated-values; charset=utf-8"
-    )
-    assert (
-        response.headers["content-disposition"]
-        == 'attachment; filename="simple_primary_key.tsv"'
-    )
-
-
-@pytest.mark.asyncio
 async def test_table_tsv_with_labels_and_stream(ds_client):
     response = await ds_client.get("/fixtures/facetable.tsv?_labels=1&_stream=1")
     assert response.status_code == 200
@@ -344,7 +325,6 @@ async def test_table_tsv_with_labels_and_stream(ds_client):
     assert len([line for line in lines if line]) == 16
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_tsv_quotes_like_excel(ds_client):
     sql = (
         "select 'plain' as a, 'tab\there' as b, 'line\nbreak' as c,"
@@ -359,14 +339,12 @@ async def test_custom_sql_tsv_quotes_like_excel(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_row_tsv(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1.tsv")
     assert response.status_code == 200
     assert response.text == "id\tcontent\r\n1\thello\r\n"
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_tsv_blob_columns(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.tsv?sql=select+rowid,+data+from+binary_data"
@@ -377,7 +355,6 @@ async def test_custom_sql_tsv_blob_columns(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_tsv_errors_are_plain_text(ds_client):
     response = await ds_client.get("/fixtures/-/query.tsv?sql=select+blah")
     assert response.status_code == 400
@@ -385,7 +362,6 @@ async def test_tsv_errors_are_plain_text(ds_client):
     assert response.text == "no such column: blah"
 
 
-@pytest.mark.asyncio
 async def test_tsv_plugin_renderer_takes_over():
     from datasette import hookimpl
     from datasette.plugins import pm

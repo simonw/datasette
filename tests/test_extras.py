@@ -63,7 +63,6 @@ def test_registry_is_built_once_per_scope():
     assert first is second
 
 
-@pytest.mark.asyncio
 async def test_concurrent_resolves_do_not_share_state():
     # The asyncinject registry is shared across requests - resolved values
     # must not leak between concurrent resolve() calls with different contexts
@@ -84,7 +83,6 @@ async def test_concurrent_resolves_do_not_share_state():
     assert fast == {"slow_value": 200, "dependent": 201}
 
 
-@pytest.mark.asyncio
 async def test_table_row_and_query_scopes_use_separate_registries():
     from datasette.views.table_extras import table_extra_registry
 

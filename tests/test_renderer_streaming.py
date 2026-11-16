@@ -104,7 +104,6 @@ def _ids(response):
     return [json.loads(line)["id"] for line in response.text.splitlines()]
 
 
-@pytest.mark.asyncio
 async def test_row_stream_is_the_current_page_by_default(ds):
     response = await ds.client.get("/data/numbers.ndjson")
     assert response.status_code == 200
@@ -114,7 +113,6 @@ async def test_row_stream_is_the_current_page_by_default(ds):
     assert "_next=10" in response.headers["link"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("table", ("numbers", "numbers_view"))
 async def test_row_stream_is_every_row_with_stream(ds, table):
     response = await ds.client.get(f"/data/{table}.ndjson?_stream=1")
@@ -124,7 +122,6 @@ async def test_row_stream_is_every_row_with_stream(ds, table):
     assert "link" not in response.headers
 
 
-@pytest.mark.asyncio
 async def test_row_stream_respects_filters_and_sort(ds):
     response = await ds.client.get(
         "/data/numbers.ndjson?_stream=1&id__gt=5&_sort_desc=name"
@@ -135,7 +132,6 @@ async def test_row_stream_respects_filters_and_sort(ds):
     assert ids == list(range(6, 36))
 
 
-@pytest.mark.asyncio
 async def test_row_stream_pages(ds):
     response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
     assert response.text.split() == ["10", "10", "10", "5"]
@@ -145,7 +141,6 @@ async def test_row_stream_pages(ds):
     assert response.text.split() == ["10"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -162,7 +157,6 @@ async def test_row_stream_on_row_and_query_pages(ds, path, expected):
     assert _ids(response) == expected
 
 
-@pytest.mark.asyncio
 async def test_stream_ignored_by_renderers_that_do_not_accept_row_stream(ds):
     response = await ds.client.get("/data/numbers.notstreaming?_stream=1")
     assert response.status_code == 200
@@ -172,13 +166,11 @@ async def test_stream_ignored_by_renderers_that_do_not_accept_row_stream(ds):
     assert len(response.json()["rows"]) == 10
 
 
-@pytest.mark.asyncio
 async def test_stream_and_next_cannot_be_combined(ds):
     response = await ds.client.get("/data/numbers.ndjson?_stream=1&_next=10")
     assert response.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_streaming_can_be_disabled(plugin):
     ds = _make_datasette(default_allow_stream=False)
     await _add_numbers(ds)
@@ -193,7 +185,6 @@ async def test_streaming_can_be_disabled(plugin):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_streamed_response_larger_than_max_stream_mb_is_aborted(plugin):
     ds = _make_datasette(max_stream_mb=1)
     await _add_numbers(ds)
@@ -214,7 +205,6 @@ async def test_streamed_response_larger_than_max_stream_mb_is_aborted(plugin):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_max_stream_mb_zero_disables_the_limit(plugin):
     ds = _make_datasette(max_stream_mb=0)
     await _add_numbers(ds)
@@ -225,7 +215,6 @@ async def test_max_stream_mb_zero_disables_the_limit(plugin):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_error_fetching_a_later_page_aborts_the_response(ds, monkeypatch):
     from datasette.views import table
 
@@ -244,7 +233,6 @@ async def test_error_fetching_a_later_page_aborts_the_response(ds, monkeypatch):
     assert calls == [None, "10", "20"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -267,7 +255,6 @@ async def test_dl_downloads_any_format(ds, path, expected):
     assert response.headers.get("content-disposition") == expected
 
 
-@pytest.mark.asyncio
 async def test_plugin_can_replace_the_csv_renderer():
     class CsvPlugin:
         __name__ = "CsvPlugin"
@@ -292,14 +279,12 @@ async def test_plugin_can_replace_the_csv_renderer():
         pm.unregister(name="csv_plugin")
 
 
-@pytest.mark.asyncio
 async def test_csv_and_tsv_are_registered_renderers(ds):
     assert {"csv", "tsv", "json"} <= set(ds.renderers)
     data = (await ds.client.get("/data/numbers.json?_extra=renderers")).json()
     assert {"csv", "tsv", "json"} <= set(data["renderers"])
 
 
-@pytest.mark.asyncio
 async def test_expanded_columns_extra(ds_client):
     data = (
         await ds_client.get(

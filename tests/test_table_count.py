@@ -31,7 +31,6 @@ async def count_ds(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table,query,count",
     [
@@ -58,14 +57,12 @@ async def test_count(count_ds, table, query, count):
     assert response.headers["cache-control"] == "no-store"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["get", "head", "put", "delete"])
 async def test_count_post_only(count_ds, method):
     response = await count_ds.client.request(method, "/counts/numbers/-/count")
     assert response.status_code == 405
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,status",
     [
@@ -83,7 +80,6 @@ async def test_count_errors(count_ds, path, status):
     assert response.json()["ok"] is False
 
 
-@pytest.mark.asyncio
 async def test_count_permissions(tmp_path):
     ds = Datasette(
         [tmp_path / "counts.db"], config={"permissions": {"view-table": False}}
@@ -98,7 +94,6 @@ async def test_count_permissions(tmp_path):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_count_plugin_filter(count_ds):
     class Plugin:
         @hookimpl
@@ -119,7 +114,6 @@ async def test_count_plugin_filter(count_ds):
         pm.unregister(plugin)
 
 
-@pytest.mark.asyncio
 async def test_count_timeout(count_ds, monkeypatch):
     db = count_ds.get_database()
     original = db.execute
@@ -137,7 +131,6 @@ async def test_count_timeout(count_ds, monkeypatch):
     assert response.json()["errors"] == ["Count query timed out"]
 
 
-@pytest.mark.asyncio
 async def test_count_button_without_execute_sql(count_ds):
     from bs4 import BeautifulSoup
 
@@ -148,7 +141,6 @@ async def test_count_button_without_execute_sql(count_ds):
     assert soup.select_one(".table-count").text == "2+ rows"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query,status,count",
     [
@@ -169,7 +161,6 @@ async def test_count_where(count_ds, query, status, count):
         assert response.json()["ok"] is False
 
 
-@pytest.mark.asyncio
 async def test_count_base_url(tmp_path):
     from bs4 import BeautifulSoup
 

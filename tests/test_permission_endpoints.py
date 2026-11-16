@@ -39,7 +39,6 @@ async def ds_with_permissions():
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status,expected_keys",
     [
@@ -87,7 +86,6 @@ async def test_allowed_json_basic(
     assert expected_keys.issubset(data.keys())
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_response_structure(ds_with_permissions):
     """Test that /-/allowed.json returns the expected structure."""
     response = await ds_with_permissions.client.get(
@@ -113,7 +111,6 @@ async def test_allowed_json_response_structure(ds_with_permissions):
         assert "resource" in item
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_with_actor(ds_with_permissions):
     """Test /-/allowed.json includes actor information."""
     response = await ds_with_permissions.client.get(
@@ -125,7 +122,6 @@ async def test_allowed_json_with_actor(ds_with_permissions):
     assert data["actor_id"] == "test_user"
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_pagination():
     """Test that /-/allowed.json pagination works."""
     ds = Datasette()
@@ -164,7 +160,6 @@ async def test_allowed_json_pagination():
     assert items1 != items2
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_total_count(tmp_path_factory):
     """Test that /-/allowed.json returns correct total count."""
     from datasette.database import Database
@@ -213,7 +208,6 @@ async def test_allowed_json_total_count(tmp_path_factory):
 # /-/rules.json tests
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status,expected_keys",
     [
@@ -254,7 +248,6 @@ async def test_rules_json_basic(
     assert expected_keys.issubset(data.keys())
 
 
-@pytest.mark.asyncio
 async def test_rules_json_response_structure(ds_with_permissions):
     """Test that /-/rules.json returns the expected structure."""
     response = await ds_with_permissions.client.get(
@@ -283,7 +276,6 @@ async def test_rules_json_response_structure(ds_with_permissions):
         assert "reason" in item
 
 
-@pytest.mark.asyncio
 async def test_rules_json_includes_all_rules(ds_with_permissions):
     """Test that /-/rules.json includes both allowed and denied resources."""
     # Root user should see rules for everything
@@ -303,7 +295,6 @@ async def test_rules_json_includes_all_rules(ds_with_permissions):
         assert item["allow"] in [0, 1]
 
 
-@pytest.mark.asyncio
 async def test_rules_json_pagination():
     """Test that /-/rules.json pagination works."""
     ds = Datasette()
@@ -332,7 +323,6 @@ async def test_rules_json_pagination():
     assert "total" in data
 
 
-@pytest.mark.asyncio
 async def test_rules_json_with_actor(ds_with_permissions):
     """Test /-/rules.json includes actor information."""
     # Use root actor (rules endpoint requires permissions-debug)
@@ -345,7 +335,6 @@ async def test_rules_json_with_actor(ds_with_permissions):
     assert data["actor_id"] == "root"
 
 
-@pytest.mark.asyncio
 async def test_root_user_respects_settings_deny():
     """
     Test for issue #2509: Settings-based deny rules should override root user privileges.
@@ -382,7 +371,6 @@ async def test_root_user_respects_settings_deny():
     )
 
 
-@pytest.mark.asyncio
 async def test_root_user_respects_settings_deny_tables():
     """
     Test for issue #2509: Settings-based deny rules should override root for tables too.
@@ -425,7 +413,6 @@ async def test_root_user_respects_settings_deny_tables():
     )
 
 
-@pytest.mark.asyncio
 async def test_execute_sql_requires_view_database():
     """
     Test for issue #2527: execute-sql permission should require view-database permission.
@@ -496,7 +483,6 @@ async def test_execute_sql_requires_view_database():
         ds.pm.unregister(plugin)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/-/allowed", "/-/allowed.json?action=view-table"])
 async def test_allowed_requires_view_instance(path):
     """

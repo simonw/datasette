@@ -250,8 +250,9 @@ async def test_database_page(ds_client):
         assert "outgoing" in table["foreign_keys"]
 
 
-async def test_no_files_uses_memory_database(ds_client_no_files):
-    response = await ds_client_no_files.get("/.json")
+async def test_no_files_uses_memory_database():
+    ds = Datasette([])
+    response = await ds.client.get("/.json")
     assert response.status_code == 200
     assert {
         "ok": True,
@@ -276,7 +277,7 @@ async def test_no_files_uses_memory_database(ds_client_no_files):
         "metadata": {},
     } == response.json()
     # Try that SQL query
-    response = await ds_client_no_files.get(
+    response = await ds.client.get(
         "/_memory/-/query.json?sql=select+sqlite_version()&_shape=array"
     )
     assert 1 == len(response.json())
@@ -293,8 +294,8 @@ async def test_no_files_uses_memory_database(ds_client_no_files):
         ("/:memory:.csv?sql=select+1", "/_memory.csv?sql=select+1"),
     ),
 )
-async def test_old_memory_urls_redirect(ds_client_no_files, path, expected_redirect):
-    response = await ds_client_no_files.get(path)
+async def test_old_memory_urls_redirect(path, expected_redirect):
+    response = await Datasette([]).client.get(path)
     assert response.status_code == 301
     assert response.headers["location"] == expected_redirect
 

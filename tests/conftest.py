@@ -373,7 +373,6 @@ from .fixtures import (  # noqa: F401
     app_client_with_cors,
     app_client_with_dot,
     ds_client_base_url_prefix,
-    ds_client_no_files,
     ds_client_shorter_time_limit,
     ds_client_two_attached_databases,
     ds_client_with_cors,

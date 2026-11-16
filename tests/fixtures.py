@@ -272,15 +272,6 @@ def app_client():
 
 
 @pytest.fixture(scope="session")
-def ds_client_no_files():
-    ds = Datasette([])
-    try:
-        yield ds.client
-    finally:
-        ds.close()
-
-
-@pytest.fixture(scope="session")
 def app_client_two_attached_databases_crossdb_enabled():
     with make_app_client(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL},

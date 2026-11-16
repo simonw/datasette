@@ -300,8 +300,8 @@ async def test_old_memory_urls_redirect(path, expected_redirect):
     assert response.headers["location"] == expected_redirect
 
 
-async def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
-    response = await app_client_with_dot.ds.client.get("/fixtures~2Edot.json")
+async def test_database_page_for_database_with_dot_in_name(ds_on_disk_with_dot):
+    response = await ds_on_disk_with_dot.client.get("/fixtures~2Edot.json")
     assert response.status_code == 200
 
 
@@ -669,8 +669,8 @@ async def test_row_extra_render_cell():
         ds.pm.unregister(name="TestRenderCellPlugin")
 
 
-async def test_databases_json(app_client_two_attached_databases_one_immutable):
-    response = await app_client_two_attached_databases_one_immutable.ds.client.get(
+async def test_databases_json(ds_on_disk_two_databases_one_immutable):
+    response = await ds_on_disk_two_databases_one_immutable.client.get(
         "/-/databases.json"
     )
     databases = response.json()["databases"]
@@ -1011,13 +1011,13 @@ async def test_config_force_https_urls():
     ],
 )
 async def test_cors(
-    app_client_with_cors,
-    app_client_two_attached_databases_one_immutable,
+    ds_on_disk_with_cors,
+    ds_on_disk_two_databases_one_immutable,
     path,
     status_code,
 ):
     # Both fixtures are on disk and immutable, so /fixtures.db can be downloaded
-    response = await app_client_with_cors.ds.client.get(path)
+    response = await ds_on_disk_with_cors.client.get(path)
     assert response.status_code == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert (
@@ -1029,11 +1029,11 @@ async def test_cors(
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )
     assert response.headers["Access-Control-Max-Age"] == "3600"
-    # Same request to app_client_two_attached_databases_one_immutable
+    # Same request to ds_on_disk_two_databases_one_immutable
     # should not have those headers - I'm using that fixture because
-    # regular app_client doesn't have immutable fixtures.db which means
+    # regular ds_on_disk doesn't have immutable fixtures.db which means
     # the test for /fixtures.db returns a 403 error
-    client = app_client_two_attached_databases_one_immutable.ds.client
+    client = ds_on_disk_two_databases_one_immutable.client
     response = await client.get(path)
     assert response.status_code == status_code
     assert "Access-Control-Allow-Origin" not in response.headers
@@ -1086,8 +1086,8 @@ async def test_common_prefix_database_names():
         assert db_name == data["database"]
 
 
-async def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
-    response = await app_client_immutable_and_inspect_file.ds.client.get(
+async def test_inspect_file_used_for_count(ds_on_disk_immutable_and_inspect_file):
+    response = await ds_on_disk_immutable_and_inspect_file.client.get(
         "/fixtures/sortable.json?_extra=count"
     )
     assert response.json()["count"] == 100
@@ -1099,9 +1099,9 @@ async def test_http_options_request(ds_client):
     assert response.text == "ok"
 
 
-async def test_db_path(app_client):
-    # Needs app_client because needs file based database
-    db = app_client.ds.get_database()
+async def test_db_path(ds_on_disk):
+    # Needs ds_on_disk because needs file based database
+    db = ds_on_disk.get_database()
     path = pathlib.Path(db.path)
 
     assert path.exists()

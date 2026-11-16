@@ -6,9 +6,9 @@ from click.testing import CliRunner
 from datasette.cli import cli
 
 
-async def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
+async def test_crossdb_join(ds_on_disk_two_databases_crossdb):
     # --crossdb attaches database files, so this uses the on-disk fixture
-    client = app_client_two_attached_databases_crossdb_enabled.ds.client
+    client = ds_on_disk_two_databases_crossdb.client
     sql = """
     select
       'extra database' as db,
@@ -67,9 +67,9 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
 
 
 async def test_crossdb_attached_database_list_display(
-    app_client_two_attached_databases_crossdb_enabled,
+    ds_on_disk_two_databases_crossdb,
 ):
-    client = app_client_two_attached_databases_crossdb_enabled.ds.client
+    client = ds_on_disk_two_databases_crossdb.client
     response = await client.get("/_memory")
     for fragment in (
         "databases are attached to this connection",

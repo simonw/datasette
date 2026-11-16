@@ -14,14 +14,12 @@ from datasette.fixtures import write_fixture_database
 from datasette.plugins import DEFAULT_PLUGINS, pm
 from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite3
+from datasette.utils.testing import TestClient as _TestClient
 from datasette.version import __version__
 
 from .fixtures import (
     EXPECTED_PLUGINS,
-    make_app_client,
-)
-from .fixtures import (
-    TestClient as _TestClient,
+    make_ds_on_disk,
 )
 
 
@@ -77,9 +75,9 @@ def test_inspect_cli_writes_to_file(fixtures_db_in_cwd):
 
 def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     inspect_data = {"fixtures": {"tables": {"hithere": {"count": 44}}}}
-    with make_app_client(inspect_data=inspect_data, is_immutable=True) as client:
-        assert inspect_data == client.ds.inspect_data
-        db = client.ds.databases["fixtures"]
+    with make_ds_on_disk(inspect_data=inspect_data, is_immutable=True) as ds:
+        assert inspect_data == ds.inspect_data
+        db = ds.databases["fixtures"]
         assert db.cached_table_counts == {"hithere": 44}
 
 
@@ -123,7 +121,7 @@ def test_spatialite_error_if_cannot_find_load_extension_spatialite():
     assert "Could not find SpatiaLite extension" in result.output
 
 
-def test_plugins_cli(app_client):
+def test_plugins_cli(ds_on_disk):
     runner = CliRunner()
     result1 = runner.invoke(cli, ["plugins"])
     actual_plugins = sorted(

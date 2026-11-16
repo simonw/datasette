@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.utils.asgi import Request
 from datasette.views.database import MagicParameters
 
-from .fixtures import make_app_client, make_ds
+from .fixtures import make_ds, make_ds_on_disk
 
 # These tests send JSON bodies using the content type of an HTML form
 FORM_CONTENT_TYPE = {"content-type": "application/x-www-form-urlencoded"}
@@ -70,7 +70,7 @@ async def stored_write_client(tmpdir):
 
 @pytest.fixture
 def stored_write_immutable_client():
-    with make_app_client(
+    with make_ds_on_disk(
         is_immutable=True,
         config={
             "databases": {
@@ -84,9 +84,9 @@ def stored_write_immutable_client():
                 }
             }
         },
-    ) as client:
+    ) as ds:
         # Immutable databases need a file on disk
-        yield client.ds.client
+        yield ds.client
 
 
 async def test_stored_query_with_named_parameter(ds_client):

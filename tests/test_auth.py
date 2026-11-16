@@ -11,6 +11,7 @@ from datasette.resources import (
     TableResource,
 )
 from datasette.utils import baseconv
+from datasette.utils.testing import TestClient as _TestClient
 
 from .utils import cookie_was_deleted, last_event
 
@@ -341,8 +342,8 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
 
 
 @pytest.mark.parametrize("expires", (None, 1000, -1000))
-def test_cli_create_token(app_client, expires):
-    secret = app_client.ds._secret
+def test_cli_create_token(ds_on_disk, expires):
+    secret = ds_on_disk._secret
     runner = CliRunner()
     args = ["create-token", "--secret", secret, "test"]
     if expires:
@@ -351,13 +352,14 @@ def test_cli_create_token(app_client, expires):
     assert result.exit_code == 0
     token = result.output.strip()
     assert token.startswith("dstok_")
-    details = app_client.ds.unsign(token[len("dstok_") :], "token")
+    details = ds_on_disk.unsign(token[len("dstok_") :], "token")
     expected_keys = {"a", "t"}
     if expires:
         expected_keys.add("d")
     assert details.keys() == expected_keys
     assert details["a"] == "test"
-    response = app_client.get(
+    # A sync request, because the CLI command above runs its own event loop
+    response = _TestClient(ds_on_disk).get(
         "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
     )
     if expires is None or expires > 0:

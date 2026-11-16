@@ -366,16 +366,16 @@ def serve_with_plugins(tmp_path):
 # Import fixtures from fixtures.py to make them available
 from .fixtures import (  # noqa: F401
     TEMP_PLUGIN_SECRET_FILE,
-    app_client,
-    app_client_immutable_and_inspect_file,
-    app_client_two_attached_databases_crossdb_enabled,
-    app_client_two_attached_databases_one_immutable,
-    app_client_with_cors,
-    app_client_with_dot,
     ds_client_base_url_prefix,
     ds_client_shorter_time_limit,
     ds_client_two_attached_databases,
     ds_client_with_cors,
     ds_client_with_trace,
-    make_app_client,
+    ds_on_disk,
+    ds_on_disk_immutable_and_inspect_file,
+    ds_on_disk_two_databases_crossdb,
+    ds_on_disk_two_databases_one_immutable,
+    ds_on_disk_with_cors,
+    ds_on_disk_with_dot,
+    make_ds_on_disk,
 )

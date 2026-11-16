@@ -18,7 +18,6 @@ from datasette.fixtures import (
     write_extra_database,
     write_fixture_database,
 )
-from datasette.utils.testing import TestClient
 
 # This temp file is used by one of the plugin config tests
 TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")
@@ -109,7 +108,7 @@ EXPECTED_PLUGINS = [
 
 
 @contextlib.contextmanager
-def make_app_client(
+def make_ds_on_disk(
     sql_time_limit_ms=None,
     max_returned_rows=None,
     cors=False,
@@ -125,6 +124,14 @@ def make_app_client(
     metadata=None,
     crossdb=False,
 ):
+    """
+    Context manager yielding a Datasette instance that serves the fixtures
+    database from a file in a temporary directory, for tests that need a real
+    database file: immutable databases, database downloads, cross-database
+    queries. Use ``make_ds()`` for everything else, since it is much cheaper.
+
+    ``extra_databases`` is a dictionary mapping filenames to SQL scripts.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
         if is_immutable:
@@ -173,7 +180,7 @@ def make_app_client(
             crossdb=crossdb,
         )
         try:
-            yield TestClient(ds)
+            yield ds
         finally:
             ds.close()
 
@@ -189,11 +196,10 @@ async def make_ds(
     Return a Datasette instance serving an in-memory copy of the fixtures
     database, for tests that make requests using ``ds.client``.
 
-    This is the ``datasette.client`` equivalent of ``make_app_client()``, with
-    the same default settings, config, metadata and plugins. Nothing is written
-    to disk, so it is cheap enough to call from individual tests. Use
-    ``make_app_client()`` for tests that need a real database file, for example
-    immutable databases or database downloads.
+    Nothing is written to disk, so it is cheap enough to call from individual
+    tests. Use ``make_ds_on_disk()``, which has the same default settings,
+    config, metadata and plugins, for tests that need a real database file,
+    for example immutable databases or database downloads.
 
     ``extra_databases`` is a dictionary mapping database names to SQL scripts.
     Other keyword arguments are passed to the ``Datasette`` constructor.
@@ -215,7 +221,7 @@ async def make_ds(
         settings=settings,
         **{"plugins_dir": PLUGINS_DIR, **kwargs},
     )
-    # Extra databases are added first, like make_app_client(), so that they
+    # Extra databases are added first, like make_ds_on_disk(), so that they
     # come before fixtures in /-/databases
     for name, sql in (extra_databases or {}).items():
         extra_db = ds.add_database(
@@ -266,45 +272,45 @@ ds_client_two_attached_databases = _session_ds_client(
 
 
 @pytest.fixture(scope="session")
-def app_client():
-    with make_app_client() as client:
-        yield client
+def ds_on_disk():
+    with make_ds_on_disk() as ds:
+        yield ds
 
 
 @pytest.fixture(scope="session")
-def app_client_two_attached_databases_crossdb_enabled():
-    with make_app_client(
+def ds_on_disk_two_databases_crossdb():
+    with make_ds_on_disk(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL},
         crossdb=True,
-    ) as client:
-        yield client
+    ) as ds:
+        yield ds
 
 
 @pytest.fixture(scope="session")
-def app_client_two_attached_databases_one_immutable():
-    with make_app_client(
+def ds_on_disk_two_databases_one_immutable():
+    with make_ds_on_disk(
         is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
-    ) as client:
-        yield client
+    ) as ds:
+        yield ds
 
 
 @pytest.fixture(scope="session")
-def app_client_with_dot():
-    with make_app_client(filename="fixtures.dot.db") as client:
-        yield client
+def ds_on_disk_with_dot():
+    with make_ds_on_disk(filename="fixtures.dot.db") as ds:
+        yield ds
 
 
 @pytest.fixture(scope="session")
-def app_client_with_cors():
-    with make_app_client(is_immutable=True, cors=True) as client:
-        yield client
+def ds_on_disk_with_cors():
+    with make_ds_on_disk(is_immutable=True, cors=True) as ds:
+        yield ds
 
 
 @pytest.fixture(scope="session")
-def app_client_immutable_and_inspect_file():
+def ds_on_disk_immutable_and_inspect_file():
     inspect_data = {"fixtures": {"tables": {"sortable": {"count": 100}}}}
-    with make_app_client(is_immutable=True, inspect_data=inspect_data) as client:
-        yield client
+    with make_ds_on_disk(is_immutable=True, inspect_data=inspect_data) as ds:
+        yield ds
 
 
 CONFIG = {

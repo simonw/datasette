@@ -35,8 +35,8 @@ requires_sqlite_returning = pytest.mark.skipif(
 
 
 @pytest.fixture
-def db(app_client):
-    return app_client.ds.get_database("fixtures")
+def db(ds_on_disk):
+    return ds_on_disk.get_database("fixtures")
 
 
 async def test_execute(db):
@@ -1048,10 +1048,8 @@ def test_is_mutable(bare_ds):
     assert Database(bare_ds, is_memory=True, is_mutable=False).is_mutable is False
 
 
-async def test_attached_databases(app_client_two_attached_databases_crossdb_enabled):
-    database = app_client_two_attached_databases_crossdb_enabled.ds.get_database(
-        "_memory"
-    )
+async def test_attached_databases(ds_on_disk_two_databases_crossdb):
+    database = ds_on_disk_two_databases_crossdb.get_database("_memory")
     attached = await database.attached_databases()
     assert {a.name for a in attached} == {"extra database", "fixtures"}
 

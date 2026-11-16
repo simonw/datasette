@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
 
-from .fixtures import get_unprefixed, make_app_client, make_ds
+from .fixtures import get_unprefixed, make_ds, make_ds_on_disk
 from .utils import assert_footer_links, inner_html
 
 
@@ -815,9 +815,9 @@ async def test_about_without_source_or_license(
 
 
 async def test_database_download_for_immutable():
-    with make_app_client(is_immutable=True) as app_client:
-        client = app_client.ds.client
-        assert not client.ds.databases["fixtures"].is_mutable
+    with make_ds_on_disk(is_immutable=True) as ds:
+        client = ds.client
+        assert not ds.databases["fixtures"].is_mutable
         # Regular page should have a download link
         response = await client.get("/fixtures")
         soup = Soup(response.content, "html.parser")
@@ -849,9 +849,9 @@ async def test_database_download_for_immutable():
         assert download_response2.status_code == 304
 
 
-async def test_database_download_disallowed_for_mutable(app_client):
-    # Use app_client because we need a file database, not in-memory
-    client = app_client.ds.client
+async def test_database_download_disallowed_for_mutable(ds_on_disk):
+    # Use ds_on_disk because we need a file database, not in-memory
+    client = ds_on_disk.client
     response = await client.get("/fixtures")
     soup = Soup(response.content, "html.parser")
     assert len(soup.find_all("a", {"href": re.compile(r"\.db$")})) == 0
@@ -868,10 +868,10 @@ async def test_database_download_disallowed_for_memory():
 
 
 async def test_allow_download_off():
-    with make_app_client(
+    with make_ds_on_disk(
         is_immutable=True, settings={"default_allow_download": False}
-    ) as app_client:
-        client = app_client.ds.client
+    ) as ds:
+        client = ds.client
         response = await client.get("/fixtures")
         soup = Soup(response.content, "html.parser")
         assert not len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
@@ -1627,7 +1627,7 @@ async def test_breadcrumbs_respect_permissions(ds_client, path, config, expected
     ds_client.ds.config = updated_config
 
     try:
-        response = await ds_client.ds.client.get(path)
+        response = await ds_client.get(path)
         soup = Soup(response.text, "html.parser")
         breadcrumbs = soup.select("p.crumbs a")
         actual = [(a["href"], a.text) for a in breadcrumbs]

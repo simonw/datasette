@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.database import Database
 
-from .fixtures import get_unprefixed, make_app_client, make_ds
+from .fixtures import get_unprefixed, make_ds, make_ds_on_disk
 from .utils import inner_html
 
 
@@ -821,10 +821,8 @@ async def test_base_url_export_links_are_not_double_prefixed(ds_client_base_url_
 
 
 async def test_base_url_export_links_when_database_matches_prefix():
-    with make_app_client(
-        settings={"base_url": "/data/"}, filename="data.db"
-    ) as app_client:
-        client = app_client.ds.client
+    with make_ds_on_disk(settings={"base_url": "/data/"}, filename="data.db") as ds:
+        client = ds.client
         response = await get_unprefixed(
             client, "/data/data/simple_primary_key?id__gt=2"
         )
@@ -3060,8 +3058,8 @@ async def test_foreign_key_labels_obey_permissions(config):
     }
 
 
-async def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
+async def test_foreign_keys_special_character_in_database_name(ds_on_disk_with_dot):
     # https://github.com/simonw/datasette/pull/2476
-    client = app_client_with_dot.ds.client
+    client = ds_on_disk_with_dot.client
     response = await client.get("/fixtures~2Edot/complex_foreign_keys")
     assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text

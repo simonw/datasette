@@ -16,7 +16,7 @@ from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
 from datasette.utils import UNSTABLE_API_MESSAGE
 
-from .fixtures import assert_permissions_checked, make_app_client, make_ds
+from .fixtures import assert_permissions_checked, make_ds, make_ds_on_disk
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -392,12 +392,12 @@ async def test_query_list_respects_view_query():
         ),
     ],
 )
-async def test_permissions_checked(app_client, path, permissions):
-    # Needs file-backed app_client for /fixtures.db
-    app_client.ds._permission_checks.clear()
-    response = await app_client.ds.client.get(path)
+async def test_permissions_checked(ds_on_disk, path, permissions):
+    # Needs file-backed ds_on_disk for /fixtures.db
+    ds_on_disk._permission_checks.clear()
+    response = await ds_on_disk.client.get(path)
     assert response.status_code in (200, 403)
-    assert_permissions_checked(app_client.ds, permissions)
+    assert_permissions_checked(ds_on_disk, permissions)
 
 
 @pytest.mark.parametrize("filter_", ("all", "exclude-yours", "only-yours"))
@@ -556,10 +556,10 @@ async def test_view_instance(path, view_instance_client):
 
 
 @pytest.fixture(scope="session")
-def cascade_app_client():
+def cascade_client():
     # Needs a file on disk, to test downloading /fixtures.db
-    with make_app_client(is_immutable=True) as client:
-        yield client.ds.client
+    with make_ds_on_disk(is_immutable=True) as ds:
+        yield ds.client
 
 
 @pytest.mark.parametrize(
@@ -599,13 +599,11 @@ def cascade_app_client():
         ("/fixtures.db", ["download"], 200),
     ],
 )
-async def test_permissions_cascade(
-    cascade_app_client, path, permissions, expected_status
-):
+async def test_permissions_cascade(cascade_client, path, permissions, expected_status):
     """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
-    previous_config = cascade_app_client.ds.config
+    previous_config = cascade_client.ds.config
     updated_config = copy.deepcopy(previous_config)
     actor = {"id": "test"}
     if "download" in permissions:
@@ -624,19 +622,19 @@ async def test_permissions_cascade(
         updated_config["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)
-        cascade_app_client.ds.config = updated_config
-        response = await cascade_app_client.get(
+        cascade_client.ds.config = updated_config
+        response = await cascade_client.get(
             path,
-            cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
+            cookies={"ds_actor": cascade_client.actor_cookie(actor)},
         )
         assert (
             response.status_code == expected_status
         ), f"path: {path}, permissions: {permissions}, expected_status: {expected_status}, status: {response.status_code}"
     finally:
-        cascade_app_client.ds.config = previous_config
+        cascade_client.ds.config = previous_config
 
 
-async def test_padlocks_on_database_page(cascade_app_client):
+async def test_padlocks_on_database_page(cascade_client):
     config = {
         "databases": {
             "fixtures": {
@@ -649,16 +647,16 @@ async def test_padlocks_on_database_page(cascade_app_client):
             }
         }
     }
-    previous_config = cascade_app_client.ds.config
+    previous_config = cascade_client.ds.config
     try:
-        cascade_app_client.ds.config = config
-        await cascade_app_client.ds.invoke_startup()
-        await cascade_app_client.ds.add_query(
+        cascade_client.ds.config = config
+        await cascade_client.ds.invoke_startup()
+        await cascade_client.ds.add_query(
             "fixtures", "query_two", "select 2", source="config"
         )
-        response = await cascade_app_client.get(
+        response = await cascade_client.get(
             "/fixtures",
-            cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
+            cookies={"ds_actor": cascade_client.actor_cookie({"id": "test"})},
         )
         soup = Soup(response.text, "html.parser")
 
@@ -686,8 +684,8 @@ async def test_padlocks_on_database_page(cascade_app_client):
         )
         assert link_and_padlock("catalog-item-name", "simple_view") == "simple_view"
     finally:
-        cascade_app_client.ds.config = previous_config
-        await cascade_app_client.ds.remove_query("fixtures", "query_two")
+        cascade_client.ds.config = previous_config
+        await cascade_client.ds.remove_query("fixtures", "query_two")
 
 
 @pytest.mark.parametrize(

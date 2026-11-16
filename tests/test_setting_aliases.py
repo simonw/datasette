@@ -13,7 +13,7 @@ from datasette.app import DEFAULT_SETTINGS, SETTING_ALIASES, Datasette
 from datasette.cli import cli
 from datasette.utils import StartupError
 
-from .fixtures import make_app_client, make_ds
+from .fixtures import make_ds, make_ds_on_disk
 
 
 def test_aliases_point_at_real_settings():
@@ -170,10 +170,8 @@ async def test_previous_name_still_disables_facets():
 
 
 async def test_previous_name_still_disables_downloads():
-    with make_app_client(
-        is_immutable=True, settings={"allow_download": False}
-    ) as app_client:
-        client = app_client.ds.client
+    with make_ds_on_disk(is_immutable=True, settings={"allow_download": False}) as ds:
+        client = ds.client
         assert (await client.get("/fixtures.db")).status_code == 403
 
 

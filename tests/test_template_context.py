@@ -156,10 +156,11 @@ async def get_template_context(ds, path):
     return json.loads(body)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "page_name,path",
     (
+        ("index", "/"),
+        ("index", "/?q=facet"),
         ("database", "/fixtures"),
         ("table", "/fixtures/facetable"),
         ("table", "/fixtures/facetable?_city_id__exact=1"),

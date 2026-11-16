@@ -11,8 +11,271 @@ import pytest_asyncio
 from bs4 import BeautifulSoup
 
 from datasette.app import Datasette
+from datasette.utils import tilde_encode
 
 PAGE_SIZE = 4
+
+
+@pytest.mark.parametrize("descending", [False, True])
+@pytest.mark.parametrize(
+    "declaration,values",
+    [
+        ("", [-(2**63), -3, 0, 2**53 + 1, 2**63 - 1]),
+        ("blob", [1, 2, 3, 4, 5]),
+        ("ctas", [1, 2, 3, 4, 5]),
+        ("", [-1.5, -0.0, 0.1, 1.0000000000000002, 1e100]),
+        ("", [None, -3, 1.25, 2, "", "10", "2", b"", b"\x00", b"\xff"]),
+        ("text", ["", "$null", "10", "2", "b:ff", "f:0x1p+2", "i:2", "~3A", "a+b"]),
+        ("integer", [1, 2, 3, 4, 5]),
+        ("real", [-1.5, 0.1, 1.25, 2.5, 1e100]),
+        ("text", [1, 2, 3, 4, 5]),
+    ],
+)
+async def test_sorted_pagination_preserves_storage_classes(
+    tmp_path, declaration, values, descending
+):
+    path = tmp_path / "pages.db"
+    with sqlite3.connect(path) as conn:
+        if declaration == "ctas":
+            conn.execute(
+                "create table items as select 1 as score union all select 2 "
+                "union all select 3 union all select 4 union all select 5"
+            )
+            key = "rowid"
+        else:
+            conn.execute(
+                f"create table items (id integer primary key, score {declaration})"
+            )
+            conn.executemany(
+                "insert into items (score) values (?)", [(v,) for v in values]
+            )
+            key = "id"
+        expected = conn.execute(
+            f"select {key}, score from items order by score {'desc' if descending else 'asc'}"
+        ).fetchall()
+    ds = Datasette([path])
+    query = urllib.parse.urlencode(
+        {"_size": 2, "_sort_desc" if descending else "_sort": "score"}
+    )
+    url = f"/pages/items.json?{query}"
+    seen = []
+    try:
+        for _ in range(len(values) + 1):
+            response = await ds.client.get(url)
+            assert response.status_code == 200, response.text
+            data = response.json()
+            seen.extend(row[key] for row in data["rows"])
+            if data["next"] is None:
+                break
+            assert await count_before(ds, "items", query, data["next"]) == len(seen)
+            if len(seen) == 2:
+                html = await ds.client.get(
+                    "/pages/items?"
+                    + query
+                    + "&_next="
+                    + urllib.parse.quote_plus(data["next"])
+                )
+                assert html.status_code == 200, html.text
+                _, header, _ = bars(html.text)
+                after_value = expected[1][1]
+                assert (
+                    header.select_one(".page-position-text")
+                    .get_text(" ", strip=True)
+                    .startswith(
+                        "Continuing after score = "
+                        + ("null" if after_value is None else str(after_value))
+                    )
+                )
+            url = data["next_url"].removeprefix("http://localhost")
+        else:
+            pytest.fail("Pagination did not finish")
+        assert seen == [row[0] for row in expected]
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize("descending", [False, True])
+@pytest.mark.parametrize("key_type", ["rowid", "integer", "text", "compound"])
+@pytest.mark.parametrize("omit_score", [False, True])
+async def test_sorted_scalar_cursor_primary_keys(
+    tmp_path, descending, key_type, omit_score
+):
+    path = tmp_path / "pages.db"
+    schema = {
+        "rowid": "id integer",
+        "integer": "id integer primary key",
+        "text": "id text primary key",
+        "compound": "id text, part integer, primary key (id, part)",
+    }[key_type]
+    values = [None, -3, 1.25, 2**53 + 1, "", "10", "2", "i:2", b"\x00"]
+    with sqlite3.connect(path) as conn:
+        conn.execute(f"create table items (score, {schema})")
+        for i, value in enumerate(values):
+            key = f"key,{i}" if key_type in ("text", "compound") else i
+            if key_type == "compound":
+                conn.execute("insert into items values (?, ?, 1)", (value, key))
+            else:
+                conn.execute("insert into items values (?, ?)", (value, key))
+        expected = conn.execute(
+            f"select id from items order by score {'desc' if descending else 'asc'}"
+        ).fetchall()
+    ds = Datasette([path])
+    args = {"_size": 2, "_sort_desc" if descending else "_sort": "score"}
+    if omit_score:
+        args["_col"] = "id"
+    query = urllib.parse.urlencode(args)
+    url = f"/pages/items.json?{query}"
+    seen = []
+    try:
+        for _ in range(len(values) + 1):
+            response = await ds.client.get(url)
+            assert response.status_code == 200, response.text
+            data = response.json()
+            seen.extend(row["id"] for row in data["rows"])
+            if data["next"] is None:
+                break
+            assert await count_before(ds, "items", query, data["next"]) == len(seen)
+            url = data["next_url"].removeprefix("http://localhost")
+        else:
+            pytest.fail("Pagination did not finish")
+        assert seen == [row[0] for row in expected]
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize(
+    "token", ["i:no", "i:9223372036854775808", "f:no", "f:nan", "f:0x1p+99999", "b:zz"]
+)
+async def test_invalid_sorted_scalar_cursor(pages_ds, token):
+    query = urllib.parse.urlencode({"_sort": "score", "_next": token + ",1"})
+    for method, path in [
+        ("get", "/pages/items.json"),
+        ("post", "/pages/items/-/count"),
+    ]:
+        response = await getattr(pages_ds.client, method)(
+            path + "?" + query + "&_count=before"
+        )
+        assert response.status_code == 400
+        assert response.json()["error"] == "Invalid _next"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("2", "2"),
+        ("", ""),
+        ("$null", None),
+        ("i:2", 2),
+        ("f:0x1.0000000000001p+0", 1.0000000000000002),
+        ("b:00ff", b"\x00\xff"),
+    ]
+    + [
+        (tilde_encode(value), value)
+        for value in ["$null", "i:2", "f:0x1p+2", "b:ff", "a+b"]
+    ],
+)
+def test_parse_sorted_scalar_cursor(raw, expected):
+    from datasette.views.table import _parse_next
+
+    value, components = _parse_next(raw + ",key~2C1", "score", None)
+    assert value == expected
+    assert type(value) is type(expected)
+    assert components == ["key,1"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        -(2**63),
+        2**63 - 1,
+        -0.0,
+        0.1,
+        1e100,
+        float.fromhex("0x1p-1074"),
+        float.fromhex("0x1.fffffffffffffp+1023"),
+        float("inf"),
+        float("-inf"),
+        b"",
+        b"\x00\xff",
+        "",
+        "$null",
+        "i:2",
+        "f:0x1p+2",
+        "b:ff",
+    ],
+)
+def test_sort_scalar_round_trip(value):
+    from datasette.views.table import _encode_sort_value, _parse_next
+
+    decoded, components = _parse_next(_encode_sort_value(value) + ",1", "score", None)
+    assert decoded == value
+    assert type(decoded) is type(value)
+    if isinstance(value, float):
+        assert decoded.hex() == value.hex()
+    assert components == ["1"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-0.0, 0.1, 1.0, 1.5, -2.5, 1e100, float("inf"), 2**63 - 1, b"\x00\xff", None],
+)
+def test_sort_scalar_token_is_query_string_safe(value):
+    # Clients can paste the "next" token into ?_next= without encoding it
+    from datasette.views.table import _encode_sort_value
+
+    token = _encode_sort_value(value)
+    assert "+" not in token
+    assert urllib.parse.parse_qs("_next=" + token + ",1") == {"_next": [token + ",1"]}
+
+
+async def test_sorted_float_cursor_without_url_encoding(tmp_path):
+    path = tmp_path / "pages.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute("create table items (id integer primary key, score)")
+        conn.executemany(
+            "insert into items (score) values (?)", [(1.5,), (2.5,), (3.5,), (4.5,)]
+        )
+    ds = Datasette([path])
+    try:
+        first = (await ds.client.get("/pages/items.json?_size=2&_sort=score")).json()
+        assert [row["id"] for row in first["rows"]] == [1, 2]
+        # The raw token, not the percent-encoded next_url
+        response = await ds.client.get(
+            "/pages/items.json?_size=2&_sort=score&_next=" + first["next"]
+        )
+        assert response.status_code == 200, response.text
+        assert [row["id"] for row in response.json()["rows"]] == [3, 4]
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize("path", ["/pages/items.json", "/pages/items"])
+async def test_sorted_blob_cursor_with_trace(tmp_path, path):
+    # The decoded bytes cursor is a SQL parameter, which the tracer serializes
+    db_path = tmp_path / "pages.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("create table items (id integer primary key, score)")
+        conn.executemany(
+            "insert into items (score) values (?)",
+            [(b"\x00",), (b"\x01",), (b"\xff",)],
+        )
+    ds = Datasette([db_path], settings={"trace_debug": True})
+    try:
+        first = (await ds.client.get("/pages/items.json?_size=1&_sort=score")).json()
+        assert first["next"] == "b:00,1"
+        response = await ds.client.get(
+            path + "?_size=1&_sort=score&_trace=1&_next=" + first["next"]
+        )
+        assert response.status_code == 200, response.text
+        # repr() of the bytes parameter, with its backslash escaped by JSON
+        assert "\\\\x00" in response.text
+        if path.endswith(".json"):
+            data = response.json()
+            assert [row["id"] for row in data["rows"]] == [2]
+            assert data["_trace"]["num_traces"] > 0
+    finally:
+        ds.close()
 
 
 @pytest_asyncio.fixture
@@ -58,7 +321,6 @@ async def count_before(ds, table, query, next_value):
     return response.json()["count"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table,query",
     [
@@ -111,7 +373,6 @@ async def test_count_before_matches_every_page(pages_ds, table, query):
     assert seen == total
 
 
-@pytest.mark.asyncio
 async def test_count_without_count_before_ignores_next(pages_ds):
     # The "count all" button posts the page's own query string, which may
     # include _next - that must still count every matching row
@@ -119,7 +380,6 @@ async def test_count_without_count_before_ignores_next(pages_ds):
     assert response.json() == {"ok": True, "count": 19}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -146,7 +406,6 @@ def link_text(nav):
     return [a.get_text(" ", strip=True) for a in nav.select("a")]
 
 
-@pytest.mark.asyncio
 async def test_no_bar_when_results_fit_on_one_page(pages_ds):
     response = await pages_ds.client.get("/pages/small")
     soup, header, footer = bars(response.text)
@@ -155,35 +414,32 @@ async def test_no_bar_when_results_fit_on_one_page(pages_ds):
     assert soup.select_one("h3.table-summary").get_text(strip=True) == "2 rows"
 
 
-@pytest.mark.asyncio
 async def test_bar_on_first_page(pages_ds):
     response = await pages_ds.client.get(f"/pages/items?_size={PAGE_SIZE}")
     soup, header, footer = bars(response.text)
-    # The row count moves from the heading into the bar
-    assert soup.select_one("h3.table-summary") is None
+    # The heading keeps the total row count, the bar repeats it
+    assert soup.select_one("h3.table-summary").get_text(strip=True) == "19 rows"
     assert header.select_one(".page-position-text").get_text(" ", strip=True) == (
         "Rows 1–4 of 19"
     )
     # The first page already knows its position, so there is nothing to fetch
     assert "data-count-before-url" not in header.attrs
     assert link_text(header) == ["Next page"]
-    assert link_text(footer) == ["Next page"]
+    # Fewer than 5 rows on the page, so no second bar below the table
+    assert footer is None
     assert header.select_one("a.page-position-next")["href"] == (
         f"http://localhost/pages/items?_size={PAGE_SIZE}&_next=4"
     )
-    # The footer has the buttons but not the row count
-    assert footer.select_one(".page-position-text") is None
 
 
-@pytest.mark.asyncio
 async def test_bar_on_later_page(pages_ds):
     response = await pages_ds.client.get(
         f"/pages/items?_size={PAGE_SIZE}&score__gte=2&_sort=score&_next=3,7"
     )
     soup, header, footer = bars(response.text)
-    # The heading keeps the filter description but loses the count
+    # The heading shows the count and the filter description
     assert soup.select_one("h3.table-summary").get_text(" ", strip=True) == (
-        "where score ≥ 2 sorted by score"
+        "12 rows where score ≥ 2 sorted by score"
     )
     # Fallback text shown until JavaScript fills in the row numbers
     assert header.select_one(".page-position-text").get_text(" ", strip=True) == (
@@ -196,14 +452,13 @@ async def test_bar_on_later_page(pages_ds):
         "&_count=before"
     )
     assert link_text(header) == ["Back to first page", "Next page"]
-    assert link_text(footer) == ["Back to first page", "Next page"]
+    assert footer is None
     # Back to first page keeps the filters and sort but drops the cursor
     assert header.select_one("a.page-position-first")["href"] == (
         "/pages/items?_size=4&score__gte=2&_sort=score"
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -221,15 +476,31 @@ async def test_bar_fallback_describes_cursor(pages_ds, query, expected):
     )
 
 
-@pytest.mark.asyncio
 async def test_bar_on_last_page(pages_ds):
     response = await pages_ds.client.get(f"/pages/items?_size={PAGE_SIZE}&_next=16")
     _, header, footer = bars(response.text)
     assert link_text(header) == ["Back to first page"]
-    assert link_text(footer) == ["Back to first page"]
+    assert footer is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query,expected_links",
+    [
+        ("_size=5", ["Next page"]),
+        ("_size=5&_next=5", ["Back to first page", "Next page"]),
+    ],
+)
+async def test_footer_bar_on_pages_with_five_or_more_rows(
+    pages_ds, query, expected_links
+):
+    response = await pages_ds.client.get(f"/pages/items?{query}")
+    _, header, footer = bars(response.text)
+    assert link_text(header) == expected_links
+    assert link_text(footer) == expected_links
+    # The footer has the buttons but not the row count
+    assert footer.select_one(".page-position-text") is None
+
+
 async def test_bar_keeps_truncated_count_in_heading(pages_ds):
     # When the count is truncated the heading keeps its "count all" button
     # and the bar does not claim a total
@@ -241,7 +512,6 @@ async def test_bar_keeps_truncated_count_in_heading(pages_ds):
     assert "rows" not in header.select_one(".page-position-text").get_text()
 
 
-@pytest.mark.asyncio
 async def test_bar_base_url(tmp_path):
     ds = Datasette([tmp_path / "pages.db"], settings={"base_url": "/prefix/"})
     db = ds.get_database()

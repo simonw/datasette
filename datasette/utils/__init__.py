@@ -4,6 +4,8 @@ import binascii
 import copy
 import dataclasses
 import hashlib
+import importlib.machinery
+import importlib.util
 import inspect
 import json
 import os
@@ -27,7 +29,8 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .sqlite import sqlite3, supports_table_xinfo
+from ..version import __version__
+from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
     from datasette.database import Database
@@ -518,6 +521,17 @@ def append_querystring(url, querystring):
     return f"{url}{op}{querystring}"
 
 
+def request_route_path(request):
+    """
+    The request path with any ``base_url`` prefix removed by the router.
+
+    Pass this as ``path=`` to ``path_with_added_args()`` and friends when
+    the result will go through ``datasette.urls.path()``, so ``base_url`` is
+    applied exactly once whether or not a proxy stripped it from the request.
+    """
+    return request.scope.get("route_path") or request.path
+
+
 def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):
@@ -596,6 +610,29 @@ def escape_sqlite(s):
     return '"{}"'.format(s.replace('"', '""'))
 
 
+_datasette_requirement_re = re.compile(
+    # A requirement named datasette, or a path or URL to a datasette wheel or sdist
+    r"^datasette(\[[^\]]*\])?\s*($|[=<>!~;@])"
+    r"|(^|/)datasette-\d[^/]*\.(whl|tar\.gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def datasette_install_requirements(install, branch=None):
+    """
+    Requirements to pip install for a published Datasette: Datasette itself
+    followed by any extras from --install. Datasette defaults to the version
+    that is running this command, unless --branch was used or one of the
+    --install values is itself a requirement for Datasette.
+    """
+    install = list(install)
+    if branch:
+        return [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + install
+    if any(_datasette_requirement_re.search(item.strip()) for item in install):
+        return install
+    return [f"datasette=={__version__}"] + install
+
+
 def make_dockerfile(
     files,
     metadata_file,
@@ -637,12 +674,7 @@ def make_dockerfile(
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
+    install = datasette_install_requirements(install, branch)
 
     apt_get_extras_ = []
     apt_get_extras_.extend(apt_get_extras)
@@ -845,10 +877,21 @@ def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
     sql, params = detect_fts_sql(table)
     rows = conn.execute(sql, params).fetchall()
-    if len(rows) == 0:
-        return None
-    else:
+    if rows:
         return rows[0][0]
+    # detect_fts_sql() only matches content="table" and content=[table], but
+    # SQLite also accepts content=table, content='table' and content=`table`
+    candidates = conn.execute(
+        "select name, sql from sqlite_master where rootpage = 0"
+        " and sql like '%VIRTUAL TABLE%USING FTS%'"
+        " and instr(lower(sql), lower(?))",
+        [table],
+    ).fetchall()
+    for name, fts_sql in candidates:
+        content_table = _fts_external_content_table(fts_sql)
+        if content_table and content_table.lower() == table.lower():
+            return name
+    return None
 
 
 def detect_fts_sql(table):
@@ -1013,6 +1056,11 @@ def module_from_path(path, name):
     # Adapted from http://sayspy.blogspot.com/2011/07/how-to-import-module-from-just-file.html
     mod = types.ModuleType(name)
     mod.__file__ = path
+    # Give the module a loader, so tracebacks through it can show source
+    # lines. Python 3.15 warns about module globals with no __spec__.loader
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    mod.__loader__ = loader
+    mod.__spec__ = importlib.util.spec_from_loader(name, loader, origin=str(path))
     with open(path, "r") as file:
         code = compile(file.read(), path, "exec", dont_inherit=True)
     # Executing the file is the whole point - this is how --plugins-dir loads
@@ -1027,12 +1075,12 @@ def path_with_format(
     qs = extra_qs or {}
     if path is None and request:
         path = request.path
+    if replace_format is None and request:
+        # Drop the extension the current request used, e.g. .json
+        replace_format = request.url_vars.get("format")
     if replace_format and path.endswith(f".{replace_format}"):
         path = path[: -(1 + len(replace_format))]
-    if "." in path:
-        qs["_format"] = format
-    else:
-        path = f"{path}.{format}"
+    path = f"{path}.{format}"
     if qs:
         extra = urllib.parse.urlencode(sorted(qs.items()))
         if request and request.query_string:
@@ -1040,6 +1088,17 @@ def path_with_format(
         else:
             path = f"{path}?{extra}"
     elif request and request.query_string:
+        path = f"{path}?{request.query_string}"
+    return path
+
+
+def path_without_format(request, *, include_query_string=False):
+    "Path for this request with any ``.format`` removed, e.g. ``/db/table.json`` -> ``/db/table``"
+    path = request.path
+    format = request.url_vars.get("format")
+    if format and path.endswith(f".{format}"):
+        path = path[: -(1 + len(format))]
+    if include_query_string and request.query_string:
         path = f"{path}?{request.query_string}"
     return path
 
@@ -1071,31 +1130,6 @@ def value_as_boolean(value):
 
 class ValueAsBooleanError(ValueError):
     pass
-
-
-class WriteLimitExceeded(Exception):
-    pass
-
-
-class LimitedWriter:
-    def __init__(self, writer, limit_mb):
-        self.writer = writer
-        self.limit_bytes = limit_mb * 1024 * 1024
-        self.bytes_count = 0
-
-    async def write(self, bytes):
-        self.bytes_count += len(bytes)
-        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
-            raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
-        await self.writer.write(bytes)
-
-
-class EscapeHtmlWriter:
-    def __init__(self, writer):
-        self.writer = writer
-
-    async def write(self, content):
-        await self.writer.write(markupsafe.escape(content))
 
 
 _infinities = {float("inf"), float("-inf")}
@@ -1151,18 +1185,6 @@ class LoadExtension(click.ParamType):
             return value
         path, entrypoint = value.split(":", 1)
         return path, entrypoint
-
-
-def format_bytes(bytes):
-    current = float(bytes)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if current < 1024:
-            break
-        current = current / 1024
-    if unit == "bytes":
-        return f"{int(current)} {unit}"
-    else:
-        return f"{current:.1f} {unit}"
 
 
 _escape_fts_re = re.compile(r'\s+|(".*?")')
@@ -1683,8 +1705,9 @@ def prune_empty_dicts(d: dict):
 def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
-    hierarchy in destination if needed. After moving, recursively remove any keys
-    in the source that are left empty.
+    hierarchy in destination if needed. A 'plugins' block is merged by plugin name
+    with one already in the destination, the source winning for a name in both.
+    After moving, recursively remove any keys in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1699,8 +1722,16 @@ def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]
                 d = dest
                 for step in path:
                     d = d.setdefault(step, {})
-                # Move the plugins
-                d[key] = value
+                # Move the plugins, keeping any the destination already has
+                # for other plugin names
+                if (
+                    key == "plugins"
+                    and isinstance(value, dict)
+                    and isinstance(d.get(key), dict)
+                ):
+                    d[key] = {**d[key], **value}
+                else:
+                    d[key] = value
                 # Remove the plugins from source
                 src.pop(key, None)
             elif isinstance(value, dict):

@@ -53,7 +53,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
 
 ``.max_post_body_bytes`` - integer
-    The maximum number of bytes ``await request.post_body()`` will read into memory, or ``0`` for no limit. Set from the :ref:`setting_max_post_body_bytes` setting (default 2MB) for requests created by Datasette. Can be passed to the ``Request`` constructor as a keyword argument.
+    The maximum number of bytes ``await request.post_body()`` will read into memory, or ``0`` for no limit. Set from the :ref:`setting_max_post_body_bytes` setting (default 10MB) for requests created by Datasette. Can be passed to the ``Request`` constructor as a keyword argument.
 
 The object also has the following awaitable methods:
 
@@ -115,7 +115,7 @@ The object also has the following awaitable methods:
 ``await request.post_body(max_bytes=None)`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
 
-    The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 2MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
+    The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 10MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
 
 And a class method that can be used to create fake request objects for use in tests:
 
@@ -307,6 +307,51 @@ Each of these responses will use the correct corresponding content-type - ``text
 Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
 
 ``Response.error(messages, status=400)`` returns a JSON error in the :ref:`standard Datasette error format <json_api_errors>`. ``messages`` can be a single string or a list of strings. Use this for JSON-only endpoints; if your error should content-negotiate between JSON and HTML, raise ``Forbidden``, ``NotFound``, ``BadRequest`` or ``DatasetteError`` instead and Datasette's error handling will build the appropriate response.
+
+.. _internals_response_stream:
+
+Streaming responses with Response.stream()
+------------------------------------------
+
+Use ``Response.stream(body)`` to send a response a piece at a time, without first building all of it in memory. This is useful for large exports, and for responses that take a long time to generate.
+
+``body`` is an async iterator - usually an async generator - that yields strings or bytes. Strings are encoded as UTF-8.
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+
+    async def all_rows(datasette, request):
+        db = datasette.get_database()
+
+        async def body():
+            last_id = 0
+            while True:
+                rows = (
+                    await db.execute(
+                        "select id, name from items where id > ? order by id limit 100",
+                        [last_id],
+                    )
+                ).rows
+                if not rows:
+                    break
+                for row in rows:
+                    yield f"{row['id']}\t{row['name']}\n"
+                last_id = rows[-1]["id"]
+
+        return Response.stream(
+            body(),
+            content_type="text/tab-separated-values; charset=utf-8",
+        )
+
+``Response.stream()`` also accepts the optional ``status=`` and ``headers=`` arguments. ``content_type=`` defaults to ``text/plain; charset=utf-8``. ``response.set_cookie()`` works as it does for any other response.
+
+Three things to keep in mind when streaming:
+
+- The status and headers are sent before the first chunk, so they cannot depend on anything the iterator works out later. Code that might fail in a way the client should see as an error - checking permissions, validating arguments, running the first query - should run in the view function before it returns the response, where raising an exception still produces a regular error page.
+- If the iterator raises an exception part way through, Datasette cannot send an error page because the response has already started. The exception is passed on to the server, which drops the connection without completing the response, so the client sees a failed request instead of a truncated response that looks complete.
+- If the client disconnects, Datasette closes the iterator. For an async generator this runs any ``finally:`` blocks, which is the place to release resources.
 
 .. _internals_response_asgi_send:
 
@@ -1531,7 +1576,9 @@ For example:
 
 .. code-block:: python
 
-    downloads_are_allowed = datasette.setting("allow_download")
+    downloads_are_allowed = datasette.setting(
+        "default_allow_download"
+    )
 
 .. _datasette_resolve_database:
 
@@ -1764,9 +1811,6 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
-``datasette.urls.static(path)``
-    Returns the URL of one of Datasette's default static assets, for example ``"/-/static/app.css"``
-
 ``datasette.urls.database(database_name, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
@@ -1776,6 +1820,27 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 ``datasette.urls.query(database_name, query_name, format=None)``
     Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
 
+``datasette.urls.row(database_name, table_name, row_path, format=None)``
+    Returns the URL to a row page, for example ``"/fixtures/facetable/1"``
+
+    ``row_path`` should be a list or tuple of the primary key values for the row, in the order of the table's primary key columns. Datasette will :ref:`tilde-encode <internals_tilde_encoding>` each value and join them with commas. For a table without a primary key, pass the ``rowid``.
+
+    .. code-block:: python
+
+        datasette.urls.row("fixtures", "facetable", [1])
+        # "/fixtures/facetable/1"
+        datasette.urls.row(
+            "fixtures", "compound_primary_key", ["a/b", "c"]
+        )
+        # "/fixtures/compound_primary_key/a~2Fb,c"
+
+    ``row_path`` can also be a string. Strings are used as they are, without any encoding, so they must already be tilde-encoded.
+
+``datasette.urls.row_blob(database_name, table_name, row_path, column)``
+    Returns the URL that serves the binary content of a single ``BLOB`` column for a row, for example ``"/fixtures/binary_data/1.blob?_blob_column=data"``
+
+    ``row_path`` accepts the same values as ``datasette.urls.row()``. The column name is URL-encoded for you.
+
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
 
 .. code-block:: jinja
@@ -1784,6 +1849,7 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.database("fixtures") }}">Fixtures database</a>
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
+    <a href="{{ urls.row("fixtures", "facetable", [1]) }}">facetable row 1</a>
 
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
@@ -2784,7 +2850,7 @@ You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this
     export DATASETTE_INTERNAL=/path/to/internal.db
     datasette mydatabase.db
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. The ``hidden`` column on ``catalog_tables`` is ``1`` for :ref:`hidden tables <DatabaseView_hidden>`. These tables should not be considered a stable API - they may change between Datasette releases.
 
 Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
@@ -2832,6 +2898,7 @@ The internal database schema is as follows:
         table_name TEXT,
         rootpage INTEGER,
         sql TEXT,
+        hidden INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );
@@ -3060,7 +3127,7 @@ Running Datasette with ``--setting trace_debug 1`` enables trace debug output, w
 
 You can see an example of this at the bottom of `latest.datasette.io/fixtures/facetable?_trace=1 <https://latest.datasette.io/fixtures/facetable?_trace=1>`__. The JSON output shows full details of every SQL query that was executed to generate the page.
 
-The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information. You can see `a demo of that here <https://latest-with-plugins.datasette.io/github/commits?_trace=1>`__.
+The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information.
 
 You can add your own custom traces to the JSON output using the ``trace()`` context manager. This takes a string that identifies the type of trace being recorded, and records any keyword arguments as additional JSON keys on the resulting trace object.
 

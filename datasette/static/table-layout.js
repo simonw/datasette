@@ -18,8 +18,7 @@
    entirely, in which case it keeps them (.keeps-breaks) so "expand" always
    reveals something. "expand" opens one value and moves to its top right as
    "collapse". Each column with a clamped value gets an "expand all" pill in
-   its header, and on table pages the column's gear menu gets "Expand/Collapse
-   long values"; Alt-click on a pill does the same. Rows that Datasette's edit
+   its header; Alt-click on a pill does the same. Rows that Datasette's edit
    and insert dialogs swap in are clamped too.
 
    2. Freeze: a pin button in the primary key column's header.
@@ -376,28 +375,6 @@
       range.cloneContents().textContent,
     );
     event.preventDefault();
-  });
-
-  // "Expand long values" / "Collapse long values" for the column's gear
-  // menu. table.js calls this each time a menu opens.
-  document.addEventListener("datasette_init", (event) => {
-    event.detail.longValueColumnActions = (th) => {
-      const t = table();
-      if (!t || !th) return [];
-      const index = th.cellIndex;
-      const boxes = longValues(t, index);
-      if (!boxes.length) return [];
-      const open = boxes.some((box) => !box.classList.contains("is-expanded"));
-      return [
-        {
-          label: open ? "Expand long values" : "Collapse long values",
-          onClick(evt) {
-            evt.preventDefault();
-            keepInPlace(t, firstVisibleRow(t), () => setColumn(t, index, open));
-          },
-        },
-      ];
-    };
   });
 
   /* 2. Freeze ----------------------------------------------------------- */

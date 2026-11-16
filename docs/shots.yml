@@ -17,7 +17,7 @@
   - shots:shots
   - -s
   - extra_js_urls
-  - '["/shots/modal-example.js", "/shots/modal-classes.js"]'
+  - '["/shots/modal-example.js", "/shots/modal-classes.js", "/shots/copy-button-example.js"]'
 
 # javascript_plugins.rst - Reusable modal dialogs
 - output: images/modal-example.webp
@@ -35,4 +35,20 @@
     document.activeElement.blur();
   selector: "#export-dialog"
   padding: 32
+  quality: 70
+
+# javascript_plugins.rst - Copy to clipboard buttons
+- output: images/copy-button-example.webp
+  url: http://localhost:8755/
+  javascript: |
+    const example = document.querySelector("#my-plugin-copy");
+    // Crop to the example, clear of the buttons the modal examples add
+    example.style.width = "fit-content";
+    example.style.marginTop = "3rem";
+    // Show the second button as it looks just after it has been clicked
+    example
+      .querySelectorAll("datasette-copy-button")[1]
+      .toggleAttribute("copied", true);
+  selector: "#my-plugin-copy"
+  padding: 16
   quality: 70

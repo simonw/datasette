@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import pathlib
@@ -10,6 +11,7 @@ from click.testing import CliRunner
 
 from datasette.app import SETTINGS
 from datasette.cli import cli, serve
+from datasette.fixtures import write_fixture_database
 from datasette.plugins import DEFAULT_PLUGINS, pm
 from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite3
@@ -17,27 +19,31 @@ from datasette.version import __version__
 
 from .fixtures import (
     EXPECTED_PLUGINS,
-    make_app_client,
-)
-from .fixtures import (
-    TestClient as _TestClient,
+    make_ds_on_disk,
 )
 
 
-def test_inspect_cli(app_client):
+@pytest.fixture
+def fixtures_db_in_cwd(tmp_path, monkeypatch):
+    # The inspect tests pass a relative path, to check the "file" key
+    write_fixture_database(tmp_path / "fixtures.db")
+    monkeypatch.chdir(tmp_path)
+
+
+def test_inspect_cli(fixtures_db_in_cwd):
     runner = CliRunner()
     result = runner.invoke(cli, ["inspect", "fixtures.db"])
     data = json.loads(result.output)
-    assert ["fixtures"] == list(data.keys())
+    assert list(data.keys()) == ["fixtures"]
     database = data["fixtures"]
-    assert "fixtures.db" == database["file"]
+    assert database["file"] == "fixtures.db"
     assert isinstance(database["hash"], str)
-    assert 64 == len(database["hash"])
+    assert len(database["hash"]) == 64
     for table_name, expected_count in {
         "Table With Space In Name": 0,
         "facetable": 15,
     }.items():
-        assert expected_count == database["tables"][table_name]["count"]
+        assert database["tables"][table_name]["count"] == expected_count
 
 
 def test_inspect_cli_counts_all_rows(tmp_path):
@@ -56,7 +62,7 @@ def test_inspect_cli_counts_all_rows(tmp_path):
     assert data["big"]["tables"]["t"]["count"] == 10002
 
 
-def test_inspect_cli_writes_to_file(app_client):
+def test_inspect_cli_writes_to_file(fixtures_db_in_cwd):
     runner = CliRunner()
     result = runner.invoke(
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]
@@ -64,15 +70,15 @@ def test_inspect_cli_writes_to_file(app_client):
     assert result.exit_code == 0, result.output
     with open("foo.json") as fp:
         data = json.load(fp)
-    assert ["fixtures"] == list(data.keys())
+    assert list(data.keys()) == ["fixtures"]
 
 
 def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     inspect_data = {"fixtures": {"tables": {"hithere": {"count": 44}}}}
-    with make_app_client(inspect_data=inspect_data, is_immutable=True) as client:
-        assert inspect_data == client.ds.inspect_data
-        db = client.ds.databases["fixtures"]
-        assert {"hithere": 44} == db.cached_table_counts
+    with make_ds_on_disk(inspect_data=inspect_data, is_immutable=True) as ds:
+        assert inspect_data == ds.inspect_data
+        db = ds.databases["fixtures"]
+        assert db.cached_table_counts == {"hithere": 44}
 
 
 @pytest.mark.parametrize(
@@ -115,7 +121,7 @@ def test_spatialite_error_if_cannot_find_load_extension_spatialite():
     assert "Could not find SpatiaLite extension" in result.output
 
 
-def test_plugins_cli(app_client):
+def test_plugins_cli(ds_on_disk):
     runner = CliRunner()
     result1 = runner.invoke(cli, ["plugins"])
     actual_plugins = sorted(
@@ -176,9 +182,8 @@ def test_metadata_yaml():
         return_instance=True,
         internal=None,
     )
-    client = _TestClient(ds)
-    response = client.get("/.json")
-    assert {"title": "Hello from YAML"} == response.json["metadata"]
+    response = asyncio.run(ds.client.get("/.json"))
+    assert response.json()["metadata"] == {"title": "Hello from YAML"}
 
 
 @mock.patch("datasette.cli.run_module")

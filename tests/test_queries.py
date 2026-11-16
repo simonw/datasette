@@ -1,6 +1,7 @@
 import json
 import re
 from html import unescape
+from urllib.parse import urlsplit
 
 import pytest
 import sqlite_utils
@@ -55,7 +56,6 @@ async def add_numbered_queries(ds, database, count):
         )
 
 
-@pytest.mark.asyncio
 async def test_queries_internal_table_schema():
     ds = Datasette(memory=True)
     await ds.invoke_startup()
@@ -87,7 +87,6 @@ async def test_queries_internal_table_schema():
     ]
 
 
-@pytest.mark.asyncio
 async def test_add_get_and_remove_query():
     ds = Datasette(memory=True)
     ds.add_memory_database("query_api", name="data")
@@ -159,7 +158,6 @@ async def test_add_get_and_remove_query():
     assert queries_page.next is None
 
 
-@pytest.mark.asyncio
 async def test_update_query_only_updates_provided_fields():
     ds = Datasette(memory=True)
     ds.add_memory_database("query_api_update", name="data")
@@ -212,7 +210,6 @@ async def test_update_query_only_updates_provided_fields():
     assert json.loads(options_row["options"]) == {}
 
 
-@pytest.mark.asyncio
 async def test_config_queries_imported_to_internal_table():
     ds = Datasette(
         memory=True,
@@ -260,7 +257,6 @@ async def test_config_queries_imported_to_internal_table():
     )
 
 
-@pytest.mark.asyncio
 async def test_query_resources_come_from_internal_table():
     ds = Datasette(memory=True)
     ds.add_memory_database("query_resources", name="data")
@@ -272,7 +268,6 @@ async def test_query_resources_come_from_internal_table():
     assert [(r.parent, r.child) for r in page.resources] == [("data", "internal_query")]
 
 
-@pytest.mark.asyncio
 async def test_default_deny_blocks_view_query_even_for_trusted_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.add_memory_database("query_permissions", name="data")
@@ -286,7 +281,6 @@ async def test_default_deny_blocks_view_query_even_for_trusted_query():
     )
 
 
-@pytest.mark.asyncio
 async def test_view_query_default_allow_still_respects_private_restriction():
     ds = Datasette(memory=True)
     ds.add_memory_database("default_view_query_permissions", name="data")
@@ -325,7 +319,6 @@ async def test_view_query_default_allow_still_respects_private_restriction():
     )
 
 
-@pytest.mark.asyncio
 async def test_private_query_restriction_blocks_broad_view_query_permission():
     ds = Datasette(
         memory=True,
@@ -376,7 +369,6 @@ async def test_private_query_restriction_blocks_broad_view_query_permission():
     )
 
 
-@pytest.mark.asyncio
 async def test_config_query_restriction_does_not_override_private_internal_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.add_memory_database("private_query_with_config_name", name="data")
@@ -405,7 +397,6 @@ async def test_config_query_restriction_does_not_override_private_internal_query
     )
 
 
-@pytest.mark.asyncio
 async def test_untrusted_shared_query_execution_requires_execute_sql():
     ds = Datasette(
         memory=True,
@@ -448,7 +439,6 @@ async def test_untrusted_shared_query_execution_requires_execute_sql():
     assert allowed.json()["rows"] == [{"one": 1}]
 
 
-@pytest.mark.asyncio
 async def test_config_queries_are_trusted_by_default_but_can_opt_out():
     ds = Datasette(
         memory=True,
@@ -483,7 +473,6 @@ async def test_config_queries_are_trusted_by_default_but_can_opt_out():
     assert untrusted.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_database_page_query_preview_is_limited():
     ds = Datasette(memory=True)
     ds.add_memory_database("query_preview", name="data")
@@ -496,13 +485,15 @@ async def test_database_page_query_preview_is_limited():
     assert html_response.status_code == 200
     assert "Demo query 05" in html_response.text
     assert "Demo query 06" not in html_response.text
-    assert '<a href="/data/-/queries">View 25 queries</a>' in html_response.text
+    assert (
+        '<a class="homepage-section-link" href="/data/-/queries">25 queries →</a>'
+        in html_response.text
+    )
     assert len(json_response.json()["queries"]) == 5
     assert json_response.json()["queries_more"] is True
     assert json_response.json()["queries_count"] == 25
 
 
-@pytest.mark.asyncio
 async def test_query_actions_are_registered():
     ds = Datasette()
     await ds.invoke_startup()
@@ -513,7 +504,6 @@ async def test_query_actions_are_registered():
     assert ds.get_action("delete-query").resource_class is QueryResource
 
 
-@pytest.mark.asyncio
 async def test_analyze_write_query_requires_table_permissions():
     ds = Datasette(memory=True, default_deny=True)
     db = ds.add_memory_database("query_write_permissions", name="data")
@@ -560,7 +550,6 @@ async def test_analyze_write_query_requires_table_permissions():
     )
 
 
-@pytest.mark.asyncio
 async def test_analyze_write_query_rejects_writes_to_attached_databases():
     ds = Datasette(memory=True, default_deny=True)
     db = ds.add_memory_database("query_attached_writes", name="data")
@@ -576,7 +565,6 @@ async def test_analyze_write_query_rejects_writes_to_attached_databases():
         )
 
 
-@pytest.mark.asyncio
 async def test_query_store_api_creates_read_only_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -606,7 +594,6 @@ async def test_query_store_api_creates_read_only_query():
     assert data["query"]["owner_id"] == "root"
 
 
-@pytest.mark.asyncio
 async def test_query_store_api_creates_query_for_immutable_database(tmp_path):
     db_path = tmp_path / "immutable.db"
     conn = sqlite3.connect(str(db_path))
@@ -638,7 +625,6 @@ async def test_query_store_api_creates_query_for_immutable_database(tmp_path):
     assert data["query"]["is_write"] is False
 
 
-@pytest.mark.asyncio
 async def test_query_list_and_definition_api():
     ds = Datasette(memory=True)
     ds.root_enabled = True
@@ -679,7 +665,6 @@ async def test_query_list_and_definition_api():
     assert definition_response.json()["query"]["title"] == "Demo query 01"
 
 
-@pytest.mark.asyncio
 async def test_query_page_does_not_show_internal_source():
     ds = Datasette(memory=True)
     ds.add_memory_database("query_page_source", name="data")
@@ -700,7 +685,6 @@ async def test_query_page_does_not_show_internal_source():
     assert "Data source:" not in response.text
 
 
-@pytest.mark.asyncio
 async def test_query_list_search_filter_and_html():
     ds = Datasette(memory=True)
     ds.root_enabled = True
@@ -766,99 +750,74 @@ async def test_query_list_search_filter_and_html():
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
     assert "Demo query 01" not in html_response.text
-    assert 'class="query-list-results"' in html_response.text
-    assert 'class="query-list-facets"' in html_response.text
-    assert 'type="radio"' not in html_response.text
-    assert "Only the owning actor can view this query." not in html_response.text
-    assert (
-        "Execution skips the usual SQL and write permission checks"
-        not in html_response.text
-    )
+    soup = Soup(html_response.text, "html.parser")
+    assert soup.select_one("form[data-homepage-search] input#query-search")
+    assert [a.text for a in soup.select("a.query-row-name")] == ["Demo query 02"]
+    assert [span.text for span in soup.select(".homepage-summary span")] == [
+        "1 query",
+        "matching “02”",
+    ]
+
+    def row(response, title):
+        soup = Soup(response.text, "html.parser")
+        link = soup.find("a", class_="query-row-name", string=title)
+        return link.find_parent("li")
+
+    def tags(response, title):
+        return [t.text for t in row(response, title).select(".type-tag")]
+
+    def facet_chips(response):
+        soup = Soup(response.text, "html.parser")
+        nav = soup.select_one("nav.query-list-facets")
+        if nav is None:
+            return []
+        return [
+            (
+                " ".join(chip.text.split()),
+                chip.get("href"),
+                "selected" in chip["class"],
+            )
+            for chip in nav.select(".homepage-database")
+        ]
+
     assert flags_response.status_code == 200
-    assert '<th scope="col">Owner</th>' in flags_response.text
-    assert '<th scope="col">Flags</th>' in flags_response.text
-    assert '<th scope="col">Mode</th>' not in flags_response.text
-    assert 'class="query-list-owner">root</td>' in flags_response.text
-    assert 'class="query-list-pill">Read-only</span>' in flags_response.text
-    assert (
-        'class="query-list-pill query-list-pill-write">Writable</span>'
-        in flags_response.text
+    # Your own queries are tagged, private and writable queries flagged
+    assert tags(flags_response, "Private query") == ["yours", "private"]
+    assert tags(flags_response, "Writable query") == ["yours", "writes"]
+    # Config queries are trusted by default, so that is not called out
+    assert tags(flags_response, "Trusted query") == []
+    assert "inputs: name" in " ".join(
+        row(flags_response, "Writable query").text.split()
     )
-    assert (
-        'class="query-list-pill query-list-pill-private">Private</span>'
-        in flags_response.text
-    )
-    assert (
-        'class="query-list-pill query-list-pill-trusted">Trusted</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=0"><span>Read-only</span><span class="query-list-facet-count">5</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=1"><span>Writable</span><span class="query-list-facet-count">1</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_private=0"><span>Not private</span><span class="query-list-facet-count">5</span>'
-        in flags_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_private=1"><span>Private</span><span class="query-list-facet-count">1</span>'
-        in flags_response.text
-    )
-    assert "Only the owning actor can view this query." in flags_response.text
-    assert (
-        "Execution skips the usual SQL and write permission checks"
-        in flags_response.text
-    )
+    assert facet_chips(flags_response) == [
+        ("Read-only 5", "/data/-/queries?is_write=0", False),
+        ("Writable 1", "/data/-/queries?is_write=1", False),
+        ("Not private 5", "/data/-/queries?is_private=0", False),
+        ("Private 1", "/data/-/queries?is_private=1", False),
+    ]
     assert json_response.json()["queries"][0]["name"] == "demo_query_02"
     assert [query["name"] for query in filtered_response.json()["queries"]] == [
         "private_query"
     ]
     assert "Writable query" in filtered_write_response.text
     assert "Demo query 01" not in filtered_write_response.text
-    assert (
-        'query-list-facet-link query-list-facet-link-active" href="/data/-/queries"'
-        in filtered_write_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Read-only</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_write_response.text
-    )
-    assert (
-        'href="/data/-/queries?is_write=1&amp;is_private=0"><span>Not private</span><span class="query-list-facet-count">1</span>'
-        in filtered_write_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Private</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_write_response.text
-    )
+    # The active filter links back to the unfiltered list; groups with a
+    # single choice are left out
+    assert facet_chips(filtered_write_response) == [
+        ("Writable 1", "/data/-/queries", True),
+    ]
     assert "Private query" in filtered_private_response.text
     assert "Demo query 01" not in filtered_private_response.text
-    assert (
-        'href="/data/-/queries?is_private=1&amp;is_write=0"><span>Read-only</span><span class="query-list-facet-count">1</span>'
-        in filtered_private_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Writable</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_private_response.text
-    )
-    assert (
-        '<span class="query-list-facet-link query-list-facet-disabled"><span>Not private</span><span class="query-list-facet-count">0</span></span>'
-        not in filtered_private_response.text
-    )
+    assert facet_chips(filtered_private_response) == [
+        ("Private 1", "/data/-/queries", True),
+    ]
     assert no_results_response.status_code == 200
-    assert "No queries found." in no_results_response.text
-    assert 'class="query-list-filters core"' not in no_results_response.text
-    assert 'id="query-search"' not in no_results_response.text
-    assert 'class="query-list-facets"' not in no_results_response.text
-    assert "<h2>Mode</h2>" not in no_results_response.text
-    assert "<h2>Visibility</h2>" not in no_results_response.text
+    assert "No queries match “nope”" in no_results_response.text
+    # The search box stays, so the search can be changed
+    assert 'id="query-search"' in no_results_response.text
+    assert "query-list-facets" not in no_results_response.text
 
 
-@pytest.mark.asyncio
 async def test_query_list_html_defaults_to_twenty_and_shows_pagination():
     ds = Datasette(memory=True)
     ds.root_enabled = True
@@ -877,7 +836,6 @@ async def test_query_list_html_defaults_to_twenty_and_shows_pagination():
     assert len(json_response.json()["queries"]) == 25
 
 
-@pytest.mark.asyncio
 async def test_global_query_list_api_and_html():
     ds = Datasette(memory=True)
     ds.root_enabled = True
@@ -936,13 +894,24 @@ async def test_global_query_list_api_and_html():
         ("beta", "beta_first"),
     ]
     assert html_response.status_code == 200
-    assert '<th scope="col">Database</th>' in html_response.text
-    assert 'class="query-list-database" href="/beta">beta</a>' in html_response.text
-    assert "Beta first" in html_response.text
+    soup = Soup(html_response.text, "html.parser")
+    beta_row = soup.find("a", class_="query-row-name", string="Beta first").find_parent(
+        "li"
+    )
+    assert beta_row.select_one(".db-tag").text == "beta"
     assert "Alpha first" not in html_response.text
+    # Database chips keep the search, and show how many match in each
+    chips = [
+        (" ".join(a.text.split()), a["href"], "empty" in a["class"])
+        for a in soup.select("nav.homepage-databases a.homepage-database")
+    ]
+    assert chips == [
+        ("All", "/-/queries?q=Beta", False),
+        ("alpha 0", "/alpha/-/queries?q=Beta", True),
+        ("beta 1", "/beta/-/queries?q=Beta", False),
+    ]
 
 
-@pytest.mark.asyncio
 async def test_query_store_api_rejects_is_trusted():
     ds = Datasette(
         memory=True,
@@ -972,7 +941,6 @@ async def test_query_store_api_rejects_is_trusted():
     assert response.json()["errors"] == ["Invalid keys: is_trusted"]
 
 
-@pytest.mark.asyncio
 async def test_query_store_rejects_config_only_fields():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1011,7 +979,6 @@ async def test_query_store_rejects_config_only_fields():
     assert await ds.get_query("data", "unsafe_form") is None
 
 
-@pytest.mark.asyncio
 async def test_query_store_api_creates_writable_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1038,7 +1005,6 @@ async def test_query_store_api_creates_writable_query():
     assert query["parameters"] == ["name"]
 
 
-@pytest.mark.asyncio
 async def test_query_update_and_delete_api():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1083,7 +1049,6 @@ async def test_query_update_and_delete_api():
     assert await ds.get_query("data", "editable") is None
 
 
-@pytest.mark.asyncio
 async def test_query_update_api_rejects_config_only_fields():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1119,7 +1084,6 @@ async def test_query_update_api_rejects_config_only_fields():
     assert query.on_success_message_sql is None
 
 
-@pytest.mark.asyncio
 async def test_query_api_rejects_params_alias():
     # "params" is a datasette.yaml configuration key, not an API input -
     # the API only accepts "parameters"
@@ -1160,7 +1124,6 @@ async def test_query_api_rejects_params_alias():
     assert update_response.json()["errors"] == ["Invalid keys: params"]
 
 
-@pytest.mark.asyncio
 async def test_query_update_api_rejects_trusted_queries_but_internal_update_allowed():
     ds = Datasette(
         memory=True,
@@ -1230,7 +1193,6 @@ async def _make_ds_with_user_query(name, *, is_private=False, owner_id="owner"):
     return ds
 
 
-@pytest.mark.asyncio
 async def test_query_edit_form_renders_and_updates_for_owner():
     ds = await _make_ds_with_user_query("query_edit_owner")
     actor = {"id": "owner"}
@@ -1265,7 +1227,6 @@ async def test_query_edit_form_renders_and_updates_for_owner():
     assert query.is_private is True
 
 
-@pytest.mark.asyncio
 async def test_query_edit_metadata_only_does_not_require_execute_sql():
     # An owner who can no longer execute SQL can still edit title/description
     ds = await _make_ds_with_user_query("query_edit_metadata_only")
@@ -1285,7 +1246,6 @@ async def test_query_edit_metadata_only_does_not_require_execute_sql():
     assert query.title == "Renamed"
 
 
-@pytest.mark.asyncio
 async def test_private_query_edit_delete_restricted_to_owner():
     ds = await _make_ds_with_user_query(
         "query_edit_private", is_private=True, owner_id="owner"
@@ -1308,7 +1268,57 @@ async def test_private_query_edit_delete_restricted_to_owner():
     assert (await ds.client.get("/data/saved/-/edit", actor=owner)).status_code == 200
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ("/data/-/queries", "/-/queries"))
+async def test_owner_id_filter_does_not_reveal_private_queries(path):
+    # ?owner_id= filters the queries an actor can already see. It must not
+    # change which actor the private query rules are evaluated against.
+    ds = await _make_ds_with_user_query(
+        "query_owner_id_filter" + path.replace("/", "_").replace("-", ""),
+        is_private=True,
+        owner_id="owner",
+    )
+    await ds.add_query(
+        "data",
+        "shared",
+        "select 1",
+        title="Shared query",
+        source="user",
+        owner_id="owner",
+        is_private=False,
+    )
+    private_sql = "select * from dogs"
+
+    async def get_json(actor):
+        response = await ds.client.get(path + ".json?owner_id=owner", actor=actor)
+        assert response.status_code == 200
+        return response
+
+    def query_names(response):
+        return sorted(query["name"] for query in response.json()["queries"])
+
+    # The owner sees both of their queries, including the private one
+    owner = {"id": "owner"}
+    owner_json = await get_json(owner)
+    assert query_names(owner_json) == ["saved", "shared"]
+    assert private_sql in owner_json.text
+    assert await ds.count_queries("data", actor=owner, owner_id="owner") == 2
+    owner_html = await ds.client.get(path + "?owner_id=owner", actor=owner)
+    assert "Saved query" in owner_html.text
+
+    # Other actors and anonymous users only see the non-private one
+    for actor in (None, {"id": "intruder"}):
+        actor_json = await get_json(actor)
+        assert query_names(actor_json) == ["shared"]
+        assert private_sql not in actor_json.text
+        page = await ds.list_queries("data", actor=actor, owner_id="owner")
+        assert [query.name for query in page.queries] == ["shared"]
+        assert await ds.count_queries("data", actor=actor, owner_id="owner") == 1
+        html = await ds.client.get(path + "?owner_id=owner", actor=actor)
+        assert html.status_code == 200
+        assert "Shared query" in html.text
+        assert "Saved query" not in html.text
+
+
 async def test_non_private_query_editable_by_permitted_non_owner():
     ds = Datasette(
         memory=True,
@@ -1363,7 +1373,6 @@ async def test_non_private_query_editable_by_permitted_non_owner():
     assert await ds.get_query("data", "saved") is None
 
 
-@pytest.mark.asyncio
 async def test_query_delete_confirmation_and_form_delete():
     ds = await _make_ds_with_user_query("query_delete_form")
     actor = {"id": "owner"}
@@ -1388,7 +1397,6 @@ async def test_query_delete_confirmation_and_form_delete():
     assert await ds.get_query("data", "saved") is None
 
 
-@pytest.mark.asyncio
 async def test_query_action_menu_shows_edit_and_delete_for_owner():
     ds = await _make_ds_with_user_query("query_action_menu")
 
@@ -1404,7 +1412,6 @@ async def test_query_action_menu_shows_edit_and_delete_for_owner():
     assert "/data/saved/-/delete" not in other_response.text
 
 
-@pytest.mark.asyncio
 async def test_query_edit_rejected_for_trusted_query():
     ds = Datasette(
         memory=True,
@@ -1433,7 +1440,6 @@ async def test_query_edit_rejected_for_trusted_query():
     assert "/data/trusted_report/-/edit" not in page.text
 
 
-@pytest.mark.asyncio
 async def test_query_store_api_rejects_magic_parameters():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1450,7 +1456,6 @@ async def test_query_store_api_rejects_magic_parameters():
     assert response.json()["errors"] == ["Magic parameters are not allowed"]
 
 
-@pytest.mark.asyncio
 async def test_create_query_ui_and_arbitrary_sql_save_link():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1555,7 +1560,6 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert old_create_response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_query_analyze_endpoint_uses_sql_only():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1621,7 +1625,6 @@ async def test_create_query_analyze_endpoint_uses_sql_only():
     assert old_analyze_response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_query_supports_recursive_cte():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1681,7 +1684,6 @@ async def test_create_query_supports_recursive_cte():
     assert query.is_write is False
 
 
-@pytest.mark.asyncio
 async def test_create_query_form_error_redisplays_form_with_values():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1729,7 +1731,6 @@ async def test_create_query_form_error_redisplays_form_with_values():
     assert 'name="is_private" value="0"' in public_response.text
 
 
-@pytest.mark.asyncio
 async def test_execute_write_get_prepopulates_without_executing():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1828,7 +1829,6 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert '<a href="/data/-/queries/store' not in read_only_response.text
 
 
-@pytest.mark.asyncio
 async def test_execute_write_disabled_submit_explains_denied_operations():
     ds = Datasette(
         memory=True,
@@ -1883,7 +1883,6 @@ async def test_execute_write_disabled_submit_explains_denied_operations():
     )
 
 
-@pytest.mark.asyncio
 async def test_execute_write_templates_are_filtered_by_permission_and_server_generated():
     ds = Datasette(
         memory=True,
@@ -1981,7 +1980,6 @@ async def test_execute_write_templates_are_filtered_by_permission_and_server_gen
     assert "data-template-delete-sql" not in viewer_response.text
 
 
-@pytest.mark.asyncio
 async def test_execute_write_create_table_template_is_filtered_by_permission():
     ds = Datasette(
         memory=True,
@@ -2054,7 +2052,6 @@ async def test_execute_write_create_table_template_is_filtered_by_permission():
     assert 'data-sql-template="delete"' in both_response.text
 
 
-@pytest.mark.asyncio
 async def test_execute_write_create_table_refreshes_template_tables():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -2076,7 +2073,6 @@ async def test_execute_write_create_table_refreshes_template_tables():
     assert await db.table_exists("selectable")
 
 
-@pytest.mark.asyncio
 async def test_execute_write_analyze_endpoint_uses_sql_only():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -2151,7 +2147,6 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
     )
 
 
-@pytest.mark.asyncio
 async def test_query_parameters_endpoint_uses_get_sql_only():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -2193,7 +2188,6 @@ async def test_query_parameters_endpoint_uses_get_sql_only():
     ]
 
 
-@pytest.mark.asyncio
 async def test_database_action_menu_links_to_execute_write_for_permitted_actor():
     ds = Datasette(
         memory=True,
@@ -2227,7 +2221,6 @@ async def test_database_action_menu_links_to_execute_write_for_permitted_actor()
     assert "Execute write SQL" in writer_response.text
 
 
-@pytest.mark.asyncio
 async def test_database_action_menu_hides_execute_write_for_immutable_database():
     ds = Datasette(
         memory=True,
@@ -2254,7 +2247,6 @@ async def test_database_action_menu_hides_execute_write_for_immutable_database()
     assert 'href="/data/-/execute-write"' not in response.text
 
 
-@pytest.mark.asyncio
 async def test_execute_write_get_rejects_immutable_database():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -2273,7 +2265,6 @@ async def test_execute_write_get_rejects_immutable_database():
     ]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_post_requires_database_and_table_permissions():
     ds = Datasette(
         memory=True,
@@ -2388,7 +2379,6 @@ async def test_execute_write_post_requires_database_and_table_permissions():
     assert (await db.execute("select name from dogs")).first()[0] == "Cleo"
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_json_includes_returning_rows():
     ds = Datasette(memory=True, default_deny=True)
@@ -2419,7 +2409,6 @@ async def test_execute_write_json_includes_returning_rows():
     ]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_json_returning_rows_can_be_truncated():
     ds = Datasette(memory=True, default_deny=True)
@@ -2450,7 +2439,6 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     ] == 11
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_html_displays_returning_rows():
     ds = Datasette(memory=True, default_deny=True)
@@ -2488,7 +2476,6 @@ async def test_execute_write_html_displays_returning_rows():
     assert '<p class="zero-results">0 results</p>' not in non_returning_response.text
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_html_returning_rows_can_be_truncated():
     ds = Datasette(memory=True, default_deny=True)
@@ -2530,7 +2517,6 @@ async def test_execute_write_html_returning_rows_can_be_truncated():
     ),
     ids=("insert-or-replace", "update-or-replace"),
 )
-@pytest.mark.asyncio
 async def test_execute_write_replace_requires_delete_row_permission(database_name, sql):
     ds = Datasette(
         memory=True,
@@ -2581,7 +2567,6 @@ async def test_execute_write_replace_requires_delete_row_permission(database_nam
     ]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_update_requires_insert_row_permission():
     ds = Datasette(
         memory=True,
@@ -2626,7 +2611,6 @@ async def test_execute_write_update_requires_insert_row_permission():
     ] == "Alice"
 
 
-@pytest.mark.asyncio
 async def test_execute_write_insert_select_requires_view_table_on_source():
     ds = Datasette(
         memory=True,
@@ -2673,7 +2657,6 @@ async def test_execute_write_insert_select_requires_view_table_on_source():
     assert (await db.execute("select value from public_log")).dicts() == []
 
 
-@pytest.mark.asyncio
 async def test_execute_write_rejects_sqlite_master_reads():
     ds = Datasette(
         memory=True,
@@ -2723,7 +2706,6 @@ async def test_execute_write_rejects_sqlite_master_reads():
     assert (await db.execute("select value from log")).dicts() == []
 
 
-@pytest.mark.asyncio
 async def test_execute_write_create_table_as_select_requires_view_table_on_source():
     ds = Datasette(
         memory=True,
@@ -2763,7 +2745,6 @@ async def test_execute_write_create_table_as_select_requires_view_table_on_sourc
     assert not await db.table_exists("copied_secret")
 
 
-@pytest.mark.asyncio
 async def test_execute_write_allows_function_operations():
     ds = Datasette(
         memory=True,
@@ -2803,7 +2784,6 @@ async def test_execute_write_allows_function_operations():
     assert (await db.execute("select name from dogs")).dicts() == [{"name": "CLEO"}]
 
 
-@pytest.mark.asyncio
 async def test_untrusted_stored_write_query_allows_function_operations():
     ds = Datasette(
         memory=True,
@@ -2853,7 +2833,6 @@ async def test_untrusted_stored_write_query_allows_function_operations():
     assert (await db.execute("select name from dogs")).dicts() == [{"name": "CLEO"}]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_rejects_vacuum_operation():
     ds = Datasette(
         memory=True,
@@ -2884,7 +2863,6 @@ async def test_execute_write_rejects_vacuum_operation():
     ]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_form_rejects_vacuum_operation_with_flash_error():
     ds = Datasette(
         memory=True,
@@ -2922,7 +2900,6 @@ async def test_execute_write_form_rejects_vacuum_operation_with_flash_error():
     ) in denied_response.text
 
 
-@pytest.mark.asyncio
 async def test_untrusted_stored_write_query_rejects_vacuum_operation():
     ds = Datasette(
         memory=True,
@@ -2961,7 +2938,6 @@ async def test_untrusted_stored_write_query_rejects_vacuum_operation():
     assert "VACUUM is not allowed in user-supplied SQL" in denied_response.text
 
 
-@pytest.mark.asyncio
 async def test_untrusted_stored_write_query_rejects_vacuum_operation_with_flash_error():
     ds = Datasette(
         memory=True,
@@ -3003,7 +2979,6 @@ async def test_untrusted_stored_write_query_rejects_vacuum_operation_with_flash_
     ]
 
 
-@pytest.mark.asyncio
 async def test_trusted_stored_write_query_skips_vacuum_filtering():
     ds = Datasette(
         memory=True,
@@ -3080,7 +3055,6 @@ async def test_trusted_stored_write_query_skips_vacuum_filtering():
     ),
     ids=("control-insert", "virtual-table", "shadow-table"),
 )
-@pytest.mark.asyncio
 async def test_execute_write_rejects_virtual_and_shadow_table_writes(
     database_name,
     setup_sqls,
@@ -3107,7 +3081,6 @@ async def test_execute_write_rejects_virtual_and_shadow_table_writes(
     assert (await db.execute(verification_sql)).first()[0] == expected_count
 
 
-@pytest.mark.asyncio
 async def test_execute_write_on_table_with_fts_triggers():
     # sqlite-utils enable_fts(create_triggers=True) keeps an external-content
     # FTS index in sync using triggers. Permission on the table itself must be
@@ -3181,7 +3154,6 @@ async def test_execute_write_on_table_with_fts_triggers():
     assert await search("datasette") == []
 
 
-@pytest.mark.asyncio
 async def test_execute_write_analysis_explains_rejected_operations():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3219,7 +3191,6 @@ async def test_execute_write_analysis_explains_rejected_operations():
     )
 
 
-@pytest.mark.asyncio
 async def test_execute_write_analysis_shows_trigger_source():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3257,7 +3228,6 @@ async def test_execute_write_analysis_shows_trigger_source():
     ) in page_response.text
 
 
-@pytest.mark.asyncio
 async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3294,7 +3264,6 @@ async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert
     ).first()[0] == 1
 
 
-@pytest.mark.asyncio
 async def test_trusted_stored_write_query_can_write_virtual_table():
     ds = Datasette(
         memory=True,
@@ -3340,7 +3309,6 @@ async def test_trusted_stored_write_query_can_write_virtual_table():
     ).first()[0] == 0
 
 
-@pytest.mark.asyncio
 async def test_execute_write_create_table_uses_create_table_permission():
     ds = Datasette(
         memory=True,
@@ -3473,7 +3441,6 @@ async def test_execute_write_create_table_uses_create_table_permission():
     ),
     ids=("alter-table", "create-index", "drop-index", "drop-table", "drop-view"),
 )
-@pytest.mark.asyncio
 async def test_execute_write_schema_operations_use_schema_permissions(
     database_name,
     allowed_actor,
@@ -3569,7 +3536,6 @@ async def test_execute_write_schema_operations_use_schema_permissions(
         assert await db.view_exists("cats_view")
 
 
-@pytest.mark.asyncio
 async def test_execute_write_insert_links_to_inserted_row():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3611,7 +3577,6 @@ async def test_execute_write_insert_links_to_inserted_row():
     assert "View row" not in update_response.text
 
 
-@pytest.mark.asyncio
 async def test_execute_write_post_rejects_read_only_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3632,7 +3597,6 @@ async def test_execute_write_post_rejects_read_only_sql():
 
 
 @pytest.mark.parametrize("action", ("view-query", "update-query", "delete-query"))
-@pytest.mark.asyncio
 async def test_query_owner_gets_update_delete_and_writable_view_defaults(action):
     ds = Datasette(memory=True, default_deny=True)
     ds.add_memory_database("query_owner_defaults", name="data")
@@ -3671,7 +3635,6 @@ async def test_query_owner_gets_update_delete_and_writable_view_defaults(action)
     ),
     ids=("update-query", "delete-query"),
 )
-@pytest.mark.asyncio
 async def test_private_query_restricts_broad_update_delete_permissions(
     action, path_suffix, request_json, expected_public_title
 ):
@@ -3745,7 +3708,6 @@ async def test_private_query_restricts_broad_update_delete_permissions(
         assert public_query.title == expected_public_title
 
 
-@pytest.mark.asyncio
 async def test_user_writable_query_execution_rechecks_table_permissions():
     ds = Datasette(
         memory=True,
@@ -3808,7 +3770,6 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
     assert rows == [{"name": "Cleo"}]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_stored_write_query_with_returning():
     ds = Datasette(memory=True, default_deny=True)
@@ -3838,7 +3799,6 @@ async def test_stored_write_query_with_returning():
     ]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_stored_write_query_with_truncated_returning_message():
     ds = Datasette(memory=True, default_deny=True)
@@ -3870,7 +3830,6 @@ async def test_stored_write_query_with_truncated_returning_message():
     assert response.json()["message"] == "Query executed"
 
 
-@pytest.mark.asyncio
 async def test_query_delete_api_rejects_trusted_queries():
     ds = Datasette(
         memory=True,
@@ -3918,7 +3877,6 @@ async def test_query_delete_api_rejects_trusted_queries():
     assert await ds.get_query("data", "trusted_report") is None
 
 
-@pytest.mark.asyncio
 async def test_stored_query_json_uses_parameters_not_params():
     ds = Datasette(
         memory=True,
@@ -3946,3 +3904,52 @@ async def test_stored_query_json_uses_parameters_not_params():
     query = next(q for q in listing["queries"] if q["name"] == "with_params")
     assert query["parameters"] == ["name", "age"]
     assert "params" not in query
+
+
+async def test_query_list_fragment_and_pagination():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("query_list_fragment", name="data")
+    await ds.invoke_startup()
+    await add_numbered_queries(ds, "data", 25)
+    response = await ds.client.get("/data/-/queries?q=Demo", actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    assert len(soup.select("li.query-row")) == 20
+    nav = soup.select_one("nav.page-position-footer")
+    assert " ".join(nav.select_one(".page-position-text").text.split()) == (
+        "Showing 1–20 of 25"
+    )
+    next_href = nav.select_one("a.page-position-next")["href"]
+    assert "q=Demo" in next_href
+    assert "_next=" in next_href
+    assert "_start=20" in next_href
+
+    # The second page knows where it is, and is the last page
+    path = urlsplit(next_href)
+    response = await ds.client.get(path.path + "?" + path.query, actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    assert len(soup.select("li.query-row")) == 5
+    nav = soup.select_one("nav.page-position-footer")
+    assert " ".join(nav.select_one(".page-position-text").text.split()) == (
+        "Showing 21–25 of 25"
+    )
+    assert nav.select_one("a.page-position-next") is None
+    # The JSON API's own next link is unchanged
+    data = (
+        await ds.client.get("/data/-/queries.json?_size=20", actor={"id": "root"})
+    ).json()
+    assert "_start" not in data["next_url"]
+
+    # The live search fetches just the summary and results
+    response = await ds.client.get(
+        "/data/-/queries?q=Demo&_fragment=results", actor={"id": "root"}
+    )
+    assert response.status_code == 200
+    assert response.headers["x-robots-tag"] == "noindex"
+    assert "<html" not in response.text
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("p.homepage-summary span").text == "25 queries"
+    results = soup.select_one("div[data-homepage-results]")
+    assert len(results.select("li.query-row")) == 20
+    # Links in the fragment point at the full page
+    next_href = results.select_one("a.page-position-next")["href"]
+    assert "_fragment" not in next_href

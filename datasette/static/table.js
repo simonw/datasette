@@ -495,11 +495,6 @@ function buildColumnActionItems(manager, th, options) {
     });
   }
 
-  // "Expand long values" / "Collapse long values", from table-layout.js
-  if (manager.longValueColumnActions) {
-    columnActions = columnActions.concat(manager.longValueColumnActions(th));
-  }
-
   return columnActions.concat(manager.makeColumnActions(getColumnMeta(th)));
 }
 
@@ -928,7 +923,7 @@ function countTableRows(countUrl) {
 }
 
 function showTableCount(count) {
-  var countEl = document.querySelector(".table-count");
+  var countEl = document.querySelector(".table-summary .table-count");
   if (countEl) {
     countEl.textContent =
       count.toLocaleString("en-US") + (count === 1 ? " row" : " rows");

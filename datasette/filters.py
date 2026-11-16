@@ -7,7 +7,12 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import BadRequest
 from datasette.views.base import DatasetteError
 
-from .utils import detect_json1, escape_sqlite, path_with_removed_args
+from .utils import (
+    detect_json1,
+    escape_sqlite,
+    path_with_removed_args,
+    request_route_path,
+)
 
 
 @hookimpl(specname="filters_from_request")
@@ -28,7 +33,13 @@ def where_filters(request, database, datasette):
                 extra_wheres_for_ui = [
                     {
                         "text": text,
-                        "remove_url": path_with_removed_args(request, {"_where": text}),
+                        "remove_url": datasette.urls.path(
+                            path_with_removed_args(
+                                request,
+                                {"_where": text},
+                                path=request_route_path(request),
+                            )
+                        ),
                     }
                     for text in request.args.getlist("_where")
                 ]
@@ -205,13 +216,17 @@ class Filter:
 
 def _coerce_numeric_filter_value(value):
     try:
-        return int(value)
+        integer = int(value)
+        # SQLite binds integers as signed 64-bit values.
+        if -(2**63) <= integer < 2**63:
+            return integer
     except ValueError:
-        try:
-            converted = float(value)
-        except ValueError:
-            return value
-        return converted if math.isfinite(converted) else value
+        pass
+    try:
+        converted = float(value)
+    except ValueError:
+        return value
+    return converted if math.isfinite(converted) else value
 
 
 class TemplatedFilter(Filter):

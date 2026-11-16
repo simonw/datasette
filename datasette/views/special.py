@@ -1119,8 +1119,9 @@ class JumpView(BaseView):
         return fragments
 
     def _resolve_url(self, url):
+        """Returns (url, kwargs) - kwargs are the datasette.urls arguments, if any"""
         if not url or url.startswith("/"):
-            return url
+            return url, {}
 
         descriptor = json.loads(url)
         if not isinstance(descriptor, dict):
@@ -1140,7 +1141,7 @@ class JumpView(BaseView):
             raise TypeError(f"datasette.urls.{method_name} is not callable")
         kwargs = {key: value for key, value in descriptor.items() if key != "method"}
         try:
-            return method(**kwargs)
+            return method(**kwargs), kwargs
         except TypeError as ex:
             raise TypeError(
                 f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
@@ -1164,7 +1165,15 @@ class JumpView(BaseView):
         }.get(row["type"], 50)
         return (relevance, type_sort, len(display_label), row["label"])
 
-    async def _rows_for_database(self, database_name, indexed_fragments, q, pattern):
+    async def _rows_for_database(
+        self,
+        database_name,
+        indexed_fragments,
+        q,
+        pattern,
+        types=None,
+        exclude_types=None,
+    ):
         params = {"q": q, "pattern": pattern}
         union_parts = []
         for index, fragment in indexed_fragments:
@@ -1186,6 +1195,13 @@ class JumpView(BaseView):
                 )
             """)
             params.update(fragment_params)
+        types_clause = ""
+        if types:
+            types_clause = "\n        AND type IN (SELECT value FROM json_each(:types))"
+            params["types"] = json.dumps(types)
+        if exclude_types:
+            types_clause += "\n        AND type NOT IN (SELECT value FROM json_each(:exclude_types))"
+            params["exclude_types"] = json.dumps(exclude_types)
         sql = f"""
         WITH jump_items AS (
             {" UNION ALL ".join(union_parts)}
@@ -1198,8 +1214,10 @@ class JumpView(BaseView):
             search_text,
             display_name
         FROM jump_items
-        WHERE :q = ''
-           OR search_text LIKE :pattern COLLATE NOCASE
+        WHERE (
+            :q = ''
+            OR search_text LIKE :pattern COLLATE NOCASE
+        ){types_clause}
         ORDER BY
             CASE
                 WHEN lower(COALESCE(display_name, label)) = lower(:q) THEN 0
@@ -1225,8 +1243,14 @@ class JumpView(BaseView):
         result = await db.execute(sql, params)
         return list(result.rows)
 
-    async def get(self, request):
-        q = request.args.get("q", "").strip()
+    async def matches(self, request, q, *, types=None, exclude_types=None, limit=100):
+        """
+        Jump items matching q that request.actor can see, best first.
+
+        Returns (matches, truncated). Also used by the homepage search to
+        include items that plugins add with jump_items_sql.
+        """
+        q = (q or "").strip()
         terms = q.split()
         pattern = "%" + "%".join(terms) + "%" if terms else "%"
         fragments = await self._fragments(request)
@@ -1241,7 +1265,7 @@ class JumpView(BaseView):
         truncated = False
         for database_name, indexed_fragments in fragments_by_database.items():
             database_rows = await self._rows_for_database(
-                database_name, indexed_fragments, q, pattern
+                database_name, indexed_fragments, q, pattern, types, exclude_types
             )
             if len(database_rows) > 100:
                 truncated = True
@@ -1249,22 +1273,33 @@ class JumpView(BaseView):
             rows.extend(database_rows)
         rows.sort(key=lambda row: self._sort_key(row, q))
 
-        if len(rows) > 100:
+        if len(rows) > limit:
             truncated = True
-            rows = rows[:100]
+            rows = rows[:limit]
 
         matches = []
         for row in rows:
+            url, url_kwargs = self._resolve_url(row["url"])
             match = {
                 "name": row["label"],
-                "url": self._resolve_url(row["url"]),
+                "url": url,
                 "type": row["type"],
                 "description": row["description"],
             }
             if row["display_name"]:
                 match["display_name"] = row["display_name"]
+            # Expose datasette.urls arguments such as database and table as fields
+            for key, value in url_kwargs.items():
+                if key not in match and key != "format":
+                    match[key] = value
             matches.append(match)
+        return matches, truncated
 
+    async def get(self, request):
+        types = [t.strip() for t in request.args.getlist("type") if t.strip()]
+        matches, truncated = await self.matches(
+            request, request.args.get("q", ""), types=types
+        )
         return Response.json({"ok": True, "matches": matches, "truncated": truncated})
 
 

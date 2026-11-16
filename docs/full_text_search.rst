@@ -5,7 +5,7 @@ Full-text search
 
 SQLite includes `a powerful mechanism for enabling full-text search <https://www.sqlite.org/fts3.html>`_ against SQLite records. Datasette can detect if a table has had full-text search configured for it in the underlying database and display a search interface for filtering that table.
 
-Here's `an example search <https://register-of-members-interests.datasettes.com/regmem/items?_search=hamper&_sort_desc=date>`__:
+Here's `an example search <https://datasette.io/content/repos?_search=csv>`__ for Datasette ecosystem repositories mentioning "csv". This screenshot shows a search against a table of items registered by UK MPs:
 
 .. image:: https://raw.githubusercontent.com/simonw/datasette-screenshots/0.62/non-retina/regmem-search.png
    :alt: Screenshot showing a search for hampers against a table full of items - 453 results are returned.
@@ -23,13 +23,13 @@ Try `searching Datasette ecosystem repositories for "csv" <https://datasette.io/
 
 SQLite full-text search supports wildcards. This means you can easily implement prefix auto-complete by including an asterisk at the end of the search term - for example::
 
-    /dbname/tablename/?_search=rob*
+    /dbname/tablename?_search=rob*
 
 This will return all records containing at least one word that starts with the letters ``rob``.
 
 You can also run searches against just the content of a specific named column by using ``_search_COLNAME=TERMS`` - for example, this would search for just rows where the ``name`` column in the FTS index mentions ``Sarah``::
 
-    /dbname/tablename/?_search_name=Sarah
+    /dbname/tablename?_search_name=Sarah
 
 
 .. _full_text_search_advanced_queries:
@@ -120,31 +120,31 @@ Searches using custom SQL
 
 You can include full-text search results in custom SQL queries. The general pattern with SQLite search is to run the search as a sub-select that returns rowid values, then include those rowids in another part of the query.
 
-You can see the syntax for a basic search by running that search on a table page and then clicking "View and edit SQL" to see the underlying SQL. For example, consider this search for `repositories mentioning "csv" <https://datasette.io/content/repos?_search=csv>`_::
+You can see the syntax for a basic search by running that search on a table page and then clicking "View and edit SQL" to see the underlying SQL. For example, consider this search for `rows mentioning "dog" <https://latest.datasette.io/fixtures/searchable?_search=dog>`_::
 
-    /content/repos?_search=csv
+    /fixtures/searchable?_search=dog
 
-The generated SQL selects all columns in the table. This simplified version selects just the repository ID, full name and description, using the same full-text search condition. `Run this query <https://datasette.io/content?sql=select%0A++id%2C%0A++full_name%2C%0A++description%0Afrom%0A++repos%0Awhere%0A++rowid+in+%28%0A++++select%0A++++++rowid%0A++++from%0A++++++repos_fts%0A++++where%0A++++++repos_fts+match+escape_fts%28%3Asearch%29%0A++%29%0Aorder+by%0A++id%0Alimit%0A++101&search=csv>`_ with ``search`` set to ``csv``:
+The generated SQL selects all columns in the table. This simplified version selects just the primary key and the two text columns, using the same full-text search condition. `Run this query <https://latest.datasette.io/fixtures/-/query?sql=select%0A++pk%2C%0A++text1%2C%0A++text2%0Afrom%0A++searchable%0Awhere%0A++rowid+in+%28%0A++++select%0A++++++rowid%0A++++from%0A++++++searchable_fts%0A++++where%0A++++++searchable_fts+match+escape_fts%28%3Asearch%29%0A++%29%0Aorder+by%0A++pk%0Alimit%0A++101&search=dog>`_ with ``search`` set to ``dog``:
 
 .. code-block:: sql
 
     select
-      id,
-      full_name,
-      description
+      pk,
+      text1,
+      text2
     from
-      repos
+      searchable
     where
       rowid in (
         select
           rowid
         from
-          repos_fts
+          searchable_fts
         where
-          repos_fts match escape_fts(:search)
+          searchable_fts match escape_fts(:search)
       )
     order by
-      id
+      pk
     limit
       101
 

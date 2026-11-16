@@ -23,7 +23,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "asgiref>=3.2.10",
     "click>=7.1.1",
     "click-default-group>=1.2.3",
     "Jinja2>=2.10.3",
@@ -73,7 +72,7 @@ dev = [
     "ruff>=0.16.0",
     "opentelemetry-sdk>=1.37",
     # docs
-    "Sphinx==7.4.7",
+    "Sphinx==9.0.4",
     "furo==2025.12.19",
     "sphinx-autobuild",
     "codespell>=2.2.5",

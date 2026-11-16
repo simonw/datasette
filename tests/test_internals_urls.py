@@ -137,15 +137,86 @@ def test_table_and_query(ds, ds_base_url, name, format, expected):
 
 
 @pytest.mark.parametrize(
-    "ds_base_url,format,expected",
+    "ds_base_url,table,row_path,format,expected",
     [
-        ("/", None, "/_memory/facetable/1"),
-        ("/prefix/", None, "/prefix/_memory/facetable/1"),
-        ("/", "json", "/_memory/facetable/1.json"),
+        ("/", "facetable", "1", None, "/_memory/facetable/1"),
+        ("/prefix/", "facetable", "1", None, "/prefix/_memory/facetable/1"),
+        ("/", "facetable", "1", "json", "/_memory/facetable/1.json"),
+        ("/prefix/", "facetable", "1", "json", "/prefix/_memory/facetable/1.json"),
+        # Compound primary keys are comma-separated
+        ("/", "compound", "a,b", None, "/_memory/compound/a,b"),
+        ("/", "compound", "a,b", "json", "/_memory/compound/a,b.json"),
+        # A string row_path is used as-is, without any encoding
+        ("/", "compound", "a~2Fb,c", None, "/_memory/compound/a~2Fb,c"),
+        # A list or tuple of primary key values is tilde-encoded
+        ("/", "facetable", [1], None, "/_memory/facetable/1"),
+        ("/", "facetable", (1,), "json", "/_memory/facetable/1.json"),
+        ("/prefix/", "compound", ["a", "b"], None, "/prefix/_memory/compound/a,b"),
+        ("/", "compound", ["a/b", "c"], None, "/_memory/compound/a~2Fb,c"),
+        ("/", "compound", ["a,b", "c.d"], None, "/_memory/compound/a~2Cb,c~2Ed"),
+        ("/", "compound", ["a,b", 2], "json", "/_memory/compound/a~2Cb,2.json"),
+        # The table name is tilde-encoded
+        ("/", "table/with/slashes", "3", None, "/_memory/table~2Fwith~2Fslashes/3"),
     ],
 )
-def test_row(ds, ds_base_url, format, expected):
+def test_row(ds, ds_base_url, table, row_path, format, expected):
     ds._settings["base_url"] = ds_base_url
-    actual = ds.urls.row("_memory", "facetable", "1", format=format)
+    actual = ds.urls.row("_memory", table, row_path, format=format)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
+
+
+@pytest.mark.parametrize(
+    "ds_base_url,table,row_path,column,expected",
+    [
+        (
+            "/",
+            "binary_data",
+            "1",
+            "data",
+            "/_memory/binary_data/1.blob?_blob_column=data",
+        ),
+        (
+            "/prefix/",
+            "binary_data",
+            "1",
+            "data",
+            "/prefix/_memory/binary_data/1.blob?_blob_column=data",
+        ),
+        (
+            "/",
+            "compound",
+            "a~2Fb,c",
+            "data",
+            "/_memory/compound/a~2Fb,c.blob?_blob_column=data",
+        ),
+        # A list or tuple of primary key values is tilde-encoded
+        (
+            "/",
+            "compound",
+            ["a/b", "c"],
+            "data",
+            "/_memory/compound/a~2Fb,c.blob?_blob_column=data",
+        ),
+        (
+            "/",
+            "binary_data",
+            (1,),
+            "data",
+            "/_memory/binary_data/1.blob?_blob_column=data",
+        ),
+        # Table name is tilde-encoded, column name is URL-encoded
+        (
+            "/",
+            "table/with/slashes",
+            "1",
+            "my column&more",
+            "/_memory/table~2Fwith~2Fslashes/1.blob?_blob_column=my+column%26more",
+        ),
+    ],
+)
+def test_row_blob(ds, ds_base_url, table, row_path, column, expected):
+    ds._settings["base_url"] = ds_base_url
+    actual = ds.urls.row_blob("_memory", table, row_path, column)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)

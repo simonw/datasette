@@ -401,8 +401,11 @@ async def count_queries(
         where_clauses.append("q.source = :query_source")
         params["query_source"] = source
     if owner_id is not None:
-        where_clauses.append("q.owner_id = :query_owner_id")
-        params["query_owner_id"] = owner_id
+        # This must not be called :query_owner_id, because allowed_params
+        # already uses that name for the actor the private query rules in
+        # default_query_permissions_sql() are evaluated against
+        where_clauses.append("q.owner_id = :query_filter_owner_id")
+        params["query_filter_owner_id"] = owner_id
 
     row = (
         await datasette.get_internal_database().execute(
@@ -517,8 +520,11 @@ async def list_queries(
         where_clauses.append("q.source = :query_source")
         params["query_source"] = source
     if owner_id is not None:
-        where_clauses.append("q.owner_id = :query_owner_id")
-        params["query_owner_id"] = owner_id
+        # This must not be called :query_owner_id, because allowed_params
+        # already uses that name for the actor the private query rules in
+        # default_query_permissions_sql() are evaluated against
+        where_clauses.append("q.owner_id = :query_filter_owner_id")
+        params["query_filter_owner_id"] = owner_id
 
     private_select = ", allowed.is_private AS private" if include_private else ""
     rows = list(

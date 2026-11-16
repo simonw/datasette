@@ -335,6 +335,10 @@ CREATE VIEW searchable_view AS
 CREATE VIEW searchable_view_configured_by_metadata AS
     SELECT * from searchable;
 
+-- A view with a BLOB column and no rowid, see #2601
+CREATE VIEW binary_data_view AS
+    SELECT data FROM binary_data;
+
 """
     + "\n".join(
         [
@@ -396,9 +400,20 @@ def populate_extra_database(conn):
     conn.executescript(EXTRA_DATABASE_SQL)
 
 
+def _connect_for_bulk_write(db_filename):
+    # populate_*_database() runs well over a thousand statements, each in its
+    # own transaction. Without these pragmas every one of those is synced to
+    # disk, which made writing the fixtures take a second or more. Neither
+    # pragma is persisted in the database file.
+    conn = sqlite3.connect(db_filename)
+    conn.execute("PRAGMA synchronous = OFF")
+    conn.execute("PRAGMA journal_mode = MEMORY")
+    return conn
+
+
 def write_fixture_database(db_filename):
     """Write Datasette's test fixture tables to a SQLite database file."""
-    conn = sqlite3.connect(db_filename)
+    conn = _connect_for_bulk_write(db_filename)
     try:
         populate_fixture_database(conn)
     finally:
@@ -407,7 +422,7 @@ def write_fixture_database(db_filename):
 
 def write_extra_database(db_filename):
     """Write the extra test database tables to a SQLite database file."""
-    conn = sqlite3.connect(db_filename)
+    conn = _connect_for_bulk_write(db_filename)
     try:
         populate_extra_database(conn)
     finally:

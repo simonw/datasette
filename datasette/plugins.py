@@ -23,6 +23,7 @@ DEFAULT_PLUGINS = (
     "datasette.default_column_types",
     "datasette.default_magic_parameters",
     "datasette.blob_renderer",
+    "datasette.csv_renderer",
     "datasette.default_debug_menu",
     "datasette.default_jump_items",
     "datasette.default_database_actions",

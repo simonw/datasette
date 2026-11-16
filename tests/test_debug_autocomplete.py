@@ -1,11 +1,9 @@
-import pytest
 from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
 from datasette.database import Database
 
 
-@pytest.mark.asyncio
 async def test_debug_autocomplete_for_table():
     ds = Datasette(memory=True)
     db = ds.add_database(
@@ -38,7 +36,6 @@ async def test_debug_autocomplete_for_table():
     assert "<code>name</code>" in response.text
 
 
-@pytest.mark.asyncio
 async def test_debug_autocomplete_suggests_label_column_tables():
     ds = Datasette(memory=True)
     db = ds.add_database(
@@ -70,7 +67,6 @@ async def test_debug_autocomplete_suggests_label_column_tables():
     ]
 
 
-@pytest.mark.asyncio
 async def test_debug_autocomplete_scan_limit():
     ds = Datasette(memory=True)
     db = ds.add_database(

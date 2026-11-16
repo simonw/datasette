@@ -3,6 +3,7 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
+import gc
 import threading
 import uuid
 from types import SimpleNamespace
@@ -1263,6 +1264,32 @@ async def test_close_releases_memory_connections(num_sql_threads, named):
     for conn in (read_connection, write_connection):
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             conn.execute("select 1")
+
+
+async def test_close_releases_memory_database_after_failed_query():
+    # A failed query's traceback keeps its cursor alive until the garbage
+    # collector runs, and an open cursor stops SQLite from closing the
+    # connection, so the shared in-memory database used to outlive close()
+    name = uuid.uuid4().hex
+    gc_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        ds = Datasette()
+        db = ds.add_memory_database(name)
+        await db.execute_write("create table t (id integer primary key, v text)")
+        await db.execute_write("insert into t (v) values ('not json')")
+        # This fails while stepping through rows, after the statement is prepared
+        with pytest.raises(sqlite3.OperationalError, match="malformed JSON"):
+            await db.execute("select json_type(v) from t", log_sql_errors=False)
+        ds.close()
+        conn = sqlite3.connect(f"file:{name}?mode=memory&cache=shared", uri=True)
+        try:
+            assert conn.execute("select name from sqlite_master").fetchall() == []
+        finally:
+            conn.close()
+    finally:
+        if gc_was_enabled:
+            gc.enable()
 
 
 _CONTEXT_LEAK_MARKER_KEY = "otel-context-leak-marker"

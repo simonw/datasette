@@ -34,7 +34,6 @@ def test_facet_configs_ignore_unrelated_prefixes(query_string, table_config):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query_string",
     ("_facet=state&_facets=ignored", "_facets=ignored&_facet=state"),
@@ -48,7 +47,6 @@ async def test_facet_ignores_unrelated_prefixes(ds_client, query_string):
 
 
 # https://github.com/simonw/datasette/issues/3021
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query_string,where_sql",
     [
@@ -90,7 +88,6 @@ async def test_facet_counts_ignore_pagination(ds_client, query_string, where_sql
     assert facet_counts(second_page) == expected
 
 
-@pytest.mark.asyncio
 async def test_facet_value_link_resets_pagination(ds_client):
     response = await ds_client.get("/fixtures/sortable.json?_size=100&_facet=pk1")
     assert response.status_code == 200
@@ -124,7 +121,6 @@ async def test_facet_value_link_resets_pagination(ds_client):
     assert all(row["pk1"] == "d" for row in rows)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "facet_class,facet_arg,sql,value_arg",
     [
@@ -174,7 +170,6 @@ async def test_facet_value_toggle_url_drops_next(
     ]
 
 
-@pytest.mark.asyncio
 async def test_selected_metadata_facet_value_link_removes_only_argument(ds_client):
     # Facets strip _next before removing the selected value. In the other order,
     # removing pk1=d leaves "/" and the _next step falls back to the request's ?pk1=d
@@ -193,7 +188,6 @@ async def test_selected_metadata_facet_value_link_removes_only_argument(ds_clien
     assert result["toggle_url"] == "http://localhost/"
 
 
-@pytest.mark.asyncio
 async def test_column_facet_suggest(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -221,7 +215,6 @@ async def test_column_facet_suggest(ds_client):
     ] == suggestions
 
 
-@pytest.mark.asyncio
 async def test_column_facet_suggest_skip_if_already_selected(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -259,7 +252,6 @@ async def test_column_facet_suggest_skip_if_already_selected(ds_client):
     ] == suggestions
 
 
-@pytest.mark.asyncio
 async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -281,7 +273,6 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
     ] == suggestions
 
 
-@pytest.mark.asyncio
 async def test_column_facet_results(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -333,7 +324,6 @@ async def test_column_facet_results(ds_client):
     ] == buckets
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "column,filters,remaining",
     [
@@ -371,7 +361,6 @@ async def test_column_facet_selected_exact_filters(
     ]
 
 
-@pytest.mark.asyncio
 async def test_column_facet_underscore_argument_is_not_a_filter(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -390,7 +379,6 @@ async def test_column_facet_underscore_argument_is_not_a_filter(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_column_facet_results_column_starts_with_underscore(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -512,7 +500,6 @@ async def test_column_facet_results_column_starts_with_underscore(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
     facet = ColumnFacet(
         ds_client.ds,
@@ -565,7 +552,6 @@ async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
     ] == buckets
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_suggest(ds_client):
     facet = ArrayFacet(
@@ -585,7 +571,6 @@ async def test_array_facet_suggest(ds_client):
     ] == suggestions
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_suggest_not_if_all_empty_arrays(ds_client):
     facet = ArrayFacet(
@@ -599,7 +584,6 @@ async def test_array_facet_suggest_not_if_all_empty_arrays(ds_client):
     assert [] == suggestions
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_results(ds_client):
     facet = ArrayFacet(
@@ -645,7 +629,6 @@ async def test_array_facet_results(ds_client):
     ] == buckets
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_handle_duplicate_tags():
     ds = Datasette([], memory=True)
@@ -700,7 +683,6 @@ async def test_array_facet_handle_duplicate_tags():
     }
 
 
-@pytest.mark.asyncio
 async def test_date_facet_results(ds_client):
     facet = DateFacet(
         ds_client.ds,
@@ -752,7 +734,6 @@ async def test_date_facet_results(ds_client):
     ] == buckets
 
 
-@pytest.mark.asyncio
 async def test_json_array_with_blanks_and_nulls():
     ds = Datasette([], memory=True)
     db = ds.add_database(Database(ds, memory_name="test_json_array"))
@@ -770,7 +751,6 @@ async def test_json_array_with_blanks_and_nulls():
     ]
 
 
-@pytest.mark.asyncio
 async def test_facet_size():
     ds = Datasette([], memory=True, settings={"max_returned_rows": 50})
     db = ds.add_database(Database(ds, memory_name="test_facet_size"))
@@ -850,7 +830,6 @@ async def test_facet_size():
         ds.config = orig_config
 
 
-@pytest.mark.asyncio
 async def test_other_types_of_facet_in_metadata():
     ds = await make_ds(
         metadata={
@@ -880,7 +859,6 @@ async def test_other_types_of_facet_in_metadata():
     ), "Facets should appear in metadata-defined order"
 
 
-@pytest.mark.asyncio
 async def test_metadata_facet_ordering():
     ds = await make_ds(
         metadata={
@@ -913,7 +891,6 @@ async def test_metadata_facet_ordering():
     assert facet_names2 == ["state", "tags", "created", "_city_id"]
 
 
-@pytest.mark.asyncio
 async def test_conflicting_facet_names_json(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_facet=created&_facet_date=created"
@@ -927,7 +904,6 @@ async def test_conflicting_facet_names_json(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_facet_against_in_memory_database():
     ds = Datasette()
     db = ds.add_memory_database("mem")
@@ -946,7 +922,6 @@ async def test_facet_against_in_memory_database():
     assert response2.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_facet_only_considers_first_x_rows():
     # This test works by manually fiddling with Facet.suggest_consider
     ds = Datasette()
@@ -983,7 +958,6 @@ async def test_facet_only_considers_first_x_rows():
 
 
 # https://github.com/simonw/datasette/issues/862
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "time_limit_ms,expected_suggested",
     (

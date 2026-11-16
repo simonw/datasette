@@ -15,7 +15,6 @@ from datasette.utils import baseconv
 from .utils import cookie_was_deleted, last_event
 
 
-@pytest.mark.asyncio
 async def test_auth_token(ds_client):
     """The /-/auth-token endpoint sets the correct cookie"""
     assert ds_client.ds._root_token is not None
@@ -41,7 +40,6 @@ async def test_auth_token(ds_client):
     assert response.headers["Location"] == "/"
 
 
-@pytest.mark.asyncio
 async def test_actor_cookie(ds_client):
     """A valid actor cookie sets request.scope['actor']"""
     cookie = ds_client.actor_cookie({"id": "test"})
@@ -49,7 +47,6 @@ async def test_actor_cookie(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "test"}
 
 
-@pytest.mark.asyncio
 async def test_actor_cookie_invalid(ds_client):
     cookie = ds_client.actor_cookie({"id": "test"})
     # Break the signature
@@ -61,7 +58,6 @@ async def test_actor_cookie_invalid(ds_client):
     assert ds_client.ds._last_request.scope["actor"] is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "offset,expected",
     [
@@ -78,7 +74,6 @@ async def test_actor_cookie_that_expires(ds_client, offset, expected):
     assert ds_client.ds._last_request.scope["actor"] == expected
 
 
-@pytest.mark.asyncio
 async def test_logout(ds_client):
     response = await ds_client.get(
         "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"id": "test"})}
@@ -113,7 +108,6 @@ async def test_logout(ds_client):
     assert [["You are now logged out", 2]] == messages
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
 async def test_logout_button_in_navigation(ds_client, path):
     response = await ds_client.get(
@@ -128,7 +122,6 @@ async def test_logout_button_in_navigation(ds_client, path):
         assert fragment not in anon_response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
 async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, path):
     response = await ds_client.get(path + "?_bot=1")
@@ -139,7 +132,6 @@ async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, p
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "post_data,errors,expected_duration,expected_r",
     (
@@ -237,7 +229,6 @@ async def test_auth_create_token(
         assert response3.json()["actor"]["id"] == "test"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["GET", "POST"])
 @pytest.mark.parametrize(
     "restrictions",
@@ -266,7 +257,6 @@ async def test_auth_create_token_not_allowed_for_restricted_actors(
     create_token.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_auth_create_token_not_allowed_for_tokens(ds_client):
     ds_tok = ds_client.ds.sign(
         {"a": "test", "token": "dstok", "t": int(time.time())}, "token"
@@ -278,7 +268,6 @@ async def test_auth_create_token_not_allowed_for_tokens(ds_client):
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(ds_client):
     ds_client.ds._settings["allow_signed_tokens"] = False
     try:
@@ -291,7 +280,6 @@ async def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(ds_clien
         ds_client.ds._settings["allow_signed_tokens"] = True
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario,should_work",
     (
@@ -386,7 +374,6 @@ def test_cli_create_token(app_client, expires):
         assert response.json["ok"] is False
 
 
-@pytest.mark.asyncio
 async def test_root_with_root_enabled_gets_all_permissions(ds_client):
     """Root user with root_enabled=True gets all permissions"""
     # Ensure catalog tables are populated
@@ -490,7 +477,6 @@ async def test_root_with_root_enabled_gets_all_permissions(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_root_without_root_enabled_no_special_permissions(ds_client):
     """Root user without root_enabled doesn't get automatic permissions"""
     # Ensure catalog tables are populated

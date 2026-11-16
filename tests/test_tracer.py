@@ -11,7 +11,6 @@ async def trace_ds():
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("trace_debug", (True, False))
 async def test_trace(trace_debug):
     ds = await make_ds(settings={"trace_debug": trace_debug})
@@ -49,7 +48,6 @@ async def test_trace(trace_debug):
     assert any(sql.startswith("select ") for sql in sqls), "No select statements traced"
 
 
-@pytest.mark.asyncio
 async def test_trace_silently_fails_for_large_page(trace_ds):
     # Max HTML size is 256KB
     # Small response should have trace
@@ -68,7 +66,6 @@ async def test_trace_silently_fails_for_large_page(trace_ds):
     assert "_trace" not in big_response.json()
 
 
-@pytest.mark.asyncio
 async def test_trace_query_errors(trace_ds):
     response = await trace_ds.client.get(
         "/fixtures/-/query.json",
@@ -82,7 +79,6 @@ async def test_trace_query_errors(trace_ds):
     assert trace_info["traces"][-1]["error"] == "no such table: non_existent_table"
 
 
-@pytest.mark.asyncio
 async def test_trace_child_tasks_resets_contextvar_on_exception():
     from datasette import tracer
 
@@ -94,7 +90,6 @@ async def test_trace_child_tasks_resets_contextvar_on_exception():
     assert tracer.trace_task_id.get() == before
 
 
-@pytest.mark.asyncio
 async def test_trace_parallel_queries(trace_ds):
     response = await trace_ds.client.get("/parallel-queries?_trace=1")
     assert response.status_code == 200

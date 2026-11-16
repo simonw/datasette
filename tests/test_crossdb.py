@@ -1,13 +1,11 @@
 import sqlite3
 import urllib
 
-import pytest
 from click.testing import CliRunner
 
 from datasette.cli import cli
 
 
-@pytest.mark.asyncio
 async def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
     # --crossdb attaches database files, so this uses the on-disk fixture
     client = app_client_two_attached_databases_crossdb_enabled.ds.client
@@ -68,7 +66,6 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
     )
 
 
-@pytest.mark.asyncio
 async def test_crossdb_attached_database_list_display(
     app_client_two_attached_databases_crossdb_enabled,
 ):

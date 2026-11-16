@@ -80,7 +80,6 @@ def test_request_headers_missing(scope):
         headers["Content-Type"]
 
 
-@pytest.mark.asyncio
 async def test_request_post_vars():
     scope = {
         "http_version": "1.1",
@@ -104,7 +103,6 @@ async def test_request_post_vars():
     assert {"foo": "bar", "baz": "1", "empty": ""} == await request.post_vars()
 
 
-@pytest.mark.asyncio
 async def test_request_post_body():
     scope = {
         "http_version": "1.1",
@@ -132,7 +130,6 @@ async def test_request_post_body():
     assert data == json.loads(body)
 
 
-@pytest.mark.asyncio
 async def test_request_json():
     scope = {
         "http_version": "1.1",
@@ -158,7 +155,6 @@ async def test_request_json():
     assert data == await request.json()
 
 
-@pytest.mark.asyncio
 async def test_request_json_invalid():
     scope = {
         "http_version": "1.1",
@@ -183,13 +179,11 @@ async def test_request_json_invalid():
         await request.json()
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_multiple_chunks():
     request = Request(_post_scope(), _receive_chunks([b"hello ", b"world"]))
     assert await request.post_body() == b"hello world"
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_content_length_too_large():
     # Should reject based on content-length without reading the body
     async def receive():
@@ -206,7 +200,6 @@ async def test_request_post_body_content_length_too_large():
         await request.post_body(max_bytes=100)
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_streaming_too_large():
     # No content-length header - limit enforced as chunks arrive
     chunks = [b"a" * 60, b"b" * 60, b"c" * 60]
@@ -215,7 +208,6 @@ async def test_request_post_body_streaming_too_large():
         await request.post_body(max_bytes=100)
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_limit_from_constructor():
     request = Request(
         _post_scope(), _receive_chunks([b"too much data"]), max_post_body_bytes=5
@@ -224,14 +216,12 @@ async def test_request_post_body_limit_from_constructor():
         await request.post_body()
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_limit_disabled():
     body = b"a" * (11 * 1024 * 1024)
     request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=0)
     assert await request.post_body() == body
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("extra_byte", [0, 1])
 async def test_request_post_body_default_limit(extra_byte):
     # Bodies up to 10MB are accepted by default
@@ -244,7 +234,6 @@ async def test_request_post_body_default_limit(extra_byte):
         assert await request.post_body() == body
 
 
-@pytest.mark.asyncio
 async def test_request_json_too_large():
     body = json.dumps({"rows": ["x" * 100]}).encode("utf-8")
     request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=50)

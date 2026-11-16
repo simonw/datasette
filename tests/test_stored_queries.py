@@ -93,7 +93,6 @@ def stored_write_immutable_client():
         yield client.ds.client
 
 
-@pytest.mark.asyncio
 async def test_stored_query_with_named_parameter(ds_client):
     response = await ds_client.get(
         "/fixtures/neighborhood_search.json?text=town&_shape=arrays"
@@ -108,7 +107,6 @@ async def test_stored_query_with_named_parameter(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_insert(stored_write_client):
     response = await stored_write_client.post(
         "/data/add_name",
@@ -123,7 +121,6 @@ async def test_insert(stored_write_client):
     assert response.headers["Location"] == "/data/add_name?success"
 
 
-@pytest.mark.asyncio
 async def test_insert_blocked_cross_site(stored_write_client):
     # A cross-site POST (browser-originated) must be blocked
     response = await stored_write_client.post(
@@ -134,14 +131,12 @@ async def test_insert_blocked_cross_site(stored_write_client):
     assert 403 == response.status_code
 
 
-@pytest.mark.asyncio
 async def test_insert_no_cookies_no_csrf(stored_write_client):
     response = await stored_write_client.post("/data/add_name", data={"name": "Hello"})
     assert 302 == response.status_code
     assert "/data/add_name?success" == response.headers["Location"]
 
 
-@pytest.mark.asyncio
 async def test_custom_success_message(stored_write_client):
     response = await stored_write_client.post(
         "/data/delete_name",
@@ -155,7 +150,6 @@ async def test_custom_success_message(stored_write_client):
     assert [["Name deleted", 1]] == messages
 
 
-@pytest.mark.asyncio
 async def test_insert_error(stored_write_client):
     await stored_write_client.post("/data/add_name", data={"name": "Hello"})
     response = await stored_write_client.post(
@@ -181,7 +175,6 @@ async def test_insert_error(stored_write_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_on_success_message_sql(stored_write_client):
     response = await stored_write_client.post(
         "/data/add_name_specify_id",
@@ -195,7 +188,6 @@ async def test_on_success_message_sql(stored_write_client):
     assert messages == [["Name added: Should be OK with rowid 5", 1]]
 
 
-@pytest.mark.asyncio
 async def test_error_in_on_success_message_sql(stored_write_client):
     response = await stored_write_client.post(
         "/data/add_name_specify_id_with_error_in_on_success_message_sql",
@@ -209,7 +201,6 @@ async def test_error_in_on_success_message_sql(stored_write_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_custom_params(stored_write_client):
     response = await stored_write_client.get("/data/update_name?extra=foo")
     assert (
@@ -218,7 +209,6 @@ async def test_custom_params(stored_write_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_stored_query_pages_vary_by_credentials(stored_write_client):
     # Even without per-cookie CSRF tokens, anonymous pages must not be reused
     # for authenticated users whose permissions or navigation can differ.
@@ -227,7 +217,6 @@ async def test_stored_query_pages_vary_by_credentials(stored_write_client):
         assert response.headers["vary"] == "Cookie, Authorization"
 
 
-@pytest.mark.asyncio
 async def test_json_post_body(stored_write_client):
     response = await stored_write_client.post(
         "/data/add_name",
@@ -240,7 +229,6 @@ async def test_json_post_body(stored_write_client):
     assert rows == [{"rowid": 1, "name": "['Hello', 'there']"}]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "headers,body,querystring",
     (
@@ -267,7 +255,6 @@ async def test_json_response(stored_write_client, headers, body, querystring):
     assert rows == [{"rowid": 1, "name": "NameGoesHere"}]
 
 
-@pytest.mark.asyncio
 async def test_stored_query_permissions_on_database_page(stored_write_client):
     # Without auth shows the five public queries
     anon_response = await stored_write_client.get("/data.json")
@@ -332,7 +319,6 @@ async def test_stored_query_permissions_on_database_page(stored_write_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_stored_query_permissions(stored_write_client):
     assert 403 == (await stored_write_client.get("/data/delete_name")).status_code
     assert 200 == (await stored_write_client.get("/data/update_name")).status_code
@@ -379,7 +365,6 @@ async def magic_parameters_client():
         ({"id": "root"}, "name"),
     ],
 )
-@pytest.mark.asyncio
 async def test_magic_actor_missing_key(bare_ds, actor, key):
     request = Request.fake("/")
     request.scope["actor"] = actor
@@ -391,7 +376,6 @@ async def test_magic_actor_missing_key(bare_ds, actor, key):
     assert exc_info.value.args == (key,)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "magic_parameter,expected_re",
     [
@@ -449,7 +433,6 @@ async def test_magic_parameters(magic_parameters_client, magic_parameter, expect
     assert re.match(expected_re, post_actual)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("use_csrf", [True, False])
 @pytest.mark.parametrize("return_json", [True, False])
 async def test_magic_parameters_csrf_json(
@@ -484,7 +467,6 @@ async def test_magic_parameters_csrf_json(
     assert post_actual == "localhost"
 
 
-@pytest.mark.asyncio
 async def test_magic_parameters_cannot_be_used_in_arbitrary_queries(
     magic_parameters_client,
 ):
@@ -495,7 +477,6 @@ async def test_magic_parameters_cannot_be_used_in_arbitrary_queries(
     assert response.json()["error"].startswith("You did not supply a value for binding")
 
 
-@pytest.mark.asyncio
 async def test_stored_write_custom_template(stored_write_client):
     response = await stored_write_client.get("/data/update_name")
     assert response.status_code == 200
@@ -515,7 +496,6 @@ async def test_stored_write_custom_template(stored_write_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_stored_write_query_disabled_for_immutable_database(
     stored_write_immutable_client,
 ):

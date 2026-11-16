@@ -24,7 +24,6 @@ async def custom_pages_client_with_base_url():
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status,expected_text",
     (
@@ -39,7 +38,6 @@ async def test_custom_page(custom_pages_client, path, expected_status, expected_
     assert response.text == expected_text
 
 
-@pytest.mark.asyncio
 async def test_custom_pages_with_base_url(custom_pages_client_with_base_url):
     # datasette.client adds the base_url prefix to the path
     response = await custom_pages_client_with_base_url.get("/request")
@@ -47,7 +45,6 @@ async def test_custom_pages_with_base_url(custom_pages_client_with_base_url):
     assert response.text == "path:/prefix/request"
 
 
-@pytest.mark.asyncio
 async def test_custom_pages_nested(custom_pages_client):
     response = await custom_pages_client.get("/nested/nest")
     assert response.status_code == 200
@@ -56,7 +53,6 @@ async def test_custom_pages_nested(custom_pages_client):
     assert response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_custom_headers(custom_pages_client):
     response = await custom_pages_client.get("/headers")
     assert response.status_code == 200
@@ -65,7 +61,6 @@ async def test_custom_headers(custom_pages_client):
     assert response.text == "FOOBAR"
 
 
-@pytest.mark.asyncio
 async def test_custom_content_type(custom_pages_client):
     response = await custom_pages_client.get("/atom")
     assert response.status_code == 200
@@ -73,7 +68,6 @@ async def test_custom_content_type(custom_pages_client):
     assert response.text == "<?xml ...>"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status,expected_location",
     (
@@ -89,7 +83,6 @@ async def test_redirect(custom_pages_client, path, expected_status, expected_loc
     assert response.headers["location"] == expected_location
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     [
@@ -104,7 +97,6 @@ async def test_custom_route_pattern(custom_pages_client, path, expected):
     assert response.text.strip() == expected
 
 
-@pytest.mark.asyncio
 async def test_custom_route_pattern_404(custom_pages_client):
     response = await custom_pages_client.get("/route_OhNo")
     assert response.status_code == 404
@@ -112,7 +104,6 @@ async def test_custom_route_pattern_404(custom_pages_client):
     assert ">Oh no</" in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (

@@ -104,14 +104,12 @@ def config_dir_client(config_dir):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_settings(config_dir_client):
     response = await config_dir_client.get("/-/settings.json")
     assert 200 == response.status_code
     assert 60 == response.json()["default_cache_ttl"]
 
 
-@pytest.mark.asyncio
 async def test_plugins(config_dir_client):
     response = await config_dir_client.get("/-/plugins.json")
     assert 200 == response.status_code
@@ -121,14 +119,12 @@ async def test_plugins(config_dir_client):
     assert "mypy_cache" not in {p["name"] for p in plugins}
 
 
-@pytest.mark.asyncio
 async def test_templates_and_plugin(config_dir_client):
     response = await config_dir_client.get("/demo/cities/1")
     assert 200 == response.status_code
     assert "Show row here. Plugin says hooray" == response.text
 
 
-@pytest.mark.asyncio
 async def test_static(config_dir_client):
     response = await config_dir_client.get("/static/hello.css")
     assert 200 == response.status_code
@@ -136,14 +132,12 @@ async def test_static(config_dir_client):
     assert "text/css" == response.headers["content-type"]
 
 
-@pytest.mark.asyncio
 async def test_static_directory_browsing_not_allowed(config_dir_client):
     response = await config_dir_client.get("/static/")
     assert 403 == response.status_code
     assert "403: Directory listing is not allowed" == response.text
 
 
-@pytest.mark.asyncio
 async def test_databases(config_dir_client):
     response = await config_dir_client.get("/-/databases.json")
     assert 200 == response.status_code

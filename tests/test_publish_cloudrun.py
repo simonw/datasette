@@ -421,7 +421,6 @@ def test_publish_cloudrun_extra_options(
     assert extra_options == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config,limit,expect_content_length",
     [

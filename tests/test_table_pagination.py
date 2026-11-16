@@ -16,7 +16,6 @@ from datasette.utils import tilde_encode
 PAGE_SIZE = 4
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize(
     "declaration,values",
@@ -95,7 +94,6 @@ async def test_sorted_pagination_preserves_storage_classes(
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize("key_type", ["rowid", "integer", "text", "compound"])
 @pytest.mark.parametrize("omit_score", [False, True])
@@ -145,7 +143,6 @@ async def test_sorted_scalar_cursor_primary_keys(
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "token", ["i:no", "i:9223372036854775808", "f:no", "f:nan", "f:0x1p+99999", "b:zz"]
 )
@@ -232,7 +229,6 @@ def test_sort_scalar_token_is_query_string_safe(value):
     assert urllib.parse.parse_qs("_next=" + token + ",1") == {"_next": [token + ",1"]}
 
 
-@pytest.mark.asyncio
 async def test_sorted_float_cursor_without_url_encoding(tmp_path):
     path = tmp_path / "pages.db"
     with sqlite3.connect(path) as conn:
@@ -254,7 +250,6 @@ async def test_sorted_float_cursor_without_url_encoding(tmp_path):
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/pages/items.json", "/pages/items"])
 async def test_sorted_blob_cursor_with_trace(tmp_path, path):
     # The decoded bytes cursor is a SQL parameter, which the tracer serializes
@@ -326,7 +321,6 @@ async def count_before(ds, table, query, next_value):
     return response.json()["count"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table,query",
     [
@@ -379,7 +373,6 @@ async def test_count_before_matches_every_page(pages_ds, table, query):
     assert seen == total
 
 
-@pytest.mark.asyncio
 async def test_count_without_count_before_ignores_next(pages_ds):
     # The "count all" button posts the page's own query string, which may
     # include _next - that must still count every matching row
@@ -387,7 +380,6 @@ async def test_count_without_count_before_ignores_next(pages_ds):
     assert response.json() == {"ok": True, "count": 19}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -414,7 +406,6 @@ def link_text(nav):
     return [a.get_text(" ", strip=True) for a in nav.select("a")]
 
 
-@pytest.mark.asyncio
 async def test_no_bar_when_results_fit_on_one_page(pages_ds):
     response = await pages_ds.client.get("/pages/small")
     soup, header, footer = bars(response.text)
@@ -423,7 +414,6 @@ async def test_no_bar_when_results_fit_on_one_page(pages_ds):
     assert soup.select_one("h3.table-summary").get_text(strip=True) == "2 rows"
 
 
-@pytest.mark.asyncio
 async def test_bar_on_first_page(pages_ds):
     response = await pages_ds.client.get(f"/pages/items?_size={PAGE_SIZE}")
     soup, header, footer = bars(response.text)
@@ -442,7 +432,6 @@ async def test_bar_on_first_page(pages_ds):
     )
 
 
-@pytest.mark.asyncio
 async def test_bar_on_later_page(pages_ds):
     response = await pages_ds.client.get(
         f"/pages/items?_size={PAGE_SIZE}&score__gte=2&_sort=score&_next=3,7"
@@ -470,7 +459,6 @@ async def test_bar_on_later_page(pages_ds):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -488,7 +476,6 @@ async def test_bar_fallback_describes_cursor(pages_ds, query, expected):
     )
 
 
-@pytest.mark.asyncio
 async def test_bar_on_last_page(pages_ds):
     response = await pages_ds.client.get(f"/pages/items?_size={PAGE_SIZE}&_next=16")
     _, header, footer = bars(response.text)
@@ -496,7 +483,6 @@ async def test_bar_on_last_page(pages_ds):
     assert footer is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query,expected_links",
     [
@@ -515,7 +501,6 @@ async def test_footer_bar_on_pages_with_five_or_more_rows(
     assert footer.select_one(".page-position-text") is None
 
 
-@pytest.mark.asyncio
 async def test_bar_keeps_truncated_count_in_heading(pages_ds):
     # When the count is truncated the heading keeps its "count all" button
     # and the bar does not claim a total
@@ -527,7 +512,6 @@ async def test_bar_keeps_truncated_count_in_heading(pages_ds):
     assert "rows" not in header.select_one(".page-position-text").get_text()
 
 
-@pytest.mark.asyncio
 async def test_bar_base_url(tmp_path):
     ds = Datasette([tmp_path / "pages.db"], settings={"base_url": "/prefix/"})
     db = ds.get_database()

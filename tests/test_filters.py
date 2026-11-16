@@ -112,7 +112,6 @@ def test_build_where_escapes_table_name():
     assert sql_bits == [':p0 in (select value from json_each("items]bracket"."tags"))']
 
 
-@pytest.mark.asyncio
 async def test_through_filters_from_request(ds_client):
     request = Request.fake(
         '/?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
@@ -133,7 +132,6 @@ async def test_through_filters_from_request(ds_client):
     assert filter_args.extra_context == {}
 
 
-@pytest.mark.asyncio
 async def test_where_filters_from_request(ds_client):
     await ds_client.ds.invoke_startup()
     request = Request.fake("/?_where=pk+>+3")
@@ -150,7 +148,6 @@ async def test_where_filters_from_request(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_search_filters_from_request(ds_client):
     request = Request.fake("/?_search=bobcat")
     filter_args = await search_filters(

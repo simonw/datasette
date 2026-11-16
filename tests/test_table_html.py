@@ -74,7 +74,6 @@ DEFAULT_EXPRESSION_OPTIONS = [
 ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("table", ("simple_primary_key", "simple_view"))
 @pytest.mark.parametrize("duration", (0.125, 0.25))
 async def test_table_footer_query_ms(ds_client, monkeypatch, table, duration):
@@ -89,7 +88,6 @@ async def test_table_footer_query_ms(ds_client, monkeypatch, table, duration):
     assert f"Queries took {duration * 1000}ms" in footer.get_text()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_definition_sql",
     [
@@ -128,7 +126,6 @@ async def test_table_definition_sql(path, expected_definition_sql, ds_client):
     assert soup.find("script", src=re.compile(r"copy-button\.js"))
 
 
-@pytest.mark.asyncio
 async def test_table_cell_truncation():
     ds = await make_ds(settings={"truncate_cells_html": 5})
     response = await ds.client.get("/fixtures/facetable")
@@ -167,7 +164,6 @@ async def test_table_cell_truncation():
     ]
 
 
-@pytest.mark.asyncio
 async def test_add_filter_redirects(ds_client):
     filter_args = urllib.parse.urlencode(
         {"_filter_column": "content", "_filter_op": "startswith", "_filter_value": "x"}
@@ -201,7 +197,6 @@ async def test_add_filter_redirects(ds_client):
     assert response.headers["Location"].endswith("?content__isnull=5")
 
 
-@pytest.mark.asyncio
 async def test_existing_filter_redirects(ds_client):
     filter_args = {
         "_filter_column_1": "name",
@@ -242,7 +237,6 @@ async def test_existing_filter_redirects(ds_client):
     assert "?" not in response.headers["Location"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "qs,expected_hidden",
     (
@@ -268,7 +262,6 @@ async def test_reflected_hidden_form_fields(ds_client, qs, expected_hidden):
     assert hidden_inputs == expected_hidden
 
 
-@pytest.mark.asyncio
 async def test_empty_search_parameter_gets_removed(ds_client):
     path_base = "/fixtures/simple_primary_key"
     path = (
@@ -288,7 +281,6 @@ async def test_empty_search_parameter_gets_removed(ds_client):
     assert response.headers["Location"].endswith("?name__exact=chidi")
 
 
-@pytest.mark.asyncio
 async def test_searchable_view_persists_fts_table(ds_client):
     # The search form should persist ?_fts_table as a hidden field
     response = await ds_client.get(
@@ -302,7 +294,6 @@ async def test_searchable_view_persists_fts_table(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_sort_by_desc_redirects(ds_client):
     path_base = "/fixtures/sortable"
     path = (
@@ -315,7 +306,6 @@ async def test_sort_by_desc_redirects(ds_client):
     assert response.headers["Location"].endswith("?_sort_desc=sortable")
 
 
-@pytest.mark.asyncio
 async def test_sort_links(ds_client):
     response = await ds_client.get("/fixtures/sortable?_sort=sortable")
     assert response.status_code == 200
@@ -420,7 +410,6 @@ async def test_sort_links(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -440,7 +429,6 @@ async def test_th_data_has_fks(ds_client, path, expected):
     assert has_fks == expected
 
 
-@pytest.mark.asyncio
 async def test_sort_menu_excludes_unsortable_primary_key():
     # https://github.com/simonw/datasette/issues/1980
     ds = Datasette(
@@ -471,7 +459,6 @@ async def test_sort_menu_excludes_unsortable_primary_key():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_facet_display(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet=on_earth"
@@ -557,7 +544,6 @@ async def test_facet_display(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "filters", ["state=CA", "state__exact=CA", "state=CA&state__exact=CA"]
 )
@@ -582,7 +568,6 @@ async def test_facet_remove_exact_filter(ds_client, filters):
     assert {row["state"] for row in rows} == {"CA", "MI"}
 
 
-@pytest.mark.asyncio
 async def test_facets_persist_through_filter_form(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet_array=tags"
@@ -597,7 +582,6 @@ async def test_facets_persist_through_filter_form(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_next_does_not_persist_in_hidden_field(ds_client):
     response = await ds_client.get("/fixtures/searchable?_size=1&_next=1")
     assert response.status_code == 200
@@ -608,7 +592,6 @@ async def test_next_does_not_persist_in_hidden_field(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_html_simple_primary_key(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?_size=3")
     assert response.status_code == 200
@@ -637,7 +620,6 @@ async def test_table_html_simple_primary_key(ds_client):
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
 
 
-@pytest.mark.asyncio
 async def test_table_csv_json_export_interface(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id__gt=2")
     assert response.status_code == 200
@@ -780,7 +762,6 @@ async def test_table_csv_json_export_interface(ds_client):
     assert close["command"] == "close"
 
 
-@pytest.mark.asyncio
 async def test_table_view_and_edit_sql_button(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id__gt=2")
     soup = Soup(response.text, "html.parser")
@@ -806,7 +787,6 @@ def _export_urls(soup):
     ]
 
 
-@pytest.mark.asyncio
 async def test_base_url_export_links_are_not_double_prefixed(ds_client_base_url_prefix):
     for path, expected_json, expected_csv in (
         (
@@ -839,7 +819,6 @@ async def test_base_url_export_links_are_not_double_prefixed(ds_client_base_url_
         )
 
 
-@pytest.mark.asyncio
 async def test_base_url_export_links_when_database_matches_prefix():
     with make_app_client(
         settings={"base_url": "/data/"}, filename="data.db"
@@ -859,7 +838,6 @@ async def test_base_url_export_links_when_database_matches_prefix():
         )
 
 
-@pytest.mark.asyncio
 async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert response.status_code == 200
@@ -882,12 +860,10 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
     assert labels.has_attr("checked")
 
 
-@pytest.mark.asyncio
 async def test_table_not_exists(ds_client):
     assert "Table not found" in (await ds_client.get("/fixtures/blah")).text
 
 
-@pytest.mark.asyncio
 async def test_table_html_no_primary_key(ds_client):
     response = await ds_client.get("/fixtures/no_primary_key")
     assert response.status_code == 200
@@ -912,7 +888,6 @@ async def test_table_html_no_primary_key(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_rowid_sortable_no_primary_key(ds_client):
     response = await ds_client.get("/fixtures/no_primary_key")
     assert response.status_code == 200
@@ -922,7 +897,6 @@ async def test_rowid_sortable_no_primary_key(ds_client):
     assert "rowid\xa0▼" == ths[1].find("a").string.strip()
 
 
-@pytest.mark.asyncio
 async def test_table_html_compound_primary_key(ds_client):
     response = await ds_client.get("/fixtures/compound_primary_key")
     assert response.status_code == 200
@@ -966,7 +940,6 @@ async def test_table_html_compound_primary_key(ds_client):
     assert "data-row-label" not in rows[1].attrs
 
 
-@pytest.mark.asyncio
 async def test_table_html_foreign_key_links(ds_client):
     response = await ds_client.get("/fixtures/foreign_key_references")
     assert response.status_code == 200
@@ -992,7 +965,6 @@ async def test_table_html_foreign_key_links(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("referenced_table", ("authors", "AuThOrS"))
 async def test_table_html_foreign_key_to_missing_table_is_not_linked(referenced_table):
     # https://github.com/simonw/datasette/issues/1515
@@ -1025,7 +997,6 @@ async def test_table_html_foreign_key_to_missing_table_is_not_linked(referenced_
     assert data["rows"][0]["author_id"] == {"value": 1, "label": "Ada"}
 
 
-@pytest.mark.asyncio
 async def test_table_html_foreign_key_facets(ds_client):
     response = await ds_client.get(
         "/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label"
@@ -1037,7 +1008,6 @@ async def test_table_html_foreign_key_facets(ds_client):
     ) in response.text
 
 
-@pytest.mark.asyncio
 async def test_facet_proportion_bars(tmp_path):
     db_path = str(tmp_path / "colors.db")
     ds = Datasette([db_path])
@@ -1073,7 +1043,6 @@ async def test_facet_proportion_bars(tmp_path):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_html_disable_foreign_key_links_with_labels(ds_client):
     response = await ds_client.get(
         "/fixtures/foreign_key_references?_labels=off&_size=1"
@@ -1093,7 +1062,6 @@ async def test_table_html_disable_foreign_key_links_with_labels(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_html_foreign_key_custom_label_column(ds_client):
     response = await ds_client.get("/fixtures/custom_foreign_key_label")
     assert response.status_code == 200
@@ -1109,7 +1077,6 @@ async def test_table_html_foreign_key_custom_label_column(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_column_options",
     [
@@ -1134,7 +1101,6 @@ async def test_table_html_filter_form_column_options(
     assert expected_column_options == column_options
 
 
-@pytest.mark.asyncio
 async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
     # https://github.com/simonw/datasette/issues/1503
     response = await ds_client.get("/fixtures/sortable?_nocol=sortable")
@@ -1156,7 +1122,6 @@ async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_column_chooser_present(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert response.status_code == 200
@@ -1176,7 +1141,6 @@ async def test_column_chooser_present(ds_client):
     assert "primaryKeys" in script_text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path", ["/fixtures/facetable", "/fixtures/123_starts_with_digits"]
 )
@@ -1198,7 +1162,6 @@ async def test_mobile_column_actions_present(ds_client, path):
     assert len(ths) >= 1
 
 
-@pytest.mark.asyncio
 async def test_row_delete_action_data_attributes():
     ds = Datasette(
         [],
@@ -1290,7 +1253,6 @@ async def test_row_delete_action_data_attributes():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_database_create_table_action_button_and_data():
     ds = Datasette(
         [],
@@ -1361,7 +1323,6 @@ async def test_database_create_table_action_button_and_data():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_database_create_table_data_includes_insert_row_permission():
     ds = Datasette(
         [],
@@ -1395,7 +1356,6 @@ async def test_database_create_table_data_includes_insert_row_permission():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_database_create_table_data_includes_custom_column_types():
     ds = Datasette(
         [],
@@ -1454,7 +1414,6 @@ async def test_database_create_table_data_includes_custom_column_types():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_alter_action_button_and_data():
     ds = Datasette(
         [],
@@ -1611,7 +1570,6 @@ async def test_table_alter_action_button_and_data():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_insert_action_button_and_data():
     ds = Datasette(
         [],
@@ -1693,7 +1651,6 @@ async def test_table_insert_action_button_and_data():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_insert_action_includes_compound_primary_keys():
     ds = Datasette(
         [],
@@ -1744,7 +1701,6 @@ async def test_table_insert_action_includes_compound_primary_keys():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_data_includes_foreign_key_autocomplete_urls():
     ds = Datasette([])
     try:
@@ -1799,7 +1755,6 @@ async def test_table_data_includes_foreign_key_autocomplete_urls():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_fragment_endpoint(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/-/fragment?_row=1")
     assert response.status_code == 200
@@ -1816,7 +1771,6 @@ async def test_table_fragment_endpoint(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_table_fragment_row_parameter_replaces_pk_filters(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key/-/fragment?id=2&_row=1"
@@ -1829,7 +1783,6 @@ async def test_table_fragment_row_parameter_replaces_pk_filters(ds_client):
     assert rows[0]["data-row-label"] == "hello"
 
 
-@pytest.mark.asyncio
 async def test_row_page_edit_delete_action_menu_buttons():
     ds = Datasette(
         [],
@@ -1903,7 +1856,6 @@ async def test_row_page_edit_delete_action_menu_buttons():
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,permission,expect_loader",
     (
@@ -1955,7 +1907,6 @@ async def test_table_page_edit_tools_loader_only_for_editors(
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_row_delete_redirect_to_table_sets_message():
     ds = Datasette(
         [],
@@ -1993,7 +1944,6 @@ async def test_row_delete_redirect_to_table_sets_message():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_row_update_sets_message():
     ds = Datasette(
         [],
@@ -2035,7 +1985,6 @@ async def test_row_update_sets_message():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_data_uses_base_url(ds_client_base_url_prefix):
     response = await get_unprefixed(
         ds_client_base_url_prefix, "/prefix/fixtures/simple_primary_key"
@@ -2068,7 +2017,6 @@ async def test_table_data_uses_base_url(ds_client_base_url_prefix):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("allow_sql", (True, False))
 async def test_table_page_column_statistics_requires_execute_sql(allow_sql):
     # The column statistics dialog builds SQL in JavaScript, so its script and
@@ -2095,7 +2043,6 @@ async def test_table_page_column_statistics_requires_execute_sql(allow_sql):
         assert not has_script
 
 
-@pytest.mark.asyncio
 async def test_table_page_column_statistics_columns(ds_client):
     # Every column is listed with its declared type, including columns hidden
     # with ?_nocol= and the rowid of a table without a primary key
@@ -2111,7 +2058,6 @@ async def test_table_page_column_statistics_columns(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_page_column_statistics_filter(ds_client):
     # Column statistics use the table's current filters. Pagination from
     # ?_next= is not part of the filter and numeric parameters keep their type.
@@ -2127,7 +2073,6 @@ async def test_table_page_column_statistics_filter(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_table_fragment_custom_table_include():
     ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
@@ -2143,7 +2088,6 @@ async def test_table_fragment_custom_table_include():
     ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
 
 
-@pytest.mark.asyncio
 async def test_table_fragment_uses_render_cell_hook():
     from markupsafe import Markup
 
@@ -2173,7 +2117,6 @@ async def test_table_fragment_uses_render_cell_hook():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_zero_row_table_renders_thead(ds_client):
     response = await ds_client.get("/fixtures/123_starts_with_digits")
     assert response.status_code == 200
@@ -2188,7 +2131,6 @@ async def test_zero_row_table_renders_thead(ds_client):
     assert soup.select_one("p.zero-results") is not None
 
 
-@pytest.mark.asyncio
 async def test_column_chooser_data_reflects_col_filtering(ds_client):
     response = await ds_client.get("/fixtures/facetable?_col=state&_col=created")
     assert response.status_code == 200
@@ -2219,7 +2161,6 @@ async def test_column_chooser_data_reflects_col_filtering(ds_client):
     assert "planet_int" not in non_pk_selected
 
 
-@pytest.mark.asyncio
 async def test_column_chooser_shown_for_views(ds_client):
     response = await ds_client.get("/fixtures/simple_view")
     assert response.status_code == 200
@@ -2231,7 +2172,6 @@ async def test_column_chooser_shown_for_views(ds_client):
     assert len(chooser_script) == 1
 
 
-@pytest.mark.asyncio
 async def test_compound_primary_key_with_foreign_key_references(ds_client):
     # e.g. a many-to-many table with a compound primary key on the two columns
     response = await ds_client.get("/fixtures/searchable_tags")
@@ -2254,7 +2194,6 @@ async def test_compound_primary_key_with_foreign_key_references(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_view_html(ds_client):
     response = await ds_client.get("/fixtures/simple_view?_size=3")
     assert response.status_code == 200
@@ -2285,7 +2224,6 @@ async def test_view_html(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_metadata(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key")
     assert response.status_code == 200
@@ -2298,7 +2236,6 @@ async def test_table_metadata(ds_client):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,has_object,has_stream,has_expand",
     [
@@ -2342,7 +2279,6 @@ def _export_rows(dialog):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_scope,expected_json,expected_csv,expected_stream,expected_attrs",
     [
@@ -2436,7 +2372,6 @@ async def test_export_dialog_scope_and_row_counts(
     assert attrs == {"max": "100", "later": "false", **expected_attrs}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "size,expected_json,expected_csv",
     [
@@ -2482,7 +2417,6 @@ async def test_export_dialog_on_later_pages(
     assert dialog["data-rows-later"] == "true"
 
 
-@pytest.mark.asyncio
 async def test_export_dialog_first_page_has_no_page_note(ds_client):
     response = await ds_client.get("/fixtures/facetable?_size=2")
     soup = Soup(response.text, "html.parser")
@@ -2490,7 +2424,6 @@ async def test_export_dialog_first_page_has_no_page_note(ds_client):
     assert soup.select_one("dialog#export-dialog")["data-rows-later"] == "false"
 
 
-@pytest.mark.asyncio
 async def test_export_dialog_keeps_blank_filter_values(ds_client):
     # ?content= filters for content = "", so the CSV export must keep it
     response = await ds_client.get("/fixtures/simple_primary_key?content=")
@@ -2508,7 +2441,6 @@ async def test_export_dialog_keeps_blank_filter_values(ds_client):
     assert _export_rows(dialog)["csv"] == ("All 1 row", False)
 
 
-@pytest.mark.asyncio
 async def test_export_dialog_accessible_descriptions(ds_client):
     response = await ds_client.get("/fixtures/facetable?_size=2&state=CA")
     soup = Soup(response.text, "html.parser")
@@ -2537,7 +2469,6 @@ async def test_export_dialog_accessible_descriptions(ds_client):
     assert len(ids) == len(set(ids))
 
 
-@pytest.mark.asyncio
 async def test_export_dialog_no_csv_without_rows(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id=999")
     soup = Soup(response.text, "html.parser")
@@ -2549,7 +2480,6 @@ async def test_export_dialog_no_csv_without_rows(ds_client):
     assert dialog.select_one("form.export-csv-form") is None
 
 
-@pytest.mark.asyncio
 async def test_row_export_dialog(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     assert response.status_code == 200
@@ -2607,7 +2537,6 @@ async def test_row_export_dialog(ds_client):
     assert len(ids) == len(set(ids))
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_scope",
     (
@@ -2625,7 +2554,6 @@ async def test_row_export_dialog_scope(ds_client, path, expected_scope):
     assert soup.select_one("#export-dialog .export-scope").get_text() == expected_scope
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_href",
     [
@@ -2654,7 +2582,6 @@ async def test_clear_filters_button(ds_client, path, expected_href):
         ]
 
 
-@pytest.mark.asyncio
 async def test_extra_where_clauses(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_where=_neighborhood='Dogpatch'&_where=_city_id=1"
@@ -2675,7 +2602,6 @@ async def test_extra_where_clauses(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_hidden",
     [
@@ -2698,7 +2624,6 @@ async def test_other_hidden_form_fields(ds_client, path, expected_hidden):
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_hidden",
     [
@@ -2717,7 +2642,6 @@ async def test_search_and_sort_fields_not_duplicated(ds_client, path, expected_h
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
 
-@pytest.mark.asyncio
 async def test_binary_data_display_in_table(ds_client):
     response = await ds_client.get("/fixtures/binary_data")
     assert response.status_code == 200
@@ -2744,7 +2668,6 @@ async def test_binary_data_display_in_table(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_custom_table_include():
     ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
@@ -2758,7 +2681,6 @@ async def test_custom_table_include():
     ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("json", (True, False))
 @pytest.mark.parametrize(
     "params,error",
@@ -2789,7 +2711,6 @@ async def test_sort_errors(ds_client, json, params, error):
         assert error in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table_name,expected_headers,expected_cells,reverse_querystring",
     (
@@ -2843,7 +2764,6 @@ async def test_metadata_sort(
     assert list(reversed(expected)) == rows
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "max_returned_rows,path,expected_num_facets,expected_ellipses,expected_ellipses_url",
     (
@@ -2906,7 +2826,6 @@ async def test_facet_more_links(
             assert facet_truncated.find("a") is None
 
 
-@pytest.mark.asyncio
 async def test_unavailable_table_does_not_break_sort_relationships():
     # https://github.com/simonw/datasette/issues/1305
     ds = await make_ds(
@@ -2920,7 +2839,6 @@ async def test_unavailable_table_does_not_break_sort_relationships():
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_column_metadata(ds_client):
     response = await ds_client.get("/fixtures/roadside_attractions")
     soup = Soup(response.text, "html.parser")
@@ -2939,7 +2857,6 @@ async def test_column_metadata(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_facet_total():
     # https://github.com/simonw/datasette/issues/1423
     # https://github.com/simonw/datasette/issues/1556
@@ -2955,7 +2872,6 @@ async def test_facet_total():
         assert fragment in response.text
 
 
-@pytest.mark.asyncio
 async def test_sort_rowid_with_next(ds_client):
     # https://github.com/simonw/datasette/issues/1470
     response = await ds_client.get("/fixtures/binary_data?_size=1&_next=1&_sort=rowid")
@@ -2966,7 +2882,6 @@ def assert_querystring_equal(expected, actual):
     assert sorted(expected.split("&")) == sorted(actual.split("&"))
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -2986,14 +2901,12 @@ async def test_table_page_title(ds_client, path, expected):
     assert title == expected
 
 
-@pytest.mark.asyncio
 async def test_table_post_method_not_allowed(ds_client):
     response = await ds_client.post("/fixtures/facetable")
     assert response.status_code == 405
     assert "Method not allowed" in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("allow_facet", (True, False))
 async def test_allow_facet_off(allow_facet):
     ds = await make_ds(settings={"default_allow_facet": allow_facet})
@@ -3006,7 +2919,6 @@ async def test_allow_facet_off(allow_facet):
         assert "Suggested facets" not in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "size,title,length_bytes",
     (
@@ -3031,7 +2943,6 @@ async def test_format_of_binary_links(size, title, length_bytes):
     assert expected in sql_response.text
 
 
-@pytest.mark.asyncio
 async def test_binary_links_for_views_without_rowid(ds_client):
     # https://github.com/simonw/datasette/issues/2601
     response = await ds_client.get("/fixtures/binary_data_view")
@@ -3051,7 +2962,6 @@ async def test_binary_links_for_views_without_rowid(ds_client):
         assert blob_response.content == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config",
     (
@@ -3140,7 +3050,6 @@ async def test_foreign_key_labels_obey_permissions(config):
     }
 
 
-@pytest.mark.asyncio
 async def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
     # https://github.com/simonw/datasette/pull/2476
     client = app_client_with_dot.ds.client

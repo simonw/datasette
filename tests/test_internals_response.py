@@ -35,7 +35,6 @@ def test_response_redirect():
     assert "/foo" == response.headers["Location"]
 
 
-@pytest.mark.asyncio
 async def test_response_set_cookie():
     events = []
 
@@ -93,7 +92,6 @@ async def _collect(response):
     return events
 
 
-@pytest.mark.asyncio
 async def test_response_stream():
     async def body():
         yield "one\n"
@@ -127,7 +125,6 @@ async def test_response_stream():
     ]
 
 
-@pytest.mark.asyncio
 async def test_response_stream_status_and_content_type():
     async def body():
         yield "{}"
@@ -138,7 +135,6 @@ async def test_response_stream_status_and_content_type():
     assert [b"content-type", b"application/x-ndjson"] in events[0]["headers"]
 
 
-@pytest.mark.asyncio
 async def test_response_stream_any_async_iterator():
     class Countdown:
         def __init__(self):
@@ -163,7 +159,6 @@ def test_response_stream_requires_async_iterator(body):
         Response.stream(body)
 
 
-@pytest.mark.asyncio
 async def test_response_stream_error_ends_without_final_chunk():
     cleaned_up = []
 
@@ -190,7 +185,6 @@ async def test_response_stream_error_ends_without_final_chunk():
     assert cleaned_up == [True]
 
 
-@pytest.mark.asyncio
 async def test_response_stream_closes_generator_on_disconnect():
     cleaned_up = []
 
@@ -253,7 +247,6 @@ def stream_routes():
         pm.unregister(name="stream_routes")
 
 
-@pytest.mark.asyncio
 async def test_response_stream_from_view(stream_routes):
     ds = Datasette(memory=True)
     try:
@@ -270,7 +263,6 @@ async def test_response_stream_from_view(stream_routes):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_response_stream_error_in_view_is_not_an_error_page(stream_routes):
     ds = Datasette(memory=True)
     try:

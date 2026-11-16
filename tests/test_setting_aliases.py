@@ -54,7 +54,6 @@ def test_settings_parameter_overrides_config_using_either_name():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_settings_json_only_lists_current_names():
     ds = Datasette(memory=True, settings={"max_csv_mb": 7})
     try:
@@ -134,7 +133,6 @@ def test_help_settings_only_lists_current_names():
     assert not set(SETTING_ALIASES) & listed
 
 
-@pytest.mark.asyncio
 async def test_previous_name_still_disables_streaming():
     ds = Datasette(memory=True, settings={"allow_csv_stream": False})
     try:
@@ -164,7 +162,6 @@ def test_default_allow_settings_previous_names(old_name, name):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_previous_name_still_disables_facets():
     ds = await make_ds(settings={"allow_facet": False})
     response = await ds.client.get("/fixtures/facetable.json?_facet=state")
@@ -172,7 +169,6 @@ async def test_previous_name_still_disables_facets():
     assert response.json()["error"] == "_facet= is not allowed"
 
 
-@pytest.mark.asyncio
 async def test_previous_name_still_disables_downloads():
     with make_app_client(
         is_immutable=True, settings={"allow_download": False}

@@ -156,7 +156,6 @@ async def get_template_context(ds, path):
     return json.loads(body)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "page_name,path",
     (

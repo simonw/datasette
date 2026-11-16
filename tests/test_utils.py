@@ -818,7 +818,6 @@ def test_display_actor(actor, expected):
     assert expected == utils.display_actor(actor)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dbs,expected_path",
     [
@@ -861,7 +860,6 @@ def test_parse_metadata(content, expected):
         assert utils.parse_metadata(content) == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sql,expected",
     (
@@ -993,7 +991,6 @@ def test_sha256_file(tmp_path):
     assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
 
 
-@pytest.mark.asyncio
 async def test_calculate_etag(tmp_path):
     path = tmp_path / "test.txt"
     path.write_text("hello")

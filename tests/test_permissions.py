@@ -50,7 +50,6 @@ async def perms_ds():
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -94,7 +93,6 @@ async def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_c
     del padlock_client.ds.config["allow"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -132,7 +130,6 @@ async def test_view_database(allow, expected_anon, expected_auth, use_metadata):
             assert ">fixtures 🔒</h1>" in auth_response.text
 
 
-@pytest.mark.asyncio
 async def test_database_list_respects_view_database():
     ds = await make_ds(
         config={"databases": {"fixtures": {"allow": {"id": "root"}}}},
@@ -161,7 +158,6 @@ def homepage_item_links(html):
     return [a["href"] for a in soup.select("a.catalog-item-name")]
 
 
-@pytest.mark.asyncio
 async def test_database_list_respects_view_table():
     ds = await make_ds(
         config={
@@ -197,7 +193,6 @@ async def test_database_list_respects_view_table():
         assert html_fragment in auth_response_text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -233,7 +228,6 @@ async def test_view_table(allow, expected_anon, expected_auth, use_metadata):
         assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
 
 
-@pytest.mark.asyncio
 async def test_table_list_respects_view_table():
     ds = await make_ds(
         config={
@@ -262,7 +256,6 @@ async def test_table_list_respects_view_table():
         assert html_fragment in auth_response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -292,7 +285,6 @@ async def test_view_query(allow, expected_anon, expected_auth):
         assert ">fixtures: q 🔒</h1>" in auth_response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config",
     [
@@ -337,7 +329,6 @@ async def test_execute_sql(config):
     ).status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_query_list_respects_view_query():
     ds = await make_ds(
         config={
@@ -358,7 +349,6 @@ async def test_query_list_respects_view_query():
     assert html_fragment in auth_response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,permissions",
     [
@@ -410,7 +400,6 @@ async def test_permissions_checked(app_client, path, permissions):
     assert_permissions_checked(app_client.ds, permissions)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("filter_", ("all", "exclude-yours", "only-yours"))
 async def test_permissions_debug(ds_client, filter_):
     ds_client.ds._permission_checks.clear()
@@ -488,7 +477,6 @@ async def test_permissions_debug(ds_client, filter_):
     assert checks == expected_checks
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "permissions_debug,expected_status",
     (
@@ -502,7 +490,6 @@ async def test_permissions_debug_numeric_boolean(permissions_debug, expected_sta
     assert response.status_code == expected_status
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,allow,expected_fragment",
     [
@@ -520,7 +507,6 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
     assert expected_fragment in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "allow,expected",
     [
@@ -540,7 +526,6 @@ async def view_instance_client():
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -577,7 +562,6 @@ def cascade_app_client():
         yield client.ds.client
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,permissions,expected_status",
     [
@@ -652,7 +636,6 @@ async def test_permissions_cascade(
         cascade_app_client.ds.config = previous_config
 
 
-@pytest.mark.asyncio
 async def test_padlocks_on_database_page(cascade_app_client):
     config = {
         "databases": {
@@ -707,7 +690,6 @@ async def test_padlocks_on_database_page(cascade_app_client):
         await cascade_app_client.ds.remove_query("fixtures", "query_two")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,permission,resource_1,resource_2,expected_result",
     (
@@ -837,7 +819,6 @@ PermConfigTestCase = collections.namedtuple(
 )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config,actor,action,resource,expected_result",
     (
@@ -1050,7 +1031,6 @@ async def test_permissions_in_config(
         await perms_ds._save_queries_from_config()
 
 
-@pytest.mark.asyncio
 async def test_allowed_resources_view_query_includes_actor_specific_query_permissions():
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
@@ -1094,7 +1074,6 @@ async def test_allowed_resources_view_query_includes_actor_specific_query_permis
         ds.pm.unregister(name="actor_specific_query_permission_plugin")
 
 
-@pytest.mark.asyncio
 async def test_actor_endpoint_allows_any_token():
     ds = Datasette()
     token = ds.sign(
@@ -1204,7 +1183,6 @@ def test_cli_create_token(options, expected):
 _visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "is_logged_in,config,expected_visible_tables",
     (
@@ -1267,7 +1245,6 @@ async def test_api_explorer_visibility(
         perms_ds.config = prev_config
 
 
-@pytest.mark.asyncio
 async def test_view_table_token_cannot_gain_access_without_base_permission(perms_ds):
     # Only allow a different actor to view this table
     previous_config = perms_ds.config
@@ -1292,7 +1269,6 @@ async def test_view_table_token_cannot_gain_access_without_base_permission(perms
         perms_ds.config = previous_config
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "restrictions,verb,path,body,expected_status",
     (
@@ -1432,7 +1408,6 @@ async def test_actor_restrictions(
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "restrictions,action,resource,expected",
     (
@@ -1496,7 +1471,6 @@ async def test_restrictions_allow_action(restrictions, action, resource, expecte
     assert actual == expected
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_filters_allowed_resources(perms_ds):
     """Test that allowed_resources() respects actor restrictions - issue #2534"""
 
@@ -1514,7 +1488,6 @@ async def test_actor_restrictions_filters_allowed_resources(perms_ds):
     assert len(db_page.resources) == 0
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
     """Restrictions cannot grant access not already allowed to the actor."""
 
@@ -1543,7 +1516,6 @@ async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
         perms_ds.config = previous_config
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_database_level(perms_ds):
     """Test database-level restrictions allow all tables in database - issue #2534"""
 
@@ -1558,7 +1530,6 @@ async def test_actor_restrictions_database_level(perms_ds):
     assert "v1" in table_names  # views too
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_global_level(perms_ds):
     """Test global-level restrictions allow all resources - issue #2534"""
 
@@ -1573,7 +1544,6 @@ async def test_actor_restrictions_global_level(perms_ds):
     assert "perms_ds_two" in dbs
 
 
-@pytest.mark.asyncio
 async def test_restrictions_gate_before_config(perms_ds):
     """Test that restrictions act as gating filter before config permissions - issue #2534"""
     from datasette.resources import TableResource
@@ -1599,7 +1569,6 @@ async def test_restrictions_gate_before_config(perms_ds):
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds):
     """Test that /.json and /db.json show correct filtered listings - issue #2534"""
 
@@ -1618,7 +1587,6 @@ async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_view_instance_only(perms_ds):
     """Test actor restricted to view-instance only - issue #2534"""
 
@@ -1635,7 +1603,6 @@ async def test_actor_restrictions_view_instance_only(perms_ds):
     assert len(page.resources) == 0
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_empty_allowlist(perms_ds):
     """Test actor with empty restrictions allowlist denies everything - issue #2534"""
 
@@ -1652,7 +1619,6 @@ async def test_actor_restrictions_empty_allowlist(perms_ds):
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_cannot_be_overridden_by_config():
     """Test that config permissions cannot override actor restrictions - issue #2534"""
     from datasette.app import Datasette
@@ -1695,7 +1661,6 @@ async def test_actor_restrictions_cannot_be_overridden_by_config():
     ), "t2 should be denied - NOT in restriction allowlist, config cannot override"
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_with_database_level_config(perms_ds):
     """Test database-level restrictions with table-level config - issue #2534"""
     from datasette.resources import TableResource
@@ -1740,7 +1705,6 @@ async def test_actor_restrictions_with_database_level_config(perms_ds):
     perms_ds._config = None
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_parent_deny_blocks_config_child_allow(perms_ds):
     """
     Test that table-level restrictions add parent-level deny to block
@@ -1786,7 +1750,6 @@ async def test_actor_restrictions_parent_deny_blocks_config_child_allow(perms_ds
     perms_ds._config = None
 
 
-@pytest.mark.asyncio
 async def test_permission_check_view_requires_debug_permission():
     """Test that /-/check requires permissions-debug permission"""
     # Anonymous user should be denied
@@ -1818,7 +1781,6 @@ async def test_permission_check_view_requires_debug_permission():
     assert data["explanation"]["summary"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("action", ("view-query", "update-query", "delete-query"))
 async def test_permission_check_view_query_actions(action):
     # https://github.com/simonw/datasette/issues/2756
@@ -1841,7 +1803,6 @@ async def test_permission_check_view_query_actions(action):
     }
 
 
-@pytest.mark.asyncio
 async def test_permission_check_explains_specificity_for_hypothetical_actor():
     ds = Datasette(
         config={
@@ -1897,7 +1858,6 @@ async def test_permission_check_explains_specificity_for_hypothetical_actor():
     assert private["explanation"]["summary"].startswith("Denied by a parent-level rule")
 
 
-@pytest.mark.asyncio
 async def test_permission_check_explains_deny_wins_at_same_scope():
     ds = Datasette(config={"permissions": {"view-table": {"id": "someone-else"}}})
     ds.root_enabled = True
@@ -1924,7 +1884,6 @@ async def test_permission_check_explains_deny_wins_at_same_scope():
     )
 
 
-@pytest.mark.asyncio
 async def test_permission_check_explains_default_deny():
     ds = Datasette()
     ds.root_enabled = True
@@ -1950,7 +1909,6 @@ async def test_permission_check_explains_default_deny():
     )
 
 
-@pytest.mark.asyncio
 async def test_permission_check_explains_actor_restrictions():
     ds = Datasette()
     ds.root_enabled = True
@@ -1982,7 +1940,6 @@ async def test_permission_check_explains_actor_restrictions():
     assert "actor's restrictions" in explanation["summary"]
 
 
-@pytest.mark.asyncio
 async def test_permission_check_explains_required_actions():
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
@@ -2028,7 +1985,6 @@ async def test_permission_check_explains_required_actions():
         ds.pm.unregister(name="store-query-test")
 
 
-@pytest.mark.asyncio
 async def test_permission_check_hypothetical_actor_validation():
     ds = Datasette()
     ds.root_enabled = True
@@ -2049,7 +2005,6 @@ async def test_permission_check_hypothetical_actor_validation():
     assert response.json()["error"] == "actor must be a JSON object or null"
 
 
-@pytest.mark.asyncio
 async def test_root_allow_block_with_table_restricted_actor():
     """
     Test that root-level allow: blocks are processed for actors with
@@ -2094,7 +2049,6 @@ async def test_root_allow_block_with_table_restricted_actor():
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_databases_json_respects_view_database(tmp_path_factory):
     # https://github.com/simonw/datasette - /-/databases should not list
     # databases the actor is not allowed to view

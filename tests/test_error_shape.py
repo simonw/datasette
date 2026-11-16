@@ -57,13 +57,11 @@ def ds_error_shape(tmp_path_factory):
 # Shape 1: the exception handler (handle_exception.py)
 
 
-@pytest.mark.asyncio
 async def test_not_found_error_shape(ds_client):
     response = await ds_client.get("/fixtures/no_such_table.json")
     assert_canonical_error(response, 404)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "headers",
     (
@@ -76,14 +74,12 @@ async def test_not_found_error_shape_with_json_request_headers(ds_client, header
     assert_canonical_error(response, 404)
 
 
-@pytest.mark.asyncio
 async def test_not_found_without_json_request_headers_returns_html(ds_client):
     response = await ds_client.get("/fixtures/no_such_table")
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("text/html")
 
 
-@pytest.mark.asyncio
 async def test_csv_error_keeps_text_format_with_json_accept_header(ds_client):
     response = await ds_client.get(
         "/fixtures/no_such_table.csv", headers={"Accept": "application/json"}
@@ -92,7 +88,6 @@ async def test_csv_error_keeps_text_format_with_json_accept_header(ds_client):
     assert response.headers["content-type"].startswith("text/plain")
 
 
-@pytest.mark.asyncio
 async def test_write_api_missing_database_error_shape(ds_client):
     response = await ds_client.post(
         "/no_such/-/create", json={}, headers={"Content-Type": "application/json"}
@@ -100,7 +95,6 @@ async def test_write_api_missing_database_error_shape(ds_client):
     assert_canonical_error(response, 404)
 
 
-@pytest.mark.asyncio
 async def test_datasette_error_with_title_omits_title_key(ds_client):
     # DatasetteError(title="Invalid SQL") previously leaked a "title" key
     response = await ds_client.get(
@@ -113,7 +107,6 @@ async def test_datasette_error_with_title_omits_title_key(ds_client):
 # Shape 2: the _error() helper (views/base.py) - write API and friends
 
 
-@pytest.mark.asyncio
 async def test_write_api_validation_error_shape(ds_error_shape):
     token = "dstok_{}".format(
         ds_error_shape.sign(
@@ -136,7 +129,6 @@ async def test_write_api_validation_error_shape(ds_error_shape):
     assert data["errors"][1].startswith("Row 1")
 
 
-@pytest.mark.asyncio
 async def test_write_api_permission_denied_shape(ds_error_shape):
     response = await ds_error_shape.client.post(
         "/data/docs/-/insert",
@@ -149,7 +141,6 @@ async def test_write_api_permission_denied_shape(ds_error_shape):
 # Shape 3: the JSON renderer (renderer.py)
 
 
-@pytest.mark.asyncio
 async def test_sql_error_shape_keeps_context_keys(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+*+from+no_such_table"
@@ -160,7 +151,6 @@ async def test_sql_error_shape_keeps_context_keys(ds_client):
     assert "truncated" in data
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "shape,expected_error",
     (
@@ -180,20 +170,17 @@ async def test_invalid_shape_error_shape(ds_client, shape, expected_error):
 # Shape 4: bare {"error": ...} from the permission debug endpoints
 
 
-@pytest.mark.asyncio
 async def test_allowed_missing_action_error_shape(ds_client):
     response = await ds_client.get("/-/allowed.json")
     data = assert_canonical_error(response, 400)
     assert data["errors"] == ["action parameter is required"]
 
 
-@pytest.mark.asyncio
 async def test_allowed_unknown_action_error_shape(ds_client):
     response = await ds_client.get("/-/allowed.json?action=no_such_action")
     assert_canonical_error(response, 404)
 
 
-@pytest.mark.asyncio
 async def test_check_unknown_action_error_shape(ds_error_shape):
     response = await ds_error_shape.client.get(
         "/-/check.json?action=no_such_action",
@@ -202,7 +189,6 @@ async def test_check_unknown_action_error_shape(ds_error_shape):
     assert_canonical_error(response, 404)
 
 
-@pytest.mark.asyncio
 async def test_rules_missing_action_error_shape(ds_error_shape):
     response = await ds_error_shape.client.get(
         "/-/rules.json",
@@ -215,13 +201,11 @@ async def test_rules_missing_action_error_shape(ds_error_shape):
 # Other stragglers
 
 
-@pytest.mark.asyncio
 async def test_method_not_allowed_error_shape(ds_client):
     response = await ds_client.post("/fixtures.json")
     assert_canonical_error(response, 405)
 
 
-@pytest.mark.asyncio
 async def test_schema_unknown_database_error_shape(ds_client):
     response = await ds_client.get("/no_such_db/-/schema.json")
     assert_canonical_error(response, 404)
@@ -247,14 +231,12 @@ def ds_forbidden(tmp_path_factory):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_forbidden_json_path_returns_canonical_json(ds_forbidden):
     response = await ds_forbidden.client.get("/data/docs.json")
     data = assert_canonical_error(response, 403)
     assert "permission" in data["error"].lower()
 
 
-@pytest.mark.asyncio
 async def test_forbidden_accept_json_returns_canonical_json(ds_forbidden):
     response = await ds_forbidden.client.get(
         "/data/docs", headers={"Accept": "application/json"}
@@ -262,14 +244,12 @@ async def test_forbidden_accept_json_returns_canonical_json(ds_forbidden):
     assert_canonical_error(response, 403)
 
 
-@pytest.mark.asyncio
 async def test_forbidden_html_path_still_returns_html(ds_forbidden):
     response = await ds_forbidden.client.get("/data/docs")
     assert response.status_code == 403
     assert response.headers["content-type"].startswith("text/html")
 
 
-@pytest.mark.asyncio
 async def test_forbidden_json_path_allowed_actor_still_works(ds_forbidden):
     response = await ds_forbidden.client.get("/data/docs.json", actor={"id": "root"})
     assert response.status_code == 200
@@ -316,7 +296,6 @@ def ds_write_query(tmp_path_factory):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_write_query_success_returns_200(ds_write_query):
     response = await ds_write_query.client.post(
         "/data/add_doc",
@@ -330,7 +309,6 @@ async def test_write_query_success_returns_200(ds_write_query):
     assert data["redirect"] is None
 
 
-@pytest.mark.asyncio
 async def test_write_query_sql_failure_returns_400(ds_write_query):
     for _ in range(2):
         response = await ds_write_query.client.post(
@@ -344,7 +322,6 @@ async def test_write_query_sql_failure_returns_400(ds_write_query):
     assert data["redirect"] is None
 
 
-@pytest.mark.asyncio
 async def test_write_query_failure_uses_on_error_message_and_redirect(
     ds_write_query,
 ):
@@ -359,7 +336,6 @@ async def test_write_query_failure_uses_on_error_message_and_redirect(
     assert data["redirect"] == "/data"
 
 
-@pytest.mark.asyncio
 async def test_write_query_forbidden_is_canonical_403(ds_write_query):
     # An untrusted write query run by an actor without execute-write-sql
     # raises Forbidden, handled by the forbidden() hook
@@ -382,7 +358,6 @@ async def test_write_query_forbidden_is_canonical_403(ds_write_query):
     assert_canonical_error(response, 403)
 
 
-@pytest.mark.asyncio
 async def test_write_query_rejected_operation_is_canonical_403(ds_write_query):
     # A rejected operation (VACUUM) raises QueryWriteRejected, handled by
     # the dedicated branch in QueryView.post - root has execute-write-sql
@@ -410,7 +385,6 @@ async def test_write_query_rejected_operation_is_canonical_403(ds_write_query):
 # Row delete write failures must be 400, matching row update
 
 
-@pytest.mark.asyncio
 async def test_row_delete_write_failure_is_400(tmp_path_factory):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
@@ -442,7 +416,6 @@ async def test_row_delete_write_failure_is_400(tmp_path_factory):
 # Invalid bearer tokens must produce 401, not silent anonymous access
 
 
-@pytest.mark.asyncio
 async def test_expired_token_returns_401(ds_error_shape):
     token = "dstok_{}".format(
         ds_error_shape.sign(
@@ -458,7 +431,6 @@ async def test_expired_token_returns_401(ds_error_shape):
     assert response.headers["www-authenticate"].startswith("Bearer")
 
 
-@pytest.mark.asyncio
 async def test_bad_signature_token_returns_401(ds_error_shape):
     response = await ds_error_shape.client.get(
         "/-/actor.json", headers={"Authorization": "Bearer dstok_garbage"}
@@ -467,7 +439,6 @@ async def test_bad_signature_token_returns_401(ds_error_shape):
     assert response.headers["www-authenticate"].startswith("Bearer")
 
 
-@pytest.mark.asyncio
 async def test_unrecognized_token_prefix_stays_anonymous(ds_error_shape):
     # No registered handler claims this token - it might belong to a
     # plugin's actor_from_request hook, so it must not hard-fail
@@ -478,7 +449,6 @@ async def test_unrecognized_token_prefix_stays_anonymous(ds_error_shape):
     assert response.json() == {"ok": True, "actor": None}
 
 
-@pytest.mark.asyncio
 async def test_valid_token_still_authenticates(ds_error_shape):
     token = "dstok_{}".format(
         ds_error_shape.sign(
@@ -493,7 +463,6 @@ async def test_valid_token_still_authenticates(ds_error_shape):
     assert response.json()["actor"]["id"] == "root"
 
 
-@pytest.mark.asyncio
 async def test_bad_token_beats_valid_cookie(ds_error_shape):
     # A malformed Authorization header is a hard error even if a valid
     # ds_actor cookie is also present
@@ -505,7 +474,6 @@ async def test_bad_token_beats_valid_cookie(ds_error_shape):
     assert_canonical_error(response, 401)
 
 
-@pytest.mark.asyncio
 async def test_token_when_signed_tokens_disabled_returns_401(tmp_path_factory):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
@@ -529,7 +497,6 @@ async def test_token_when_signed_tokens_disabled_returns_401(tmp_path_factory):
 # GET /db/-/query without SQL: 400 for data formats, HTML editor stays 200
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -543,7 +510,6 @@ async def test_query_json_without_sql_is_400(ds_client, path):
     assert data["errors"] == ["?sql= is required"]
 
 
-@pytest.mark.asyncio
 async def test_query_html_without_sql_is_still_the_editor(ds_client):
     response = await ds_client.get("/fixtures/-/query")
     assert response.status_code == 200
@@ -553,7 +519,6 @@ async def test_query_html_without_sql_is_still_the_editor(ds_client):
 # Write API return:true responses use "rows" consistently
 
 
-@pytest.mark.asyncio
 async def test_row_update_return_uses_rows_list(ds_error_shape):
     await ds_error_shape.client.post(
         "/data/docs/-/insert",
@@ -577,7 +542,6 @@ async def test_row_update_return_uses_rows_list(ds_error_shape):
 # Schema endpoints: no existence oracle, no 500 on unknown database
 
 
-@pytest.mark.asyncio
 async def test_schema_endpoints_no_existence_oracle(tmp_path_factory):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
@@ -603,7 +567,6 @@ async def test_schema_endpoints_no_existence_oracle(tmp_path_factory):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_table_schema_unknown_database_is_404_not_500(ds_client):
     response = await ds_client.get("/no_such_db/some_table/-/schema.json")
     assert_canonical_error(response, 404)
@@ -612,7 +575,6 @@ async def test_table_schema_unknown_database_is_404_not_500(ds_client):
 # Unknown _extra names are a 400, not silently ignored
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -628,7 +590,6 @@ async def test_unknown_extra_is_400(ds_client, path):
     assert data["errors"] == ["Unknown _extra: nope"]
 
 
-@pytest.mark.asyncio
 async def test_html_only_extra_via_json_is_400(ds_client):
     # display_rows exists for the HTML view but is not part of the JSON API
     response = await ds_client.get("/fixtures/facetable.json?_extra=display_rows")
@@ -636,7 +597,6 @@ async def test_html_only_extra_via_json_is_400(ds_client):
     assert data["errors"] == ["Unknown _extra: display_rows"]
 
 
-@pytest.mark.asyncio
 async def test_unknown_extra_ignored_on_html_pages(ds_client):
     response = await ds_client.get("/fixtures/facetable?_extra=nope")
     assert response.status_code == 200
@@ -646,7 +606,6 @@ async def test_unknown_extra_ignored_on_html_pages(ds_client):
 # /-/threads exposes runtime internals and requires permissions-debug
 
 
-@pytest.mark.asyncio
 async def test_threads_requires_permissions_debug(ds_error_shape):
     denied = await ds_error_shape.client.get("/-/threads.json")
     assert_canonical_error(denied, 403)
@@ -658,7 +617,6 @@ async def test_threads_requires_permissions_debug(ds_error_shape):
 # _size is the one page-size parameter, with uniform validation
 
 
-@pytest.mark.asyncio
 async def test_query_list_size_supports_max_keyword(ds_client):
     response = await ds_client.get("/fixtures/-/queries.json?_size=max")
     assert response.status_code == 200
@@ -666,7 +624,6 @@ async def test_query_list_size_supports_max_keyword(ds_client):
     assert response.json()["limit"] == 100
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "size,expected_error",
     (
@@ -680,7 +637,6 @@ async def test_query_list_size_rejects_invalid(ds_client, size, expected_error):
     assert data["errors"] == [expected_error]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("endpoint", ("allowed", "rules"))
 async def test_debug_endpoints_use_size_and_page_parameters(ds_error_shape, endpoint):
     base = f"/-/{endpoint}.json?action=view-instance"
@@ -708,7 +664,6 @@ async def test_debug_endpoints_use_size_and_page_parameters(ds_error_shape, endp
 # Write endpoints parse the body as JSON regardless of Content-Type
 
 
-@pytest.mark.asyncio
 async def test_insert_works_without_content_type_header(ds_error_shape):
     # Previously a 500 AttributeError
     response = await ds_error_shape.client.post(
@@ -720,7 +675,6 @@ async def test_insert_works_without_content_type_header(ds_error_shape):
     assert response.json()["rows"][0]["title"] == "One"
 
 
-@pytest.mark.asyncio
 async def test_insert_works_with_form_content_type(ds_error_shape):
     # Previously 400 "Invalid content-type, must be application/json"
     response = await ds_error_shape.client.post(
@@ -732,7 +686,6 @@ async def test_insert_works_with_form_content_type(ds_error_shape):
     assert response.status_code == 201
 
 
-@pytest.mark.asyncio
 async def test_insert_form_encoded_body_is_invalid_json(ds_error_shape):
     response = await ds_error_shape.client.post(
         "/data/docs/-/insert",
@@ -744,7 +697,6 @@ async def test_insert_form_encoded_body_is_invalid_json(ds_error_shape):
     assert data["errors"][0].startswith("Invalid JSON:")
 
 
-@pytest.mark.asyncio
 async def test_alter_and_set_column_type_ignore_content_type(ds_error_shape):
     alter = await ds_error_shape.client.post(
         "/data/docs/-/alter",
@@ -763,7 +715,6 @@ async def test_alter_and_set_column_type_ignore_content_type(ds_error_shape):
 # SQL Interrupted errors carry plain text in JSON, not an HTML fragment
 
 
-@pytest.mark.asyncio
 async def test_sql_interrupted_json_error_is_plain_text(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+sleep(0.01)&_timelimit=5"
@@ -773,7 +724,6 @@ async def test_sql_interrupted_json_error_is_plain_text(ds_client):
     assert data["error"].startswith("SQL query took too long.")
 
 
-@pytest.mark.asyncio
 async def test_sql_interrupted_html_page_keeps_rich_error(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query?sql=select+sleep(0.01)&_timelimit=5"
@@ -782,7 +732,6 @@ async def test_sql_interrupted_html_page_keeps_rich_error(ds_client):
     assert "<textarea" in response.text
 
 
-@pytest.mark.asyncio
 async def test_next_url_extra_no_longer_exists(ds_client):
     # next_url is always present in table JSON; the extra was removed
     response = await ds_client.get("/fixtures/facetable.json?_extra=next_url")

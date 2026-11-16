@@ -7,7 +7,6 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.sqlite import sqlite3, sqlite_derived_table_dependencies
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("fts_module", ["fts4", "fts5"])
 @pytest.mark.parametrize("actor", [None, {"id": "root"}], ids=["anonymous", "root"])
 async def test_derived_permissions_allow_one_hop_but_deny_nested_sources(
@@ -76,7 +75,6 @@ async def test_derived_permissions_allow_one_hop_but_deny_nested_sources(
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("listing", [False, True], ids=["individual", "listing"])
 async def test_derived_permission_discovery_error_is_retried(monkeypatch, listing):
     ds = Datasette(memory=True)
@@ -118,7 +116,6 @@ async def test_derived_permission_discovery_error_is_retried(monkeypatch, listin
         _permission_check_cache.reset(token)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("fts_module", ("fts4", "fts5"))
 async def test_external_content_fts_inherits_content_table_view_permission(fts_module):
     actor = {"id": "reader"}
@@ -184,7 +181,6 @@ async def test_external_content_fts_inherits_content_table_view_permission(fts_m
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("fts_module", ("fts4", "fts5"))
 @pytest.mark.parametrize("contentless", (False, True), ids=("internal", "contentless"))
 async def test_fts_shadow_tables_inherit_logical_table_view_permission(
@@ -258,7 +254,6 @@ async def test_fts_shadow_tables_inherit_logical_table_view_permission(
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "content_allowed,companion_allowed,expected",
     (
@@ -319,7 +314,6 @@ async def test_external_content_and_companion_permissions_are_both_required(
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_derived_tables_propagate_private_flag_and_route_permissions():
     actor = {"id": "reader"}
     ds = Datasette(
@@ -383,7 +377,6 @@ async def test_derived_tables_propagate_private_flag_and_route_permissions():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_cyclic_derived_table_dependencies_fail_closed():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("issue_17_cycle", name="data")

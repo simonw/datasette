@@ -14,7 +14,6 @@ from datasette.version import __version__
 from .fixtures import EXPECTED_PLUGINS, make_ds
 
 
-@pytest.mark.asyncio
 async def test_homepage(ds_client):
     response = await ds_client.get("/.json")
     assert response.status_code == 200
@@ -43,7 +42,6 @@ async def test_homepage(ds_client):
     assert isinstance(d["views_count"], int)
 
 
-@pytest.mark.asyncio
 async def test_homepage_sort_by_relationships(ds_client):
     response = await ds_client.get("/.json?_sort=relationships")
     assert response.status_code == 200
@@ -64,7 +62,6 @@ async def test_homepage_sort_by_relationships(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures.json")
     assert response.status_code == 200
@@ -253,7 +250,6 @@ async def test_database_page(ds_client):
         assert "outgoing" in table["foreign_keys"]
 
 
-@pytest.mark.asyncio
 async def test_no_files_uses_memory_database(ds_client_no_files):
     response = await ds_client_no_files.get("/.json")
     assert response.status_code == 200
@@ -287,7 +283,6 @@ async def test_no_files_uses_memory_database(ds_client_no_files):
     assert ["sqlite_version()"] == list(response.json()[0].keys())
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_redirect",
     (
@@ -304,13 +299,11 @@ async def test_old_memory_urls_redirect(ds_client_no_files, path, expected_redir
     assert response.headers["location"] == expected_redirect
 
 
-@pytest.mark.asyncio
 async def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
     response = await app_client_with_dot.ds.client.get("/fixtures~2Edot.json")
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_custom_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+content+from+simple_primary_key",
@@ -329,7 +322,6 @@ async def test_custom_sql(ds_client):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
 async def test_sql_time_limit(ds_client_shorter_time_limit):
     response = await ds_client_shorter_time_limit.get(
@@ -348,7 +340,6 @@ async def test_sql_time_limit(ds_client_shorter_time_limit):
     }
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_time_limit(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+sleep(0.01)",
@@ -361,7 +352,6 @@ async def test_custom_sql_time_limit(ds_client):
     assert response.json()["error"].startswith("SQL query took too long.")
 
 
-@pytest.mark.asyncio
 async def test_invalid_custom_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=.schema",
@@ -371,7 +361,6 @@ async def test_invalid_custom_sql(ds_client):
     assert "Statement must be a SELECT" == response.json()["error"]
 
 
-@pytest.mark.asyncio
 async def test_row(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1.json")
     assert response.status_code == 200
@@ -382,7 +371,6 @@ async def test_row(ds_client):
     assert "truncated" not in data
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "shape,expected",
     (
@@ -407,14 +395,12 @@ async def test_row_shape(ds_client, shape, expected):
     assert data == expected
 
 
-@pytest.mark.asyncio
 async def test_row_json_cols(ds_client):
     response = await ds_client.get("/fixtures/facetable/1.json?_json=tags")
     assert response.status_code == 200
     assert response.json()["row"]["tags"] == ["tag1", "tag2"]
 
 
-@pytest.mark.asyncio
 async def test_row_not_found_is_an_error(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/missing.json")
     assert response.status_code == 404
@@ -423,7 +409,6 @@ async def test_row_not_found_is_an_error(ds_client):
     assert "row" not in data
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("suffix", ("", ".json"))
 @pytest.mark.parametrize(
     "row_path",
@@ -445,7 +430,6 @@ async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
         assert response.json()["status"] == 400
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_rows",
     (
@@ -468,7 +452,6 @@ async def test_row_resolves(ds_client, path, expected_rows):
     assert response.json()["rows"] == expected_rows
 
 
-@pytest.mark.asyncio
 async def test_row_foreign_key_tables(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key/1.json?_extra=foreign_key_tables"
@@ -514,7 +497,6 @@ async def test_row_foreign_key_tables(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_row_foreign_key_tables_omit_denied_tables(request):
     actor = {"id": "reader"}
     ds = Datasette(
@@ -575,7 +557,6 @@ async def test_row_foreign_key_tables_omit_denied_tables(request):
     )
 
 
-@pytest.mark.asyncio
 async def test_row_extras(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables,column_details"
@@ -619,7 +600,6 @@ async def test_row_extras(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_column_details_extra_row_for_null_blob(ds_client):
     response = await ds_client.get("/fixtures/binary_data/3.json?_extra=column_details")
     assert response.status_code == 200
@@ -636,7 +616,6 @@ async def test_column_details_extra_row_for_null_blob(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_row_extra_render_cell():
     """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook on row pages"""
     from datasette import hookimpl
@@ -689,7 +668,6 @@ async def test_row_extra_render_cell():
         ds.pm.unregister(name="TestRenderCellPlugin")
 
 
-@pytest.mark.asyncio
 async def test_databases_json(app_client_two_attached_databases_one_immutable):
     response = await app_client_two_attached_databases_one_immutable.ds.client.get(
         "/-/databases.json"
@@ -708,7 +686,6 @@ async def test_databases_json(app_client_two_attached_databases_one_immutable):
     assert fixtures_database["is_memory"] is False
 
 
-@pytest.mark.asyncio
 async def test_threads_json(ds_client):
     ds_client.ds.root_enabled = True
     try:
@@ -724,7 +701,6 @@ async def test_threads_json(ds_client):
     assert "_execute_writes for database __INTERNAL__" in thread_names
 
 
-@pytest.mark.asyncio
 async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
     # Filter out TrackEventPlugin
@@ -740,7 +716,6 @@ async def test_plugins_json(ds_client):
     assert names.issuperset(DEFAULT_PLUGINS)
 
 
-@pytest.mark.asyncio
 async def test_versions_json(ds_client):
     response = await ds_client.get("/-/versions.json")
     data = response.json()
@@ -761,7 +736,6 @@ async def test_versions_json(ds_client):
     assert data["sqlite"]["extensions"]["json1"]
 
 
-@pytest.mark.asyncio
 async def test_actions_json(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
@@ -795,7 +769,6 @@ async def test_actions_json(ds_client):
         assert expected_action in action_names
 
 
-@pytest.mark.asyncio
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
     assert response.json() == {
@@ -832,7 +805,6 @@ test_json_columns_default_expected = [
 ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("endpoint", ["table", "query"])
 @pytest.mark.parametrize("include_columns", [False, True])
 @pytest.mark.parametrize(
@@ -874,7 +846,6 @@ async def test_json_columns_with_output_shapes(endpoint, include_columns, shape)
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("endpoint", ["table", "row"])
 @pytest.mark.parametrize(
     "value,expected", [('["a"]', ["a"]), ("not JSON", "not JSON"), (None, None)]
@@ -901,7 +872,6 @@ async def test_json_columns_preserve_other_values(endpoint, value, expected):
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("include_columns", [False, True])
 @pytest.mark.parametrize("composite_key", [False, True])
 @pytest.mark.parametrize(
@@ -954,7 +924,6 @@ async def test_json_columns_object_preserves_primary_keys(
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "shape", ["objects", "object", "array", "arrayfirst", "arrays"]
 )
@@ -976,7 +945,6 @@ async def test_json_columns_with_empty_results(shape):
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "extra_args,expected",
     [
@@ -1005,14 +973,12 @@ async def test_json_columns(ds_client, extra_args, expected):
     assert response.json() == expected
 
 
-@pytest.mark.asyncio
 async def test_config_cache_size():
     ds = await make_ds(settings={"cache_size_kb": 2500})
     response = await ds.client.get("/fixtures/pragma_cache_size.json")
     assert response.json()["rows"] == [{"cache_size": -2500}]
 
 
-@pytest.mark.asyncio
 async def test_config_force_https_urls():
     ds = await make_ds(settings={"force_https_urls": True})
     response = await ds.client.get(
@@ -1029,7 +995,6 @@ async def test_config_force_https_urls():
     assert ds._last_request.scheme == "https"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,status_code",
     [
@@ -1077,7 +1042,6 @@ async def test_cors(
     assert "Access-Control-Max-Age" not in response.headers
 
 
-@pytest.mark.asyncio
 async def test_cors_query_redirect(ds_client_with_cors):
     # /db?sql= redirects to /db/-/query - the redirect itself needs CORS
     # headers, otherwise browsers refuse to follow it cross-origin
@@ -1089,7 +1053,6 @@ async def test_cors_query_redirect(ds_client_with_cors):
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -1108,7 +1071,6 @@ async def test_database_with_space_in_name(ds_client_two_attached_databases, pat
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_common_prefix_database_names():
     # https://github.com/simonw/datasette/issues/597
     ds = await make_ds(
@@ -1123,7 +1085,6 @@ async def test_common_prefix_database_names():
         assert db_name == data["database"]
 
 
-@pytest.mark.asyncio
 async def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
     response = await app_client_immutable_and_inspect_file.ds.client.get(
         "/fixtures/sortable.json?_extra=count"
@@ -1131,14 +1092,12 @@ async def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file
     assert response.json()["count"] == 100
 
 
-@pytest.mark.asyncio
 async def test_http_options_request(ds_client):
     response = await ds_client.options("/fixtures")
     assert response.status_code == 200
     assert response.text == "ok"
 
 
-@pytest.mark.asyncio
 async def test_db_path(app_client):
     # Needs app_client because needs file based database
     db = app_client.ds.get_database()
@@ -1152,7 +1111,6 @@ async def test_db_path(app_client):
     await datasette.refresh_schemas()
 
 
-@pytest.mark.asyncio
 async def test_hidden_sqlite_stat1_table():
     ds = Datasette()
     db = ds.add_memory_database("db")
@@ -1164,7 +1122,6 @@ async def test_hidden_sqlite_stat1_table():
     assert tables == [("normal", False)]
 
 
-@pytest.mark.asyncio
 async def test_hide_tables_starting_with_underscore():
     ds = Datasette()
     db = ds.add_memory_database("test_hide_tables_starting_with_underscore")
@@ -1179,7 +1136,6 @@ async def test_hide_tables_starting_with_underscore():
     assert tables == [("normal", False), ("_hidden", True)]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
 async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
@@ -1193,7 +1149,6 @@ async def test_tilde_encoded_database_names(db_name):
     assert response2.status_code == 200
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("table_name", ("[foo]", "foo]", "[foo]/bar"))
 async def test_table_with_reserved_characters_in_name(table_name):
     # Table names containing characters such as "]" that cannot be escaped
@@ -1220,7 +1175,6 @@ async def test_table_with_reserved_characters_in_name(table_name):
     assert table_response.json() == [{"id": 1, "name": "one"}]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config,expected",
     (
@@ -1256,7 +1210,6 @@ async def test_config_json(config, expected):
     assert response.json() == {"ok": True, **expected}
 
 
-@pytest.mark.asyncio
 @pytest.mark.skip(reason="rm?")
 @pytest.mark.parametrize(
     "metadata,expected_config,expected_metadata",

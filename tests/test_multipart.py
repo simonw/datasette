@@ -35,7 +35,6 @@ def upload_files(monkeypatch):
         file.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "failure",
     [
@@ -86,7 +85,6 @@ async def test_failed_upload_closes_completed_and_partial_files(upload_files, fa
     assert all(file.closed for file in upload_files)
 
 
-@pytest.mark.asyncio
 async def test_unnamed_upload_is_closed(upload_files):
     body = (
         b'--boundary\r\nContent-Disposition: form-data; filename="ignored"\r\n\r\n'
@@ -100,7 +98,6 @@ async def test_unnamed_upload_is_closed(upload_files):
     assert upload_files[0].closed
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("worker_error", [False, True])
 async def test_cancelled_upload_waits_for_worker(
     upload_files, monkeypatch, worker_error
@@ -222,7 +219,6 @@ def make_disconnect_receive(body: bytes, chunk_size: int = 64):
 class TestFormUrlEncoded:
     """Test request.form() with application/x-www-form-urlencoded data."""
 
-    @pytest.mark.asyncio
     async def test_basic_form_fields(self):
         """Basic URL-encoded form should be parseable via request.form()."""
         body = b"username=john&password=secret"
@@ -240,7 +236,6 @@ class TestFormUrlEncoded:
         assert form["username"] == "john"
         assert form["password"] == "secret"
 
-    @pytest.mark.asyncio
     async def test_form_with_multiple_values(self):
         """Multiple values for same key should be accessible via getlist()."""
         body = b"tag=python&tag=web&tag=api"
@@ -258,7 +253,6 @@ class TestFormUrlEncoded:
         assert form["tag"] == "python"  # First value
         assert form.getlist("tag") == ["python", "web", "api"]
 
-    @pytest.mark.asyncio
     async def test_empty_form(self):
         """Empty form should return empty FormData."""
         body = b""
@@ -275,7 +269,6 @@ class TestFormUrlEncoded:
 
         assert len(form) == 0
 
-    @pytest.mark.asyncio
     async def test_form_with_special_characters(self):
         """URL-encoded special characters should be decoded properly."""
         body = b"message=hello%20world&emoji=%F0%9F%91%8B"
@@ -297,7 +290,6 @@ class TestFormUrlEncoded:
 class TestMultipartBasic:
     """Test request.form() with multipart/form-data (fields only, no files)."""
 
-    @pytest.mark.asyncio
     async def test_single_text_field(self):
         """Single text field in multipart should be parseable."""
         boundary = "----TestBoundary123"
@@ -321,7 +313,6 @@ class TestMultipartBasic:
 
         assert form["username"] == "john_doe"
 
-    @pytest.mark.asyncio
     async def test_multiple_text_fields(self):
         """Multiple text fields in multipart should all be accessible."""
         boundary = "----TestBoundary123"
@@ -350,7 +341,6 @@ class TestMultipartBasic:
         assert form["first_name"] == "John"
         assert form["last_name"] == "Doe"
 
-    @pytest.mark.asyncio
     async def test_file_discarded_when_files_false(self):
         """File content should be discarded when files=False (default)."""
         boundary = "----TestBoundary123"
@@ -387,7 +377,6 @@ class TestMultipartBasic:
         # File should NOT be present
         assert "file" not in form
 
-    @pytest.mark.asyncio
     async def test_chunked_body_parsing(self):
         """Multipart should work when body arrives in small chunks."""
         boundary = "----TestBoundary123"
@@ -416,7 +405,6 @@ class TestMultipartBasic:
 class TestMultipartWithFiles:
     """Test request.form(files=True) for file uploads."""
 
-    @pytest.mark.asyncio
     async def test_single_file_upload(self):
         """Single file upload should create UploadedFile object."""
         boundary = "----TestBoundary123"
@@ -445,7 +433,6 @@ class TestMultipartWithFiles:
         assert await uploaded_file.read() == b"Hello, World!"
         assert uploaded_file.size == 13
 
-    @pytest.mark.asyncio
     async def test_mixed_fields_and_files(self):
         """Mixed form fields and files should all be accessible."""
         boundary = "----TestBoundary123"
@@ -484,7 +471,6 @@ class TestMultipartWithFiles:
         assert uploaded_file.filename == "doc.txt"
         assert await uploaded_file.read() == b"Document content"
 
-    @pytest.mark.asyncio
     async def test_multiple_files_same_name(self):
         """Multiple files with same name should be accessible via getlist()."""
         boundary = "----TestBoundary123"
@@ -517,7 +503,6 @@ class TestMultipartWithFiles:
         assert files[0].filename == "a.txt"
         assert files[1].filename == "b.txt"
 
-    @pytest.mark.asyncio
     async def test_large_file_spills_to_disk(self):
         """Files larger than threshold should spill to temp file."""
         boundary = "----TestBoundary123"
@@ -547,7 +532,6 @@ class TestMultipartWithFiles:
         content = await uploaded_file.read()
         assert content == large_content
 
-    @pytest.mark.asyncio
     async def test_uploaded_file_seek_and_read(self):
         """UploadedFile should support seek and multiple reads."""
         boundary = "----TestBoundary123"
@@ -586,7 +570,6 @@ class TestMultipartWithFiles:
 class TestMultipartCleanup:
     """Test deterministic cleanup of uploaded files."""
 
-    @pytest.mark.asyncio
     async def test_formdata_close_closes_uploaded_files(self):
         boundary = "----TestBoundary123"
         body = (
@@ -613,7 +596,6 @@ class TestMultipartCleanup:
         with pytest.raises(ValueError):
             await uploaded_file.read()
 
-    @pytest.mark.asyncio
     async def test_formdata_async_context_manager_closes_files(self):
         boundary = "----TestBoundary123"
         body = (
@@ -645,7 +627,6 @@ class TestMultipartCleanup:
 class TestMultipartEdgeCases:
     """Test edge cases in multipart parsing."""
 
-    @pytest.mark.asyncio
     async def test_empty_file_upload(self):
         """Empty file (filename but no content) should be handled."""
         boundary = "----TestBoundary123"
@@ -673,7 +654,6 @@ class TestMultipartEdgeCases:
         assert uploaded_file.size == 0
         assert await uploaded_file.read() == b""
 
-    @pytest.mark.asyncio
     async def test_filename_with_path(self):
         """Filename containing path should extract just the filename."""
         boundary = "----TestBoundary123"
@@ -700,7 +680,6 @@ class TestMultipartEdgeCases:
         uploaded_file = form["file"]
         assert uploaded_file.filename == "doc.txt"
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "headers,body",
         (
@@ -730,7 +709,6 @@ class TestMultipartEdgeCases:
 class TestSecurityLimits:
     """Test security limits on form parsing."""
 
-    @pytest.mark.asyncio
     async def test_max_fields_limit(self):
         """Should reject requests with too many fields."""
         boundary = "----TestBoundary123"
@@ -758,7 +736,6 @@ class TestSecurityLimits:
         with pytest.raises(BadRequest, match="(?i)too many"):
             await request.form(max_fields=1000)
 
-    @pytest.mark.asyncio
     async def test_max_file_size_limit(self):
         """Should reject files exceeding size limit."""
         boundary = "----TestBoundary123"
@@ -782,7 +759,6 @@ class TestSecurityLimits:
         with pytest.raises(BadRequest, match="(?i)file.*too large|too large"):
             await request.form(files=True, max_file_size=10 * 1024 * 1024)
 
-    @pytest.mark.asyncio
     async def test_max_request_size_limit(self):
         """Should reject requests exceeding total size limit."""
         boundary = "----TestBoundary123"
@@ -810,7 +786,6 @@ class TestSecurityLimits:
 class TestMultipartStrictnessAndLimits:
     """Tests that enforce stricter ASGI and multipart behaviors."""
 
-    @pytest.mark.asyncio
     async def test_multipart_truncated_body_is_error(self):
         """Truncated multipart without closing boundary should raise."""
         boundary = "----TestBoundary123"
@@ -833,7 +808,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="Truncated multipart body"):
             await request.form()
 
-    @pytest.mark.asyncio
     async def test_disconnect_mid_body_is_error(self):
         """Client disconnect during body streaming should raise."""
         boundary = "----TestBoundary123"
@@ -856,7 +830,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="disconnected"):
             await request.form()
 
-    @pytest.mark.asyncio
     async def test_unknown_asgi_message_type_is_ignored(self):
         """Unexpected ASGI message types should be ignored."""
         boundary = "----TestBoundary123"
@@ -879,7 +852,6 @@ class TestMultipartStrictnessAndLimits:
         form = await request.form()
         assert form["field"] == "value"
 
-    @pytest.mark.asyncio
     async def test_max_files_enforced_even_when_files_false(self):
         """File count limits should apply even when file handling is disabled."""
         boundary = "----TestBoundary123"
@@ -908,7 +880,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="Too many files"):
             await request.form(files=False, max_files=1)
 
-    @pytest.mark.asyncio
     async def test_max_parts_limit(self):
         """Total part count should be bounded."""
         boundary = "----TestBoundary123"
@@ -935,7 +906,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="Too many parts"):
             await request.form(max_parts=1)
 
-    @pytest.mark.asyncio
     async def test_max_file_size_enforced_even_when_files_false(self):
         """File size limits should apply even when file handling is disabled."""
         boundary = "----TestBoundary123"
@@ -959,7 +929,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="File too large"):
             await request.form(files=False, max_file_size=1024)
 
-    @pytest.mark.asyncio
     async def test_part_header_limits(self):
         """Overly large part headers should be rejected."""
         boundary = "----TestBoundary123"
@@ -983,7 +952,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="headers too large"):
             await request.form(max_part_header_bytes=1024)
 
-    @pytest.mark.asyncio
     async def test_insufficient_disk_space_rejects_upload(self, monkeypatch):
         """Uploads should be rejected when free disk is below the floor."""
         boundary = "----TestBoundary123"
@@ -1013,7 +981,6 @@ class TestMultipartStrictnessAndLimits:
         with pytest.raises(BadRequest, match="Insufficient disk space"):
             await request.form(files=True, min_free_disk_bytes=50)
 
-    @pytest.mark.asyncio
     async def test_low_disk_space_does_not_block_field_only_forms(self, monkeypatch):
         """Low disk space should not reject multipart forms with no file parts."""
         boundary = "----TestBoundary123"
@@ -1042,7 +1009,6 @@ class TestMultipartStrictnessAndLimits:
         form = await request.form(files=True, min_free_disk_bytes=50)
         assert form["field"] == "value"
 
-    @pytest.mark.asyncio
     async def test_headers_without_newline_hit_header_byte_limit(self):
         """Headers that never terminate should still hit the header byte limit."""
         boundary = "----TestBoundary123"
@@ -1068,7 +1034,6 @@ class TestMultipartStrictnessAndLimits:
 class TestFormDataLenSemantics:
     """Test that FormData.__len__ reflects number of items, not unique keys."""
 
-    @pytest.mark.asyncio
     async def test_len_counts_items(self):
         body = b"tag=python&tag=web&tag=api"
         scope = {
@@ -1164,7 +1129,6 @@ CONFORMANCE_TEST_CASES = load_conformance_test_cases()
 
 
 @pytest.mark.parametrize("test_spec,headers,body", CONFORMANCE_TEST_CASES)
-@pytest.mark.asyncio
 async def test_conformance(test_spec, headers, body):
     """
     Run conformance test cases from multipart-form-data-conformance.

@@ -56,7 +56,6 @@ def _http_scope(headers, method="POST"):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
 async def test_safe_methods_always_pass(bare_ds, method):
     # Safe methods bypass CSRF entirely, even with hostile headers
@@ -68,7 +67,6 @@ async def test_safe_methods_always_pass(bare_ds, method):
     assert response.status_code != 403 or "origin" not in response.text.lower()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("sec_fetch_site", ["same-origin", "none"])
 async def test_post_with_trusted_sec_fetch_site_allowed(bare_ds, sec_fetch_site):
     # "same-origin" = first-party; "none" = user-initiated direct navigation
@@ -76,7 +74,6 @@ async def test_post_with_trusted_sec_fetch_site_allowed(bare_ds, sec_fetch_site)
     assert response.status_code != 403
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("sec_fetch_site", ["cross-site", "same-site", "cross-origin"])
 async def test_post_with_untrusted_sec_fetch_site_blocked(bare_ds, sec_fetch_site):
     # same-site is blocked too: different subdomains must not bypass CSRF
@@ -87,7 +84,6 @@ async def test_post_with_untrusted_sec_fetch_site_blocked(bare_ds, sec_fetch_sit
     assert response.headers["content-type"].startswith("text/html")
 
 
-@pytest.mark.asyncio
 async def test_post_with_no_browser_headers_allowed(bare_ds):
     # curl / requests / server-to-server: no Sec-Fetch-Site, no Origin.
     # CSRF is browser-specific so these pass through.
@@ -95,14 +91,12 @@ async def test_post_with_no_browser_headers_allowed(bare_ds):
     assert response.status_code != 403
 
 
-@pytest.mark.asyncio
 async def test_post_with_matching_origin_allowed(bare_ds):
     # Fallback for older browsers without Sec-Fetch-Site: Origin must match Host
     response = await _post(bare_ds, headers={"origin": "http://localhost"})
     assert response.status_code != 403
 
 
-@pytest.mark.asyncio
 async def test_post_with_mismatched_origin_blocked(bare_ds):
     response = await _post(
         bare_ds, data={"message": "hi"}, headers={"origin": "http://evil.example.com"}
@@ -110,7 +104,6 @@ async def test_post_with_mismatched_origin_blocked(bare_ds):
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_csrf_error_page_renders(bare_ds):
     response = await _post(
         bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
@@ -119,7 +112,6 @@ async def test_csrf_error_page_renders(bare_ds):
     assert "origin" in response.text.lower()
 
 
-@pytest.mark.asyncio
 async def test_csrf_error_page_title_has_no_typo(bare_ds):
     response = await _post(
         bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
@@ -128,7 +120,6 @@ async def test_csrf_error_page_title_has_no_typo(bare_ds):
     assert "CSRF check failed)" not in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("scope_type", ["websocket", "lifespan"])
 async def test_non_http_scope_passes_through(scope_type):
     called = []
@@ -141,7 +132,6 @@ async def test_non_http_scope_passes_through(scope_type):
     assert called == [scope_type]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "label,headers,expected",
     [
@@ -189,7 +179,6 @@ async def test_middleware_unit(label, headers, expected):
     assert await _run_middleware(_http_scope(headers)) == expected
 
 
-@pytest.mark.asyncio
 async def test_legacy_csrftoken_scope_value_nonempty(ds_client):
     # GET /post/ calls request.scope["csrftoken"]() - must not 500
     response = await ds_client.get("/post/")
@@ -198,13 +187,11 @@ async def test_legacy_csrftoken_scope_value_nonempty(ds_client):
     assert len(response.text.strip()) >= 20
 
 
-@pytest.mark.asyncio
 async def test_legacy_csrftoken_no_ds_csrftoken_cookie(ds_client):
     response = await ds_client.get("/post/")
     assert "ds_csrftoken" not in response.cookies
 
 
-@pytest.mark.asyncio
 async def test_legacy_csrftoken_varies_across_requests(ds_client):
     r1 = (await ds_client.get("/post/")).text.strip()
     r2 = (await ds_client.get("/post/")).text.strip()
@@ -218,7 +205,6 @@ def test_legacy_csrftoken_stable_within_request():
     assert scope["csrftoken"]() == scope["csrftoken"]()
 
 
-@pytest.mark.asyncio
 async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(bare_ds):
     # A stale ds_csrftoken cookie + csrftoken body field must NOT bypass
     # the header-based CSRF check.
@@ -231,7 +217,6 @@ async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(bare_ds):
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_bearer_invalid_token_not_csrf_error(bare_ds):
     # Cross-site POST with bogus bearer must pass CSRF and be rejected
     # by auth/permission handling, not by the CSRF middleware.
@@ -247,7 +232,6 @@ async def test_bearer_invalid_token_not_csrf_error(bare_ds):
         assert "sec-fetch-site" not in response.text.lower()
 
 
-@pytest.mark.asyncio
 async def test_cross_site_post_without_auth_still_blocked(bare_ds):
     response = await _post(
         bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
@@ -255,7 +239,6 @@ async def test_cross_site_post_without_auth_still_blocked(bare_ds):
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_bearer_with_cookie_does_not_bypass():
     # Bearer + Cookie => ambient cookie auth is in play, not exempt.
     scope = _http_scope(
@@ -269,7 +252,6 @@ async def test_bearer_with_cookie_does_not_bypass():
     assert await _run_middleware(scope) == ("blocked", 403)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "origin,scheme,expected",
     (
@@ -292,7 +274,6 @@ async def test_origin_scheme_and_port(origin, scheme, expected):
     assert await _run_middleware(scope) == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "headers",
     [
@@ -308,7 +289,6 @@ async def test_malformed_headers_do_not_500(headers):
     assert result[1] == 403
 
 
-@pytest.mark.asyncio
 async def test_uppercase_header_names_normalized():
     # ASGI servers should lowercase, but middleware normalizes defensively.
     scope = {

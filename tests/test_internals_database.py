@@ -38,14 +38,12 @@ def db(app_client):
     return app_client.ds.get_database("fixtures")
 
 
-@pytest.mark.asyncio
 async def test_execute(db):
     results = await db.execute("select * from facetable")
     assert isinstance(results, Results)
     assert 15 == len(results)
 
 
-@pytest.mark.asyncio
 async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
     ds = Datasette(memory=True)
     db = ds.add_memory_database(uuid.uuid4().hex, name="data")
@@ -70,7 +68,6 @@ async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
     assert db._cached_derived_table_dependencies[0] != previous_cache[0]
 
 
-@pytest.mark.asyncio
 async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")
@@ -78,7 +75,6 @@ async def test_results_first(db):
     assert isinstance(row, sqlite3.Row)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("expected", (True, False))
 async def test_results_bool(db, expected):
     where = "" if expected else "where pk = 0"
@@ -86,7 +82,6 @@ async def test_results_bool(db, expected):
     assert bool(results) is expected
 
 
-@pytest.mark.asyncio
 async def test_results_dicts(db):
     results = await db.execute("select pk, name from roadside_attractions")
     assert results.dicts() == [
@@ -105,7 +100,6 @@ async def test_results_dicts(db):
         ("select 1 as num union select 2 as num", None),
     ],
 )
-@pytest.mark.asyncio
 async def test_results_single_value(db, query, expected):
     results = await db.execute(query)
     if expected:
@@ -115,7 +109,6 @@ async def test_results_single_value(db, query, expected):
             results.single_value()
 
 
-@pytest.mark.asyncio
 async def test_execute_fn(db):
     def get_1_plus_1(conn):
         return conn.execute("select 1 + 1").fetchall()[0][0]
@@ -123,7 +116,6 @@ async def test_execute_fn(db):
     assert 2 == await db.execute_fn(get_1_plus_1)
 
 
-@pytest.mark.asyncio
 async def test_execute_fn_transaction_false():
     datasette = Datasette(memory=True)
     db = datasette.add_memory_database("test_execute_fn_transaction_false")
@@ -157,7 +149,6 @@ async def test_execute_fn_transaction_false():
         (["foo", "bar", "baz"], False),
     ),
 )
-@pytest.mark.asyncio
 async def test_table_exists(db, tables, exists):
     for table in tables:
         actual = await db.table_exists(table)
@@ -171,7 +162,6 @@ async def test_table_exists(db, tables, exists):
         ("paginated_view", True),
     ),
 )
-@pytest.mark.asyncio
 async def test_view_exists(db, view, expected):
     actual = await db.view_exists(view)
     assert actual == expected
@@ -210,7 +200,6 @@ async def test_view_exists(db, view, expected):
         ),
     ),
 )
-@pytest.mark.asyncio
 async def test_table_columns(db, table, expected):
     columns = await db.table_columns(table)
     assert columns == expected
@@ -393,7 +382,6 @@ async def test_table_columns(db, table, expected):
         ),
     ),
 )
-@pytest.mark.asyncio
 async def test_table_column_details(db, table, expected):
     columns = await db.table_column_details(table)
     # Convert "type" to lowercase before comparison
@@ -407,7 +395,6 @@ async def test_table_column_details(db, table, expected):
     assert compare_columns == expected
 
 
-@pytest.mark.asyncio
 async def test_get_all_foreign_keys(db):
     all_foreign_keys = await db.get_all_foreign_keys()
     assert all_foreign_keys["roadside_attraction_characteristics"] == {
@@ -462,7 +449,6 @@ async def test_get_all_foreign_keys(db):
     }
 
 
-@pytest.mark.asyncio
 async def test_table_names(db):
     table_names = await db.table_names()
     # Tables are sorted alphabetically by name
@@ -499,7 +485,6 @@ async def test_table_names(db):
     ]
 
 
-@pytest.mark.asyncio
 async def test_view_names(db):
     view_names = await db.view_names()
     assert view_names == [
@@ -511,7 +496,6 @@ async def test_view_names(db):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("num_sql_threads", [0, 3])
 async def test_execute_write_zero_time_limit(num_sql_threads):
     ds = Datasette(settings={"num_sql_threads": num_sql_threads})
@@ -533,7 +517,6 @@ async def test_execute_write_zero_time_limit(num_sql_threads):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_execute_write_block_true(db):
     result = await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]
@@ -546,7 +529,6 @@ async def test_execute_write_block_true(db):
     assert "Mystery!" == rows.rows[0][0]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning(db):
     await db.execute_write(
@@ -568,7 +550,6 @@ async def test_execute_write_with_returning(db):
     ]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_default_limit(db):
     await db.execute_write(
@@ -591,7 +572,6 @@ async def test_execute_write_with_returning_default_limit(db):
     ).single_value() == 20
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_custom_limit(db):
     await db.execute_write(
@@ -612,7 +592,6 @@ async def test_execute_write_with_returning_custom_limit(db):
     assert [row["id"] for row in result.fetchall()] == [1, 2]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_exact_default_limit(db):
     await db.execute_write(
@@ -632,7 +611,6 @@ async def test_execute_write_with_returning_exact_default_limit(db):
     assert len(result.fetchall()) == 10
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_one_more_than_default_limit(db):
     await db.execute_write(
@@ -652,7 +630,6 @@ async def test_execute_write_with_returning_one_more_than_default_limit(db):
     assert len(result.fetchall()) == 10
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_return_all(db):
     await db.execute_write("create table write_returning_all (id integer primary key)")
@@ -671,7 +648,6 @@ async def test_execute_write_with_returning_return_all(db):
     assert [row["id"] for row in result.fetchall()] == list(range(1, 21))
 
 
-@pytest.mark.asyncio
 async def test_execute_write_block_false(db):
     await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?",
@@ -682,7 +658,6 @@ async def test_execute_write_block_false(db):
     assert "Mystery!" == rows.rows[0][0]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_block_false(db):
     await db.execute_write(
@@ -724,7 +699,6 @@ def test_execute_write_result_closes_cursor_on_fetch_error():
     assert cursor.closed is True
 
 
-@pytest.mark.asyncio
 async def test_execute_write_script(db):
     await db.execute_write_script(
         "create table foo (id integer primary key); create table bar (id integer primary key);"
@@ -733,7 +707,6 @@ async def test_execute_write_script(db):
     assert {"foo", "bar"}.issubset(table_names)
 
 
-@pytest.mark.asyncio
 async def test_execute_write_many(db):
     await db.execute_write_script("create table foomany (id integer primary key)")
     await db.execute_write_many(
@@ -743,13 +716,11 @@ async def test_execute_write_many(db):
     assert [r[0] for r in result.rows] == [1, 10, 100]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_has_correctly_prepared_connection(db):
     # The sleep() function is only available if ds._prepare_connection() was called
     await db.execute_write("select sleep(0.01)")
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_block_false(db):
     def write_fn(conn):
         conn.execute("delete from roadside_attractions where pk = 1;")
@@ -760,7 +731,6 @@ async def test_execute_write_fn_block_false(db):
     assert isinstance(task_id, uuid.UUID)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("disable_threads", (False, True))
 async def test_execute_write_fn_block_false_returns_uuid(tmp_path, disable_threads):
     # block=False is documented to return "a UUID representing the queued task".
@@ -787,7 +757,6 @@ async def test_execute_write_fn_block_false_returns_uuid(tmp_path, disable_threa
     assert second != task_id
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
         conn.execute("delete from roadside_attractions where pk = 1;")
@@ -798,7 +767,6 @@ async def test_execute_write_fn_block_true(db):
     assert 3 == new_count
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_exception(db):
     def write_fn(conn):
         assert False
@@ -807,7 +775,6 @@ async def test_execute_write_fn_exception(db):
         await db.execute_write_fn(write_fn)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("num_sql_threads", (0, 1))
 async def test_execute_write_fn_sqlite_utils_transaction(tmp_path, num_sql_threads):
     # A write inside a failing Datasette task must never become visible or
@@ -842,7 +809,6 @@ async def test_execute_write_fn_sqlite_utils_transaction(tmp_path, num_sql_threa
         db.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("param_name", ["conn", "connection", "db", "c"])
 async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
     # Plugins historically relied on the fact that the callback was invoked
@@ -859,7 +825,6 @@ async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
     assert result == 2
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_with_track_event(db):
     # When the callback declares track_event it still receives both args
     # via dependency injection.
@@ -874,7 +839,6 @@ async def test_execute_write_fn_with_track_event(db):
     assert len(seen) == 1 and callable(seen[0])
 
 
-@pytest.mark.asyncio
 @pytest.mark.timeout(1, func_only=True)
 async def test_execute_write_fn_connection_exception(tmpdir, bare_ds):
     path = str(tmpdir / "immutable.db")
@@ -891,7 +855,6 @@ async def test_execute_write_fn_connection_exception(tmpdir, bare_ds):
         await db.execute_write_fn(write_fn)
 
 
-@pytest.mark.asyncio
 async def test_deliver_write_result_leaves_done_future_alone():
     loop = asyncio.get_running_loop()
     reply_future = loop.create_future()
@@ -907,7 +870,6 @@ async def test_deliver_write_result_leaves_done_future_alone():
     assert reply_future.result() == "original"
 
 
-@pytest.mark.asyncio
 async def test_deliver_write_result_ignores_closed_loop():
     closed_loop = asyncio.new_event_loop()
     closed_loop.close()
@@ -945,7 +907,6 @@ def table_exists_checker(name):
     return inner
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("disable_threads", (False, True))
 async def test_execute_isolated(db, disable_threads):
     if disable_threads:
@@ -986,7 +947,6 @@ async def test_execute_isolated(db, disable_threads):
     assert not await db.execute_isolated_fn(table_exists_checker("created_by_isolated"))
 
 
-@pytest.mark.asyncio
 async def test_execute_isolated_connect_failure_does_not_kill_write_thread():
     # A connect() failure for an isolated task should be returned to the
     # caller as an exception, not crash the write thread
@@ -1019,7 +979,6 @@ async def test_execute_isolated_connect_failure_does_not_kill_write_thread():
     assert count == 1
 
 
-@pytest.mark.asyncio
 async def test_analyze_sql():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_analyze_sql", name="data")
@@ -1045,7 +1004,6 @@ async def test_analyze_sql():
     ]
 
 
-@pytest.mark.asyncio
 async def test_analyze_sql_insert_select():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_analyze_sql_insert_select", name="data")
@@ -1073,7 +1031,6 @@ async def test_analyze_sql_insert_select():
     }
 
 
-@pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)
 
@@ -1090,7 +1047,6 @@ def test_is_mutable(bare_ds):
     assert Database(bare_ds, is_memory=True, is_mutable=False).is_mutable is False
 
 
-@pytest.mark.asyncio
 async def test_attached_databases(app_client_two_attached_databases_crossdb_enabled):
     database = app_client_two_attached_databases_crossdb_enabled.ds.get_database(
         "_memory"
@@ -1099,7 +1055,6 @@ async def test_attached_databases(app_client_two_attached_databases_crossdb_enab
     assert {a.name for a in attached} == {"extra database", "fixtures"}
 
 
-@pytest.mark.asyncio
 async def test_database_memory_name(bare_ds):
     ds = bare_ds
     foo1 = ds.add_database(Database(ds, memory_name="foo"))
@@ -1117,7 +1072,6 @@ async def test_database_memory_name(bare_ds):
     assert await bar2.table_names() == []
 
 
-@pytest.mark.asyncio
 async def test_in_memory_databases_forbid_writes(bare_ds):
     ds = bare_ds
     db = ds.add_database(Database(ds, memory_name="test"))
@@ -1129,7 +1083,6 @@ async def test_in_memory_databases_forbid_writes(bare_ds):
     assert await db.table_names() == ["foo"]
 
 
-@pytest.mark.asyncio
 async def test_hidden_tables(bare_ds):
     ds = bare_ds
     db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
@@ -1188,7 +1141,6 @@ async def test_hidden_tables(bare_ds):
     ]
 
 
-@pytest.mark.asyncio
 async def test_replace_database(tmpdir):
     path1 = str(tmpdir / "data1.db")
     (tmpdir / "two").mkdir()
@@ -1248,7 +1200,6 @@ def test_repr_temp_disk(bare_ds):
     db.close()
 
 
-@pytest.mark.asyncio
 async def test_database_close_shuts_down_write_thread(tmpdir):
     path = str(tmpdir / "dbclose.db")
     conn = sqlite3.connect(path)
@@ -1267,7 +1218,6 @@ async def test_database_close_shuts_down_write_thread(tmpdir):
     ds._internal_database.close()
 
 
-@pytest.mark.asyncio
 async def test_database_close_raises_on_further_use(tmpdir):
     path = str(tmpdir / "closed.db")
     conn = sqlite3.connect(path)
@@ -1288,7 +1238,6 @@ async def test_database_close_raises_on_further_use(tmpdir):
     ds._internal_database.close()
 
 
-@pytest.mark.asyncio
 async def test_database_close_is_idempotent(tmpdir):
     path = str(tmpdir / "idemp.db")
     conn = sqlite3.connect(path)
@@ -1303,7 +1252,6 @@ async def test_database_close_is_idempotent(tmpdir):
     ds._internal_database.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("num_sql_threads", [0, 2])
 @pytest.mark.parametrize("named", [False, True])
 async def test_close_releases_memory_connections(num_sql_threads, named):
@@ -1320,7 +1268,6 @@ async def test_close_releases_memory_connections(num_sql_threads, named):
 _CONTEXT_LEAK_MARKER_KEY = "otel-context-leak-marker"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("num_sql_threads", (0, 1))
 async def test_write_thread_context_is_detached_between_tasks(
     tmp_path, monkeypatch, num_sql_threads

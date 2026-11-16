@@ -486,11 +486,15 @@ render_cell(row, value, column, table, pks, database, datasette, request, column
 
 Lets you customize the display of values within table cells in the HTML table view.
 
-``row`` - ``sqlite.Row``
-    The SQLite row object that the value being rendered is part of
+``row`` - ``sqlite3.Row`` or a compatible object
+    The row that the value being rendered is part of. Depending on the page this is either a ``sqlite3.Row`` or a Datasette object that behaves like one, so avoid ``isinstance()`` checks against it. Both support looking up a value by column name with ``row["name"]`` or by index with ``row[0]``, and both provide ``row.keys()`` to list the column names.
 
-``value`` - string, integer, float, bytes or None
-    The value that was loaded from the database
+    Values in the row follow the same rules as ``value``, so a foreign key column that has been expanded to a label will be a ``{"value": ..., "label": ...}`` dictionary.
+
+``value`` - string, integer, float, bytes, None or dictionary
+    The value that was loaded from the database.
+
+    On table and row pages, a foreign key column that Datasette has :ref:`expanded to show a label <table_configuration_label_column>` is passed as a dictionary such as ``{"value": 1, "label": "Cleo"}``, where ``value`` is the value stored in the column and ``label`` is the label from the row it references. This does not happen for views, for custom SQL queries or when the page is loaded with ``?_labels=off``.
 
 ``column`` - string
     The name of the column being rendered

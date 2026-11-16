@@ -1289,14 +1289,35 @@ class TableInsertView(BaseView):
                 # Insert
                 kwargs = {"ignore": ignore, "replace": replace, "alter": alter}
             if should_return and not upsert:
+                try:
+                    conn.execute(
+                        f"select rowid from {escape_sqlite(table_name)} limit 0"
+                    )
+                    has_rowid = True
+                except sqlite3.OperationalError:
+                    # WITHOUT ROWID table
+                    has_rowid = False
+                if not has_rowid:
+                    # These always have a primary key, which can never be
+                    # null - so fetch the rows back using those values
+                    pk_values = {}
+                    for row in rows:
+                        table.insert(row, **kwargs)
+                        pk_values[tuple(row.get(pk) for pk in pks)] = None
+                    where = " and ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
+                    returned = []
+                    for values in pk_values:
+                        returned.extend(table.rows_where(where, values))
+                    return returned
                 rowids = []
-                method = table.upsert if upsert else table.insert
                 for row in rows:
-                    rowids.append(method(row, **kwargs).last_rowid)
+                    rowids.append(table.insert(row, **kwargs).last_rowid)
                 return list(
                     table.rows_where(
                         "rowid in ({})".format(",".join("?" for _ in rowids)),
                         rowids,
+                        # Tables without a primary key need the rowid returned
+                        select="rowid, *" if pks == ["rowid"] else "*",
                     )
                 )
             else:

@@ -1976,7 +1976,7 @@ The SQL query must return these columns:
 
 Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before adding the SQL fragment to the per-database ``UNION ALL`` query.
 
-This example returns a SQL fragment that searches rows from a ``dashboards`` table in the ``content`` database. The ``url`` column uses ``json_object()`` to describe a call to ``datasette.urls.row(database='content', table='dashboards', row_path=slug)``:
+This example returns a SQL fragment that searches rows from a ``dashboards`` table in the ``content`` database. The ``url`` column uses ``json_object()`` to describe a call to ``datasette.urls.row(database='content', table='dashboards', row_path=[slug])``. Passing the primary key values as a JSON array means Datasette will tilde-encode them:
 
 .. code-block:: python
 
@@ -1998,7 +1998,7 @@ This example returns a SQL fragment that searches rows from a ``dashboards`` tab
                     'method', 'row',
                     'database', 'content',
                     'table', 'dashboards',
-                    'row_path', slug
+                    'row_path', json_array(slug)
                 ) AS url,
                 slug || ' ' || COALESCE(title, '') || ' ' || COALESCE(description, '') AS search_text,
                 title AS display_name

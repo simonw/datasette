@@ -49,8 +49,15 @@ class Urls:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
 
+    def _row_path(self, row_path):
+        # A list or tuple of primary key values is tilde-encoded and joined
+        # with commas. Anything else is assumed to be already encoded.
+        if isinstance(row_path, (list, tuple)):
+            return ",".join(tilde_encode(str(value)) for value in row_path)
+        return row_path
+
     def row(self, database, table, row_path, format=None):
-        path = f"{self.table(database, table)}/{row_path}"
+        path = f"{self.table(database, table)}/{self._row_path(row_path)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
@@ -58,5 +65,5 @@ class Urls:
     def row_blob(self, database, table, row_path, column):
         return (
             self.table(database, table)
-            + f"/{row_path}.blob?_blob_column={urllib.parse.quote_plus(column)}"
+            + f"/{self._row_path(row_path)}.blob?_blob_column={urllib.parse.quote_plus(column)}"
         )

@@ -53,8 +53,7 @@ def test_serve_with_get(tmp_path_factory):
 
 
 def test_serve_with_get_does_not_launch_background_tasks(tmp_path_factory):
-    # --get must never launch background tasks, even though its TestClient
-    # request
+    # --get must never launch background tasks, even though its request
     # flows through the full ASGI stack (including the AsgiRunOnFirstRequest
     # fallback that would otherwise launch them). The plugin's startup hook
     # itself still runs (registration happens) - only the launch is

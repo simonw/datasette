@@ -1,3 +1,4 @@
+import asyncio
 import time
 from unittest.mock import AsyncMock
 
@@ -11,7 +12,6 @@ from datasette.resources import (
     TableResource,
 )
 from datasette.utils import baseconv
-from datasette.utils.testing import TestClient as _TestClient
 
 from .utils import cookie_was_deleted, last_event
 
@@ -358,9 +358,11 @@ def test_cli_create_token(ds_on_disk, expires):
         expected_keys.add("d")
     assert details.keys() == expected_keys
     assert details["a"] == "test"
-    # A sync request, because the CLI command above runs its own event loop
-    response = _TestClient(ds_on_disk).get(
-        "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
+    # Not an async test, because the CLI command above runs its own event loop
+    response = asyncio.run(
+        ds_on_disk.client.get(
+            "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
+        )
     )
     if expires is None or expires > 0:
         expected_actor = {
@@ -369,11 +371,11 @@ def test_cli_create_token(ds_on_disk, expires):
         }
         if expires and expires > 0:
             expected_actor["token_expires"] = details["t"] + expires
-        assert response.json == {"ok": True, "actor": expected_actor}
+        assert response.json() == {"ok": True, "actor": expected_actor}
     else:
         # Expired token - hard 401
-        assert response.status == 401
-        assert response.json["ok"] is False
+        assert response.status_code == 401
+        assert response.json()["ok"] is False
 
 
 async def test_root_with_root_enabled_gets_all_permissions(ds_client):

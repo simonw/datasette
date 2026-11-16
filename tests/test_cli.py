@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import pathlib
@@ -14,7 +15,6 @@ from datasette.fixtures import write_fixture_database
 from datasette.plugins import DEFAULT_PLUGINS, pm
 from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite3
-from datasette.utils.testing import TestClient as _TestClient
 from datasette.version import __version__
 
 from .fixtures import (
@@ -182,9 +182,8 @@ def test_metadata_yaml():
         return_instance=True,
         internal=None,
     )
-    client = _TestClient(ds)
-    response = client.get("/.json")
-    assert response.json["metadata"] == {"title": "Hello from YAML"}
+    response = asyncio.run(ds.client.get("/.json"))
+    assert response.json()["metadata"] == {"title": "Hello from YAML"}
 
 
 @mock.patch("datasette.cli.run_module")

@@ -149,7 +149,7 @@ And a class method that can be used to create fake request objects for use in te
 The MultiParams class
 ---------------------
 
-``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values.
+``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values. The class can be imported using ``from datasette.utils import MultiParams``.
 
 Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
 
@@ -3066,6 +3066,10 @@ If the metadata cannot be parsed as either JSON or YAML the function will raise 
 
 .. autofunction:: datasette.utils.parse_metadata
 
+.. _internals_utils_BadMetadataError:
+
+.. autoclass:: datasette.utils.BadMetadataError
+
 .. _internals_utils_await_me_maybe:
 
 await_me_maybe(value)
@@ -3148,6 +3152,127 @@ await async_call_with_supported_arguments(fn, \*\*kwargs)
 Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_supported_arguments>`. Use this for ``async def`` callback functions.
 
 .. autofunction:: datasette.utils.async_call_with_supported_arguments
+
+.. _internals_utils_escape_sqlite:
+
+escape_sqlite(s)
+----------------
+
+Use this to safely include a table or column name in a SQL query. Values should still be passed as query parameters - this function is only for identifiers.
+
+.. code-block:: python
+
+    from datasette.utils import escape_sqlite
+
+    sql = "select * from {} where {} = :value".format(
+        escape_sqlite(table), escape_sqlite(column)
+    )
+
+.. autofunction:: datasette.utils.escape_sqlite
+
+.. _internals_utils_escape_fts:
+
+escape_fts(query)
+-----------------
+
+Escapes a search string provided by a user for use with SQLite full-text search. The same logic is available to SQL queries as the ``escape_fts()`` SQL function, see :ref:`full_text_search_custom_sql`.
+
+.. autofunction:: datasette.utils.escape_fts
+
+.. _internals_utils_to_css_class:
+
+to_css_class(s)
+---------------
+
+Datasette uses this function to derive the CSS classes and custom template names for databases, tables and columns, as described in :ref:`customization`.
+
+.. autofunction:: datasette.utils.to_css_class
+
+.. _internals_utils_modify_query_string:
+
+modify_query_string(query_string, add=None, replace=None, remove=None)
+----------------------------------------------------------------------
+
+Add, replace or remove arguments in a query string. :ref:`datasette.urls.modify() <internals_datasette_urls>` offers the same operations for a full path or a request.
+
+.. code-block:: python
+
+    from datasette.utils import modify_query_string
+
+    modify_query_string(
+        "_size=10&_next=20", replace={"_size": 50}, remove="_next"
+    )
+    # "_size=50"
+
+.. autofunction:: datasette.utils.modify_query_string
+
+.. _internals_utils_actor_matches_allow:
+
+actor_matches_allow(actor, allow)
+---------------------------------
+
+Checks an actor against an ``"allow"`` block. See :ref:`authentication_actor_matches_allow`. This can also be imported using ``from datasette import actor_matches_allow``.
+
+.. autofunction:: datasette.utils.actor_matches_allow
+
+.. _internals_utils_add_cors_headers:
+
+add_cors_headers(headers)
+-------------------------
+
+Plugins that return their own JSON responses can use this to send the same headers as Datasette's ``--cors`` option, listed in :ref:`json_api_cors`.
+
+.. code-block:: python
+
+    from datasette import Response
+    from datasette.utils import add_cors_headers
+
+
+    async def my_view(request):
+        headers = {}
+        add_cors_headers(headers)
+        return Response.json({"ok": True}, headers=headers)
+
+.. autofunction:: datasette.utils.add_cors_headers
+
+.. _internals_utils_StartupError:
+
+StartupError
+------------
+
+.. autoclass:: datasette.utils.StartupError
+
+.. _internals_utils_PrefixedUrlString:
+
+PrefixedUrlString
+-----------------
+
+.. autoclass:: datasette.utils.PrefixedUrlString
+
+.. _internals_utils_PaginatedResources:
+
+PaginatedResources
+------------------
+
+.. autoclass:: datasette.utils.PaginatedResources
+
+.. _internals_utils_sqlite3:
+
+sqlite3
+-------
+
+``datasette.utils.sqlite3`` is the SQLite module that Datasette itself is using. This is `pysqlite3 <https://github.com/coleifer/pysqlite3>`__ if that package is installed, otherwise it is the ``sqlite3`` module from the Python standard library.
+
+Plugins should import this in place of the standard library module, so that their connections and exception handling use the same SQLite library as Datasette:
+
+.. code-block:: python
+
+    from datasette.utils import sqlite3
+
+    try:
+        conn.execute(sql)
+    except sqlite3.OperationalError as ex:
+        ...
 
 .. _internals_tracer:
 

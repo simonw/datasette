@@ -25,6 +25,7 @@ Unreleased
   - ``Response.html()``, ``.text()``, ``.json()``, ``.stream()``, ``.error()`` and ``.redirect()`` still accept ``status`` as a second positional argument - ``Response.json(data, 400)`` continues to work - but ``headers``, ``default`` and ``content_type`` are keyword-only.
   - ``response.set_cookie(key, value="", *, max_age=None, ...)``
 
+- The following ``datasette.utils`` functions and classes are now :ref:`documented <internals_utils>` and considered stable for use by plugins: ``escape_sqlite()``, ``escape_fts()``, ``to_css_class()``, ``modify_query_string()``, ``actor_matches_allow()``, ``add_cors_headers()``, ``StartupError``, ``BadMetadataError``, ``MultiParams``, ``PrefixedUrlString``, ``PaginatedResources`` and the ``sqlite3`` module. (:issue:`1630`)
 - **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
 - File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
 

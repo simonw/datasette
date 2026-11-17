@@ -13,7 +13,6 @@ import pytest
 
 from datasette import utils
 from datasette.app import Datasette
-from datasette.utils.asgi import Request
 from datasette.utils.sqlite import (
     sqlite3,
     sqlite_derived_table_dependencies,
@@ -546,34 +545,6 @@ def test_table_columns():
     """)
     assert utils.table_columns(conn, "places") == ["id", "name", "bob"]
     conn.close()
-
-
-@pytest.mark.parametrize(
-    "path,url_vars,expected_path,expected_full_path",
-    [
-        ("/db/table", {}, "/db/table", "/db/table"),
-        ("/db/table.json", {"format": "json"}, "/db/table", "/db/table"),
-        (
-            "/db/table.Notebook?_sort=pk",
-            {"format": "Notebook"},
-            "/db/table",
-            "/db/table?_sort=pk",
-        ),
-        (
-            "/prefix/db/-/query.csv?sql=select+1",
-            {"format": "csv"},
-            "/prefix/db/-/query",
-            "/prefix/db/-/query?sql=select+1",
-        ),
-    ],
-)
-def test_path_without_format(path, url_vars, expected_path, expected_full_path):
-    request = Request.fake(path, url_vars=url_vars)
-    assert utils.path_without_format(request) == expected_path
-    assert (
-        utils.path_without_format(request, include_query_string=True)
-        == expected_full_path
-    )
 
 
 @pytest.mark.parametrize(

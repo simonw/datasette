@@ -25,7 +25,6 @@ from datasette.utils import (
     escape_sqlite,
     make_slot_function,
     path_from_row_pks,
-    path_without_format,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -287,8 +286,8 @@ class RowView(BaseView):
                 database=data.get("database"),
                 table=data.get("table"),
                 request=request,
-                path=path_without_format(request),
-                full_path=path_without_format(request, include_query_string=True),
+                path=self.ds.urls.modify(request, format=False).partition("?")[0],
+                full_path=self.ds.urls.modify(request, format=False),
                 view_name=self.name,
             )
             it_can_render = await await_me_maybe(it_can_render)

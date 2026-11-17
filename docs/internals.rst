@@ -1856,7 +1856,7 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     In ``add`` and ``replace`` a value can be a list, which sets several values for that key. Query string arguments with blank values, such as ``?name=``, are preserved. Existing arguments are left exactly as they were unless something is removed or replaced, in which case the whole query string is re-encoded.
 
-    ``format`` works like the ``format=`` argument to the other methods. When ``target`` is a request for a page such as ``/fixtures/facetable.json`` the existing ``.json`` extension is replaced.
+    ``format`` works like the ``format=`` argument to the other methods. When ``target`` is a request for a page such as ``/fixtures/facetable.json`` the existing ``.json`` extension is replaced. Pass ``format=False`` to remove the extension from a request without adding a new one, which gives the path to the HTML version of the page.
 
     .. code-block:: python
 

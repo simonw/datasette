@@ -2446,6 +2446,22 @@ async def test_export_dialog_keeps_blank_filter_values(ds_client):
     assert _export_rows(dialog)["csv"] == ("All 1 row", False)
 
 
+async def test_table_links_keep_blank_filter_values(ds_client):
+    # Sort, facet and suggested facet links must not drop ?content=
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key?content=&_facet=content"
+    )
+    soup = Soup(response.text, "html.parser")
+    sort_hrefs = [a["href"] for a in soup.select("th a")]
+    assert "/fixtures/simple_primary_key?content=&_facet=content&_sort=content" in (
+        sort_hrefs
+    )
+    assert all("content=&" in href for href in sort_hrefs)
+    assert soup.select_one(".facet-info a.cross")["href"] == (
+        "/fixtures/simple_primary_key?content="
+    )
+
+
 async def test_export_dialog_accessible_descriptions(ds_client):
     response = await ds_client.get("/fixtures/facetable?_size=2&state=CA")
     soup = Soup(response.text, "html.parser")

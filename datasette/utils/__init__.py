@@ -532,65 +532,119 @@ def request_route_path(request):
     return request.scope.get("route_path") or request.path
 
 
-def path_with_added_args(request, args, path=None):
-    path = path or request.path
+def _expand_pairs(args):
+    # Accepts a dictionary or an iterable of (key, value) pairs. A list or
+    # tuple value stands for several values of the same key.
+    if args is None:
+        return []
     if isinstance(args, dict):
         args = args.items()
-    args_to_remove = {k for k, v in args if v is None}
-    current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in args_to_remove:
-            current.append((key, value))
-    current.extend([(key, value) for key, value in args if value is not None])
-    query_string = urllib.parse.urlencode(current)
+    pairs = []
+    for key, value in args:
+        if isinstance(value, (list, tuple)):
+            pairs.extend((key, item) for item in value)
+        else:
+            pairs.append((key, value))
+    return pairs
+
+
+def modify_query_string(query_string, *, add=None, replace=None, remove=None):
+    """
+    Return ``query_string`` with the given changes applied, in this order:
+
+    - ``remove`` - a key, or an iterable of keys and ``(key, value)`` pairs,
+      or a dictionary of ``{key: value}``. A key removes every value for that
+      key, a pair removes only that exact value.
+    - ``replace`` - dictionary or pairs. Existing values for each key are
+      dropped and the new value is used instead. ``None`` removes the key.
+    - ``add`` - dictionary or pairs, appended without touching existing values.
+
+    Blank values such as ``?name=`` are preserved. This is the implementation
+    behind :ref:`datasette.urls.modify() <internals_datasette_urls>`.
+    """
+    remove_keys = set()
+    remove_pairs = set()
+    if isinstance(remove, str):
+        remove_keys.add(remove)
+    elif isinstance(remove, dict):
+        remove_pairs.update((k, str(v)) for k, v in _expand_pairs(remove))
+    elif remove is not None:
+        for item in remove:
+            if isinstance(item, str):
+                remove_keys.add(item)
+            else:
+                key, value = item
+                remove_pairs.add((key, str(value)))
+    replace = _expand_pairs(replace)
+    remove_keys.update(key for key, _ in replace)
+    pairs = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(query_string, keep_blank_values=True)
+        if key not in remove_keys and (key, value) not in remove_pairs
+    ]
+    for key, value in replace + _expand_pairs(add):
+        if value is not None:
+            pairs.append((key, value))
+    return urllib.parse.urlencode(pairs)
+
+
+def _legacy_path_and_query_string(request, path):
+    if path is None:
+        return request.path, request.query_string
+    if "?" in path:
+        return tuple(path.split("?", 1))
+    return path, request.query_string
+
+
+def _join_path_and_query_string(path, query_string):
     if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+        return f"{path}?{query_string}"
+    return path
+
+
+def path_with_added_args(request, args, path=None):
+    """
+    Legacy helper - new code should use ``datasette.urls.modify()``.
+
+    Adds ``args`` (a dictionary or pairs) to the query string. A value of
+    ``None`` removes that key instead.
+    """
+    path, query_string = _legacy_path_and_query_string(request, path)
+    pairs = _expand_pairs(args)
+    return _join_path_and_query_string(
+        path,
+        modify_query_string(
+            query_string,
+            add=[(k, v) for k, v in pairs if v is not None],
+            remove=[k for k, v in pairs if v is None],
+        ),
+    )
 
 
 def path_with_removed_args(request, args, path=None):
-    query_string = request.query_string
-    if path is None:
-        path = request.path
-    else:
-        if "?" in path:
-            bits = path.split("?", 1)
-            path, query_string = bits
-    # args can be a dict or a set
-    current = []
-    if isinstance(args, set):
+    """
+    Legacy helper - new code should use ``datasette.urls.modify()``.
 
-        def should_remove(key, value):
-            return key in args
-
-    elif isinstance(args, dict):
-        # Must match key AND value
-        def should_remove(key, value):
-            return args.get(key) == value
-
-    for key, value in urllib.parse.parse_qsl(query_string):
-        if not should_remove(key, value):
-            current.append((key, value))
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+    ``args`` is a set of keys to remove, or a dictionary of ``{key: value}``
+    where only that exact value is removed.
+    """
+    path, query_string = _legacy_path_and_query_string(request, path)
+    return _join_path_and_query_string(
+        path, modify_query_string(query_string, remove=args)
+    )
 
 
 def path_with_replaced_args(request, args, path=None):
-    path = path or request.path
-    if isinstance(args, dict):
-        args = args.items()
-    keys_to_replace = {p[0] for p in args}
-    current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in keys_to_replace:
-            current.append((key, value))
-    current.extend([p for p in args if p[1] is not None])
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+    """
+    Legacy helper - new code should use ``datasette.urls.modify()``.
+
+    Replaces existing values for each key in ``args`` (a dictionary or
+    pairs). A value of ``None`` removes that key.
+    """
+    path, query_string = _legacy_path_and_query_string(request, path)
+    return _join_path_and_query_string(
+        path, modify_query_string(query_string, replace=args)
+    )
 
 
 _css_re = re.compile(r"""['"\n\\]""")

@@ -100,6 +100,55 @@ def test_path_with_replaced_args(path, args, expected):
 
 
 @pytest.mark.parametrize(
+    "fn,args,expected",
+    [
+        (utils.path_with_added_args, {"c": 1}, "/foo?a=&b=2&c=1"),
+        (utils.path_with_removed_args, {"b"}, "/foo?a="),
+        (utils.path_with_replaced_args, {"b": 3}, "/foo?a=&b=3"),
+    ],
+)
+def test_path_with_args_keeps_blank_values_and_path_query_string(fn, args, expected):
+    assert fn(Request.fake("/foo?a=&b=2"), args) == expected
+    # path= can carry its own query string, used in place of the request's
+    assert fn(Request.fake("/other?z=1"), args, path="/foo?a=&b=2") == expected
+
+
+@pytest.mark.parametrize(
+    "query_string,kwargs,expected",
+    [
+        ("", {}, ""),
+        ("a=1&b=", {}, "a=1&b="),
+        # add keeps existing values, accepts dicts, pairs and list values
+        ("a=1", {"add": {"a": 2}}, "a=1&a=2"),
+        ("a=1", {"add": [("b", 2), ("b", 3)]}, "a=1&b=2&b=3"),
+        ("a=1", {"add": {"b": [2, 3]}}, "a=1&b=2&b=3"),
+        ("a=1", {"add": {"b": None}}, "a=1"),
+        # replace drops every existing value, None removes the key
+        ("a=1&b=2&a=3", {"replace": {"a": 9}}, "b=2&a=9"),
+        ("a=1&b=2", {"replace": {"a": None}}, "b=2"),
+        ("a=1&b=2", {"replace": {"a": [5, 6]}}, "b=2&a=5&a=6"),
+        # remove takes a key, keys, (key, value) pairs or a dictionary
+        ("a=1&b=2", {"remove": "a"}, "b=2"),
+        ("a=1&b=2&c=3", {"remove": ["a", "c"]}, "b=2"),
+        ("a=1&b=2&c=3", {"remove": {"a", "c"}}, "b=2"),
+        ("a=1&a=2&b=2", {"remove": [("a", 2)]}, "a=1&b=2"),
+        ("a=1&a=2&b=2", {"remove": {"a": "1"}}, "a=2&b=2"),
+        ("a=1&a=2&b=2", {"remove": ["b", ("a", "1")]}, "a=2"),
+        ("a=&a=2", {"remove": [("a", "")]}, "a=2"),
+        # Order is remove, then replace, then add
+        (
+            "a=1&b=2&c=3",
+            {"add": {"a": 4}, "replace": {"b": 5}, "remove": "a"},
+            "c=3&b=5&a=4",
+        ),
+        ("q=a+b%26c", {"add": {"x": "d e"}}, "q=a+b%26c&x=d+e"),
+    ],
+)
+def test_modify_query_string(query_string, kwargs, expected):
+    assert utils.modify_query_string(query_string, **kwargs) == expected
+
+
+@pytest.mark.parametrize(
     "row,pks,expected_path",
     [
         ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),

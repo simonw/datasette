@@ -1,6 +1,12 @@
 import urllib
 
-from .utils import PrefixedUrlString, path_with_format, tilde_encode
+from .utils import (
+    PrefixedUrlString,
+    modify_query_string,
+    path_with_format,
+    request_route_path,
+    tilde_encode,
+)
 
 
 class Urls:
@@ -14,6 +20,42 @@ class Urls:
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
+
+    def modify(self, target, *, add=None, replace=None, remove=None, format=None):
+        """
+        Return a modified copy of a URL, with ``base_url`` applied.
+
+        ``target`` is the current ``request`` or a path string, which can
+        include a query string. See ``modify_query_string()`` for how
+        ``add``, ``replace`` and ``remove`` behave.
+        """
+        fragment = ""
+        if isinstance(target, str):
+            prefixed = isinstance(target, PrefixedUrlString)
+            path, _, fragment = str(target).partition("#")
+            path, _, query_string = path.partition("?")
+            replace_format = None
+        else:
+            # The route path has had any base_url stripped by the router
+            prefixed = False
+            path = request_route_path(target)
+            query_string = target.query_string
+            replace_format = target.url_vars.get("format")
+        if format is not None:
+            path = path_with_format(
+                path=path, format=format, replace_format=replace_format
+            )
+        if prefixed:
+            path = PrefixedUrlString(path)
+        url = self.path(path)
+        query_string = modify_query_string(
+            query_string, add=add, replace=replace, remove=remove
+        )
+        if query_string:
+            url += f"?{query_string}"
+        if fragment:
+            url += f"#{fragment}"
+        return url
 
     def instance(self, format=None):
         return self.path("", format=format)

@@ -11,11 +11,8 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
-    path_with_added_args,
     path_with_format,
-    path_with_removed_args,
     path_without_format,
-    request_route_path,
     to_css_class,
 )
 
@@ -1277,17 +1274,13 @@ class ExtrasExtra(Extra):
                 "description": description,
                 "toggle_url": context.datasette.absolute_url(
                     context.request,
-                    context.datasette.urls.path(
-                        path_with_added_args(
-                            context.request,
-                            {"_extra": name},
-                            path=request_route_path(context.request),
+                    (
+                        context.datasette.urls.modify(
+                            context.request, add={"_extra": name}
                         )
                         if name not in context.extras
-                        else path_with_removed_args(
-                            context.request,
-                            {"_extra": name},
-                            path=request_route_path(context.request),
+                        else context.datasette.urls.modify(
+                            context.request, remove={"_extra": name}
                         )
                     ),
                 ),

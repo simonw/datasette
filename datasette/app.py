@@ -24,6 +24,7 @@ import threading
 import time
 import types
 import urllib.parse
+import warnings
 from concurrent import futures
 from pathlib import Path
 
@@ -77,7 +78,6 @@ from .utils import (
     escape_css_string,
     escape_sqlite,
     find_spatialite,
-    format_bytes,
     module_from_path,
     move_plugins_and_allow,
     move_table_config,
@@ -222,7 +222,7 @@ SETTINGS = (
     ),
     Setting(
         "max_post_body_bytes",
-        2 * 1024 * 1024,
+        10 * 1024 * 1024,
         "Maximum size in bytes for a POST body read into memory, e.g. JSON API requests - set 0 to disable this limit",
     ),
     Setting(
@@ -241,12 +241,12 @@ SETTINGS = (
         "Time limit for calculating a suggested facet",
     ),
     Setting(
-        "allow_facet",
+        "default_allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
     ),
     Setting(
-        "allow_download",
+        "default_allow_download",
         True,
         "Allow users to download the original SQLite database files",
     ),
@@ -273,14 +273,14 @@ SETTINGS = (
     ),
     Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
     Setting(
-        "allow_csv_stream",
+        "default_allow_stream",
         True,
-        "Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)",
+        "Allow ?_stream=1 to export all rows (ignoring max_returned_rows)",
     ),
     Setting(
-        "max_csv_mb",
+        "max_stream_mb",
         100,
-        "Maximum size allowed for CSV export in MB - set 0 to disable this limit",
+        "Maximum size allowed for a streamed export in MB - set 0 to disable this limit",
     ),
     Setting(
         "truncate_cells_html",
@@ -304,12 +304,63 @@ SETTINGS = (
     ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
-_HASH_URLS_REMOVED = "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead"
-OBSOLETE_SETTINGS = {
-    "hash_urls": _HASH_URLS_REMOVED,
-    "default_cache_ttl_hashed": _HASH_URLS_REMOVED,
-}
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
+# Previous names of settings that have been renamed, mapped to their new
+# names. The old names are not documented but still work everywhere a
+# setting can be set or read.
+SETTING_ALIASES = {
+    "allow_facet": "default_allow_facet",
+    "allow_download": "default_allow_download",
+    "allow_csv_stream": "default_allow_stream",
+    "max_csv_mb": "max_stream_mb",
+}
+
+
+# Arguments that output renderer render functions should no longer accept,
+# mapped to what to use instead
+DEPRECATED_RENDER_ARGUMENTS = {
+    "data": "Declare the extras it needs and use the page argument instead",
+    "args": "Use request.args instead",
+}
+
+
+def _warn_deprecated_render_argument(render, extension, argument, replacement):
+    message = (
+        f"Output renderer '{extension}' accepts the {argument} argument, which is "
+        f"deprecated and will be removed before Datasette 1.0. {replacement}: "
+        "https://docs.datasette.io/en/latest/plugin_hooks.html"
+        "#register-output-renderer-datasette"
+    )
+    code = getattr(render, "__code__", None)
+    if code is None:
+        warnings.warn(message, DeprecationWarning, stacklevel=2)
+    else:
+        # Report the warning against the render function itself, so the
+        # plugin author can see which code needs to change
+        warnings.warn_explicit(
+            message,
+            DeprecationWarning,
+            filename=code.co_filename,
+            lineno=code.co_firstlineno,
+            # module must be a string or some warnings are silently dropped
+            module=getattr(render, "__module__", None) or "datasette",
+        )
+
+
+def resolve_setting_aliases(settings, source):
+    """
+    Return a copy of the settings dictionary with any old setting names
+    replaced by their new names. source says where the settings came from,
+    for the error raised if a setting is given under both of its names.
+    """
+    for old_name, name in SETTING_ALIASES.items():
+        if old_name in settings and name in settings:
+            raise StartupError(
+                f"Setting '{name}' and its previous name '{old_name}' "
+                f"are both set in {source}"
+            )
+    return {SETTING_ALIASES.get(key, key): value for key, value in settings.items()}
+
 
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
@@ -385,14 +436,13 @@ def _resolve_static_asset_path(root_path, path):
 TEMPLATE_BASE_CONTEXT = {
     "request": "The current :ref:`Request object <internals_request>`, or None. Common properties include ``request.path``, ``request.args``, ``request.actor``, ``request.url_vars`` and ``request.host``.",
     "crumb_items": 'Async function returning breadcrumb navigation items for the current page. Call it with ``request=request`` plus optional ``database=`` and ``table=`` arguments; it returns a list of ``{"href": url, "label": label}`` dictionaries.',
-    "urls": "Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)`` and ``urls.static(path)`` - see :ref:`internals_datasette_urls`.",
+    "urls": "Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)``, ``urls.static(path)`` and ``urls.modify(request, ...)`` for links that change the current query string - see :ref:`internals_datasette_urls`.",
     "actor": "The currently authenticated actor dictionary, or None. Actors usually include an ``id`` key and may include any other keys supplied by authentication plugins.",
     "menu_links": "Async function returning links for the Datasette application menu, including links added by plugins. Each item is a link dictionary with ``href`` and ``label`` keys. See :ref:`plugin_hook_menu_links`; for page action menus that can also include JavaScript-backed buttons, see :ref:`plugin_actions`.",
     "display_actor": "Function that accepts an actor dictionary and returns the display string used in the navigation menu.",
     "show_logout": "True if the logout link should be shown in the navigation menu",
     "zip": "Python's ``zip()`` builtin, made available to template logic",
     "body_scripts": 'List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.',
-    "format_bytes": "Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.",
     "show_messages": "Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.",
     "extra_css_urls": "List of extra CSS stylesheets to include on the page. Each item is a dictionary with ``url`` and optional ``sri`` keys, from plugins and configuration.",
     "extra_js_urls": "List of extra JavaScript URLs to include on the page. Each item is a dictionary with ``url`` plus optional ``sri`` and ``module`` keys, from plugins and configuration.",
@@ -410,6 +460,7 @@ class Datasette:
     def __init__(
         self,
         files=None,
+        *,
         immutables=None,
         cache_headers=True,
         cors=False,
@@ -551,7 +602,9 @@ class Datasette:
             config = json.loads((config_dir / "datasette.json").read_text())
 
         config = config or {}
-        config_settings = config.get("settings") or {}
+        config_settings = resolve_setting_aliases(
+            config.get("settings") or {}, "config file"
+        )
 
         # Validate settings from config file
         for key, value in config_settings.items():
@@ -571,6 +624,7 @@ class Datasette:
 
         # Validate settings from constructor parameter
         if settings:
+            settings = resolve_setting_aliases(settings, "settings parameter")
             for key, value in settings.items():
                 if key not in DEFAULT_SETTINGS:
                     raise StartupError(f"Invalid setting '{key}' in settings parameter")
@@ -586,10 +640,16 @@ class Datasette:
 
         self.config = config
         # CLI settings should overwrite datasette.json settings
-        self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
+        self._settings = {
+            **DEFAULT_SETTINGS,
+            **config_settings,
+            **(settings or {}),
+        }
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         # File extension -> label, description, is_binary and is_webpage
         self._renderer_options = {}
+        self._renderer_extras = {}  # File extension -> extras the renderer declared
+        self._renderer_can_stream = {}  # File extension -> accepts row_stream
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
             self.executor = None
@@ -937,7 +997,7 @@ class Datasette:
                 return result
         return None
 
-    def get_database(self, name=None, route=None):
+    def get_database(self, name=None, *, route=None):
         if route is not None:
             matches = [db for db in self.databases.values() if db.route == route]
             if not matches:
@@ -947,7 +1007,7 @@ class Datasette:
             name = next(iter(self.databases.keys()))
         return self.databases[name]
 
-    def add_database(self, db, name=None, route=None):
+    def add_database(self, db, name=None, *, route=None):
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -966,7 +1026,7 @@ class Datasette:
         self.databases = new_databases
         return db
 
-    def add_memory_database(self, memory_name, name=None, route=None):
+    def add_memory_database(self, memory_name, name=None, *, route=None):
         return self.add_database(
             Database(self, memory_name=memory_name), name=name, route=route
         )
@@ -1008,11 +1068,15 @@ class Datasette:
             raise first_exception
 
     def setting(self, key):
-        return self._settings.get(key, None)
+        return self._settings.get(SETTING_ALIASES.get(key, key), None)
 
     def settings_dict(self):
         # Returns a fully resolved settings dictionary, useful for templates
-        return {option.name: self.setting(option.name) for option in SETTINGS}
+        settings = {option.name: self.setting(option.name) for option in SETTINGS}
+        # Custom templates may still use the previous name of a setting
+        for old_name, name in SETTING_ALIASES.items():
+            settings[old_name] = settings[name]
+        return settings
 
     def _metadata_recursive_update(self, orig, updated):
         if not isinstance(orig, dict) or not isinstance(updated, dict):
@@ -1468,7 +1532,7 @@ class Datasette:
     def get_internal_database(self):
         return self._internal_database
 
-    def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
+    def plugin_config(self, plugin_name, *, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
         if database is None and table is None:
             config = self._plugin_config_top(plugin_name)
@@ -1504,7 +1568,7 @@ class Datasette:
 
         # fallback to top-level if needed
         if db_plugin_config is None and fallback:
-            self._plugin_config_top(plugin_name)
+            return self._plugin_config_top(plugin_name)
 
         return db_plugin_config
 
@@ -2272,6 +2336,7 @@ ORDER BY allowed.parent, allowed.child
         db_name,
         sql,
         params=None,
+        *,
         truncate=False,
         custom_time_limit=None,
         page_size=None,
@@ -2567,11 +2632,37 @@ ORDER BY allowed.parent, allowed.child
 
         for renderer in hook_renderers:
             extension = renderer["extension"]
+            if not renderer.get("render"):
+                raise StartupError(
+                    f"Output renderer '{extension}' must have a 'render' function"
+                    + (
+                        " - the 'callback' key has been renamed to 'render'"
+                        if "callback" in renderer
+                        else ""
+                    )
+                )
             self.renderers[extension] = (
-                # It used to be called "callback" - remove this in Datasette 1.0
-                renderer.get("render") or renderer["callback"],
+                renderer["render"],
                 renderer.get("can_render") or (lambda: True),
             )
+            # Extras to resolve and pass to the render function as extras=
+            declared_extras = renderer.get("extras") or []
+            if isinstance(declared_extras, str) or not all(
+                isinstance(name, str) for name in declared_extras
+            ):
+                raise StartupError(
+                    f"Output renderer '{extension}' extras must be a list of strings"
+                )
+            self._renderer_extras[extension] = list(declared_extras)
+            render = self.renderers[extension][0]
+            render_parameters = inspect.signature(render).parameters
+            # Renderers that accept row_stream can stream every row
+            self._renderer_can_stream[extension] = "row_stream" in render_parameters
+            for deprecated, replacement in DEPRECATED_RENDER_ARGUMENTS.items():
+                if deprecated in render_parameters:
+                    _warn_deprecated_render_argument(
+                        render, extension, deprecated, replacement
+                    )
             # How the export dialog presents this format
             is_binary = bool(renderer.get("is_binary"))
             is_webpage = bool(renderer.get("is_webpage"))
@@ -2591,6 +2682,7 @@ ORDER BY allowed.parent, allowed.child
         self,
         templates: list[str] | str | Template,
         context: dict[str, Any] | Context | None = None,
+        *,
         request: Request | None = None,
         view_name: str | None = None,
     ):
@@ -2677,7 +2769,6 @@ ORDER BY allowed.parent, allowed.child
             and request.actor,
             "zip": zip,
             "body_scripts": body_scripts,
-            "format_bytes": format_bytes,
             "show_messages": lambda: self._show_messages(request),
             "extra_css_urls": await self._asset_urls(
                 "extra_css_urls", template, context, request, view_name
@@ -2703,7 +2794,7 @@ ORDER BY allowed.parent, allowed.child
         return await template.render_async(template_context)
 
     def set_actor_cookie(
-        self, response: Response, actor: dict, expire_after: int | None = None
+        self, response: Response, actor: dict, *, expire_after: int | None = None
     ):
         data = {"a": actor}
         if expire_after:
@@ -3157,7 +3248,7 @@ ORDER BY allowed.parent, allowed.child
         a chance to register work - the ordering guarantee that makes
         ``add_background_task`` useful. No-ops when
         ``_suppress_background_tasks`` is set (the ``--get`` CLI path: its
-        one-shot TestClient request flows through the full ASGI stack,
+        one-shot request flows through the full ASGI stack,
         including the first-request fallback, but must never launch
         long-lived background work).
         """
@@ -3336,26 +3427,40 @@ class DatasetteRouter:
 
         new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
         request.scope = new_scope
+        response_started = False
+
+        async def tracking_send(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
             response = await view(request, send)
             if response:
                 self.ds._write_messages_to_response(request, response)
-                await response.asgi_send(send)
+                await response.asgi_send(tracking_send)
             return
-        except NotFound as exception:
-            return await self.handle_404(request, send, exception)
-        except Forbidden as exception:
-            # Try the forbidden() plugin hook
-            for custom_response in pm.hook.forbidden(
-                datasette=self.ds, request=request, message=exception.args[0]
-            ):
-                custom_response = await await_me_maybe(custom_response)
-                assert (
-                    custom_response
-                ), "Default forbidden() hook should have been called"
-                return await custom_response.asgi_send(send)
-        except Exception as exception:  # noqa: BLE001
+        except Exception as exception:
             # This IS the top-level error handler - it must catch everything
+            if response_started:
+                # A streaming response failed part way through. It is too
+                # late to send an error page, so re-raise and let the server
+                # drop the connection: the client then sees a failed
+                # response, not a truncated one that looks complete.
+                raise
+            if isinstance(exception, NotFound):
+                return await self.handle_404(request, send, exception)
+            if isinstance(exception, Forbidden):
+                # Try the forbidden() plugin hook
+                for custom_response in pm.hook.forbidden(
+                    datasette=self.ds, request=request, message=exception.args[0]
+                ):
+                    custom_response = await await_me_maybe(custom_response)
+                    assert (
+                        custom_response
+                    ), "Default forbidden() hook should have been called"
+                    return await custom_response.asgi_send(send)
             return await self.handle_exception(request, send, exception)
 
     async def handle_401(self, request, send, exception):
@@ -3637,7 +3742,7 @@ class DatasetteClient:
         cookies["ds_actor"] = self.actor_cookie(actor)
         kwargs["cookies"] = cookies
 
-    async def _request(self, method, path, skip_permission_checks=False, **kwargs):
+    async def _request(self, method, path, *, skip_permission_checks=False, **kwargs):
         from datasette.permissions import SkipPermissions
 
         self._apply_actor(kwargs)
@@ -3656,42 +3761,42 @@ class DatasetteClient:
                 ) as client:
                     return await getattr(client, method)(self._fix(path), **kwargs)
 
-    async def get(self, path, skip_permission_checks=False, **kwargs):
+    async def get(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "get", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def options(self, path, skip_permission_checks=False, **kwargs):
+    async def options(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "options", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def head(self, path, skip_permission_checks=False, **kwargs):
+    async def head(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "head", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def post(self, path, skip_permission_checks=False, **kwargs):
+    async def post(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "post", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def put(self, path, skip_permission_checks=False, **kwargs):
+    async def put(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "put", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def patch(self, path, skip_permission_checks=False, **kwargs):
+    async def patch(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "patch", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def delete(self, path, skip_permission_checks=False, **kwargs):
+    async def delete(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "delete", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def request(self, method, path, skip_permission_checks=False, **kwargs):
+    async def request(self, method, path, *, skip_permission_checks=False, **kwargs):
         """Make an HTTP request with the specified method.
 
         Args:

@@ -43,18 +43,102 @@ def table_operation_tuples(analysis):
     ]
 
 
-def test_analyze_select_tables(conn):
-    analysis = analyze_sql_tables(
-        conn,
-        "select dogs.name, cats.name from dogs join cats on dogs.id = cats.id where dogs.age > ?",
-        (2,),
-        database_name="data",
-    )
-
-    assert set(table_operation_tuples(analysis)) == {
-        ("read", "data", "main", "cats", ("id", "name"), None),
-        ("read", "data", "main", "dogs", ("age", "id", "name"), None),
-    }
+@pytest.mark.parametrize(
+    "sql,params,expected",
+    (
+        pytest.param(
+            "select dogs.name, cats.name from dogs join cats on dogs.id = cats.id where dogs.age > ?",
+            (2,),
+            {
+                ("read", "data", "main", "cats", ("id", "name"), None),
+                ("read", "data", "main", "dogs", ("age", "id", "name"), None),
+            },
+            id="select",
+        ),
+        pytest.param(
+            "insert into dogs (name, age) values (:name, :age)",
+            {"name": "Cleo", "age": 4},
+            {
+                ("insert", "data", "main", "dogs", (), None),
+                ("read", "data", "main", "dogs", ("id", "name"), "dogs_after_insert"),
+                ("update", "data", "main", "cats", ("name",), "dogs_after_insert"),
+                ("read", "data", "main", "cats", ("id",), "dogs_after_insert"),
+                ("insert", "data", "main", "log", (), "dogs_after_insert"),
+            },
+            id="insert",
+        ),
+        pytest.param(
+            "update dogs set age = age + 1 where name = ?",
+            ("Cleo",),
+            {
+                ("update", "data", "main", "dogs", ("age",), None),
+                ("read", "data", "main", "dogs", ("age", "name"), None),
+            },
+            id="update",
+        ),
+        pytest.param(
+            "delete from dogs where name = ?",
+            ("Cleo",),
+            {
+                ("delete", "data", "main", "dogs", (), None),
+                ("read", "data", "main", "dogs", ("name",), None),
+            },
+            id="delete",
+        ),
+        pytest.param(
+            """
+        with old_dogs as (
+            select name from dogs where age > :age
+        )
+        insert into cats (name)
+        select name from old_dogs
+        """,
+            {"age": 10},
+            {
+                ("insert", "data", "main", "cats", (), None),
+                ("read", "data", "main", "dogs", ("age", "name"), "old_dogs"),
+            },
+            id="insert_select_with_cte",
+        ),
+        pytest.param(
+            "update dog_names set name = :name where id = :id",
+            {"name": "Zelda", "id": 1},
+            {
+                ("update", "data", "main", "dog_names", ("name",), None),
+                ("read", "data", "main", "dogs", ("id", "name"), "dog_names"),
+                ("read", "data", "main", "dog_names", ("id", "name"), "dog_names"),
+                (
+                    "read",
+                    "data",
+                    "main",
+                    "dog_names",
+                    ("id", "name"),
+                    "dog_names_instead_of_update",
+                ),
+                (
+                    "update",
+                    "data",
+                    "main",
+                    "dogs",
+                    ("name",),
+                    "dog_names_instead_of_update",
+                ),
+                (
+                    "read",
+                    "data",
+                    "main",
+                    "dogs",
+                    ("id",),
+                    "dog_names_instead_of_update",
+                ),
+            },
+            id="view_with_instead_of_trigger",
+        ),
+    ),
+)
+def test_analyze_tables(conn, sql, params, expected):
+    analysis = analyze_sql_tables(conn, sql, params, database_name="data")
+    assert set(table_operation_tuples(analysis)) == expected
 
 
 def test_analyze_uses_sqlite_schema_as_default_database(conn):
@@ -330,96 +414,6 @@ def test_analyze_create_table_as_select_function_is_not_internal():
         "source": None,
         "internal": False,
     } in [operation_dict(operation) for operation in analysis.operations]
-
-
-def test_analyze_insert_tables(conn):
-    analysis = analyze_sql_tables(
-        conn,
-        "insert into dogs (name, age) values (:name, :age)",
-        {"name": "Cleo", "age": 4},
-        database_name="data",
-    )
-
-    assert set(table_operation_tuples(analysis)) == {
-        ("insert", "data", "main", "dogs", (), None),
-        ("read", "data", "main", "dogs", ("id", "name"), "dogs_after_insert"),
-        ("update", "data", "main", "cats", ("name",), "dogs_after_insert"),
-        ("read", "data", "main", "cats", ("id",), "dogs_after_insert"),
-        ("insert", "data", "main", "log", (), "dogs_after_insert"),
-    }
-
-
-def test_analyze_update_tables(conn):
-    analysis = analyze_sql_tables(
-        conn,
-        "update dogs set age = age + 1 where name = ?",
-        ("Cleo",),
-        database_name="data",
-    )
-
-    assert set(table_operation_tuples(analysis)) == {
-        ("update", "data", "main", "dogs", ("age",), None),
-        ("read", "data", "main", "dogs", ("age", "name"), None),
-    }
-
-
-def test_analyze_delete_tables(conn):
-    analysis = analyze_sql_tables(
-        conn,
-        "delete from dogs where name = ?",
-        ("Cleo",),
-        database_name="data",
-    )
-
-    assert set(table_operation_tuples(analysis)) == {
-        ("delete", "data", "main", "dogs", (), None),
-        ("read", "data", "main", "dogs", ("name",), None),
-    }
-
-
-def test_analyze_insert_select_with_cte(conn):
-    analysis = analyze_sql_tables(
-        conn,
-        """
-        with old_dogs as (
-            select name from dogs where age > :age
-        )
-        insert into cats (name)
-        select name from old_dogs
-        """,
-        {"age": 10},
-        database_name="data",
-    )
-
-    assert set(table_operation_tuples(analysis)) == {
-        ("insert", "data", "main", "cats", (), None),
-        ("read", "data", "main", "dogs", ("age", "name"), "old_dogs"),
-    }
-
-
-def test_analyze_view_with_instead_of_trigger(conn):
-    analysis = analyze_sql_tables(
-        conn,
-        "update dog_names set name = :name where id = :id",
-        {"name": "Zelda", "id": 1},
-        database_name="data",
-    )
-
-    assert set(table_operation_tuples(analysis)) == {
-        ("update", "data", "main", "dog_names", ("name",), None),
-        ("read", "data", "main", "dogs", ("id", "name"), "dog_names"),
-        ("read", "data", "main", "dog_names", ("id", "name"), "dog_names"),
-        (
-            "read",
-            "data",
-            "main",
-            "dog_names",
-            ("id", "name"),
-            "dog_names_instead_of_update",
-        ),
-        ("update", "data", "main", "dogs", ("name",), "dog_names_instead_of_update"),
-        ("read", "data", "main", "dogs", ("id",), "dog_names_instead_of_update"),
-    }
 
 
 def test_analyze_attached_database_tables(conn):

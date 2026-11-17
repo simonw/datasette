@@ -2133,11 +2133,24 @@ async function saveTableCreateDialog(state) {
   }
 }
 
+// Asks before throwing away unsaved changes, using a nested dialog because
+// native prompts such as window.confirm() can be silently dismissed by
+// embedded browsers. Returns a promise for modal.beforeClose(), which keeps
+// the dialog open unless the user chooses to discard.
+function confirmDiscardInDialog(message) {
+  return DatasetteModal.confirm({
+    message: message,
+    confirmLabel: "Discard",
+    cancelLabel: "Keep editing",
+    danger: true,
+  });
+}
+
 function confirmDiscardTableCreateChanges(state) {
   if (!tableCreateDialogHasChanges(state)) {
     return true;
   }
-  return window.confirm("Discard this new table?");
+  return confirmDiscardInDialog("Discard this new table?");
 }
 
 function ensureTableCreateDialog(manager) {
@@ -2393,7 +2406,7 @@ function setRowDeleteDialogBusy(state, isBusy) {
   state.modal.busy = isBusy;
   state.confirmButton.disabled = isBusy;
   state.cancelButton.disabled = isBusy;
-  state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete row";
+  state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete";
 }
 
 function clearRowDeleteDialogError(state) {
@@ -2642,6 +2655,9 @@ function setTableAlterDialogSaving(state, isSaving) {
   state.addColumnButton.disabled = isSaving;
   state.backButton.disabled = isSaving;
   state.dropButton.disabled = isSaving;
+  state.dropConfirmButton.disabled = isSaving;
+  state.dropConfirmButton.textContent =
+    isSaving && state.mode === "drop" ? "Dropping..." : "Drop table";
   state.saveButton.textContent = isSaving
     ? state.mode === "review"
       ? "Applying..."
@@ -3677,9 +3693,46 @@ function showTableAlterEditor(state) {
   state.backButton.hidden = true;
   var data = tableAlterData();
   state.dropButton.hidden = !(data && data.dropPath);
+  state.dropConfirmButton.hidden = true;
+  state.saveButton.hidden = false;
   state.saveButton.textContent = tableAlterSaveButtonText(state);
   updateTableAlterMoveButtons(state);
   updateTableAlterSaveButtonState(state);
+}
+
+// Dropping is confirmed in the dialog itself, because embedded browsers can
+// silently dismiss native prompts
+function showTableAlterDropConfirmation(state) {
+  var data = tableAlterData();
+  if (state.isSaving || !data || !data.dropPath) {
+    return;
+  }
+  clearTableAlterDialogError(state);
+  state.mode = "drop";
+  state.reviewResult = null;
+  state.fields.hidden = true;
+  state.review.hidden = false;
+  state.review.textContent = "";
+  state.backButton.hidden = false;
+  state.dropButton.hidden = true;
+  state.saveButton.hidden = true;
+  state.dropConfirmButton.hidden = false;
+
+  var heading = document.createElement("h3");
+  heading.className = "table-alter-review-title";
+  heading.tabIndex = -1;
+  heading.textContent = "Drop table";
+  state.review.appendChild(heading);
+
+  var warning = document.createElement("p");
+  warning.className = "table-alter-review-warning";
+  warning.setAttribute("role", "alert");
+  warning.textContent =
+    'Permanently delete the table "' +
+    data.tableName +
+    '"? This will delete all of its data and cannot be undone.';
+  state.review.appendChild(warning);
+  heading.focus();
 }
 
 function showTableAlterReview(state, result) {
@@ -3802,16 +3855,7 @@ async function dropTableFromAlterDialog(state) {
     return;
   }
   var data = tableAlterData();
-  if (!data || !data.dropPath) {
-    return;
-  }
-  if (
-    !window.confirm(
-      'Permanently delete the table "' +
-        data.tableName +
-        '"? This will delete all of its data and cannot be undone.',
-    )
-  ) {
+  if (!data || !data.dropPath || state.mode !== "drop") {
     return;
   }
   clearTableAlterDialogError(state);
@@ -3843,7 +3887,7 @@ async function dropTableFromAlterDialog(state) {
 }
 
 async function saveTableAlterDialog(state) {
-  if (state.isSaving) {
+  if (state.isSaving || state.mode === "drop") {
     return;
   }
   if (state.mode === "review") {
@@ -3867,7 +3911,7 @@ function confirmDiscardTableAlterChanges(state) {
   if (!tableAlterDialogHasChanges(state)) {
     return true;
   }
-  return window.confirm("Discard table changes?");
+  return confirmDiscardInDialog("Discard table changes?");
 }
 
 function ensureTableAlterDialog(manager) {
@@ -3913,6 +3957,7 @@ function ensureTableAlterDialog(manager) {
         <button type="button" class="modal-btn modal-btn-danger table-alter-drop" hidden>Drop table</button>
         <button type="button" class="modal-btn modal-btn-ghost table-alter-back" hidden>Back</button>
         <button type="button" class="modal-btn modal-btn-ghost table-alter-cancel">Cancel</button>
+        <button type="button" class="modal-btn modal-btn-danger table-alter-drop-confirm" hidden>Drop table</button>
         <button type="submit" class="modal-btn modal-btn-primary table-alter-save">Review changes</button>
       </div>
     </form>
@@ -3933,6 +3978,7 @@ function ensureTableAlterDialog(manager) {
     addColumnButton: dialog.querySelector(".table-alter-add-column"),
     backButton: dialog.querySelector(".table-alter-back"),
     dropButton: dialog.querySelector(".table-alter-drop"),
+    dropConfirmButton: dialog.querySelector(".table-alter-drop-confirm"),
     cancelButton: dialog.querySelector(".table-alter-cancel"),
     saveButton: dialog.querySelector(".table-alter-save"),
     isSaving: false,
@@ -3980,8 +4026,15 @@ function ensureTableAlterDialog(manager) {
   });
 
   tableAlterDialogState.dropButton.addEventListener("click", function () {
-    dropTableFromAlterDialog(tableAlterDialogState);
+    showTableAlterDropConfirmation(tableAlterDialogState);
   });
+
+  tableAlterDialogState.dropConfirmButton.addEventListener(
+    "click",
+    function () {
+      dropTableFromAlterDialog(tableAlterDialogState);
+    },
+  );
 
   tableAlterDialogState.backButton.addEventListener("click", function () {
     if (tableAlterDialogState.isSaving) {
@@ -4337,11 +4390,14 @@ function ensureRowDeleteDialog(manager) {
     <div class="modal-header">
       <span class="modal-title" id="row-delete-title">Delete row</span>
     </div>
-    <p class="row-delete-message" id="row-delete-message">Delete row <span class="row-delete-id"></span>?</p>
+    <div class="row-delete-message" id="row-delete-message">
+      <p class="row-delete-label" hidden></p>
+      <p>This can't be undone.</p>
+    </div>
     <p class="row-delete-error" role="alert" hidden></p>
     <div class="modal-footer">
       <button type="button" class="modal-btn modal-btn-ghost row-delete-cancel">Cancel</button>
-      <button type="button" class="modal-btn modal-btn-primary row-delete-confirm">Delete row</button>
+      <button type="button" class="modal-btn modal-btn-danger row-delete-confirm">Delete</button>
     </div>
   `;
   document.body.appendChild(modal);
@@ -4351,7 +4407,7 @@ function ensureRowDeleteDialog(manager) {
     dialog: dialog,
     title: dialog.querySelector(".modal-title"),
     message: dialog.querySelector(".row-delete-message"),
-    rowId: dialog.querySelector(".row-delete-id"),
+    label: dialog.querySelector(".row-delete-label"),
     error: dialog.querySelector(".row-delete-error"),
     cancelButton: dialog.querySelector(".row-delete-cancel"),
     confirmButton: dialog.querySelector(".row-delete-confirm"),
@@ -4438,6 +4494,24 @@ function ensureRowDeleteDialog(manager) {
   return rowDeleteDialogState;
 }
 
+// The title is the question: "Delete row 44171283 from releases?" The
+// row's label, if it has one, goes in the body above the warning.
+function setRowDeleteDialogTitle(title, rowId, tableName) {
+  title.textContent = "";
+  if (rowId) {
+    title.appendChild(document.createTextNode("Delete row "));
+    var code = document.createElement("code");
+    code.textContent = rowId;
+    title.appendChild(code);
+  } else {
+    title.appendChild(document.createTextNode("Delete this row"));
+  }
+  if (tableName) {
+    title.appendChild(document.createTextNode(" from " + tableName));
+  }
+  title.appendChild(document.createTextNode("?"));
+}
+
 function openRowDeleteDialog(button, manager) {
   var row = rowElementForActionButton(button);
   if (!row || !row.getAttribute("data-row")) {
@@ -4455,13 +4529,14 @@ function openRowDeleteDialog(button, manager) {
 
   clearRowDeleteDialogError(state);
   setRowDeleteDialogBusy(state, false);
-  setRowDialogTitle(
+  setRowDeleteDialogTitle(
     state.title,
-    "Delete row",
-    state.currentPkPath || "this row",
-    rowTitleLabel(row),
+    state.currentPkPath,
+    tablePageData().table,
   );
-  state.rowId.textContent = state.currentPkPath || "this row";
+  var rowLabel = rowTitleLabel(row);
+  state.label.textContent = rowLabel;
+  state.label.hidden = !rowLabel || rowLabel === state.currentPkPath;
 
   state.modal.show({ returnFocusTo: button });
   state.confirmButton.focus();
@@ -5691,7 +5766,7 @@ function confirmDiscardRowEditChanges(state) {
     state.mode === "insert"
       ? "Discard this new row?"
       : "Discard unsaved changes to this row?";
-  return window.confirm(message);
+  return confirmDiscardInDialog(message);
 }
 
 function setRowInsertDialogTitle(state) {
@@ -6742,7 +6817,7 @@ async function saveRowEditDialog(state) {
 }
 
 function renderRowEditFields(state, data) {
-  var row = data.rows && data.rows.length ? data.rows[0] : null;
+  var row = data.row || null;
   var columns = data.columns || (row ? Object.keys(row) : []);
   var primaryKeys = data.primary_keys || [];
   var columnTypes = data.column_types || {};

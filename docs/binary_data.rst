@@ -97,11 +97,11 @@ https://latest.datasette.io/fixtures/binary_data/1.blob?_blob_column=data
 
 This output format can also be used to return binary data from an arbitrary SQL query. Since such queries do not specify an exact row, an additional ``?_blob_hash=`` parameter can be used to specify the SHA-256 hash of the value that is being linked to.
 
-Consider the query ``select data from binary_data`` - `demonstrated here <https://latest.datasette.io/fixtures?sql=select+data+from+binary_data>`__.
+Consider the query ``select data from binary_data`` - `demonstrated here <https://latest.datasette.io/fixtures/-/query?sql=select+data+from+binary_data>`__.
 
 That page links to the binary value downloads. Those links look like this:
 
-https://latest.datasette.io/fixtures.blob?sql=select+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d
+https://latest.datasette.io/fixtures/-/query.blob?sql=select+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d
 
 These ``.blob`` links are also returned in the ``.csv`` and ``.tsv`` exports Datasette provides for binary tables and queries, since those formats do not have a mechanism for representing binary data.
 

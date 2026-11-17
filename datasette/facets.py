@@ -1,4 +1,5 @@
 import json
+import time
 import urllib
 
 from datasette import hookimpl
@@ -6,10 +7,28 @@ from datasette.database import QueryInterrupted
 from datasette.utils import (
     detect_json1,
     escape_sqlite,
-    path_with_added_args,
-    path_with_removed_args,
     sqlite3,
 )
+
+# Suggesting facets for a page can take at most this many multiples of
+# the facet_suggest_time_limit_ms setting in total, see #862
+SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE = 10
+
+
+def start_suggest_deadline(ds, facet_instances):
+    """
+    Start the clock on the total time allowed for suggesting facets for a
+    page, sharing a single deadline across all of the facet instances.
+    """
+    time_limit_ms = ds.setting("facet_suggest_time_limit_ms")
+    if not time_limit_ms:
+        # 0 means no per-query suggestion limit, so no total limit either
+        return
+    deadline = (
+        time.monotonic() + SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE * time_limit_ms / 1000
+    )
+    for facet in facet_instances:
+        facet.suggest_deadline = deadline
 
 
 def load_facet_configs(request, table_config):
@@ -68,6 +87,10 @@ class Facet:
     type = None
     # How many rows to consider when suggesting facets:
     suggest_consider = 1000
+    # time.monotonic() value after which suggest() should stop considering
+    # further columns, or None for no deadline. Shared by every facet
+    # instance on a page, see start_suggest_deadline()
+    suggest_deadline = None
 
     def __init__(
         self,
@@ -134,6 +157,17 @@ class Facet:
     async def suggest(self):
         return []
 
+    def suggest_time_exceeded(self):
+        """
+        True if the page has used up its total time budget for suggesting
+        facets. suggest() implementations should check this before running
+        the query for each column and stop if it returns True.
+        """
+        return (
+            self.suggest_deadline is not None
+            and time.monotonic() >= self.suggest_deadline
+        )
+
     async def facet_results(self):
         # returns ([results], [timed_out])
         # TODO: Include "hideable" with each one somehow, which indicates if it was
@@ -159,6 +193,8 @@ class ColumnFacet(Facet):
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             suggested_facet_sql = f"""
@@ -189,10 +225,8 @@ class ColumnFacet(Facet):
                             "name": column,
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
-                                self.ds.urls.path(
-                                    path_with_added_args(
-                                        self.request, {"_facet": column}
-                                    )
+                                self.ds.urls.modify(
+                                    self.request, add={"_facet": column}
                                 ),
                             ),
                         }
@@ -244,8 +278,8 @@ class ColumnFacet(Facet):
                         "name": column,
                         "type": self.type,
                         "hideable": source != "metadata",
-                        "toggle_url": self.ds.urls.path(
-                            path_with_removed_args(self.request, {"_facet": column})
+                        "toggle_url": self.ds.urls.modify(
+                            self.request, remove={"_facet": column}
                         ),
                         "results": facet_results_values,
                         "truncated": len(facet_rows_results) > facet_size,
@@ -271,12 +305,12 @@ class ColumnFacet(Facet):
                     }
                     selected = bool(selected_args)
                     if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, selected_args
+                        toggle_path = self.ds.urls.modify(
+                            self.request, remove=[*selected_args.items(), "_next"]
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {column_qs: row["value"]}
+                        toggle_path = self.ds.urls.modify(
+                            self.request, add={column_qs: row["value"]}, remove="_next"
                         )
                     facet_results_values.append(
                         {
@@ -284,7 +318,7 @@ class ColumnFacet(Facet):
                             "label": expanded.get((column, row["value"]), row["value"]),
                             "count": row["count"],
                             "toggle_url": self.ds.absolute_url(
-                                self.request, self.ds.urls.path(toggle_path)
+                                self.request, toggle_path
                             ),
                             "selected": selected,
                         }
@@ -313,6 +347,8 @@ class ArrayFacet(Facet):
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             # Is every value in this column either null or a JSON array?
@@ -366,10 +402,8 @@ class ArrayFacet(Facet):
                                 "type": "array",
                                 "toggle_url": self.ds.absolute_url(
                                     self.request,
-                                    self.ds.urls.path(
-                                        path_with_added_args(
-                                            self.request, {"_facet_array": column}
-                                        )
+                                    self.ds.urls.modify(
+                                        self.request, add={"_facet_array": column}
                                     ),
                                 ),
                             }
@@ -424,10 +458,8 @@ class ArrayFacet(Facet):
                         "type": self.type,
                         "results": facet_results_values,
                         "hideable": source != "metadata",
-                        "toggle_url": self.ds.urls.path(
-                            path_with_removed_args(
-                                self.request, {"_facet_array": column}
-                            )
+                        "toggle_url": self.ds.urls.modify(
+                            self.request, remove={"_facet_array": column}
                         ),
                         "truncated": len(facet_rows_results) > facet_size,
                     }
@@ -438,12 +470,15 @@ class ArrayFacet(Facet):
                     value = str(row["value"])
                     selected = (f"{column}__arraycontains", value) in pairs
                     if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, {f"{column}__arraycontains": value}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            remove=[(f"{column}__arraycontains", value), "_next"],
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {f"{column}__arraycontains": value}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            add={f"{column}__arraycontains": value},
+                            remove="_next",
                         )
                     facet_results_values.append(
                         {
@@ -470,6 +505,8 @@ class DateFacet(Facet):
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         suggested_facets = []
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             # Does this column contain any dates in the first 100 rows?
@@ -495,10 +532,8 @@ class DateFacet(Facet):
                             "type": "date",
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
-                                self.ds.urls.path(
-                                    path_with_added_args(
-                                        self.request, {"_facet_date": column}
-                                    )
+                                self.ds.urls.modify(
+                                    self.request, add={"_facet_date": column}
                                 ),
                             ),
                         }
@@ -539,8 +574,8 @@ class DateFacet(Facet):
                         "type": self.type,
                         "results": facet_results_values,
                         "hideable": source != "metadata",
-                        "toggle_url": path_with_removed_args(
-                            self.request, {"_facet_date": column}
+                        "toggle_url": self.ds.urls.modify(
+                            self.request, remove={"_facet_date": column}
                         ),
                         "truncated": len(facet_rows_results) > facet_size,
                     }
@@ -549,12 +584,15 @@ class DateFacet(Facet):
                 for row in facet_rows:
                     selected = str(args.get(f"{column}__date")) == str(row["value"])
                     if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, {f"{column}__date": str(row["value"])}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            remove=[(f"{column}__date", row["value"]), "_next"],
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {f"{column}__date": row["value"]}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            add={f"{column}__date": row["value"]},
+                            remove="_next",
                         )
                     facet_results_values.append(
                         {

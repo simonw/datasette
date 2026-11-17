@@ -44,7 +44,6 @@ def test_load_extension_is_disabled(load_fails):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not has_compiled_ext(), reason="Requires compiled ext.c")
 async def test_load_extension_default_entrypoint():
     # The default entrypoint only loads a() and NOT b() or c(), so those
@@ -64,7 +63,6 @@ async def test_load_extension_default_entrypoint():
     assert response.json()["error"] == "no such function: c"
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not has_compiled_ext(), reason="Requires compiled ext.c")
 async def test_load_extension_multiple_entrypoints():
     # Load in the default entrypoint and the other 2 custom entrypoints, now
@@ -90,7 +88,6 @@ async def test_load_extension_multiple_entrypoints():
     assert response.json()["rows"][0][0] == "c"
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not has_compiled_ext(), reason="Requires compiled ext.c")
 async def test_sql_cannot_load_additional_extension():
     ds = Datasette(sqlite_extensions=[COMPILED_EXTENSION_PATH])

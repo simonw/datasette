@@ -18,7 +18,7 @@
 {% endif %}
 <script src="{{ static('table-layout.js') }}" defer></script>
 <script src="{{ static('mobile-column-actions.js') }}" defer></script>
-<script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
+<script>DATASETTE_ALLOW_FACET = {{ settings.default_allow_facet|tojson }};</script>
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in display_columns -%}
@@ -32,6 +32,8 @@
 {% block crumbs %}
 {{ crumbs.nav(request=request, database=database, table=table) }}
 {% endblock %}
+
+{% block recent_item %}{% with recent_type=("view" if is_view else "table"), recent_name=table, recent_title=metadata.get("title"), recent_url=urls.table(database, table) %}{% include "_recent_item.html" %}{% endwith %}{% endblock %}
 
 {% block content %}
 <div class="page-header" style="border-color: #{{ database_color }}">
@@ -257,14 +259,20 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 {% if table_definition %}
 <details class="table-schema">
     <summary>Table schema</summary>
-    <pre class="wrapped-sql">{{ table_definition }}</pre>
+    <div class="copyable-sql">
+        <pre class="wrapped-sql" id="table-schema-sql">{{ table_definition }}</pre>
+        <datasette-copy-button for="table-schema-sql" name="table schema"></datasette-copy-button>
+    </div>
 </details>
 {% endif %}
 
 {% if view_definition %}
 <details class="table-schema">
     <summary>View definition</summary>
-    <pre class="wrapped-sql">{{ view_definition }}</pre>
+    <div class="copyable-sql">
+        <pre class="wrapped-sql" id="view-definition-sql">{{ view_definition }}</pre>
+        <datasette-copy-button for="view-definition-sql" name="view definition"></datasette-copy-button>
+    </div>
 </details>
 {% endif %}
 

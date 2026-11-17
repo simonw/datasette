@@ -3,14 +3,14 @@ import urllib
 
 import pytest
 
+from datasette.app import Datasette
 from datasette.fixtures import generate_compound_rows, generate_sortable_rows
 from datasette.utils import detect_json1, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 
-from .fixtures import make_app_client
+from .fixtures import make_ds
 
 
-@pytest.mark.asyncio
 async def test_table_json(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_extra=query")
     assert response.status_code == 200
@@ -29,7 +29,6 @@ async def test_table_json(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_not_exists_json(ds_client):
     assert (await ds_client.get("/fixtures/blah.json")).json() == {
         "ok": False,
@@ -39,7 +38,6 @@ async def test_table_not_exists_json(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_table_shape_arrays(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=arrays")
     assert response.json()["rows"] == [
@@ -51,7 +49,6 @@ async def test_table_shape_arrays(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_shape_arrayfirst(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?"
@@ -71,7 +68,6 @@ async def test_table_shape_arrayfirst(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_query_extras_for_arbitrary_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?"
@@ -95,7 +91,6 @@ async def test_query_extras_for_arbitrary_sql(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_query_extras_for_stored_query(ds_client):
     response = await ds_client.get(
         "/fixtures/neighborhood_search.json?"
@@ -121,7 +116,6 @@ async def test_query_extras_for_stored_query(ds_client):
 
 
 @pytest.mark.parametrize("extra", ["filters", "actions", "display_rows"])
-@pytest.mark.asyncio
 async def test_html_only_extras_are_not_available_via_json(ds_client, extra):
     # These extras exist for the HTML view; their values are not JSON
     # serializable so they are internal, not part of the JSON API
@@ -130,7 +124,6 @@ async def test_html_only_extras_are_not_available_via_json(ds_client, extra):
     assert response.json()["errors"] == [f"Unknown _extra: {extra}"]
 
 
-@pytest.mark.asyncio
 async def test_html_only_extras_are_not_advertised(ds_client):
     response = await ds_client.get("/fixtures/facetable.json?_extra=extras")
     assert response.status_code == 200
@@ -138,21 +131,21 @@ async def test_html_only_extras_are_not_advertised(ds_client):
     assert {"filters", "actions", "display_rows"}.isdisjoint(names)
 
 
-def test_query_extra_private_for_arbitrary_sql():
-    with make_app_client(config={"allow_sql": {"id": "root"}}) as client:
-        cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
-        response = client.get(
-            "/fixtures/-/query.json?sql=select+1+as+one&_extra=private",
-            cookies=cookies,
-        )
-        assert response.status == 200
-        assert response.json["private"] is True
-        # Anonymous users cannot execute SQL at all here
-        anon = client.get("/fixtures/-/query.json?sql=select+1+as+one")
-        assert anon.status == 403
+async def test_query_extra_private_for_arbitrary_sql():
+    ds = await make_ds(config={"allow_sql": {"id": "root"}})
+    cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    response = await ds.client.get(
+        "/fixtures/-/query.json?sql=select+1+as+one&_extra=private",
+        cookies=cookies,
+    )
+    assert response.status_code == 200
+    assert response.json()["private"] is True
+    # Anonymous users cannot execute SQL at all here
+    anon = await ds.client.get("/fixtures/-/query.json?sql=select+1+as+one")
+    assert anon.status_code == 403
 
 
-def test_query_extra_query_reports_bound_params():
+async def test_query_extra_query_reports_bound_params():
     config = {
         "databases": {
             "fixtures": {
@@ -168,40 +161,41 @@ def test_query_extra_query_reports_bound_params():
             }
         }
     }
-    with make_app_client(config=config) as client:
-        # Declared parameters are reported even when the regex cannot find them
-        response = client.get("/fixtures/declared_params.json?foo=bar&_extra=query")
-        assert response.status == 200
-        assert response.json["query"]["params"] == {"foo": "bar"}
-        # Magic parameters are bound internally and should not be reported,
-        # especially not as a value taken from the querystring
-        response = client.get(
-            "/fixtures/magic_host.json?_extra=query&_header_host=spoofed"
-        )
-        assert response.status == 200
-        assert response.json["rows"] == [{"h": "localhost"}]
-        assert response.json["query"]["params"] == {}
+    ds = await make_ds(config=config)
+    # Declared parameters are reported even when the regex cannot find them
+    response = await ds.client.get(
+        "/fixtures/declared_params.json?foo=bar&_extra=query"
+    )
+    assert response.status_code == 200
+    assert response.json()["query"]["params"] == {"foo": "bar"}
+    # Magic parameters are bound internally and should not be reported,
+    # especially not as a value taken from the querystring
+    response = await ds.client.get(
+        "/fixtures/magic_host.json?_extra=query&_header_host=spoofed"
+    )
+    assert response.status_code == 200
+    assert response.json()["rows"] == [{"h": "localhost"}]
+    assert response.json()["query"]["params"] == {}
 
 
-def test_query_extra_query_does_not_echo_querystring():
-    with make_app_client() as client:
-        response = client.get(
-            "/fixtures/-/query.json?sql=select+1&_extra=query&foo=bar"
-        )
-        assert response.status == 200
-        assert response.json["query"]["params"] == {}
+async def test_query_extra_query_does_not_echo_querystring():
+    ds = await make_ds()
+    response = await ds.client.get(
+        "/fixtures/-/query.json?sql=select+1&_extra=query&foo=bar"
+    )
+    assert response.status_code == 200
+    assert response.json()["query"]["params"] == {}
 
 
-def test_query_extra_private_false_when_sql_is_public():
-    with make_app_client() as client:
-        response = client.get(
-            "/fixtures/-/query.json?sql=select+1+as+one&_extra=private"
-        )
-        assert response.status == 200
-        assert response.json["private"] is False
+async def test_query_extra_private_false_when_sql_is_public():
+    ds = await make_ds()
+    response = await ds.client.get(
+        "/fixtures/-/query.json?sql=select+1+as+one&_extra=private"
+    )
+    assert response.status_code == 200
+    assert response.json()["private"] is False
 
 
-@pytest.mark.asyncio
 async def test_table_shape_objects(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=objects")
     assert response.json()["rows"] == [
@@ -213,10 +207,54 @@ async def test_table_shape_objects(ds_client):
     ]
 
 
-@pytest.mark.asyncio
-async def test_table_shape_array(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=array")
-    assert response.json() == [
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        pytest.param(
+            "/fixtures/simple_primary_key.json?_shape=array",
+            [
+                {"id": 1, "content": "hello"},
+                {"id": 2, "content": "world"},
+                {"id": 3, "content": ""},
+                {"id": 4, "content": "RENDER_CELL_DEMO"},
+                {"id": 5, "content": "RENDER_CELL_ASYNC"},
+            ],
+            id="array",
+        ),
+        pytest.param(
+            "/fixtures/simple_primary_key.json?_shape=object",
+            {
+                "1": {"id": 1, "content": "hello"},
+                "2": {"id": 2, "content": "world"},
+                "3": {"id": 3, "content": ""},
+                "4": {"id": 4, "content": "RENDER_CELL_DEMO"},
+                "5": {"id": 5, "content": "RENDER_CELL_ASYNC"},
+            },
+            id="object",
+        ),
+        pytest.param(
+            "/fixtures/compound_primary_key.json?_shape=object",
+            {
+                "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
+                "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
+                "d,e": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"},
+            },
+            id="object_compound_primary_key",
+        ),
+    ),
+)
+async def test_table_shape_array_and_object(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.json() == expected
+
+
+async def test_table_shape_array_nl(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key.json?_shape=array&_nl=on"
+    )
+    lines = response.text.split("\n")
+    results = [json.loads(line) for line in lines]
+    assert results == [
         {"id": 1, "content": "hello"},
         {"id": 2, "content": "world"},
         {"id": 3, "content": ""},
@@ -225,23 +263,6 @@ async def test_table_shape_array(ds_client):
     ]
 
 
-@pytest.mark.asyncio
-async def test_table_shape_array_nl(ds_client):
-    response = await ds_client.get(
-        "/fixtures/simple_primary_key.json?_shape=array&_nl=on"
-    )
-    lines = response.text.split("\n")
-    results = [json.loads(line) for line in lines]
-    assert [
-        {"id": 1, "content": "hello"},
-        {"id": 2, "content": "world"},
-        {"id": 3, "content": ""},
-        {"id": 4, "content": "RENDER_CELL_DEMO"},
-        {"id": 5, "content": "RENDER_CELL_ASYNC"},
-    ] == results
-
-
-@pytest.mark.asyncio
 async def test_table_shape_invalid(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=invalid")
     assert response.json() == {
@@ -252,29 +273,6 @@ async def test_table_shape_invalid(ds_client):
     }
 
 
-@pytest.mark.asyncio
-async def test_table_shape_object(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=object")
-    assert response.json() == {
-        "1": {"id": 1, "content": "hello"},
-        "2": {"id": 2, "content": "world"},
-        "3": {"id": 3, "content": ""},
-        "4": {"id": 4, "content": "RENDER_CELL_DEMO"},
-        "5": {"id": 5, "content": "RENDER_CELL_ASYNC"},
-    }
-
-
-@pytest.mark.asyncio
-async def test_table_shape_object_compound_primary_key(ds_client):
-    response = await ds_client.get("/fixtures/compound_primary_key.json?_shape=object")
-    assert response.json() == {
-        "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
-        "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
-        "d,e": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"},
-    }
-
-
-@pytest.mark.asyncio
 async def test_table_with_slashes_in_name(ds_client):
     response = await ds_client.get(
         "/fixtures/table~2Fwith~2Fslashes~2Ecsv.json?_shape=objects"
@@ -284,7 +282,6 @@ async def test_table_with_slashes_in_name(ds_client):
     assert data["rows"] == [{"pk": "3", "content": "hey"}]
 
 
-@pytest.mark.asyncio
 async def test_table_with_reserved_word_name(ds_client):
     response = await ds_client.get("/fixtures/select.json?_shape=objects")
     assert response.status_code == 200
@@ -300,7 +297,6 @@ async def test_table_with_reserved_word_name(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_rows,expected_pages",
     [
@@ -336,11 +332,10 @@ async def test_paginate_tables_and_views(
             path = path.replace("http://localhost", "")
         assert count < 30, "Possible infinite loop detected"
 
-    assert expected_rows == len(fetched)
-    assert expected_pages == count
+    assert len(fetched) == expected_rows
+    assert count == expected_pages
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_error",
     [
@@ -351,22 +346,20 @@ async def test_paginate_tables_and_views(
 )
 async def test_validate_page_size(ds_client, path, expected_error):
     response = await ds_client.get(path)
-    assert expected_error == response.json()["error"]
+    assert response.json()["error"] == expected_error
     assert response.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_page_size_zero(ds_client):
     """For _size=0 we return the counts, empty rows and no continuation token"""
     response = await ds_client.get("/fixtures/no_primary_key.json?_size=0&_extra=count")
     assert response.status_code == 200
-    assert [] == response.json()["rows"]
-    assert 202 == response.json()["count"]
+    assert response.json()["rows"] == []
+    assert response.json()["count"] == 202
     assert None is response.json()["next"]
     assert None is response.json()["next_url"]
 
 
-@pytest.mark.asyncio
 async def test_paginate_compound_keys(ds_client):
     fetched = []
     path = "/fixtures/compound_three_primary_keys.json?_shape=objects"
@@ -379,15 +372,14 @@ async def test_paginate_compound_keys(ds_client):
         if path:
             path = path.replace("http://localhost", "")
         assert page < 100
-    assert 1001 == len(fetched)
-    assert 21 == page
+    assert len(fetched) == 1001
+    assert page == 21
     # Should be correctly ordered
     contents = [f["content"] for f in fetched]
     expected = [r[3] for r in generate_compound_rows(1001)]
-    assert expected == contents
+    assert contents == expected
 
 
-@pytest.mark.asyncio
 async def test_paginate_compound_keys_with_extra_filters(ds_client):
     fetched = []
     path = (
@@ -402,12 +394,11 @@ async def test_paginate_compound_keys_with_extra_filters(ds_client):
         path = response.json()["next_url"]
         if path:
             path = path.replace("http://localhost", "")
-    assert 2 == page
+    assert page == 2
     expected = [r[3] for r in generate_compound_rows(1001) if "d" in r[3]]
-    assert expected == [f["content"] for f in fetched]
+    assert [f["content"] for f in fetched] == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query_string,sort_key,human_description_en",
     [
@@ -463,7 +454,6 @@ async def test_sortable(ds_client, query_string, sort_key, human_description_en)
     assert [r["content"] for r in expected] == [r["content"] for r in fetched]
 
 
-@pytest.mark.asyncio
 async def test_sortable_and_filtered(ds_client):
     path = (
         "/fixtures/sortable.json"
@@ -473,8 +463,8 @@ async def test_sortable_and_filtered(ds_client):
     response = await ds_client.get(path)
     fetched = response.json()["rows"]
     assert (
-        'where content contains "d" sorted by sortable descending'
-        == response.json()["human_description_en"]
+        response.json()["human_description_en"]
+        == 'where content contains "d" sorted by sortable descending'
     )
     expected = [row for row in generate_sortable_rows(201) if "d" in row["content"]]
     assert len(expected) == response.json()["count"]
@@ -482,31 +472,28 @@ async def test_sortable_and_filtered(ds_client):
     assert [r["content"] for r in expected] == [r["content"] for r in fetched]
 
 
-@pytest.mark.asyncio
 async def test_sortable_argument_errors(ds_client):
     response = await ds_client.get("/fixtures/sortable.json?_sort=badcolumn")
-    assert "Cannot sort table by badcolumn" == response.json()["error"]
+    assert response.json()["error"] == "Cannot sort table by badcolumn"
     response = await ds_client.get("/fixtures/sortable.json?_sort_desc=badcolumn2")
-    assert "Cannot sort table by badcolumn2" == response.json()["error"]
+    assert response.json()["error"] == "Cannot sort table by badcolumn2"
     response = await ds_client.get(
         "/fixtures/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable"
     )
     assert (
-        "Cannot use _sort and _sort_desc at the same time" == response.json()["error"]
+        response.json()["error"] == "Cannot use _sort and _sort_desc at the same time"
     )
 
 
-@pytest.mark.asyncio
 async def test_sortable_columns_metadata(ds_client):
     response = await ds_client.get("/fixtures/sortable.json?_sort=content")
-    assert "Cannot sort table by content" == response.json()["error"]
+    assert response.json()["error"] == "Cannot sort table by content"
     # no_primary_key has ALL sort options disabled
     for column in ("content", "a", "b", "c"):
         response = await ds_client.get(f"/fixtures/sortable.json?_sort={column}")
         assert f"Cannot sort table by {column}" == response.json()["error"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.xfail
 @pytest.mark.parametrize(
     "path,expected_rows",
@@ -559,7 +546,7 @@ async def test_sortable_columns_metadata(ds_client):
 )
 async def test_searchable(ds_client, path, expected_rows):
     response = await ds_client.get(path)
-    assert expected_rows == response.json()["rows"]
+    assert response.json()["rows"] == expected_rows
 
 
 _SEARCHMODE_RAW_RESULTS = [
@@ -594,15 +581,16 @@ _SEARCHMODE_RAW_RESULTS = [
         ),
     ],
 )
-def test_searchmode(table_metadata, querystring, expected_rows):
-    with make_app_client(
+async def test_searchmode(table_metadata, querystring, expected_rows):
+    ds = await make_ds(
         metadata={"databases": {"fixtures": {"tables": {"searchable": table_metadata}}}}
-    ) as client:
-        response = client.get("/fixtures/searchable.json?_shape=arrays&" + querystring)
-        assert expected_rows == response.json["rows"]
+    )
+    response = await ds.client.get(
+        "/fixtures/searchable.json?_shape=arrays&" + querystring
+    )
+    assert response.json()["rows"] == expected_rows
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_rows",
     [
@@ -632,7 +620,6 @@ async def test_searchable_views(ds_client, path, expected_rows):
     assert response.json()["rows"] == expected_rows
 
 
-@pytest.mark.asyncio
 async def test_searchable_invalid_column(ds_client):
     response = await ds_client.get("/fixtures/searchable.json?_search_invalid=x")
     assert response.status_code == 400
@@ -644,7 +631,6 @@ async def test_searchable_invalid_column(ds_client):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_rows",
     [
@@ -680,22 +666,21 @@ async def test_table_filter_queries(ds_client, path, expected_rows):
     assert response.json()["rows"] == expected_rows
 
 
-@pytest.mark.asyncio
 async def test_table_filter_queries_multiple_of_same_type(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key.json?_shape=arrays&content__not=world&content__not=hello"
     )
-    assert [
+    assert response.json()["rows"] == [
         [3, ""],
         [4, "RENDER_CELL_DEMO"],
         [5, "RENDER_CELL_ASYNC"],
-    ] == response.json()["rows"]
+    ]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
-def test_table_filters_quote_identifiers():
-    with make_app_client(
-        extra_databases={"demo.db": """
+async def test_table_filters_quote_identifiers():
+    ds = await make_ds(
+        extra_databases={"demo": """
                 create table "items]bracket" (
                     id integer primary key,
                     "name""quote" text,
@@ -703,25 +688,24 @@ def test_table_filters_quote_identifiers():
                 );
                 insert into "items]bracket" values (1, 'Alice', '["red"]');
             """},
-    ) as client:
-        table_path = tilde_encode("items]bracket")
-        exact_query = urllib.parse.urlencode(
-            {'name"quote__exact': "Alice", "_shape": "arrays"}
-        )
-        exact_response = client.get(f"/demo/{table_path}.json?{exact_query}")
-        assert exact_response.status == 200
-        assert exact_response.json["rows"] == [[1, "Alice", '["red"]']]
+    )
+    table_path = tilde_encode("items]bracket")
+    exact_query = urllib.parse.urlencode(
+        {'name"quote__exact': "Alice", "_shape": "arrays"}
+    )
+    exact_response = await ds.client.get(f"/demo/{table_path}.json?{exact_query}")
+    assert exact_response.status_code == 200
+    assert exact_response.json()["rows"] == [[1, "Alice", '["red"]']]
 
-        array_query = urllib.parse.urlencode(
-            {"tags]bracket__arraycontains": "red", "_shape": "arrays"}
-        )
-        array_response = client.get(f"/demo/{table_path}.json?{array_query}")
-        assert array_response.status == 200
-        assert array_response.json["rows"] == [[1, "Alice", '["red"]']]
+    array_query = urllib.parse.urlencode(
+        {"tags]bracket__arraycontains": "red", "_shape": "arrays"}
+    )
+    array_response = await ds.client.get(f"/demo/{table_path}.json?{array_query}")
+    assert array_response.status_code == 200
+    assert array_response.json()["rows"] == [[1, "Alice", '["red"]']]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
-@pytest.mark.asyncio
 async def test_table_filter_json_arraycontains(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_shape=arrays&tags__arraycontains=tag1"
@@ -757,7 +741,6 @@ async def test_table_filter_json_arraycontains(ds_client):
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
-@pytest.mark.asyncio
 async def test_table_filter_json_arraynotcontains(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_shape=arrays&tags__arraynotcontains=tag3&tags__not=[]"
@@ -779,12 +762,11 @@ async def test_table_filter_json_arraynotcontains(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_table_filter_extra_where(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_shape=arrays&_where=_neighborhood='Dogpatch'"
     )
-    assert [
+    assert response.json()["rows"] == [
         [
             2,
             "2019-01-14 08:00:00",
@@ -798,10 +780,9 @@ async def test_table_filter_extra_where(ds_client):
             "two",
             "n2",
         ]
-    ] == response.json()["rows"]
+    ]
 
 
-@pytest.mark.asyncio
 async def test_table_filter_extra_where_invalid(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_where=_neighborhood=Dogpatch'"
@@ -810,16 +791,15 @@ async def test_table_filter_extra_where_invalid(ds_client):
     assert "unrecognized token" in response.json()["error"]
 
 
-def test_table_filter_extra_where_disabled_if_no_sql_allowed():
-    with make_app_client(config={"allow_sql": {}}) as client:
-        response = client.get(
-            "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
-        )
-        assert response.status_code == 403
-        assert "_where= is not allowed" == response.json["error"]
+async def test_table_filter_extra_where_disabled_if_no_sql_allowed():
+    ds = await make_ds(config={"allow_sql": {}})
+    response = await ds.client.get(
+        "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
+    )
+    assert response.status_code == 403
+    assert response.json()["error"] == "_where= is not allowed"
 
 
-@pytest.mark.asyncio
 async def test_table_through(ds_client):
     # Just the museums:
     response = await ds_client.get(
@@ -852,17 +832,15 @@ async def test_table_through(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_max_returned_rows(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+content+from+no_primary_key"
     )
     data = response.json()
     assert data["truncated"]
-    assert 100 == len(data["rows"])
+    assert len(data["rows"]) == 100
 
 
-@pytest.mark.asyncio
 async def test_view(ds_client):
     response = await ds_client.get("/fixtures/simple_view.json?_shape=objects")
     assert response.status_code == 200
@@ -876,22 +854,20 @@ async def test_view(ds_client):
     ]
 
 
-def test_page_size_matching_max_returned_rows(
-    app_client_returned_rows_matches_page_size,
-):
+async def test_page_size_matching_max_returned_rows():
+    ds = await make_ds(settings={"max_returned_rows": 50})
     fetched = []
     path = "/fixtures/no_primary_key.json"
     while path:
-        response = app_client_returned_rows_matches_page_size.get(path)
-        fetched.extend(response.json["rows"])
-        assert len(response.json["rows"]) in (2, 50)
-        path = response.json["next_url"]
+        response = await ds.client.get(path)
+        fetched.extend(response.json()["rows"])
+        assert len(response.json()["rows"]) in (2, 50)
+        path = response.json()["next_url"]
         if path:
             path = path.replace("http://localhost", "")
     assert len(fetched) == 202
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_facet_results",
     [
@@ -1065,10 +1041,9 @@ async def test_facets(ds_client, path, expected_facet_results):
         assert False is facet_info["truncated"]
         for facet_value in facet_info["results"]:
             facet_value["toggle_url"] = facet_value["toggle_url"].split("?")[1]
-    assert expected_facet_results == facet_results["results"]
+    assert facet_results["results"] == expected_facet_results
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="requires JSON1 extension")
 async def test_facets_array(ds_client):
     response = await ds_client.get("/fixtures/facetable.json?_facet_array=tags")
@@ -1098,7 +1073,6 @@ async def test_facets_array(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_suggested_facets(ds_client):
     suggestions = [
         {
@@ -1136,34 +1110,31 @@ async def test_suggested_facets(ds_client):
         expected.append(
             {"name": "tags", "querystring": "_extra=suggested_facets&_facet_array=tags"}
         )
-    assert expected == suggestions
+    assert suggestions == expected
 
 
-def test_allow_facet_off():
-    with make_app_client(settings={"allow_facet": False}) as client:
-        assert (
-            client.get(
-                "/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets"
-            ).status
-            == 400
+async def test_allow_facet_off():
+    ds = await make_ds(settings={"default_allow_facet": False})
+    assert (
+        await ds.client.get(
+            "/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets"
         )
-        data = client.get("/fixtures/facetable.json?_extra=suggested_facets").json
-        # Should not suggest any facets either:
-        assert [] == data["suggested_facets"]
+    ).status_code == 400
+    data = (
+        await ds.client.get("/fixtures/facetable.json?_extra=suggested_facets")
+    ).json()
+    # Should not suggest any facets either:
+    assert data["suggested_facets"] == []
 
 
-def test_suggest_facets_off():
-    with make_app_client(settings={"suggest_facets": False}) as client:
-        # Now suggested_facets should be []
-        assert (
-            []
-            == client.get("/fixtures/facetable.json?_extra=suggested_facets").json[
-                "suggested_facets"
-            ]
-        )
+async def test_suggest_facets_off():
+    ds = await make_ds(settings={"suggest_facets": False})
+    # Now suggested_facets should be []
+    assert (
+        await ds.client.get("/fixtures/facetable.json?_extra=suggested_facets")
+    ).json()["suggested_facets"] == []
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("nofacet", (True, False))
 async def test_nofacet(ds_client, nofacet):
     path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
@@ -1178,7 +1149,6 @@ async def test_nofacet(ds_client, nofacet):
         assert response.json()["facet_results"]["results"] != {}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("nosuggest", (True, False))
 async def test_nosuggest(ds_client, nosuggest):
     path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
@@ -1194,7 +1164,6 @@ async def test_nosuggest(ds_client, nosuggest):
         assert response.json()["facet_results"] != {}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
 async def test_nocount(ds_client, nocount, expected_count):
     path = "/fixtures/facetable.json?_extra=count"
@@ -1204,14 +1173,13 @@ async def test_nocount(ds_client, nocount, expected_count):
     assert response.json()["count"] == expected_count
 
 
-def test_nocount_nofacet_if_shape_is_object(app_client_with_trace):
-    response = app_client_with_trace.get(
+async def test_nocount_nofacet_if_shape_is_object(ds_client_with_trace):
+    response = await ds_client_with_trace.get(
         "/fixtures/facetable.json?_trace=1&_shape=object"
     )
     assert "count(*)" not in response.text
 
 
-@pytest.mark.asyncio
 async def test_expand_labels(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"
@@ -1247,7 +1215,6 @@ async def test_expand_labels(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_expand_label(ds_client):
     response = await ds_client.get(
         "/fixtures/foreign_key_references.json?_shape=object"
@@ -1265,7 +1232,6 @@ async def test_expand_label(ds_client):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_cache_control",
     [
@@ -1280,29 +1246,57 @@ async def test_ttl_parameter(ds_client, path, expected_cache_control):
     assert response.headers["Cache-Control"] == expected_cache_control
 
 
-@pytest.mark.asyncio
-async def test_infinity_returned_as_null(ds_client):
-    response = await ds_client.get("/fixtures/infinity.json?_shape=array")
+@pytest.mark.parametrize(
+    "querystring,expected_values",
+    (
+        pytest.param("", [None, None, 1.5], id="returned_as_null"),
+        pytest.param(
+            "&_json_infinity=1",
+            [float("inf"), float("-inf"), 1.5],
+            id="returned_as_invalid_json_if_requested",
+        ),
+    ),
+)
+async def test_infinity(ds_client, querystring, expected_values):
+    response = await ds_client.get("/fixtures/infinity.json?_shape=array" + querystring)
     assert response.json() == [
-        {"rowid": 1, "value": None},
-        {"rowid": 2, "value": None},
-        {"rowid": 3, "value": 1.5},
+        {"rowid": rowid, "value": value}
+        for rowid, value in enumerate(expected_values, 1)
     ]
 
 
-@pytest.mark.asyncio
-async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
-    response = await ds_client.get(
-        "/fixtures/infinity.json?_shape=array&_json_infinity=1"
-    )
-    assert response.json() == [
-        {"rowid": 1, "value": float("inf")},
-        {"rowid": 2, "value": float("-inf")},
-        {"rowid": 3, "value": 1.5},
-    ]
+@pytest.mark.parametrize(
+    "path,shape,expected",
+    (
+        (
+            "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid",
+            "arrays",
+            [[None], [None], [1.5]],
+        ),
+        (
+            "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid",
+            "arrayfirst",
+            [None, None, 1.5],
+        ),
+        (
+            "/fixtures/infinity.json?_sort=rowid",
+            "arrays",
+            [[1, None], [2, None], [3, 1.5]],
+        ),
+        ("/fixtures/infinity.json?_sort=rowid", "arrayfirst", [1, 2, 3]),
+        ("/fixtures/infinity/1.json?", "arrays", [[1, None]]),
+        ("/fixtures/infinity/1.json?", "arrayfirst", [1]),
+    ),
+)
+async def test_infinity_with_array_shapes(ds_client, path, shape, expected):
+    # remove_infinites() returns a plain list for a row containing infinity,
+    # so one response can mix those lists with sqlite3.Row objects
+    response = await ds_client.get(f"{path}&_shape={shape}")
+    assert response.status_code == 200
+    data = response.json()
+    assert (data["rows"] if shape == "arrays" else data) == expected
 
 
-@pytest.mark.asyncio
 async def test_custom_query_with_unicode_characters(ds_client):
     # /fixtures/𝐜𝐢𝐭𝐢𝐞𝐬.json
     response = await ds_client.get(
@@ -1311,7 +1305,6 @@ async def test_custom_query_with_unicode_characters(ds_client):
     assert response.json() == [{"id": 1, "name": "San Francisco"}]
 
 
-@pytest.mark.asyncio
 async def test_null_and_compound_foreign_keys_are_not_expanded(ds_client):
     response = await ds_client.get(
         "/fixtures/foreign_key_references.json?_shape=array&_labels=on"
@@ -1336,7 +1329,6 @@ async def test_null_and_compound_foreign_keys_are_not_expanded(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_json,expected_text",
     [
@@ -1368,7 +1360,6 @@ async def test_binary_data_in_json(ds_client, path, expected_json, expected_text
         assert response.text == expected_text
 
 
-@pytest.mark.asyncio
 async def test_column_details_extra_table(ds_client):
     response = await ds_client.get(
         "/fixtures/binary_data.json?_size=0&_extra=column_details"
@@ -1429,30 +1420,32 @@ async def test_column_details_extra_table(ds_client):
     assert column_details["content"]["pk_position"] == 0
 
 
-def test_column_details_extra_defaults_and_notnull():
-    with make_app_client(extra_databases={"defaults.db": """
+async def test_column_details_extra_defaults_and_notnull():
+    ds = await make_ds(extra_databases={"defaults": """
                 CREATE TABLE defaults (
                     i INTEGER NOT NULL DEFAULT 42,
                     s TEXT DEFAULT 'hello',
                     dt TEXT DEFAULT (datetime('now'))
                 );
-            """}) as client:
-        response = client.get("/defaults/defaults.json?_size=0&_extra=column_details")
-        assert response.status == 200
-        column_details = response.json["column_details"]
-        assert column_details["i"]["notnull"] is True
-        assert column_details["i"]["default"] == "42"
-        assert column_details["s"]["notnull"] is False
-        assert column_details["s"]["default"] == "'hello'"
-        assert column_details["dt"]["default"] == "datetime('now')"
+            """})
+    response = await ds.client.get(
+        "/defaults/defaults.json?_size=0&_extra=column_details"
+    )
+    assert response.status_code == 200
+    column_details = response.json()["column_details"]
+    assert column_details["i"]["notnull"] is True
+    assert column_details["i"]["default"] == "42"
+    assert column_details["s"]["notnull"] is False
+    assert column_details["s"]["default"] == "'hello'"
+    assert column_details["dt"]["default"] == "datetime('now')"
 
 
 @pytest.mark.skipif(
     sqlite_version() < (3, 31, 0),
     reason="generated columns were added in SQLite 3.31.0",
 )
-def test_column_details_extra_generated_columns():
-    with make_app_client(extra_databases={"generated.db": """
+async def test_column_details_extra_generated_columns():
+    ds = await make_ds(extra_databases={"generated": """
                 CREATE TABLE generated_columns (
                     body TEXT,
                     body_length_virtual INTEGER
@@ -1460,18 +1453,17 @@ def test_column_details_extra_generated_columns():
                     body_length_stored INTEGER
                         GENERATED ALWAYS AS (length(body)) STORED
                 );
-            """}) as client:
-        response = client.get(
-            "/generated/generated_columns.json?_size=0&_extra=column_details"
-        )
-        assert response.status == 200
-        column_details = response.json["column_details"]
-        assert column_details["body"]["hidden"] == 0
-        assert column_details["body_length_virtual"]["hidden"] == 2
-        assert column_details["body_length_stored"]["hidden"] == 3
+            """})
+    response = await ds.client.get(
+        "/generated/generated_columns.json?_size=0&_extra=column_details"
+    )
+    assert response.status_code == 200
+    column_details = response.json()["column_details"]
+    assert column_details["body"]["hidden"] == 0
+    assert column_details["body_length_virtual"]["hidden"] == 2
+    assert column_details["body_length_stored"]["hidden"] == 3
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "qs",
     [
@@ -1510,8 +1502,8 @@ async def test_paginate_using_link_header(ds_client, qs):
     sqlite_version() < (3, 31, 0),
     reason="generated columns were added in SQLite 3.31.0",
 )
-def test_generated_columns_are_visible_in_datasette():
-    with make_app_client(extra_databases={"generated.db": """
+async def test_generated_columns_are_visible_in_datasette():
+    ds = await make_ds(extra_databases={"generated": """
                 CREATE TABLE generated_columns (
                     body TEXT,
                     id INT GENERATED ALWAYS AS (json_extract(body, '$.number')) STORED,
@@ -1519,19 +1511,18 @@ def test_generated_columns_are_visible_in_datasette():
                 );
                 INSERT INTO generated_columns (body) VALUES (
                     '{"number": 1, "string": "This is a string"}'
-                );"""}) as client:
-        response = client.get("/generated/generated_columns.json?_shape=array")
-        assert response.json == [
-            {
-                "rowid": 1,
-                "body": '{"number": 1, "string": "This is a string"}',
-                "id": 1,
-                "consideration": "This is a string",
-            }
-        ]
+                );"""})
+    response = await ds.client.get("/generated/generated_columns.json?_shape=array")
+    assert response.json() == [
+        {
+            "rowid": 1,
+            "body": '{"number": 1, "string": "This is a string"}',
+            "id": 1,
+            "consideration": "This is a string",
+        }
+    ]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_columns",
     (
@@ -1603,7 +1594,6 @@ async def test_col_nocol(ds_client, path, expected_columns):
     assert columns == expected_columns
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_error",
     (
@@ -1619,7 +1609,105 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
     assert response.json()["error"] == expected_error
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_string,expected_order",
+    (
+        ("_sort=b&_nocol=b", list(range(1, 26))),
+        ("_sort=b&_col=c", list(range(1, 26))),
+        ("_sort_desc=b&_nocol=b", list(range(25, 0, -1))),
+    ),
+)
+async def test_sort_excluded_column_rowid_table(query_string, expected_order):
+    # Tables with no explicit primary key paginate on rowid, so the
+    # "look the sort value up by primary key" fallback - which exists so that
+    # sorting works when the sort column is not in the SELECT, added for #1773 -
+    # has to fall back to rowid too.
+    # https://github.com/simonw/datasette/issues/2974
+    ds = Datasette(settings={"default_page_size": 10, "max_returned_rows": 1000})
+    db = ds.add_memory_database("rowid_pagination")
+    # c mirrors b and is never excluded, so it can be used to check the
+    # order the rows were paginated in. Values are zero-padded so that
+    # string order matches numeric order.
+    await db.execute_write("create table items (a text, b text, c text)")
+    for i in range(1, 26):
+        await db.execute_write(
+            "insert into items (a, b, c) values (?, ?, ?)",
+            (f"a{i:02d}", f"b{i:02d}", f"c{i:02d}"),
+        )
+    await ds.invoke_startup()
+
+    fetched = []
+    path = f"/rowid_pagination/items.json?_shape=objects&{query_string}"
+    for _ in range(100):
+        response = await ds.client.get(path)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        fetched.extend(data["rows"])
+        path = data["next_url"]
+        if not path:
+            break
+        path = path.replace("http://localhost", "")
+    else:
+        assert False, "pagination did not terminate"
+
+    # Every row visited exactly once, in the requested order, with no rows
+    # skipped or repeated at a page boundary
+    assert [row["c"] for row in fetched] == [f"c{i:02d}" for i in expected_order]
+
+
+@pytest.mark.parametrize(
+    "create_table",
+    (
+        "create table items (id text primary key, status text)",
+        "create table items (id text, status text, primary key (id, status))",
+    ),
+)
+@pytest.mark.parametrize("sort_arg", ("_sort", "_sort_desc"))
+async def test_sort_ties_paginate_without_skips_or_repeats(create_table, sort_arg):
+    # Rows are inserted out of primary key order, so SQLite returns ties on the
+    # sort column in a different order unless the query breaks them by primary key
+    rows = [("z", "a"), ("m", "a"), ("c", "a"), ("q", "b"), ("a", "b"), ("y", "b")]
+    ds = Datasette(settings={"default_page_size": 2, "max_returned_rows": 1000})
+    db = ds.add_memory_database("sort_ties")
+    await db.execute_write(create_table)
+    await db.execute_write_many("insert into items (id, status) values (?, ?)", rows)
+    await ds.invoke_startup()
+
+    fetched = []
+    path = f"/sort_ties/items.json?_shape=objects&{sort_arg}=status"
+    for _ in range(100):
+        response = await ds.client.get(path)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        fetched.extend(row["id"] for row in data["rows"])
+        path = data["next_url"]
+        if not path:
+            break
+        path = path.replace("http://localhost", "")
+    else:
+        assert False, "pagination did not terminate"
+
+    assert sorted(fetched) == sorted(row[0] for row in rows)
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/roadside_attraction_characteristics?_size=2&_sort=attraction_id&_nocol=attraction_id",
+        "/fixtures/roadside_attraction_characteristics?_size=2&_sort_desc=attraction_id&_nocol=attraction_id",
+        "/fixtures/roadside_attraction_characteristics.json?_size=2&_sort=attraction_id&_nocol=attraction_id&_labels=on",
+    ),
+)
+async def test_sort_excluded_column_with_expanded_labels(ds_client, path):
+    # Expanding foreign key labels turns rows into CustomRow objects, which
+    # raise KeyError rather than IndexError for a missing sort column
+    # https://github.com/simonw/datasette/issues/2974
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    if ".json" in path:
+        assert response.json()["next"] == "i:2,2"
+
+
 @pytest.mark.parametrize(
     "extra,expected_json",
     (
@@ -1656,7 +1744,6 @@ async def test_table_extras(ds_client, extra, expected_json):
     assert response.json() == expected_json
 
 
-@pytest.mark.asyncio
 async def test_table_extra_columns_can_be_comma_separated(ds_client):
     response = await ds_client.get(
         "/fixtures/primary_key_multiple_columns.json?_extra=columns,count"
@@ -1667,7 +1754,6 @@ async def test_table_extra_columns_can_be_comma_separated(ds_client):
     assert data["count"] == 1
 
 
-@pytest.mark.asyncio
 async def test_extra_render_cell():
     """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook"""
     from datasette import hookimpl
@@ -1732,7 +1818,6 @@ async def test_extra_render_cell():
         ds.pm.unregister(name="TestRenderCellPlugin")
 
 
-@pytest.mark.asyncio
 async def test_count_truncated_included_with_count_extra(tmp_path_factory):
     from datasette.app import Datasette
     from datasette.utils import sqlite3
@@ -1768,7 +1853,6 @@ async def test_count_truncated_included_with_count_extra(tmp_path_factory):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_next_url_included_by_default(ds_client):
     response = await ds_client.get("/fixtures/compound_three_primary_keys.json")
     data = response.json()
@@ -1787,7 +1871,6 @@ async def test_next_url_included_by_default(ds_client):
     assert data["next_url"] is None
 
 
-@pytest.mark.asyncio
 async def test_table_through_requires_view_table_on_through_table():
     # GHSA-53fc-rhfg-h7qp issue 3: ?_through= runs a sub-select against the
     # caller-supplied through table, so the actor must be allowed to view it.

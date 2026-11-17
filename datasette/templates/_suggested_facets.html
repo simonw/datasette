@@ -2,7 +2,7 @@
     <span class="suggested-facets-label" id="suggested-facets-label">Suggested facets</span>
     <ul class="suggested-facets-list" aria-labelledby="suggested-facets-label">
         {% for facet in suggested_facets %}
-            <li><a class="suggested-facet" href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">
+            <li><a class="suggested-facet" href="{{ facet.toggle_url }}">
                 <span class="suggested-facet-name">{{ facet.name }}</span>
                 {%- if facet.get("type") %}
                 <span class="suggested-facet-type">{{ facet.type }}</span>

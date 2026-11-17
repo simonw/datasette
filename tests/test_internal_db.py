@@ -1,7 +1,5 @@
 import sqlite3
 
-import pytest
-
 from datasette.utils import escape_sqlite
 from datasette.utils.internal_db import INTERNAL_DB_SCHEMA_SQL
 
@@ -12,7 +10,6 @@ async def ensure_internal(ds_client):
     return ds_client.ds.get_internal_database()
 
 
-@pytest.mark.asyncio
 async def test_internal_databases(ds_client):
     internal_db = await ensure_internal(ds_client)
     databases = await internal_db.execute("select * from catalog_databases")
@@ -20,7 +17,6 @@ async def test_internal_databases(ds_client):
     assert databases.rows[0]["database_name"] == "fixtures"
 
 
-@pytest.mark.asyncio
 async def test_internal_migrations_recorded(ds_client):
     internal_db = await ensure_internal(ds_client)
     migrations = await internal_db.execute("""
@@ -34,7 +30,6 @@ async def test_internal_migrations_recorded(ds_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
     from datasette.app import Datasette
 
@@ -69,7 +64,6 @@ async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_internal_tables(ds_client):
     internal_db = await ensure_internal(ds_client)
     tables = await internal_db.execute("select * from catalog_tables")
@@ -84,7 +78,6 @@ async def test_internal_tables(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_internal_tables_hidden(tmp_path):
     from datasette.app import Datasette
 
@@ -125,7 +118,6 @@ async def test_internal_tables_hidden(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_internal_tables_hidden_added_to_existing_internal_db(tmp_path):
     from datasette.app import Datasette
 
@@ -167,7 +159,6 @@ async def test_internal_tables_hidden_added_to_existing_internal_db(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_internal_views(ds_client):
     internal_db = await ensure_internal(ds_client)
     views = await internal_db.execute("select * from catalog_views")
@@ -176,7 +167,6 @@ async def test_internal_views(ds_client):
     assert set(view.keys()) == {"rootpage", "view_name", "database_name", "sql"}
 
 
-@pytest.mark.asyncio
 async def test_internal_indexes(ds_client):
     internal_db = await ensure_internal(ds_client)
     indexes = await internal_db.execute("select * from catalog_indexes")
@@ -193,7 +183,6 @@ async def test_internal_indexes(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_internal_foreign_keys(ds_client):
     internal_db = await ensure_internal(ds_client)
     foreign_keys = await internal_db.execute("select * from catalog_foreign_keys")
@@ -213,7 +202,6 @@ async def test_internal_foreign_keys(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_internal_foreign_key_references(ds_client):
     internal_db = await ensure_internal(ds_client)
 
@@ -278,7 +266,6 @@ async def test_internal_foreign_key_references(ds_client):
     await internal_db.execute_fn(inner)
 
 
-@pytest.mark.asyncio
 async def test_stale_catalog_entry_database_fix(tmp_path):
     """
     Test for https://github.com/simonw/datasette/issues/2605
@@ -326,7 +313,6 @@ async def test_stale_catalog_entry_database_fix(tmp_path):
     )
 
 
-@pytest.mark.asyncio
 async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path):
     import sqlite3
 
@@ -374,7 +360,6 @@ async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path
     ds2.close()
 
 
-@pytest.mark.asyncio
 async def test_orphan_stale_catalog_child_entries_removed(tmp_path):
     import sqlite3
 

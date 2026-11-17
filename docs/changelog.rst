@@ -4,6 +4,196 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- **Backwards incompatible:** optional arguments to many of the :ref:`documented internal methods <internals>` are now keyword-only, so they can no longer be passed positionally. (:issue:`1822`) The affected signatures are:
+
+  - ``Datasette(files=None, *, ...)`` - every argument other than ``files`` is keyword-only.
+  - ``datasette.render_template(templates, context=None, *, request=None, view_name=None)``
+  - ``datasette.execute(db_name, sql, params=None, *, ...)`` and ``db.execute(sql, params=None, *, ...)``
+  - ``db.execute_write(sql, params=None, *, ...)``, ``db.execute_write_script(sql, *, ...)``, ``db.execute_write_many(sql, params_seq, *, ...)`` and ``db.execute_write_fn(fn, *, ...)``
+  - ``datasette.get_database(name=None, *, route=None)``, ``datasette.add_database(db, name=None, *, route=None)`` and ``datasette.add_memory_database(memory_name, name=None, *, route=None)``
+  - ``datasette.plugin_config(plugin_name, *, database=None, table=None, fallback=True)``
+  - ``datasette.set_actor_cookie(response, actor, *, expire_after=None)``
+  - ``datasette.client.get(path, *, skip_permission_checks=False, **kwargs)`` and the other ``datasette.client`` methods.
+  - ``datasette.urls.instance()``, ``.path()``, ``.database()``, ``.database_query()``, ``.table()``, ``.query()`` and ``.row()`` now require ``format=`` as a keyword.
+  - ``Request.fake(path_with_query_string, *, method="GET", scheme="http", url_vars=None)``
+  - ``Response(body=None, *, status=200, headers=None, content_type="text/plain")``
+  - ``Response.html()``, ``.text()``, ``.json()``, ``.stream()``, ``.error()`` and ``.redirect()`` still accept ``status`` as a second positional argument - ``Response.json(data, 400)`` continues to work - but ``headers``, ``default`` and ``content_type`` are keyword-only.
+  - ``response.set_cookie(key, value="", *, max_age=None, ...)``
+
+- The following ``datasette.utils`` functions and classes are now :ref:`documented <internals_utils>` and considered stable for use by plugins: ``escape_sqlite()``, ``escape_fts()``, ``to_css_class()``, ``modify_query_string()``, ``actor_matches_allow()``, ``add_cors_headers()``, ``StartupError``, ``BadMetadataError``, ``MultiParams``, ``PrefixedUrlString``, ``PaginatedResources`` and the ``sqlite3`` module. (:issue:`1630`)
+- **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
+- File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
+
+- New ``datasette.urls.modify(target, add=, replace=, remove=, format=)`` method for building links that change the query string of the current page or of any other path. It applies ``base_url`` for you and is available in templates as ``urls.modify()``. See :ref:`internals_datasette_urls_modify`. (:issue:`1342`)
+- Fixed a bug where sort, facet and filter-removal links on the table page dropped query string arguments with blank values, so sorting ``/db/table?name=`` lost the filter for rows where ``name`` is the empty string.
+- **Backwards incompatible:** ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()``, ``path_with_replaced_args()``, ``path_with_format()``, ``path_without_format()`` and ``append_querystring()`` have been removed. Plugins should use ``datasette.urls.modify()`` instead: ``path_with_added_args(request, {"_facet": "x"})`` becomes ``datasette.urls.modify(request, add={"_facet": "x"})`` and ``path_with_format(request=request, format="json", extra_qs={"_shape": "array"})`` becomes ``datasette.urls.modify(request, format="json", add={"_shape": "array"})``. ``path_without_format(request, include_query_string=True)`` becomes ``datasette.urls.modify(request, format=False)``. Note that ``modify()`` applies ``base_url``, so its result should not have the prefix added again. (:issue:`1342`)
+- **Backwards incompatible:** the ``path_with_replaced_args``, ``fix_path`` and ``append_querystring`` functions are no longer passed to the table and query templates. Custom templates should use ``urls.modify()``: ``fix_path(path_with_replaced_args(request, {"_sort": "x"}))`` becomes ``urls.modify(request, replace={"_sort": "x"})`` and ``append_querystring(url, "_shape=array")`` becomes ``urls.modify(url, add={"_shape": "array"})``. ``fix_path(path)`` is the same as ``urls.path(path)``.
+- ``datasette.urls.database_query(database, sql, format="json")`` and ``datasette.urls.path(path, format=...)`` now put the format extension before the query string. They previously added it to the end of the ``?sql=`` value.
+
+.. _v1_0_a43:
+
+1.0a43 (2026-11-15)
+-------------------
+
+This alpha includes security fixes for private stored queries and database downloads, streaming output renderers with CSV and TSV now implemented as renderers, a new JSON format for individual rows, and tables listed as cards on the homepage and database page.
+
+See `0.65.6 <https://docs.datasette.io/en/stable/changelog.html#v0-65-6>`__ for the database download fix backported to the stable 0.65.x branch.
+
+Security fixes
+~~~~~~~~~~~~~~
+
+- Fixed a security issue where the ``?owner_id=`` filter on the ``/-/queries`` and ``/<database>/-/queries`` pages, and their ``.json`` equivalents, returned private stored queries belonging to that owner - including their SQL - to any actor, including anonymous users. This affected Datasette 1.0a31 through 1.0a42.
+- Fixed a security issue where a database registered using ``add_database(db, name=..., route=...)`` with a route that differs from its name could be downloaded from ``/<route>.db`` by actors who were denied access to it. Permission rules for the ``view-database-download`` action that were written against the route no longer apply, and should use the database name like rules for every other action.
+- The example ``permission_resources_sql()`` hook in the :ref:`upgrade guide for 1.0a20 <upgrade_guide_v1_a20>` was missing its ``if action == "permissions-debug"`` check. A plugin that copied that example allowed every action, including write actions, for every actor including anonymous users. **If you used that example in your own plugin, add the missing check.**
+
+Breaking changes
+~~~~~~~~~~~~~~~~
+
+- The JSON for an individual row, such as ``/database/table/1.json``, now returns ``{"row": {"id": 1, ...}}``. It previously returned ``{"rows": [{"id": 1, ...}]}``, a list that always contained exactly one row. Two other keys in that response changed to match:
+
+  - ``"truncated"`` is no longer included. That key says whether a list of rows was cut short at the page size limit, so for a single row it was always ``false``.
+  - ``?_extra=render_cell``, which returns the HTML that plugins rendered for each column, now returns ``"render_cell": {"column": "<html>"}``. It previously returned ``"render_cell": [{"column": "<html>"}]``, a list with one item for the one row.
+
+  Add ``?_shape=objects`` to the URL to get the previous format back. The other ``?_shape=`` options work as they do for table JSON. See :ref:`json_api_row` and the :ref:`upgrade guide <upgrade_guide_v1_row_json>`. (:issue:`2612`, :issue:`2137`)
+- Output renderer ``render`` functions must now return a :ref:`Response <internals_response>` object, or ``None``. Returning a dictionary with ``body``, ``content_type``, ``status_code`` and ``headers`` keys, deprecated since Datasette 0.49, is now an error. The ``"callback"`` key, the pre-0.49 name for ``"render"``, has also been removed. See :ref:`the upgrade guide <upgrade_guide_v1_renderer_response>`. (:issue:`954`)
+- The ``view_name`` passed to plugin hooks for SQL query pages, both arbitrary SQL and stored queries, is now ``"query"``. Template hooks such as :ref:`plugin_hook_extra_template_vars` were previously passed ``"database"`` for those pages. Output renderers were passed ``"table"`` by ``render`` and ``"database"`` by ``can_render``. See :ref:`the upgrade guide <upgrade_guide_v1_view_name_query>`.
+- An "include all rows" export that fails part of the way through, or that reaches the :ref:`setting_max_stream_mb` limit, now drops the connection so the download fails. Previously the error message was written as the last line of the file, which otherwise looked complete.
+- The ``datasette_allow_facet`` template variable has been removed from the table page. Custom ``table.html`` templates that use it should use ``{{ settings.default_allow_facet|tojson }}`` instead.
+
+Output renderers
+~~~~~~~~~~~~~~~~
+
+- New ``Response.stream(body)`` method for returning a response a chunk at a time from an async iterator of strings or bytes, for example from a :ref:`plugin_register_routes` view. See :ref:`internals_response_stream`.
+- Output renderers can now stream every row of a table or view. A ``render`` function that accepts the new ``row_stream`` argument - an async iterator of rows - and returns ``Response.stream()`` will be sent every row when the URL includes ``?_stream=1``. See :ref:`plugin_register_output_renderer_streaming`. (:issue:`1101`)
+- CSV and TSV export are now implemented as default output renderers using that mechanism, replacing the previous special case. (:issue:`1062`)
+- Output renderers registered with :ref:`plugin_register_output_renderer` can now list the :ref:`extras <json_api_extra>` they need, such as ``count`` or ``human_description_en``, using a new ``"extras"`` key. Datasette calculates those and passes them to the ``render`` function in a new ``page`` argument, a dictionary which also includes ``next`` and ``next_url`` on table pages. (:issue:`2770`, :issue:`2186`)
+- Output renderer ``render`` and ``can_render`` functions can now accept ``path`` and ``full_path`` arguments: the path to the HTML version of the page without the ``.extension``, with and without the query string. See :ref:`plugin_register_output_renderer`. (:issue:`1179`, :pr:`2987`)
+- Output renderers whose ``render`` function accepts the undocumented ``data`` or ``args`` arguments now trigger a ``DeprecationWarning`` when Datasette starts. Those arguments will be removed before Datasette 1.0. Use the ``page`` argument in place of ``data``, and ``request.args`` in place of ``args``. (:issue:`2770`)
+- The ``allow_csv_stream`` and ``max_csv_mb`` settings have been renamed to :ref:`setting_default_allow_stream` and :ref:`setting_max_stream_mb`, since they now apply to every format that can stream. The previous names continue to work.
+- ``?_dl=1`` now adds a ``content-disposition: attachment`` header for every export format, not only CSV and TSV.
+- ``csv`` and ``tsv`` are now included in the ``?_extra=renderers`` extra.
+
+Features
+~~~~~~~~
+
+- Tables and views on the homepage and the database page are now listed as cards, each showing the row count, the column names and links to the tables it references. A "+N more" button reveals the rest of a table's columns. The database page now matches the design of the homepage. (:issue:`3067`)
+- JSON objects and arrays on the row page have a new button for switching between the value as stored and a pretty-printed version. The copy button copies whichever is displayed.
+- Filtering, faceting, sorting and paginating a table now crossfades the table and facets in place, in browsers that support CSS cross-document view transitions. Suggested facet links no longer jump to a ``#facet-...`` fragment. (:issue:`3061`)
+- New ``<datasette-copy-button>`` custom element that plugins and custom templates can use to add a copy to clipboard button. Datasette now uses it for the schema on the table and schema pages, as well as for values on the row page. See :ref:`javascript_plugins_copy_button`. (:pr:`3063`)
+- New ``DatasetteModal.confirm()`` JavaScript method for asking a question using an in-page dialog, returning a promise. See :ref:`javascript_plugins_modal_confirm`.
+- The ``beforeClose`` guard for a :ref:`modal dialog <javascript_plugins_modals>` can now return a promise. The dialog stays open until that promise resolves.
+- The list of columns in the Column statistics dialog now shows at most three rows of columns, with a "+N more" button to show the rest, and no longer truncates column names when there is room to show them. (:pr:`3064`)
+- The select boxes used to filter a table now look the same across different browsers. (:issue:`3060`)
+- New ``?_extra=expanded_columns`` extra for table JSON, listing the foreign key columns that were expanded using ``?_labels=on``.
+- The total time spent calculating suggested facets for a page is now capped at ten times the :ref:`setting_facet_suggest_time_limit_ms` setting, so tables with a large number of columns can no longer spend several seconds suggesting facets. (:issue:`862`)
+- The default :ref:`setting_max_post_body_bytes` limit has been increased from 2MB to 10MB (``10485760`` bytes), allowing larger JSON API requests.
+- The ``allow_facet`` and ``allow_download`` settings have been renamed to :ref:`setting_default_allow_facet` and :ref:`setting_default_allow_download`, matching :ref:`setting_default_allow_sql`. The previous names continue to work. (:issue:`1410`)
+- ``datasette publish`` and ``datasette package`` now install the same version of Datasette as the one used to run the command, unless ``--branch`` is used or an ``--install`` option names Datasette. Previously they installed the latest stable release, which does not accept the ``--config`` option.
+- ``datasette publish cloudrun`` now deploys with a new ``content_length_workaround`` option enabled, which omits ``Content-Length`` from responses of 32,000,000 bytes or more because Cloud Run rejects larger responses that declare a length. See :ref:`publish_cloud_run_content_length`. (:issue:`749`)
+
+Bug fixes
+~~~~~~~~~
+
+- Fixed a bug where following ``next_url`` through a sorted table with a text or compound primary key could repeat some rows and skip others, if several rows shared the same value in the sort column. Thanks, `Zihan Dai <https://github.com/PDGGK>`__. (:issue:`3054`, :pr:`3055`)
+- Fixed a bug where following ``next_url`` through a table sorted by a column with no declared type, such as a column in a table created using ``CREATE TABLE ... AS SELECT``, could skip or repeat rows. The sort value in the ``next`` token was always compared as text, so numbers in those columns were compared against it incorrectly. The token now records whether the value is an integer, a floating point number or a BLOB. ``next`` tokens issued by previous versions are still accepted. Thanks, `Peter Olkhovets <https://github.com/peterolkhov>`__. (:issue:`3056`, :pr:`3057`)
+- The ``gt``, ``gte``, ``lt`` and ``lte`` table filters no longer return a 500 error for an integer too large for SQLite's signed 64-bit integers, such as ``?id__gt=9223372036854775808``. Thanks, `Ilya Khalafi <https://github.com/IlyaKhalafi>`__. (:issue:`3035`, :pr:`3036`)
+- The create table, alter table and row edit dialogs no longer use the browser's native ``confirm()`` prompt when discarding unsaved changes or dropping a table. Browsers embedded in other applications can dismiss those prompts without showing them, which left the "Drop table" button doing nothing and the create table dialog impossible to close.
+- Database downloads now send a ``Content-Length`` header without also sending ``Transfer-Encoding: chunked``, so browsers can show download progress and clients that reject that invalid combination, such as Node.js, can download the file. (:issue:`2663`, :issue:`2317`)
+- ``If-None-Match`` headers are now compared against the ``ETag`` for database downloads and static files using the weak comparison specified by HTTP: a ``W/`` prefix is ignored, the header can list several values and ``*`` matches anything. Proxies that compress responses often turn a strong ``ETag`` into a weak one, which previously caused a full download on every request. The ``304`` response for a database download now includes the ``ETag`` and CORS headers.
+- A ``plugins`` block in metadata is now merged with the ``plugins`` block in configuration, instead of replacing it.
+- :ref:`OpenTelemetry <internals_telemetry>` spans for requests made using ``datasette.client`` are now nested under the span that was active when the request was made, sharing its trace ID. Thanks, `Ankita Advitot <https://github.com/AnkitaAdvitot>`__. (:issue:`2969`, :pr:`2980`)
+- Long values on the row page are no longer collapsed behind a "Show all 2,099 characters" toggle if plugin JavaScript has replaced the text with something else, such as a map. See :ref:`javascript_plugins_row_values`.
+- Fixed a bug where links generated by output renderers using ``path_with_format()``, and the URLs returned by ``?_extra=renderers`` on ``.json`` pages, used a ``?_format=`` parameter that Datasette no longer reads.
+- Plugins loaded using ``--plugins-dir`` now have ``__spec__`` and ``__loader__`` set on their module. Python 3.15 emitted a ``DeprecationWarning`` whenever an exception traceback passed through one of those plugins.
+- Fixed a scrolling bug on the ``/-/queries`` page. (:issue:`3053`)
+- Fixed a bug where a database, table or saved query with a name such as ``count``, ``wrapper`` or ``tag`` could break the layout of its pages, because the class added to the ``<body>`` element for that name matched a class used by Datasette's own CSS and JavaScript.
+
+.. _v1_0_a42:
+
+1.0a42 (2026-11-08)
+-------------------
+
+A redesigned homepage, redesigned table, row and query pages, a new "Export data" dialog with TSV support, a column statistics feature, and Python 3.11 is now the minimum supported version.
+
+Python 3.11 or higher
+~~~~~~~~~~~~~~~~~~~~~
+
+- Datasette now requires Python 3.11 or higher. This allowed the removal of several compatibility shims. (:pr:`2998`)
+- Datasette is now tested on Python 3.11, 3.12, 3.13, 3.14, and 3.15.
+
+Export data dialog and TSV
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Table, query and row pages replace the "This data as..." links and the "Advanced export" box with an **Export data** button. This opens a dialog listing every available format - TSV, CSV, JSON, JSON array, newline-delimited JSON, JSON object and any plugin formats - each with Copy, View, Download and Copy URL actions. Old ``#export`` links open the dialog. See :ref:`csv_export`. (:pr:`3037`)
+- New :ref:`TSV export <csv_export_tsv>`, for pasting into Excel and Google Sheets. TSV uses the same streaming code, options and URL parameters as CSV, with Excel-compatible quoting.
+- :ref:`register_output_renderer <plugin_register_output_renderer>` dictionaries can now include optional ``label`` and ``description`` keys, shown in the Export data dialog, plus ``is_binary`` and ``is_webpage`` flags that control which actions the dialog offers for that format.
+
+Column statistics
+~~~~~~~~~~~~~~~~~
+
+- The column action menu has a new **Column statistics** item, available to actors with the ``execute-sql`` permission. It opens a dialog showing counts of rows, nulls and distinct values, a breakdown of storage types, numeric statistics with a histogram, box plot and percentiles, text length statistics, a chart of dates grouped by month, year or decade, and the most common values. Every query it runs is listed, with a link to open it in the SQL editor. (:pr:`3038`)
+- Column statistics are also available for the results of arbitrary SQL queries and stored queries.
+
+Table page redesign
+~~~~~~~~~~~~~~~~~~~
+
+- A refreshed design for tables on the table, row and query pages, with right-aligned numbers and shadows indicating horizontally scrollable content. (:pr:`3032`)
+- Values taller than three lines are clamped to a preview with an "expand" button. Column headers offer an "expand all" toggle.
+- A pin in the primary key column header freezes the header row and primary key columns while scrolling. On query pages it freezes just the header row. The choice is remembered.
+- Tables that span more than one page now show a pagination bar, for example "Rows 101-150 of 1,761", with "Back to first page" and "Next page" buttons. This uses a new ``?_count=before`` option for the :ref:`count endpoint <TableCountView>`, which counts the rows before a ``?_next=`` cursor. (:pr:`3043`)
+- The row count is now shown in the table page heading, and the pagination bar sits directly above the table. (:pr:`3048`)
+- The ``CREATE TABLE`` or ``CREATE VIEW`` statement is now collapsed into a "Table schema" or "View definition" disclosure at the bottom of the page.
+- Facet values now show a faint bar indicating their share of the rows. Suggested facets and facet results have been restyled.
+- New **Clear filters** button next to "Apply filters", shown when column filters are applied.
+
+Row page redesign
+~~~~~~~~~~~~~~~~~
+
+- The row page now shows the row as a list with one field per line, each with a button to copy its value, in place of a single-row table. Long values are clamped with a toggle to show them in full, and the tables that reference the row are listed below it. (:pr:`3052`)
+- **Backwards incompatible:** the row page now includes a new ``_row_fields.html`` template instead of ``_table.html``. A custom ``_table.html`` template that applies to every table no longer changes the row page - provide a ``_row_fields.html`` template instead. Templates for a specific table, ``_table-mydatabase-mytable.html`` and ``_table-row-mydatabase-mytable.html``, still apply to the row page. See :ref:`customization_custom_templates`.
+- The row page no longer contains a ``table.rows-and-columns`` element, so plugin JavaScript that looks for that table on row pages will not find it. The ``.above-table-panel`` element plugins can attach to is still present.
+
+Homepage redesign
+~~~~~~~~~~~~~~~~~
+
+- The :ref:`homepage <IndexView>` now shows one searchable catalog of tables, views and stored queries across every database, instead of grouping them by database. (:pr:`3049`)
+- A search box, focused when the page loads, matches table and view names, column names, table descriptions and the names, titles, descriptions and SQL of stored queries. Results update as you type and can be navigated with the arrow keys and Enter.
+- Tables, views, queries and databases you visit are recorded in the browser's ``localStorage``, separately for each signed-in actor, and shown in a **Recently visited** section. The "Recent" list in the Jump to menu now uses the same history.
+- Database filter buttons (``?database=``) are shown when more than one database is attached. The table list is built from the internal ``catalog_*`` tables so it stays fast with thousands of tables, and is paginated 30 at a time.
+- New :ref:`makeHomepageSections() <javascript_plugins_makeHomepageSections>` JavaScript plugin hook for adding sections to the homepage. Items added to Jump to using the :ref:`plugin_hook_jump_items_sql` plugin hook are included in search results.
+- The :ref:`stored query browser <pages_stored_query_browser>` at ``/-/queries`` has been redesigned to match the new homepage.
+- **Backwards incompatible:** the ``index.html`` template context has changed and is now documented in :ref:`template_context`. Custom ``index.html`` templates that used keys such as ``tables_and_views_truncated`` or ``table_rows_sum`` will need to be updated. The ``/.json`` output is unchanged.
+
+Other changes
+~~~~~~~~~~~~~
+
+- App, database, table, row and column action menus have been redesigned to share positioning, dismissal and keyboard navigation behavior. See the new `/-/patterns/menus <https://latest.datasette.io/-/patterns/menus>`__ page. (:pr:`2984`)
+- The :ref:`/-/jump <JumpView>` endpoint now supports ``?type=`` filtering, for example ``?type=table&type=database``. Items now include the URL arguments used to build their URL as fields, hidden tables are excluded, and stored queries use their title as their display name. (:issue:`3024`, :pr:`3025`)
+- The internal ``catalog_tables`` table has a new ``hidden`` boolean column, populated for tables that Datasette treats as hidden from default table lists.
+- Error responses now use the :ref:`JSON error format <json_api_errors>` when the request sends an ``Accept: application/json`` or ``Content-Type: application/json`` header, not just for URLs ending in ``.json``. Thanks, `kokokoXUY <https://github.com/kokokoXUY>`__. (:issue:`1949`, :pr:`2961`)
+- HTML table pages no longer send a ``rel="next"`` HTTP ``Link`` header. (:issue:`3046`)
+- ``edit-tools.js``, ``export-dialog.js`` and ``column-stats.js`` are now loaded on demand, the first time they are needed, rather than on every page. The table page now only includes the editing tools loader if the actor can insert, alter, update or delete, indicated by a new ``row_mutation_ui`` template context variable. (:pr:`3042`)
+
+Bug fixes
+~~~~~~~~~
+
+- ``execute-write`` operations now work against tables with FTS index triggers, such as those created by sqlite-utils ``enable_fts(create_triggers=True)``. The SQL analysis table now shows why an operation was rejected.
+- The ``about`` and ``about_url`` metadata are now displayed even if no ``source`` or ``license`` is set. (:issue:`512`, :pr:`2985`)
+- The query page heading now says "returning more than N rows" when results are truncated.
+- A stored query that references a missing ``:_actor_X`` key now raises a ``KeyError`` naming that key.
+- Facet counts on the second and later pages of a table now count every matching row, and facet links no longer keep the ``?_next=`` pagination cursor. Thanks, `b6tang <https://github.com/b6tang>`__. (:issue:`3021`, :pr:`3026`)
+- The ``?_json=`` option now decodes JSON columns on table pages, no longer replaces row values when combined with ``?_extra=columns``, and works with ``?_shape=arrays`` and ``?_shape=arrayfirst``. Thanks, `IlyaKhalafi <https://github.com/IlyaKhalafi>`__. (:issue:`3003`, :pr:`3005`)
+- Views with a BLOB column no longer return a 500 error, and CSV exports of those views now include a link to download each value. (:issue:`2601`)
+- Fixed a bug where Datasette running with :ref:`setting_base_url` produced links and redirects that repeated the prefix, such as ``/prefix/prefix/``, when the prefix was included in the request path. This affected filter and sort redirects, column sort links, next page links, facet links and the query page. (:issue:`2347`, :issue:`1633`)
+- Sorting a table that has no primary key by a column hidden using ``?_nocol=`` or ``?_col=`` no longer returns a 500 error when the results span more than one page. Thanks, `feiiiiii5 <https://github.com/feiiiiii5>`__. (:issue:`2974`, :pr:`2975`)
+- Full-text search now works for FTS tables that declare their content table unquoted or with single quotes or backticks, for example ``content=documents``. Previously these tables showed no search box and ``?_search=`` was ignored. Thanks, `b84330808 <https://github.com/b84330808>`__. (:issue:`1991`, :pr:`3011`)
+- ``datasette.plugin_config(plugin_name, database=...)`` now falls back to the top-level plugin configuration for a database that has no configuration of its own for that plugin. Thanks, `pujitha24 <https://github.com/pujitha24>`__. (:issue:`2959`, :pr:`3041`)
+
 .. _v1_0_a41:
 
 1.0a41 (2026-09-24)

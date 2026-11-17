@@ -4,6 +4,8 @@ import binascii
 import copy
 import dataclasses
 import hashlib
+import importlib.machinery
+import importlib.util
 import inspect
 import json
 import os
@@ -27,16 +29,38 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .sqlite import sqlite3, supports_table_xinfo
+from ..version import __version__
+from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
     from datasette.database import Database
     from datasette.permissions import Resource
 
 
+functions_marked_as_documented = []
+
+
+def documented(fn=None, *, label=None):
+    def decorate(fn):
+        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
+        functions_marked_as_documented.append(fn)
+        return fn
+
+    if fn is None:
+        return decorate
+    return decorate(fn)
+
+
+@documented
 @dataclasses.dataclass
 class PaginatedResources:
-    """Paginated results from allowed_resources query."""
+    """
+    A page of results returned by :ref:`datasette.allowed_resources() <datasette_allowed_resources>`.
+
+    - ``.resources`` - list of ``Resource`` objects for the current page
+    - ``.next`` - keyset token for the next page, or ``None`` if there are no more results
+    - ``async for resource in page.all()`` - iterate over every resource across all pages
+    """
 
     resources: list["Resource"]
     next: str | None  # Keyset token for next page (None if no more results)
@@ -264,19 +288,6 @@ HASH_LENGTH = 7
 Column = namedtuple(
     "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
 )
-
-functions_marked_as_documented = []
-
-
-def documented(fn=None, *, label=None):
-    def decorate(fn):
-        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
-        functions_marked_as_documented.append(fn)
-        return fn
-
-    if fn is None:
-        return decorate
-    return decorate(fn)
 
 
 @documented
@@ -513,70 +524,82 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
-def append_querystring(url, querystring):
-    op = "&" if ("?" in url) else "?"
-    return f"{url}{op}{querystring}"
+def request_route_path(request):
+    """
+    The request path with any ``base_url`` prefix removed by the router.
+
+    Use this for paths that will go through ``datasette.urls.path()``, so
+    ``base_url`` is applied exactly once whether or not a proxy stripped it
+    from the request. ``datasette.urls.modify(request)`` does this for you.
+    """
+    return request.scope.get("route_path") or request.path
 
 
-def path_with_added_args(request, args, path=None):
-    path = path or request.path
+def _expand_pairs(args):
+    # Accepts a dictionary or an iterable of (key, value) pairs. A list or
+    # tuple value stands for several values of the same key.
+    if args is None:
+        return []
     if isinstance(args, dict):
         args = args.items()
-    args_to_remove = {k for k, v in args if v is None}
-    current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in args_to_remove:
-            current.append((key, value))
-    current.extend([(key, value) for key, value in args if value is not None])
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+    pairs = []
+    for key, value in args:
+        if isinstance(value, (list, tuple)):
+            pairs.extend((key, item) for item in value)
+        else:
+            pairs.append((key, value))
+    return pairs
 
 
-def path_with_removed_args(request, args, path=None):
-    query_string = request.query_string
-    if path is None:
-        path = request.path
-    else:
-        if "?" in path:
-            bits = path.split("?", 1)
-            path, query_string = bits
-    # args can be a dict or a set
-    current = []
-    if isinstance(args, set):
+@documented
+def modify_query_string(
+    query_string: str, *, add=None, replace=None, remove=None
+) -> str:
+    """
+    Return ``query_string`` with the given changes applied, in this order:
 
-        def should_remove(key, value):
-            return key in args
+    - ``remove`` - a key, or an iterable of keys and ``(key, value)`` pairs,
+      or a dictionary of ``{key: value}``. A key removes every value for that
+      key, a pair removes only that exact value.
+    - ``replace`` - dictionary or pairs. Existing values for each key are
+      dropped and the new value is used instead. ``None`` removes the key.
+    - ``add`` - dictionary or pairs, appended without touching existing values.
 
-    elif isinstance(args, dict):
-        # Must match key AND value
-        def should_remove(key, value):
-            return args.get(key) == value
-
-    for key, value in urllib.parse.parse_qsl(query_string):
-        if not should_remove(key, value):
-            current.append((key, value))
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
-
-
-def path_with_replaced_args(request, args, path=None):
-    path = path or request.path
-    if isinstance(args, dict):
-        args = args.items()
-    keys_to_replace = {p[0] for p in args}
-    current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in keys_to_replace:
-            current.append((key, value))
-    current.extend([p for p in args if p[1] is not None])
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+    Blank values such as ``?name=`` are preserved. Existing arguments are only
+    re-encoded if something is removed or replaced. This is the implementation
+    behind :ref:`datasette.urls.modify() <internals_datasette_urls>`.
+    """
+    remove_keys = set()
+    remove_pairs = set()
+    if isinstance(remove, str):
+        remove_keys.add(remove)
+    elif isinstance(remove, dict):
+        remove_pairs.update((k, str(v)) for k, v in _expand_pairs(remove))
+    elif remove is not None:
+        for item in remove:
+            if isinstance(item, str):
+                remove_keys.add(item)
+            else:
+                key, value = item
+                remove_pairs.add((key, str(value)))
+    replace = _expand_pairs(replace)
+    remove_keys.update(key for key, _ in replace)
+    new_pairs = [
+        (key, value) for key, value in replace + _expand_pairs(add) if value is not None
+    ]
+    if remove_keys or remove_pairs:
+        pairs = [
+            (key, value)
+            for key, value in urllib.parse.parse_qsl(
+                query_string, keep_blank_values=True
+            )
+            if key not in remove_keys and (key, value) not in remove_pairs
+        ]
+        return urllib.parse.urlencode(pairs + new_pairs)
+    # Nothing to take out, so leave the existing query string exactly as it is
+    return "&".join(
+        bit for bit in (query_string, urllib.parse.urlencode(new_pairs)) if bit
+    )
 
 
 _css_re = re.compile(r"""['"\n\\]""")
@@ -590,10 +613,43 @@ def escape_css_string(s):
     )
 
 
-def escape_sqlite(s):
+@documented
+def escape_sqlite(s: str) -> str:
+    """
+    Escape a table or column name so it can be safely included in a SQL query.
+
+    Returns the identifier unchanged if it is a plain word that is not a
+    SQLite reserved word, otherwise wraps it in double quotes with any
+    embedded double quotes doubled up.
+
+    e.g. ``escape_sqlite("my table")`` returns ``'"my table"'``
+    """
     if _boring_keyword_re.fullmatch(s) and (s.lower() not in reserved_words):
         return s
     return '"{}"'.format(s.replace('"', '""'))
+
+
+_datasette_requirement_re = re.compile(
+    # A requirement named datasette, or a path or URL to a datasette wheel or sdist
+    r"^datasette(\[[^\]]*\])?\s*($|[=<>!~;@])"
+    r"|(^|/)datasette-\d[^/]*\.(whl|tar\.gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def datasette_install_requirements(install, branch=None):
+    """
+    Requirements to pip install for a published Datasette: Datasette itself
+    followed by any extras from --install. Datasette defaults to the version
+    that is running this command, unless --branch was used or one of the
+    --install values is itself a requirement for Datasette.
+    """
+    install = list(install)
+    if branch:
+        return [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + install
+    if any(_datasette_requirement_re.search(item.strip()) for item in install):
+        return install
+    return [f"datasette=={__version__}"] + install
 
 
 def make_dockerfile(
@@ -637,12 +693,7 @@ def make_dockerfile(
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
+    install = datasette_install_requirements(install, branch)
 
     apt_get_extras_ = []
     apt_get_extras_.extend(apt_get_extras)
@@ -845,10 +896,21 @@ def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
     sql, params = detect_fts_sql(table)
     rows = conn.execute(sql, params).fetchall()
-    if len(rows) == 0:
-        return None
-    else:
+    if rows:
         return rows[0][0]
+    # detect_fts_sql() only matches content="table" and content=[table], but
+    # SQLite also accepts content=table, content='table' and content=`table`
+    candidates = conn.execute(
+        "select name, sql from sqlite_master where rootpage = 0"
+        " and sql like '%VIRTUAL TABLE%USING FTS%'"
+        " and instr(lower(sql), lower(?))",
+        [table],
+    ).fetchall()
+    for name, fts_sql in candidates:
+        content_table = _fts_external_content_table(fts_sql)
+        if content_table and content_table.lower() == table.lower():
+            return name
+    return None
 
 
 def detect_fts_sql(table):
@@ -969,14 +1031,18 @@ css_class_re = re.compile(r"^[a-zA-Z]+[_a-zA-Z0-9-]*$")
 css_invalid_chars_re = re.compile(r"[^a-zA-Z0-9_\-]")
 
 
-def to_css_class(s):
+@documented
+def to_css_class(s: str) -> str:
     """
     Given a string (e.g. a table name) returns a valid unique CSS class.
+
     For simple cases, just returns the string again. If the string is not a
-    valid CSS class (we disallow - and _ prefixes even though they are valid
+    valid CSS class (we disallow ``-`` and ``_`` prefixes even though they are valid
     as they may be confused with browser prefixes) we strip invalid characters
     and add a 6 char md5 sum suffix, to make sure two tables with identical
     names after stripping characters don't end up with the same CSS class.
+
+    e.g. ``to_css_class("my table")`` returns ``"my-table-9f0572"``
     """
     if css_class_re.match(s):
         return s
@@ -1013,35 +1079,17 @@ def module_from_path(path, name):
     # Adapted from http://sayspy.blogspot.com/2011/07/how-to-import-module-from-just-file.html
     mod = types.ModuleType(name)
     mod.__file__ = path
+    # Give the module a loader, so tracebacks through it can show source
+    # lines. Python 3.15 warns about module globals with no __spec__.loader
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    mod.__loader__ = loader
+    mod.__spec__ = importlib.util.spec_from_loader(name, loader, origin=str(path))
     with open(path, "r") as file:
         code = compile(file.read(), path, "exec", dont_inherit=True)
     # Executing the file is the whole point - this is how --plugins-dir loads
     # plugins and how metadata/config .py files are evaluated
     exec(code, mod.__dict__)  # noqa: S102
     return mod
-
-
-def path_with_format(
-    *, request=None, path=None, format=None, extra_qs=None, replace_format=None
-):
-    qs = extra_qs or {}
-    if path is None and request:
-        path = request.path
-    if replace_format and path.endswith(f".{replace_format}"):
-        path = path[: -(1 + len(replace_format))]
-    if "." in path:
-        qs["_format"] = format
-    else:
-        path = f"{path}.{format}"
-    if qs:
-        extra = urllib.parse.urlencode(sorted(qs.items()))
-        if request and request.query_string:
-            path = f"{path}?{request.query_string}&{extra}"
-        else:
-            path = f"{path}?{extra}"
-    elif request and request.query_string:
-        path = f"{path}?{request.query_string}"
-    return path
 
 
 class CustomRow(OrderedDict):
@@ -1071,31 +1119,6 @@ def value_as_boolean(value):
 
 class ValueAsBooleanError(ValueError):
     pass
-
-
-class WriteLimitExceeded(Exception):
-    pass
-
-
-class LimitedWriter:
-    def __init__(self, writer, limit_mb):
-        self.writer = writer
-        self.limit_bytes = limit_mb * 1024 * 1024
-        self.bytes_count = 0
-
-    async def write(self, bytes):
-        self.bytes_count += len(bytes)
-        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
-            raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
-        await self.writer.write(bytes)
-
-
-class EscapeHtmlWriter:
-    def __init__(self, writer):
-        self.writer = writer
-
-    async def write(self, content):
-        await self.writer.write(markupsafe.escape(content))
 
 
 _infinities = {float("inf"), float("-inf")}
@@ -1153,22 +1176,20 @@ class LoadExtension(click.ParamType):
         return path, entrypoint
 
 
-def format_bytes(bytes):
-    current = float(bytes)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if current < 1024:
-            break
-        current = current / 1024
-    if unit == "bytes":
-        return f"{int(current)} {unit}"
-    else:
-        return f"{current:.1f} {unit}"
-
-
 _escape_fts_re = re.compile(r'\s+|(".*?")')
 
 
-def escape_fts(query):
+@documented
+def escape_fts(query: str) -> str:
+    """
+    Escape a user-provided search string so it can be safely used with a SQLite
+    full-text search ``MATCH`` operator, by wrapping each term in double quotes.
+
+    e.g. ``escape_fts("hello world")`` returns ``'"hello" "world"'``
+
+    This prevents FTS operators such as ``AND``, ``NOT``, ``*`` and ``:`` in
+    user input from being interpreted as query syntax or causing errors.
+    """
     # If query has unbalanced ", add one at end
     if query.count('"') % 2:
         query += '"'
@@ -1177,7 +1198,16 @@ def escape_fts(query):
     return " ".join(f'"{bit}"' if not bit.startswith('"') else bit for bit in bits)
 
 
+@documented(label="internals_multiparams")
 class MultiParams:
+    """
+    Dictionary-like object for parameters that can have multiple values.
+    ``request.args`` is an instance of this class.
+
+    Construct with a dictionary of ``{"key": ["list", "of", "values"]}``
+    or a list of ``[key, value]`` pairs.
+    """
+
     def __init__(self, data):
         # data is a dictionary of key => [list, of, values] or a list of [["key", "value"]] pairs
         if isinstance(data, dict):
@@ -1253,8 +1283,9 @@ def check_connection(conn):
                 raise ConnectionProblem(e)
 
 
+@documented
 class BadMetadataError(Exception):
-    pass
+    "Raised by :ref:`parse_metadata() <internals_utils_parse_metadata>` if content is not valid JSON or YAML."
 
 
 @documented
@@ -1315,7 +1346,14 @@ async def async_call_with_supported_arguments(fn, **kwargs):
     return await fn(*call_with)
 
 
-def actor_matches_allow(actor, allow):
+@documented
+def actor_matches_allow(actor: dict | None, allow: dict | bool | None) -> bool:
+    """
+    Returns ``True`` if the actor matches the ``allow`` block, using the rules
+    described in :ref:`authentication_permissions_allow`.
+
+    ``allow=None`` matches every actor, including ``None`` for an unauthenticated user.
+    """
     if allow is True:
         return True
     if allow is False:
@@ -1395,7 +1433,16 @@ async def initial_path_for_datasette(datasette):
     return path
 
 
+@documented
 class PrefixedUrlString(str):
+    """
+    A ``str`` subclass returned by the :ref:`datasette.urls <internals_datasette_urls>` methods,
+    marking a path that has already had the :ref:`setting_base_url` prefix applied.
+
+    String methods such as ``.replace()`` and concatenation with ``+`` return
+    a ``PrefixedUrlString``, so the marker survives further manipulation.
+    """
+
     def __add__(self, other):
         return type(self)(super().__add__(other))
 
@@ -1421,8 +1468,12 @@ class PrefixedUrlString(str):
             return super().__getattribute__(name)
 
 
+@documented
 class StartupError(Exception):
-    pass
+    """
+    Raise this from a :ref:`startup() <plugin_hook_startup>` plugin hook to prevent Datasette
+    from starting. The message is shown to the user without a traceback.
+    """
 
 
 # Comments and string literals, matched in a single pass so that whichever
@@ -1512,7 +1563,12 @@ def error_body(messages, status):
     }
 
 
-def add_cors_headers(headers):
+@documented
+def add_cors_headers(headers: dict) -> None:
+    """
+    Add the CORS headers that Datasette sends when run with ``--cors``
+    to the provided ``headers`` dictionary, modifying it in place.
+    """
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
     headers["Access-Control-Expose-Headers"] = "Link"
@@ -1683,8 +1739,9 @@ def prune_empty_dicts(d: dict):
 def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
-    hierarchy in destination if needed. After moving, recursively remove any keys
-    in the source that are left empty.
+    hierarchy in destination if needed. A 'plugins' block is merged by plugin name
+    with one already in the destination, the source winning for a name in both.
+    After moving, recursively remove any keys in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1699,8 +1756,16 @@ def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]
                 d = dest
                 for step in path:
                     d = d.setdefault(step, {})
-                # Move the plugins
-                d[key] = value
+                # Move the plugins, keeping any the destination already has
+                # for other plugin names
+                if (
+                    key == "plugins"
+                    and isinstance(value, dict)
+                    and isinstance(d.get(key), dict)
+                ):
+                    d[key] = {**d[key], **value}
+                else:
+                    d[key] = value
                 # Remove the plugins from source
                 src.pop(key, None)
             elif isinstance(value, dict):

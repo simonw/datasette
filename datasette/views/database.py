@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import itertools
 import json
@@ -8,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from urllib.parse import parse_qsl, urlencode
 
 import markupsafe
+from jinja2.filters import do_filesizeformat
 
 from datasette.database import QueryInterrupted
 from datasette.extras import ExtraScope, extra_names_from_request
@@ -17,16 +17,11 @@ from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.utils import (
     InvalidSql,
     add_cors_headers,
-    append_querystring,
     await_me_maybe,
     call_with_supported_arguments,
     error_body,
-    format_bytes,
     is_url,
     make_slot_function,
-    path_with_added_args,
-    path_with_format,
-    path_with_removed_args,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -36,11 +31,22 @@ from datasette.utils import (
 from datasette.utils import (
     named_parameters as derive_named_parameters,
 )
-from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
+from datasette.utils.asgi import (
+    AsgiFileDownload,
+    Forbidden,
+    NotFound,
+    Response,
+    etag_matches,
+)
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, is_csv_format, stream_csv, tsv_export_path
+from .base import (
+    DatasetteError,
+    View,
+    render_with_output_renderer,
+    tsv_export_path,
+)
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -98,9 +104,7 @@ class DatabaseView(View):
         if sql:
             redirect_url = datasette.urls.database(database) + "/-/query"
             if request.url_vars.get("format"):
-                redirect_url = path_with_format(
-                    path=redirect_url, format=request.url_vars.get("format")
-                )
+                redirect_url += "." + request.url_vars["format"]
             redirect_url += "?" + request.query_string
             response = Response.redirect(redirect_url)
             if datasette.cors:
@@ -223,13 +227,7 @@ class DatabaseView(View):
         assert format_ == "html"
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            datasette.urls.modify(request, format="json"),
         )
         templates = (f"database-{to_css_class(database)}.html", "database.html")
         environment = datasette.get_jinja_environment(request)
@@ -262,7 +260,7 @@ class DatabaseView(View):
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
-                    allow_download=datasette.setting("allow_download")
+                    allow_download=datasette.setting("default_allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
                     attached_databases=attached_databases,
@@ -471,11 +469,6 @@ class QueryContext(Context):
             "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
-    append_querystring: callable = field(
-        metadata={
-            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
-        }
-    )
     show_hide_hidden: str = field(
         metadata={
             "help": "Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state."
@@ -571,20 +564,28 @@ def _table_count_truncated(datasette, db, table, count):
 async def database_download(request, datasette):
     from datasette.resources import DatabaseResource
 
-    database = tilde_decode(request.url_vars["database"])
+    database_route = tilde_decode(request.url_vars["database"])
+    try:
+        db = datasette.get_database(route=database_route)
+    except KeyError:
+        db = None
+    # The URL contains the database's route, but permission rules refer to
+    # databases by name. Those differ for add_database(..., route=...).
+    # The check runs before the 404 for an unknown route, so an actor who is
+    # denied this action for the whole instance gets a 403 either way.
     await datasette.ensure_permission(
         action="view-database-download",
-        resource=DatabaseResource(database=database),
+        resource=DatabaseResource(
+            database=db.name if db is not None else database_route
+        ),
         actor=request.actor,
     )
-    try:
-        db = datasette.get_database(route=database)
-    except KeyError:
+    if db is None:
         raise DatasetteError("Invalid database", status=404)
 
     if db.is_memory:
         raise DatasetteError("Cannot download in-memory databases", status=404)
-    if not datasette.setting("allow_download") or db.is_mutable:
+    if not datasette.setting("default_allow_download") or db.is_mutable:
         raise Forbidden("Database download is forbidden")
     if not db.path:
         raise DatasetteError("Cannot download database", status=404)
@@ -596,10 +597,8 @@ async def database_download(request, datasette):
         etag = f'"{db.hash}"'
         headers["Etag"] = etag
         # Has user seen this already?
-        if_none_match = request.headers.get("if-none-match")
-        if if_none_match and if_none_match == etag:
-            return Response("", status=304)
-    headers["Transfer-Encoding"] = "chunked"
+        if etag_matches(request.headers.get("if-none-match"), etag):
+            return Response("", status=304, headers=headers)
     return AsgiFileDownload(
         filepath,
         filename=os.path.basename(filepath),
@@ -888,25 +887,14 @@ class QueryView(View):
             return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
-        if is_csv_format(datasette, format_):
-            if not sql:
-                raise DatasetteError("?sql= is required", status=400)
-
-            async def fetch_data_for_csv(request, _next=None):
-                # Reuse the trusted magic parameter values prepared above.
-                results = await db.execute(sql, params_for_query, truncate=True)
-                data = {"rows": results.rows, "columns": results.columns}
-                return data, None, None
-
-            return await stream_csv(
-                datasette, fetch_data_for_csv, request, db.name, format_=format_
-            )
-        elif format_ in datasette.renderers:
+        if format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)
             table_extra_registry.validate_requested(extras, ExtraScope.QUERY)
+            # Plus any extras declared by the output renderer for this format
+            extras.update(datasette._renderer_extras.get(format_) or [])
             if extras:
                 query_extra_context = QueryExtraContext(
                     datasette=datasette,
@@ -924,43 +912,21 @@ class QueryView(View):
                     extra_registry=table_extra_registry,
                 )
                 data.update(await resolve_query_extras(extras, query_extra_context))
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                datasette.renderers[format_][0],
-                datasette=datasette,
+            r = await render_with_output_renderer(
+                datasette,
+                request,
+                format_,
+                data=data,
                 columns=columns,
                 rows=rows,
                 sql=sql,
                 query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
-                request=request,
-                view_name="table",
+                view_name="query",
                 truncated=results.truncated if results else False,
                 error=query_error,
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
             )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                r = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code") or 200,
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                r = result
-                # if status_code is not None:
-                #     # Over-ride the status code
-                #     r.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
         elif format_ == "html":
             headers = {}
             templates = [f"query-{to_css_class(database)}.html", "query.html"]
@@ -974,13 +940,7 @@ class QueryView(View):
             template = environment.select_template(templates)
             alternate_url_json = datasette.absolute_url(
                 request,
-                datasette.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format="json",
-                    )
-                ),
+                datasette.urls.modify(request, format="json"),
             )
             data = {
                 "ok": query_error is None,
@@ -1009,17 +969,13 @@ class QueryView(View):
                     database=database,
                     table=data.get("table"),
                     request=request,
-                    view_name="database",
+                    path=datasette.urls.modify(request, format=False).partition("?")[0],
+                    full_path=datasette.urls.modify(request, format=False),
+                    view_name="query",
                 )
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
-                    renderers[key] = datasette.urls.path(
-                        path_with_format(
-                            request=request,
-                            path=request.scope.get("route_path"),
-                            format=key,
-                        )
-                    )
+                    renderers[key] = datasette.urls.modify(request, format=key)
 
             allow_execute_sql = await datasette.allowed(
                 action="execute-sql",
@@ -1035,23 +991,27 @@ class QueryView(View):
             show_hide_hidden = ""
             if stored_query and stored_query.hide_sql:
                 if bool(params.get("_show_sql")):
-                    show_hide_link = path_with_removed_args(request, {"_show_sql"})
+                    show_hide_link = datasette.urls.modify(request, remove="_show_sql")
                     show_hide_text = "hide"
                     show_hide_hidden = (
                         '<input type="hidden" name="_show_sql" value="1">'
                     )
                 else:
-                    show_hide_link = path_with_added_args(request, {"_show_sql": 1})
+                    show_hide_link = datasette.urls.modify(
+                        request, add={"_show_sql": 1}
+                    )
                     show_hide_text = "show"
             else:
                 if bool(params.get("_hide_sql")):
-                    show_hide_link = path_with_removed_args(request, {"_hide_sql"})
+                    show_hide_link = datasette.urls.modify(request, remove="_hide_sql")
                     show_hide_text = "show"
                     show_hide_hidden = (
                         '<input type="hidden" name="_hide_sql" value="1">'
                     )
                 else:
-                    show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
+                    show_hide_link = datasette.urls.modify(
+                        request, add={"_hide_sql": 1}
+                    )
                     show_hide_text = "hide"
             hide_sql = show_hide_text == "show"
 
@@ -1130,14 +1090,7 @@ class QueryView(View):
                         query_actions.extend(extra_links)
                 return query_actions
 
-            url_csv = datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="csv",
-                    extra_qs={"_size": "max"},
-                )
-            )
+            url_csv = datasette.urls.modify(request, format="csv", add={"_size": "max"})
             r = Response.html(
                 await datasette.render_template(
                     template,
@@ -1185,7 +1138,6 @@ class QueryView(View):
                         ]
                         + [("_size", "max")],
                         url_tsv_path=tsv_export_path(datasette, request),
-                        append_querystring=append_querystring,
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=metadata,
                         alternate_url_json=alternate_url_json,
@@ -1207,7 +1159,7 @@ class QueryView(View):
                         query_actions=query_actions,
                     ),
                     request=request,
-                    view_name="database",
+                    view_name="query",
                 ),
                 headers=headers,
             )
@@ -1339,23 +1291,19 @@ async def display_rows(datasette, database, request, rows, columns):
                         )
                     )
                 elif isinstance(display_value, bytes):
-                    blob_url = path_with_format(
-                        request=request,
+                    blob_url = datasette.urls.modify(
+                        request,
                         format="blob",
-                        extra_qs={
+                        add={
                             "_blob_column": column,
                             "_blob_hash": hashlib.sha256(display_value).hexdigest(),
                         },
                     )
-                    formatted = format_bytes(len(value))
+                    formatted = do_filesizeformat(len(value))
                     display_value = markupsafe.Markup(
                         '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                             blob_url,
-                            (
-                                f' title="{formatted}"'
-                                if "bytes" not in formatted
-                                else ""
-                            ),
+                            (f' title="{formatted}"' if len(value) >= 1000 else ""),
                             len(value),
                             "" if len(value) == 1 else "s",
                         )

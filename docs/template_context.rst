@@ -33,7 +33,7 @@ These variables are available on every page rendered by Datasette, including pag
     Async function returning breadcrumb navigation items for the current page. Call it with ``request=request`` plus optional ``database=`` and ``table=`` arguments; it returns a list of ``{"href": url, "label": label}`` dictionaries.
 
 ``urls``
-    Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)`` and ``urls.static(path)`` - see :ref:`internals_datasette_urls`.
+    Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)``, ``urls.static(path)`` and ``urls.modify(request, ...)`` for links that change the current query string - see :ref:`internals_datasette_urls`.
 
 ``actor``
     The currently authenticated actor dictionary, or None. Actors usually include an ``id`` key and may include any other keys supplied by authentication plugins.
@@ -53,9 +53,6 @@ These variables are available on every page rendered by Datasette, including pag
 ``body_scripts``
     List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.
 
-``format_bytes``
-    Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.
-
 ``show_messages``
     Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.
 
@@ -70,6 +67,71 @@ These variables are available on every page rendered by Datasette, including pag
 
 ``datasette_version``
     The version of Datasette that is running
+
+Index page
+----------
+
+The homepage, listing the tables, views and queries across every database. Rendered using the ``index.html`` template.
+
+``alternate_url_json`` - ``str``
+    URL of the JSON version of this page, ``/.json``
+
+``catalog`` - ``Catalog``
+    The full catalog object: ``items`` and ``queries`` (see below), ``total`` (tables and views matching the search and database filter, across all pages), ``queries_total``, ``databases`` and ``totals`` (a dictionary of ``databases``, ``tables`` and ``views`` counts)
+
+``database_filter`` - ``str | None``
+    Name of the database the list is filtered to with ``?database=``, or None
+
+``database_url`` - ``Callable``
+    Function that takes a database name, or None for all databases, and returns the homepage URL filtered to that database, keeping the current search
+
+``databases`` - ``list[dict]``
+    One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url`` and ``size`` (bytes, or None for in-memory databases)
+
+``homepage_actions`` - ``list[dict]``
+    Links for the homepage actions menu, from plugins implementing :ref:`plugin_hook_homepage_actions`
+
+``items`` - ``list[dict]``
+    The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``more_columns`` (the rest of the column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long
+
+``metadata`` - ``dict``
+    Instance metadata, such as ``title``, ``description`` and ``license``
+
+``next_url`` - ``str | None``
+    URL of the next page, or None on the last page
+
+``noindex`` - ``bool``
+    True for the ``/-/`` alternative homepage, which should not be indexed by search engines
+
+``other_results`` - ``list[dict]``
+    While searching, items added to the Jump to menu by plugins using :ref:`plugin_hook_jump_items_sql` that match the search, excluding databases, tables, views and queries. Each has ``name``, ``url``, ``type`` and ``description`` keys
+
+``page`` - ``int``
+    The current page of tables and views, from ``?page=``
+
+``page_count`` - ``int``
+    The total number of pages
+
+``page_size`` - ``int``
+    The number of tables and views per page
+
+``previous_url`` - ``str | None``
+    URL of the previous page, or None on the first page
+
+``private`` - ``bool``
+    True if anonymous users cannot view this instance
+
+``q`` - ``str``
+    The current search, from ``?q=``
+
+``queries`` - ``list[dict]``
+    Up to five stored queries. Without a search these are queries from configuration or plugins, then the actor's own saved queries; with a search, any matching query the actor can see. Each is a dictionary with ``database``, ``name``, ``title``, ``description``, ``sql``, ``is_write``, ``private``, ``parameters``, ``url``, ``color`` and ``mine``
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``top_homepage`` - ``Callable``
+    Function returning HTML from plugins that implement :ref:`plugin_hook_top_homepage`
 
 Database page
 -------------
@@ -155,9 +217,6 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 
 ``alternate_url_json`` - ``str``
     URL for alternate JSON version of this page
-
-``append_querystring`` - ``callable``
-    Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
 
 ``columns`` - ``list``
     List of result column names in the order they appear in ``display_rows`` and ``rows``.
@@ -277,9 +336,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``alternate_url_json`` - ``str``
     URL for the JSON version of this page
 
-``append_querystring`` - ``callable``
-    Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
-
 ``clear_filters_url`` - ``str``
     URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved.
 
@@ -303,9 +359,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``database_color`` - ``str``
     Color assigned to the database
-
-``datasette_allow_facet`` - ``str``
-    The string "true" or "false" reflecting the allow_facet setting
 
 ``display_columns`` - ``list``
     Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.
@@ -334,9 +387,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``filters`` - ``Filters``
     ``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable.
 
-``fix_path`` - ``callable``
-    Function that applies the configured ``base_url`` prefix to a path.
-
 ``form_hidden_args`` - ``list``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
 
@@ -363,9 +413,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``page_position`` - ``dict``
     On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page.
-
-``path_with_replaced_args`` - ``callable``
-    Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument.
 
 ``primary_keys`` - ``list``
     List of primary key column names for this table, or an empty list if the table has no explicit primary key.

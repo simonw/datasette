@@ -186,6 +186,12 @@ This example shows how a plugin might define a single panel:
 
 When a page with a table loads, all registered plugins that implement ``makeAboveTablePanelConfigs()`` will be called and panels they return will be added to the top of the table page.
 
+The panels are displayed as a set of tabs, one for each panel, with the first panel selected to start with. The ``label`` is used as the text of the tab, so it should be short and should describe the panel on its own.
+
+The tabs follow the `WAI-ARIA tabs pattern <https://www.w3.org/WAI/ARIA/apg/patterns/tabs/>`__. The tab for the panel that is currently displayed has ``aria-selected="true"`` and is styled as selected, and each panel is a ``role="tabpanel"`` element labelled by its tab. Keyboard users can move between the tabs with the left and right arrow keys and the ``Home`` and ``End`` keys, then press ``Tab`` to move into the selected panel.
+
+The ``node`` passed to ``render()`` is that ``role="tabpanel"`` element. Plugins should not change its ``role``, ``id``, ``tabindex``, ``hidden`` or ``aria-labelledby`` attributes.
+
 .. _javascript_plugins_makeColumnActions:
 
 makeColumnActions(columnDetails)

@@ -7148,3 +7148,70 @@ ul.query-list {
 .homepage-searching.query-list-page .homepage-queries {
     margin-top: 0;
 }
+
+/* Above-table panels ======================================================= */
+
+/* Tabs for the panels that JavaScript plugins add with
+   makeAboveTablePanelConfigs(). datasette-manager.js builds them as a
+   WAI-ARIA tablist, so the selected state is styled from aria-selected.
+
+   The selected tab is marked by a thick underline and bolder text as well as
+   by colour. Unselected tabs have no bottom border at all rather than a
+   transparent one, because forced-colors mode would paint a transparent
+   border and make every tab look selected. */
+.above-table-panel .tab-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 4px;
+    margin: 4px 0 20px;
+    border-bottom: 1px solid var(--rule, #d8e6f5);
+}
+
+.above-table-panel .tab-controls [role="tab"] {
+    appearance: none;
+    margin: 0;
+    padding: 8px 12px 11px;
+    border: 0;
+    border-radius: 4px 4px 0 0;
+    background: transparent;
+    color: #4a4a4a;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.above-table-panel .tab-controls [role="tab"]:hover {
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.above-table-panel .tab-controls [role="tab"][aria-selected="true"] {
+    padding-bottom: 8px;
+    border-bottom: 3px solid var(--accent, #1a56db);
+    color: var(--ink, #0f0f0f);
+    font-weight: 600;
+}
+
+.above-table-panel .tab-controls [role="tab"]:focus-visible,
+.above-table-panel .tab-contents > [role="tabpanel"]:focus-visible {
+    outline: 2px solid var(--accent, #1a56db);
+    outline-offset: 2px;
+}
+
+.above-table-panel .tab-contents > [role="tabpanel"][hidden] {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    .above-table-panel .tab-controls [role="tab"] {
+        min-height: 44px;
+    }
+}
+
+@media (forced-colors: active) {
+    .above-table-panel .tab-controls [role="tab"][aria-selected="true"] {
+        border-bottom-color: Highlight;
+    }
+}

@@ -155,7 +155,10 @@ const datasetteManager = {
    * shared URL state, so having multiple instances of plugin at same time is problematic.
    * Currently, we never destroy any panels, we just hide them.
    *
-   * TODO: nicer panel css, show panel selection state.
+   * The panels follow the WAI-ARIA tabs pattern: the buttons are tabs in a
+   * tablist, the selected one has aria-selected="true" and is the only one
+   * in the tab order, and the arrow, Home and End keys move between them.
+   *
    * TODO: does this hook need to take any arguments?
    */
   renderAboveTablePanel: () => {
@@ -170,37 +173,79 @@ const datasetteManager = {
       return;
     }
 
-    let aboveTablePanelWrapper = aboveTablePanel.querySelector(".panels");
+    let contents = aboveTablePanel.querySelector(".tab-contents");
+    let controls = aboveTablePanel.querySelector(".tab-controls");
+
+    const getTabs = () => Array.from(controls.querySelectorAll('[role="tab"]'));
+
+    const selectTab = (selectedTab) => {
+      getTabs().forEach((tab) => {
+        const isSelected = tab === selectedTab;
+        tab.setAttribute("aria-selected", isSelected ? "true" : "false");
+        // Roving tabindex: Tab enters the tablist at the selected tab and
+        // then moves on to the panel, the arrow keys move between tabs
+        tab.tabIndex = isSelected ? 0 : -1;
+        const panel = document.getElementById(
+          tab.getAttribute("aria-controls"),
+        );
+        if (panel) {
+          panel.hidden = !isSelected;
+        }
+      });
+    };
 
     // First render: create wrappers. Otherwise, reuse previous.
-    if (!aboveTablePanelWrapper) {
-      aboveTablePanelWrapper = document.createElement("div");
-      aboveTablePanelWrapper.classList.add("tab-contents");
-      const panelNav = document.createElement("div");
-      panelNav.classList.add("tab-controls");
+    if (!contents || !controls) {
+      controls = document.createElement("div");
+      controls.classList.add("tab-controls");
+      controls.setAttribute("role", "tablist");
+      controls.setAttribute("aria-label", "Panels");
+      controls.addEventListener("keydown", (ev) => {
+        if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) {
+          return;
+        }
+        const tabs = getTabs();
+        const current = tabs.indexOf(ev.target.closest('[role="tab"]'));
+        if (current === -1) {
+          return;
+        }
+        const isRtl = getComputedStyle(controls).direction === "rtl";
+        let next;
+        if (ev.key === (isRtl ? "ArrowLeft" : "ArrowRight")) {
+          next = (current + 1) % tabs.length;
+        } else if (ev.key === (isRtl ? "ArrowRight" : "ArrowLeft")) {
+          next = (current - 1 + tabs.length) % tabs.length;
+        } else if (ev.key === "Home") {
+          next = 0;
+        } else if (ev.key === "End") {
+          next = tabs.length - 1;
+        } else {
+          return;
+        }
+        ev.preventDefault();
+        selectTab(tabs[next]);
+        tabs[next].focus();
+      });
 
-      // Temporary: css for minimal amount of breathing room.
-      panelNav.style.display = "flex";
-      panelNav.style.gap = "8px";
-      panelNav.style.marginTop = "4px";
-      panelNav.style.marginBottom = "20px";
+      contents = document.createElement("div");
+      contents.classList.add("tab-contents");
 
-      aboveTablePanel.appendChild(panelNav);
-      aboveTablePanel.appendChild(aboveTablePanelWrapper);
+      aboveTablePanel.appendChild(controls);
+      aboveTablePanel.appendChild(contents);
     }
 
     datasetteManager.plugins.forEach((plugin, pluginName) => {
       const { makeAboveTablePanelConfigs } = plugin;
 
       if (makeAboveTablePanelConfigs) {
-        const controls = aboveTablePanel.querySelector(".tab-controls");
-        const contents = aboveTablePanel.querySelector(".tab-contents");
-
         // Each plugin can make multiple panels
         const configs = makeAboveTablePanelConfigs();
 
-        configs.forEach((config, i) => {
-          const nodeContentId = `${pluginName}_${config.id}_panel-content`;
+        configs.forEach((config) => {
+          // These are used as ID references, which cannot contain whitespace
+          const nodeContentId =
+            `${pluginName}_${config.id}_panel-content`.replace(/\s+/g, "-");
+          const tabId = `${nodeContentId}-tab`;
 
           // quit if we've already registered this plugin
           // TODO: look into whether plugins should be allowed to ask
@@ -211,33 +256,43 @@ const datasetteManager = {
 
           // Add tab control button
           const pluginControl = document.createElement("button");
+          pluginControl.type = "button";
+          pluginControl.id = tabId;
           pluginControl.textContent = config.label;
-          pluginControl.onclick = () => {
-            contents.childNodes.forEach((node) => {
-              if (node.id === nodeContentId) {
-                node.style.display = "block";
-              } else {
-                node.style.display = "none";
-              }
-            });
-          };
+          pluginControl.setAttribute("role", "tab");
+          pluginControl.setAttribute("aria-selected", "false");
+          pluginControl.setAttribute("aria-controls", nodeContentId);
+          pluginControl.tabIndex = -1;
+          pluginControl.addEventListener("click", () => {
+            selectTab(pluginControl);
+          });
           controls.appendChild(pluginControl);
 
           // Add plugin content area
           const pluginNode = document.createElement("div");
           pluginNode.id = nodeContentId;
+          pluginNode.setAttribute("role", "tabpanel");
+          pluginNode.setAttribute("aria-labelledby", tabId);
+          // Focusable, so keyboard users can reach a panel that has no
+          // focusable content of its own
+          pluginNode.tabIndex = 0;
+          pluginNode.hidden = true; // Hidden unless its tab is selected
           config.render(pluginNode);
-          pluginNode.style.display = "none"; // Default to hidden unless you're ifrst
 
           contents.appendChild(pluginNode);
         });
-
-        // Let first node be selected by default
-        if (contents.childNodes.length) {
-          contents.childNodes[0].style.display = "block";
-        }
       }
     });
+
+    // Let the first panel be selected by default, keeping any existing
+    // selection when more panels are registered later
+    const tabs = getTabs();
+    if (
+      tabs.length &&
+      !tabs.some((tab) => tab.getAttribute("aria-selected") === "true")
+    ) {
+      selectTab(tabs[0]);
+    }
   },
 
   /** Selectors for document (DOM) elements. Store identifier instead of immediate references in case they haven't loaded when Manager starts. */

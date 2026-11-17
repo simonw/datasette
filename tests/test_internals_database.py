@@ -1081,9 +1081,12 @@ async def test_in_memory_databases_forbid_writes(bare_ds):
 
 
 async def test_hidden_tables(bare_ds):
-    db = bare_ds.add_database(Database(bare_ds, is_memory=True, is_mutable=True))
+    # A named in-memory database is shared between connections. An anonymous
+    # one is a separate empty database for each thread in the executor pool,
+    # so tables created by one query can be invisible to the next one.
+    db = bare_ds.add_database(Database(bare_ds, memory_name="test_hidden_tables"))
     assert await db.hidden_table_names() == []
-    await db.execute("create virtual table f using fts5(a)")
+    await db.execute_write("create virtual table f using fts5(a)")
     assert await db.hidden_table_names() == [
         "f_config",
         "f_content",
@@ -1092,7 +1095,7 @@ async def test_hidden_tables(bare_ds):
         "f_idx",
     ]
 
-    await db.execute("create virtual table r using rtree(id, amin, amax)")
+    await db.execute_write("create virtual table r using rtree(id, amin, amax)")
     assert await db.hidden_table_names() == [
         "f_config",
         "f_content",
@@ -1104,7 +1107,7 @@ async def test_hidden_tables(bare_ds):
         "r_rowid",
     ]
 
-    await db.execute("create table _hideme(_)")
+    await db.execute_write("create table _hideme(_)")
     assert await db.hidden_table_names() == [
         "_hideme",
         "f_config",
@@ -1118,7 +1121,7 @@ async def test_hidden_tables(bare_ds):
     ]
 
     # A fts virtual table with a content table should be hidden too
-    await db.execute("create virtual table f2_fts using fts5(a, content='f')")
+    await db.execute_write("create virtual table f2_fts using fts5(a, content='f')")
     assert await db.hidden_table_names() == [
         "_hideme",
         "f2_fts_config",

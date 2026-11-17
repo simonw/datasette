@@ -394,7 +394,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     ``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable.
 
 ``fix_path`` - ``callable``
-    Function that applies the configured ``base_url`` prefix to a path. The same function is available as ``urls.path()``.
+    Function that applies the configured ``base_url`` prefix to a path.
 
 ``form_hidden_args`` - ``list``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
@@ -422,9 +422,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``page_position`` - ``dict``
     On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page.
-
-``path_with_replaced_args`` - ``callable``
-    Legacy function for building the current path with modified query string arguments. Datasette's own templates no longer use it - use ``urls.modify(request, replace={...})`` instead, see :ref:`internals_datasette_urls_modify`.
 
 ``primary_keys`` - ``list``
     List of primary key column names for this table, or an empty list if the table has no explicit primary key.

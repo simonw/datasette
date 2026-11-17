@@ -525,9 +525,9 @@ def request_route_path(request):
     """
     The request path with any ``base_url`` prefix removed by the router.
 
-    Pass this as ``path=`` to ``path_with_added_args()`` and friends when
-    the result will go through ``datasette.urls.path()``, so ``base_url`` is
-    applied exactly once whether or not a proxy stripped it from the request.
+    Use this for paths that will go through ``datasette.urls.path()``, so
+    ``base_url`` is applied exactly once whether or not a proxy stripped it
+    from the request. ``datasette.urls.modify(request)`` does this for you.
     """
     return request.scope.get("route_path") or request.path
 
@@ -586,65 +586,6 @@ def modify_query_string(query_string, *, add=None, replace=None, remove=None):
         if value is not None:
             pairs.append((key, value))
     return urllib.parse.urlencode(pairs)
-
-
-def _legacy_path_and_query_string(request, path):
-    if path is None:
-        return request.path, request.query_string
-    if "?" in path:
-        return tuple(path.split("?", 1))
-    return path, request.query_string
-
-
-def _join_path_and_query_string(path, query_string):
-    if query_string:
-        return f"{path}?{query_string}"
-    return path
-
-
-def path_with_added_args(request, args, path=None):
-    """
-    Legacy helper - new code should use ``datasette.urls.modify()``.
-
-    Adds ``args`` (a dictionary or pairs) to the query string. A value of
-    ``None`` removes that key instead.
-    """
-    path, query_string = _legacy_path_and_query_string(request, path)
-    pairs = _expand_pairs(args)
-    return _join_path_and_query_string(
-        path,
-        modify_query_string(
-            query_string,
-            add=[(k, v) for k, v in pairs if v is not None],
-            remove=[k for k, v in pairs if v is None],
-        ),
-    )
-
-
-def path_with_removed_args(request, args, path=None):
-    """
-    Legacy helper - new code should use ``datasette.urls.modify()``.
-
-    ``args`` is a set of keys to remove, or a dictionary of ``{key: value}``
-    where only that exact value is removed.
-    """
-    path, query_string = _legacy_path_and_query_string(request, path)
-    return _join_path_and_query_string(
-        path, modify_query_string(query_string, remove=args)
-    )
-
-
-def path_with_replaced_args(request, args, path=None):
-    """
-    Legacy helper - new code should use ``datasette.urls.modify()``.
-
-    Replaces existing values for each key in ``args`` (a dictionary or
-    pairs). A value of ``None`` removes that key.
-    """
-    path, query_string = _legacy_path_and_query_string(request, path)
-    return _join_path_and_query_string(
-        path, modify_query_string(query_string, replace=args)
-    )
 
 
 _css_re = re.compile(r"""['"\n\\]""")

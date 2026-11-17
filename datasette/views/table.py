@@ -42,8 +42,6 @@ from datasette.utils import (
     make_slot_function,
     path_from_row_pks,
     path_with_format,
-    path_with_removed_args,
-    path_with_replaced_args,
     request_route_path,
     sqlite3,
     tilde_decode,
@@ -207,14 +205,9 @@ class TableContext(Context):
             "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
         }
     )
-    path_with_replaced_args: callable = field(
-        metadata={
-            "help": "Legacy function for building the current path with modified query string arguments. Datasette's own templates no longer use it - use ``urls.modify(request, replace={...})`` instead, see :ref:`internals_datasette_urls_modify`."
-        }
-    )
     fix_path: callable = field(
         metadata={
-            "help": "Function that applies the configured ``base_url`` prefix to a path. The same function is available as ``urls.path()``."
+            "help": "Function that applies the configured ``base_url`` prefix to a path."
         }
     )
     settings: dict = field(
@@ -398,11 +391,9 @@ async def _fragment_request_for_row(request, resolved):
     return _request_with_query_string(request, urllib.parse.urlencode(args))
 
 
-def _redirect(datasette, request, path, forward_querystring=True, remove_args=None):
+def _redirect(datasette, request, path, forward_querystring=True):
     if request.query_string and "?" not in path and forward_querystring:
         path = f"{path}?{request.query_string}"
-    if remove_args:
-        path = path_with_removed_args(request, remove_args, path=path)
     r = Response.redirect(path)
     r.headers["Link"] = f"<{path}>; rel=preload"
     if datasette.cors:
@@ -1661,7 +1652,6 @@ class TableFragmentView(BaseView):
             dict(
                 data,
                 append_querystring=append_querystring,
-                path_with_replaced_args=path_with_replaced_args,
                 fix_path=self.ds.urls.path,
                 settings=self.ds.settings_dict(),
             ),
@@ -2098,7 +2088,6 @@ async def table_view_traced(datasette, request):
             sort=data["sort"],
             sort_desc=data["sort_desc"],
             append_querystring=append_querystring,
-            path_with_replaced_args=path_with_replaced_args,
             fix_path=datasette.urls.path,
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,

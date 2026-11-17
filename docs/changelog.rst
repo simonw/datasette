@@ -14,8 +14,7 @@ Unreleased
 
 - New ``datasette.urls.modify(target, add=, replace=, remove=, format=)`` method for building links that change the query string of the current page or of any other path. It applies ``base_url`` for you and is available in templates as ``urls.modify()``. See :ref:`internals_datasette_urls_modify`. (:issue:`1342`)
 - Fixed a bug where sort, facet and filter-removal links on the table page dropped query string arguments with blank values, so sorting ``/db/table?name=`` lost the filter for rows where ``name`` is the empty string.
-- ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()`` and ``path_with_replaced_args()`` now preserve blank values and accept a ``path=`` that includes a query string. They are still supported, but ``datasette.urls.modify()`` is now preferred. ``path_with_removed_args()`` now matches values using their string form, so ``{"_size": 10}`` removes ``?_size=10``.
-- Datasette's default templates no longer use the ``path_with_replaced_args`` and ``fix_path`` template variables. Both are still provided to custom templates.
+- **Backwards incompatible:** ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()`` and ``path_with_replaced_args()`` have been removed, and ``path_with_replaced_args`` is no longer passed to the table template. Plugins and custom templates should use ``datasette.urls.modify()`` instead: ``path_with_added_args(request, {"_facet": "x"})`` becomes ``datasette.urls.modify(request, add={"_facet": "x"})``, and ``fix_path(path_with_replaced_args(request, {"_sort": "x"}))`` in a template becomes ``urls.modify(request, replace={"_sort": "x"})``. Note that ``modify()`` applies ``base_url``, so its result should not have the prefix added again. (:issue:`1342`)
 
 .. _v1_0_a43:
 

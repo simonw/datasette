@@ -1854,7 +1854,7 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
     - ``replace`` - a dictionary or list of ``(key, value)`` tuples. Any existing values for each key are dropped and the new value is used in their place. A value of ``None`` removes the key.
     - ``add`` - a dictionary or list of ``(key, value)`` tuples. These are added to the end of the query string, keeping any existing values for the same key.
 
-    In ``add`` and ``replace`` a value can be a list, which sets several values for that key. Query string arguments with blank values, such as ``?name=``, are preserved.
+    In ``add`` and ``replace`` a value can be a list, which sets several values for that key. Query string arguments with blank values, such as ``?name=``, are preserved. Existing arguments are left exactly as they were unless something is removed or replaced, in which case the whole query string is re-encoded.
 
     ``format`` works like the ``format=`` argument to the other methods. When ``target`` is a request for a page such as ``/fixtures/facetable.json`` the existing ``.json`` extension is replaced.
 

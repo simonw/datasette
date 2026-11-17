@@ -25,7 +25,6 @@ from datasette.utils import (
     escape_sqlite,
     make_slot_function,
     path_from_row_pks,
-    path_with_format,
     path_without_format,
     sqlite3,
     tilde_decode,
@@ -294,24 +293,12 @@ class RowView(BaseView):
             )
             it_can_render = await await_me_maybe(it_can_render)
             if it_can_render:
-                renderers[key] = self.ds.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format=key,
-                        extra_qs={**url_labels_extra},
-                    )
+                renderers[key] = self.ds.urls.modify(
+                    request, format=key, add={**url_labels_extra}
                 )
 
         # No _size=max: a row page exports just that row
-        url_csv = self.ds.urls.path(
-            path_with_format(
-                request=request,
-                path=request.scope.get("route_path"),
-                format="csv",
-                extra_qs={**url_labels_extra},
-            )
-        )
+        url_csv = self.ds.urls.modify(request, format="csv", add={**url_labels_extra})
         url_csv_path = url_csv.split("?")[0]
         context = {**data, **extras}
         if "metadata" not in context:
@@ -321,13 +308,7 @@ class RowView(BaseView):
         template = environment.select_template(templates)
         alternate_url_json = self.ds.absolute_url(
             request,
-            self.ds.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            self.ds.urls.modify(request, format="json"),
         )
         return Response.html(
             await self.ds.render_template(

@@ -5,7 +5,6 @@ from datasette.renderer import RowStream
 from datasette.utils import (
     add_cors_headers,
     call_with_supported_arguments,
-    path_with_format,
     path_without_format,
 )
 from datasette.utils.asgi import (
@@ -134,13 +133,7 @@ class BaseView:
         if self.has_json_alternate:
             alternate_url_json = self.ds.absolute_url(
                 request,
-                self.ds.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format="json",
-                    )
-                ),
+                self.ds.urls.modify(request, format="json"),
             )
             template_context["alternate_url_json"] = alternate_url_json
             headers.update(
@@ -201,7 +194,7 @@ def tsv_export_path(datasette, request):
         return None
     # route_path is the path without base_url, set when base_url is not "/"
     path = request.scope.get("route_path") or request.path
-    return datasette.urls.path(path_with_format(path=path, format="tsv"))
+    return datasette.urls.path(path, format="tsv")
 
 
 def stream_requested(datasette, request, format_):

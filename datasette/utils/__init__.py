@@ -516,11 +516,6 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
-def append_querystring(url, querystring):
-    op = "&" if ("?" in url) else "?"
-    return f"{url}{op}{querystring}"
-
-
 def request_route_path(request):
     """
     The request path with any ``base_url`` prefix removed by the router.
@@ -559,7 +554,8 @@ def modify_query_string(query_string, *, add=None, replace=None, remove=None):
       dropped and the new value is used instead. ``None`` removes the key.
     - ``add`` - dictionary or pairs, appended without touching existing values.
 
-    Blank values such as ``?name=`` are preserved. This is the implementation
+    Blank values such as ``?name=`` are preserved. Existing arguments are only
+    re-encoded if something is removed or replaced. This is the implementation
     behind :ref:`datasette.urls.modify() <internals_datasette_urls>`.
     """
     remove_keys = set()
@@ -577,15 +573,22 @@ def modify_query_string(query_string, *, add=None, replace=None, remove=None):
                 remove_pairs.add((key, str(value)))
     replace = _expand_pairs(replace)
     remove_keys.update(key for key, _ in replace)
-    pairs = [
-        (key, value)
-        for key, value in urllib.parse.parse_qsl(query_string, keep_blank_values=True)
-        if key not in remove_keys and (key, value) not in remove_pairs
+    new_pairs = [
+        (key, value) for key, value in replace + _expand_pairs(add) if value is not None
     ]
-    for key, value in replace + _expand_pairs(add):
-        if value is not None:
-            pairs.append((key, value))
-    return urllib.parse.urlencode(pairs)
+    if remove_keys or remove_pairs:
+        pairs = [
+            (key, value)
+            for key, value in urllib.parse.parse_qsl(
+                query_string, keep_blank_values=True
+            )
+            if key not in remove_keys and (key, value) not in remove_pairs
+        ]
+        return urllib.parse.urlencode(pairs + new_pairs)
+    # Nothing to take out, so leave the existing query string exactly as it is
+    return "&".join(
+        bit for bit in (query_string, urllib.parse.urlencode(new_pairs)) if bit
+    )
 
 
 _css_re = re.compile(r"""['"\n\\]""")
@@ -1062,29 +1065,6 @@ def module_from_path(path, name):
     # plugins and how metadata/config .py files are evaluated
     exec(code, mod.__dict__)  # noqa: S102
     return mod
-
-
-def path_with_format(
-    *, request=None, path=None, format=None, extra_qs=None, replace_format=None
-):
-    qs = extra_qs or {}
-    if path is None and request:
-        path = request.path
-    if replace_format is None and request:
-        # Drop the extension the current request used, e.g. .json
-        replace_format = request.url_vars.get("format")
-    if replace_format and path.endswith(f".{replace_format}"):
-        path = path[: -(1 + len(replace_format))]
-    path = f"{path}.{format}"
-    if qs:
-        extra = urllib.parse.urlencode(sorted(qs.items()))
-        if request and request.query_string:
-            path = f"{path}?{request.query_string}&{extra}"
-        else:
-            path = f"{path}?{extra}"
-    elif request and request.query_string:
-        path = f"{path}?{request.query_string}"
-    return path
 
 
 def path_without_format(request, *, include_query_string=False):

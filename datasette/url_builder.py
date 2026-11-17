@@ -3,7 +3,6 @@ import urllib
 from .utils import (
     PrefixedUrlString,
     modify_query_string,
-    path_with_format,
     request_route_path,
     tilde_encode,
 )
@@ -16,10 +15,10 @@ class Urls:
     def path(self, path, format=None):
         if not isinstance(path, PrefixedUrlString):
             path = path.removeprefix("/")
-            path = self.ds.setting("base_url") + path
+            path = PrefixedUrlString(self.ds.setting("base_url") + path)
         if format is not None:
-            path = path_with_format(path=path, format=format)
-        return PrefixedUrlString(path)
+            return self.modify(path, format=format)
+        return path
 
     def modify(self, target, *, add=None, replace=None, remove=None, format=None):
         """
@@ -42,9 +41,10 @@ class Urls:
             query_string = target.query_string
             replace_format = target.url_vars.get("format")
         if format is not None:
-            path = path_with_format(
-                path=path, format=format, replace_format=replace_format
-            )
+            # Swap out the extension the request used, e.g. .json
+            if replace_format:
+                path = path.removesuffix(f".{replace_format}")
+            path = f"{path}.{format}"
         if prefixed:
             path = PrefixedUrlString(path)
         url = self.path(path)
@@ -82,13 +82,13 @@ class Urls:
     def table(self, database, table, format=None):
         path = f"{self.database(database)}/{tilde_encode(table)}"
         if format is not None:
-            path = path_with_format(path=path, format=format)
+            path = f"{path}.{format}"
         return PrefixedUrlString(path)
 
     def query(self, database, query, format=None):
         path = f"{self.database(database)}/{tilde_encode(query)}"
         if format is not None:
-            path = path_with_format(path=path, format=format)
+            path = f"{path}.{format}"
         return PrefixedUrlString(path)
 
     def _row_path(self, row_path):
@@ -101,7 +101,7 @@ class Urls:
     def row(self, database, table, row_path, format=None):
         path = f"{self.table(database, table)}/{self._row_path(row_path)}"
         if format is not None:
-            path = path_with_format(path=path, format=format)
+            path = f"{path}.{format}"
         return PrefixedUrlString(path)
 
     def row_blob(self, database, table, row_path, column):

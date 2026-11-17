@@ -275,3 +275,15 @@ async def test_response_stream_error_in_view_is_not_an_error_page(stream_routes)
         assert response.status_code == 500
     finally:
         ds.close()
+
+
+def test_response_keyword_only_arguments():
+    # status can be positional on the helpers, but not on the constructor
+    assert Response.json({"ok": False}, 400).status == 400
+    assert Response.redirect("/", 301).status == 301
+    with pytest.raises(TypeError):
+        Response("body", 400)
+    with pytest.raises(TypeError):
+        Response.json({}, 200, {"x-header": "1"})
+    with pytest.raises(TypeError):
+        Response.text("body").set_cookie("key", "value", 10)

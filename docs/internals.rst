@@ -119,7 +119,7 @@ The object also has the following awaitable methods:
 
 And a class method that can be used to create fake request objects for use in tests:
 
-``fake(path_with_query_string, method="GET", scheme="http", url_vars=None)``
+``fake(path_with_query_string, *, method="GET", scheme="http", url_vars=None)``
     Returns a ``Request`` instance for the specified path and method. For example:
 
     .. code-block:: python
@@ -259,7 +259,7 @@ Response class
 
 The ``Response`` class can be returned from view functions that have been registered using the :ref:`plugin_register_routes` hook.
 
-The ``Response()`` constructor takes the following arguments:
+The ``Response()`` constructor takes the following arguments. ``body`` can be passed positionally; ``status``, ``headers`` and ``content_type`` are keyword-only:
 
 ``body`` - string
     The body of the response.
@@ -467,8 +467,8 @@ The dictionary keys are the action names - e.g. ``view-instance`` - and the valu
 
 .. _datasette_plugin_config:
 
-.plugin_config(plugin_name, database=None, table=None)
-------------------------------------------------------
+.plugin_config(plugin_name, *, database=None, table=None)
+---------------------------------------------------------
 
 ``plugin_name`` - string
     The name of the plugin to look up configuration for. Usually this is something similar to ``datasette-cluster-map``.
@@ -487,8 +487,8 @@ If the plugin is not configured the return value will be ``None``.
 
 .. _datasette_render_template:
 
-await .render_template(template, context=None, request=None)
-------------------------------------------------------------
+await .render_template(template, context=None, *, request=None)
+---------------------------------------------------------------
 
 ``template`` - string, list of strings or jinja2.Template
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.
@@ -1360,8 +1360,8 @@ Removes the column type assignment for the specified column.
 
 .. _datasette_add_database:
 
-.add_database(db, name=None, route=None)
-----------------------------------------
+.add_database(db, name=None, *, route=None)
+-------------------------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
@@ -1404,8 +1404,8 @@ Use ``is_mutable=False`` to add an immutable database.
 
 .. _datasette_add_memory_database:
 
-.add_memory_database(memory_name, name=None, route=None)
---------------------------------------------------------
+.add_memory_database(memory_name, name=None, *, route=None)
+-----------------------------------------------------------
 
 Adds a shared in-memory database with the specified name:
 
@@ -1792,10 +1792,10 @@ datasette.urls
 
 The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`setting_base_url` configuration setting that might be in effect.
 
-``datasette.urls.instance(format=None)``
+``datasette.urls.instance(*, format=None)``
     Returns the URL to the Datasette instance root page. This is usually ``"/"``.
 
-``datasette.urls.path(path, format=None)``
+``datasette.urls.path(path, *, format=None)``
     Takes a path and returns the full path, taking ``base_url`` into account.
 
     For example, ``datasette.urls.path("-/logout")`` will return the path to the logout page, which will be ``"/-/logout"`` by default or ``/prefix-path/-/logout`` if ``base_url`` is set to ``/prefix-path/``
@@ -1811,16 +1811,16 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
-``datasette.urls.database(database_name, format=None)``
+``datasette.urls.database(database_name, *, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
-``datasette.urls.table(database_name, table_name, format=None)``
+``datasette.urls.table(database_name, table_name, *, format=None)``
     Returns the URL to a table page, for example ``"/fixtures/facetable"``
 
-``datasette.urls.query(database_name, query_name, format=None)``
+``datasette.urls.query(database_name, query_name, *, format=None)``
     Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
 
-``datasette.urls.row(database_name, table_name, row_path, format=None)``
+``datasette.urls.row(database_name, table_name, row_path, *, format=None)``
     Returns the URL to a row page, for example ``"/fixtures/facetable/1"``
 
     ``row_path`` should be a list or tuple of the primary key values for the row, in the order of the table's primary key columns. Datasette will :ref:`tilde-encode <internals_tilde_encoding>` each value and join them with commas. For a table without a primary key, pass the ``rowid``.
@@ -1843,7 +1843,7 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
 .. _internals_datasette_urls_modify:
 
-``datasette.urls.modify(target, add=None, replace=None, remove=None, format=None)``
+``datasette.urls.modify(target, *, add=None, replace=None, remove=None, format=None)``
     Returns a modified copy of a URL. Use this to build links that change the query string of the current page, such as sort, filter and pagination links.
 
     ``target`` is either the current :ref:`request <internals_request>` or a path string, which can include a query string. A request uses the path and query string of that request, with any ``base_url`` prefix handled for you. A string should be a path without the ``base_url`` prefix, or a ``PrefixedUrlString`` returned by another ``datasette.urls`` method.
@@ -2282,8 +2282,8 @@ The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.cal
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10, transaction=True, time_limit_ms=2000)
-----------------------------------------------------------------------------------------------------------------------------------------------
+await db.execute_write(sql, params=None, *, block=True, request=None, return_all=False, returning_limit=10, transaction=True, time_limit_ms=2000)
+-------------------------------------------------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -2331,8 +2331,8 @@ read queries. Changing that setting does not change the default write limit.
 
 .. _database_execute_write_script:
 
-await db.execute_write_script(sql, block=True)
-----------------------------------------------
+await db.execute_write_script(sql, *, block=True)
+-------------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
 
@@ -2340,8 +2340,8 @@ Each call to ``execute_write_script()`` will be executed inside a transaction.
 
 .. _database_execute_write_many:
 
-await db.execute_write_many(sql, params_seq, block=True)
---------------------------------------------------------
+await db.execute_write_many(sql, params_seq, *, block=True)
+-----------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
 
@@ -2356,8 +2356,8 @@ Each call to ``execute_write_many()`` will be executed inside a transaction.
 
 .. _database_execute_write_fn:
 
-await db.execute_write_fn(fn, block=True, transaction=True)
------------------------------------------------------------
+await db.execute_write_fn(fn, *, block=True, transaction=True)
+--------------------------------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 

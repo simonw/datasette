@@ -280,7 +280,9 @@ class Request:
             raise BadRequest(str(e))
 
     @classmethod
-    def fake(cls, path_with_query_string, method="GET", scheme="http", url_vars=None):
+    def fake(
+        cls, path_with_query_string, *, method="GET", scheme="http", url_vars=None
+    ):
         """Useful for constructing Request objects for tests"""
         path, _, query_string = path_with_query_string.partition("?")
         scope = {
@@ -339,7 +341,9 @@ class AsgiLifespan:
 
 
 class AsgiStream:
-    def __init__(self, stream_fn, status=200, headers=None, content_type="text/plain"):
+    def __init__(
+        self, stream_fn, *, status=200, headers=None, content_type="text/plain"
+    ):
         self.stream_fn = stream_fn
         self.status = status
         self.headers = headers or {}
@@ -378,7 +382,7 @@ class AsgiWriter:
         )
 
 
-async def asgi_send_json(send, info, status=200, headers=None):
+async def asgi_send_json(send, info, status=200, *, headers=None):
     headers = headers or {}
     await asgi_send(
         send,
@@ -389,7 +393,7 @@ async def asgi_send_json(send, info, status=200, headers=None):
     )
 
 
-async def asgi_send_html(send, html, status=200, headers=None):
+async def asgi_send_html(send, html, status=200, *, headers=None):
     headers = headers or {}
     await asgi_send(
         send,
@@ -415,12 +419,12 @@ async def asgi_send_redirect(send, location, status=302):
     )
 
 
-async def asgi_send(send, content, status, headers=None, content_type="text/plain"):
-    await asgi_start(send, status, headers, content_type)
+async def asgi_send(send, content, status, *, headers=None, content_type="text/plain"):
+    await asgi_start(send, status, headers=headers, content_type=content_type)
     await send({"type": "http.response.body", "body": content.encode("utf-8")})
 
 
-async def asgi_start(send, status, headers=None, content_type="text/plain"):
+async def asgi_start(send, status, *, headers=None, content_type="text/plain"):
     headers = headers or {}
     # Remove any existing content-type header
     headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
@@ -438,7 +442,7 @@ async def asgi_start(send, status, headers=None, content_type="text/plain"):
 
 
 async def asgi_send_file(
-    send, filepath, filename=None, content_type=None, chunk_size=4096, headers=None
+    send, filepath, filename=None, *, content_type=None, chunk_size=4096, headers=None
 ):
     headers = headers or {}
     if filename:
@@ -451,8 +455,10 @@ async def asgi_send_file(
             await asgi_start(
                 send,
                 200,
-                headers,
-                content_type or guess_type(str(filepath))[0] or "text/plain",
+                headers=headers,
+                content_type=content_type
+                or guess_type(str(filepath))[0]
+                or "text/plain",
             )
             first = False
         more_body = True
@@ -488,7 +494,7 @@ def etag_matches(if_none_match, etag):
     )
 
 
-def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+def asgi_static(root_path, *, chunk_size=4096, headers=None, content_type=None):
     root_path = Path(root_path)
     static_headers = {}
 
@@ -537,7 +543,9 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
 
 
 class Response:
-    def __init__(self, body=None, status=200, headers=None, content_type="text/plain"):
+    def __init__(
+        self, body=None, *, status=200, headers=None, content_type="text/plain"
+    ):
         self.body = body
         self.status = status
         self.headers = headers or {}
@@ -599,6 +607,7 @@ class Response:
         self,
         key,
         value="",
+        *,
         max_age=None,
         expires=None,
         path="/",
@@ -627,7 +636,7 @@ class Response:
         self._set_cookie_headers.append(cookie.output(header="").strip())
 
     @classmethod
-    def html(cls, body, status=200, headers=None):
+    def html(cls, body, status=200, *, headers=None):
         return cls(
             body,
             status=status,
@@ -636,7 +645,7 @@ class Response:
         )
 
     @classmethod
-    def text(cls, body, status=200, headers=None):
+    def text(cls, body, status=200, *, headers=None):
         return cls(
             str(body),
             status=status,
@@ -645,7 +654,7 @@ class Response:
         )
 
     @classmethod
-    def json(cls, body, status=200, headers=None, default=None):
+    def json(cls, body, status=200, *, headers=None, default=None):
         return cls(
             json.dumps(body, default=default),
             status=status,
@@ -658,6 +667,7 @@ class Response:
         cls,
         body,
         status=200,
+        *,
         headers=None,
         content_type="text/plain; charset=utf-8",
     ):
@@ -675,7 +685,7 @@ class Response:
         return cls(body, status=status, headers=headers, content_type=content_type)
 
     @classmethod
-    def error(cls, messages, status=400, headers=None):
+    def error(cls, messages, status=400, *, headers=None):
         """
         A JSON error response using Datasette's standard error format.
 
@@ -687,7 +697,7 @@ class Response:
         return cls.json(error_body(messages, status), status=status, headers=headers)
 
     @classmethod
-    def redirect(cls, path, status=302, headers=None):
+    def redirect(cls, path, status=302, *, headers=None):
         headers = headers or {}
         headers["Location"] = path
         return cls("", status=status, headers=headers)
@@ -698,6 +708,7 @@ class AsgiFileDownload:
         self,
         filepath,
         filename=None,
+        *,
         content_type="application/octet-stream",
         headers=None,
     ):

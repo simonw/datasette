@@ -38,6 +38,12 @@ def test_path(ds, ds_base_url, path, expected):
         ("/", "/db/t?a=1", {"format": "json"}, "/db/t.json?a=1"),
         ("/prefix/", "/db/t?a=", {"add": {"b": 2}}, "/prefix/db/t?a=&b=2"),
         ("/prefix/", "/db/t", {"format": "csv"}, "/prefix/db/t.csv"),
+        (
+            "/",
+            "/db/t?sql=select+1",
+            {"format": "csv", "add": {"_dl": 1}},
+            "/db/t.csv?sql=select+1&_dl=1",
+        ),
     ],
 )
 def test_modify_path(ds, base_url, target, kwargs, expected):
@@ -77,6 +83,16 @@ def test_modify_request_replaces_format(ds):
     request = Request.fake("/db/t.json?a=1", url_vars={"format": "json"})
     assert ds.urls.modify(request, format="csv") == "/db/t.csv?a=1"
     assert ds.urls.modify(request, add={"b": 2}) == "/db/t.json?a=1&b=2"
+    # https://github.com/simonw/datasette/issues/1179
+    request = Request.fake("/db/t.Notebook", url_vars={"format": "Notebook"})
+    assert ds.urls.modify(request, format="json") == "/db/t.json"
+
+
+def test_path_with_format_and_query_string(ds):
+    ds._settings["base_url"] = "/"
+    assert ds.urls.path("/db/-/query?sql=select+1", format="json") == (
+        "/db/-/query.json?sql=select+1"
+    )
 
 
 def test_path_applied_twice_does_not_double_prefix(ds):

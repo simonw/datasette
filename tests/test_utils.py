@@ -66,6 +66,11 @@ def test_urlsafe_components(path, expected):
             "c=3&b=5&a=4",
         ),
         ("q=a+b%26c", {"add": {"x": "d e"}}, "q=a+b%26c&x=d+e"),
+        # Existing arguments are left exactly as they are unless something
+        # is removed or replaced, when the whole query string is re-encoded
+        ("q=a%20b&n=3,7", {"add": {"x": 1}}, "q=a%20b&n=3,7&x=1"),
+        ("q=a%20b&n=3,7", {}, "q=a%20b&n=3,7"),
+        ("q=a%20b&n=3,7&z=1", {"remove": "z"}, "q=a+b&n=3%2C7"),
     ],
 )
 def test_modify_query_string(query_string, kwargs, expected):
@@ -541,56 +546,6 @@ def test_table_columns():
     """)
     assert utils.table_columns(conn, "places") == ["id", "name", "bob"]
     conn.close()
-
-
-@pytest.mark.parametrize(
-    "path,format,extra_qs,expected",
-    [
-        ("/foo?sql=select+1", "csv", {}, "/foo.csv?sql=select+1"),
-        ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
-        ("/foo/bar", "json", {}, "/foo/bar.json"),
-        ("/foo/bar", "csv", {}, "/foo/bar.csv"),
-        ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
-        (
-            "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
-            "csv",
-            {"_dl": 1},
-            "/sf-trees/Street_Tree_List.csv?_search=cherry&_size=1000&_dl=1",
-        ),
-    ],
-)
-def test_path_with_format(path, format, extra_qs, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
-    assert actual == expected
-
-
-def test_path_with_format_can_override_request_path():
-    request = Request.fake("/prefix/foo?x=1")
-    actual = utils.path_with_format(request=request, path="/foo", format="json")
-    assert actual == "/foo.json?x=1"
-
-
-@pytest.mark.parametrize(
-    "path,url_vars,expected",
-    [
-        # https://github.com/simonw/datasette/issues/1179
-        ("/db/table.Notebook", {"format": "Notebook"}, "/db/table.json"),
-        ("/db/table.csv?_size=max", {"format": "csv"}, "/db/table.json?_size=max"),
-        ("/db/table", {}, "/db/table.json"),
-    ],
-)
-def test_path_with_format_replaces_current_format(path, url_vars, expected):
-    request = Request.fake(path, url_vars=url_vars)
-    assert utils.path_with_format(request=request, format="json") == expected
-
-
-def test_path_with_format_replaces_current_format_with_path_override():
-    request = Request.fake("/prefix/db/table.csv?x=1", url_vars={"format": "csv"})
-    actual = utils.path_with_format(
-        request=request, path="/db/table.csv", format="json"
-    )
-    assert actual == "/db/table.json?x=1"
 
 
 @pytest.mark.parametrize(

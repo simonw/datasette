@@ -11,7 +11,6 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
-    path_with_format,
     path_without_format,
     to_css_class,
 )
@@ -1141,13 +1140,8 @@ class RenderersExtra(Extra):
             )
             it_can_render = await await_me_maybe(it_can_render)
             if it_can_render:
-                renderers[key] = context.datasette.urls.path(
-                    path_with_format(
-                        request=context.request,
-                        path=context.request.scope.get("route_path"),
-                        format=key,
-                        extra_qs={**url_labels_extra},
-                    )
+                renderers[key] = context.datasette.urls.modify(
+                    context.request, format=key, add={**url_labels_extra}
                 )
         return renderers
 

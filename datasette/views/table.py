@@ -31,7 +31,6 @@ from datasette.utils import (
     InvalidSql,
     WriteJsonValueError,
     add_cors_headers,
-    append_querystring,
     await_me_maybe,
     compound_keys_after_sql,
     compound_keys_at_or_before_sql,
@@ -41,7 +40,6 @@ from datasette.utils import (
     is_url,
     make_slot_function,
     path_from_row_pks,
-    path_with_format,
     request_route_path,
     sqlite3,
     tilde_decode,
@@ -199,16 +197,6 @@ class TableContext(Context):
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
     sort_desc: str = field(
         metadata={"help": "Column the page is sorted by in descending order, or None"}
-    )
-    append_querystring: callable = field(
-        metadata={
-            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
-        }
-    )
-    fix_path: callable = field(
-        metadata={
-            "help": "Function that applies the configured ``base_url`` prefix to a path."
-        }
     )
     settings: dict = field(
         metadata={
@@ -931,10 +919,10 @@ async def display_columns_and_rows(
                 else:
                     # Views usually have no rowid to link to a row by,
                     # so find the blob by its content hash instead
-                    blob_url = path_with_format(
-                        request=request,
+                    blob_url = datasette.urls.modify(
+                        request,
                         format="blob",
-                        extra_qs={
+                        add={
                             "_blob_column": column,
                             "_blob_hash": hashlib.sha256(value).hexdigest(),
                         },
@@ -1651,8 +1639,6 @@ class TableFragmentView(BaseView):
             templates,
             dict(
                 data,
-                append_querystring=append_querystring,
-                fix_path=self.ds.urls.path,
                 settings=self.ds.settings_dict(),
             ),
             request=request,
@@ -2026,13 +2012,7 @@ async def table_view_traced(datasette, request):
         template = environment.select_template(templates)
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            datasette.urls.modify(request, format="json"),
         )
         headers.update(
             {
@@ -2087,8 +2067,6 @@ async def table_view_traced(datasette, request):
             url_tsv_path=data["url_tsv_path"],
             sort=data["sort"],
             sort_desc=data["sort_desc"],
-            append_querystring=append_querystring,
-            fix_path=datasette.urls.path,
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,
             is_sortable=any(c["sortable"] for c in data["display_columns"]),
@@ -2718,15 +2696,8 @@ async def table_view_data(
         url_labels_extra = {}
         if data.get("expandable_columns"):
             url_labels_extra = {"_labels": "on"}
-        url_csv_args = {"_size": "max", **url_labels_extra}
-        url_csv = datasette.urls.path(
-            path_with_format(
-                request=request,
-                path=request.scope.get("route_path"),
-                format="csv",
-                extra_qs=url_csv_args,
-            )
-        )
+        url_csv_args = {**url_labels_extra, "_size": "max"}
+        url_csv = datasette.urls.modify(request, format="csv", add=url_csv_args)
         url_csv_path = url_csv.split("?")[0]
         data.update(
             {

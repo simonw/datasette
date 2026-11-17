@@ -448,7 +448,7 @@ async def test_bar_on_later_page(pages_ds):
     assert header["data-page-rows"] == "4"
     assert header["data-total"] == "12"
     assert header["data-count-before-url"] == (
-        "/pages/items/-/count?_size=4&score__gte=2&_sort=score&_next=3%2C7"
+        "/pages/items/-/count?_size=4&score__gte=2&_sort=score&_next=3,7"
         "&_count=before"
     )
     assert link_text(header) == ["Back to first page", "Next page"]

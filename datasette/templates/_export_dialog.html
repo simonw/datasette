@@ -10,7 +10,7 @@
       total is none). None to show no row counts.
     - export_single_row: true on row pages, which offer TSV, CSV and JSON for
       that one row. Otherwise the dialog also offers more JSON shapes, using
-      append_querystring.
+      urls.modify().
     Formats from plugins use renderer_options for their label, description
     and which actions to offer. -#}
 {% set export_base = export_meta or "data" %}
@@ -115,10 +115,10 @@
             {{ export_option("json", "JSON", "The row inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
             {% else %}
             {{ export_option("json", "JSON", "Rows inside an object, with extra details", renderers['json'], export_base ~ ".json", export_rows) }}
-            {{ export_option("json-array", "JSON array", "Just the rows, as an array of objects", append_querystring(renderers['json'], '_shape=array'), export_base ~ ".json", export_rows) }}
-            {{ export_option("json-nl", "Newline-delimited JSON", "One JSON object per line", append_querystring(renderers['json'], '_shape=array&_nl=on'), export_base ~ ".jsonl", export_rows) }}
+            {{ export_option("json-array", "JSON array", "Just the rows, as an array of objects", urls.modify(renderers['json'], add={'_shape': 'array'}), export_base ~ ".json", export_rows) }}
+            {{ export_option("json-nl", "Newline-delimited JSON", "One JSON object per line", urls.modify(renderers['json'], add={'_shape': 'array', '_nl': 'on'}), export_base ~ ".jsonl", export_rows) }}
             {% if primary_keys %}
-            {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", append_querystring(renderers['json'], '_shape=object'), export_base ~ ".json", export_rows) }}
+            {{ export_option("json-object", "JSON object", "Rows keyed by their primary key", urls.modify(renderers['json'], add={'_shape': 'object'}), export_base ~ ".json", export_rows) }}
             {% endif %}
             {% endif %}
             {% for name, url in renderers.items() if name not in ("json", "csv") and not (name == "tsv" and url_tsv_path) %}

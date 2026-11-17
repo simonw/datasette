@@ -17,13 +17,11 @@ from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.utils import (
     InvalidSql,
     add_cors_headers,
-    append_querystring,
     await_me_maybe,
     call_with_supported_arguments,
     error_body,
     is_url,
     make_slot_function,
-    path_with_format,
     path_without_format,
     sqlite3,
     tilde_decode,
@@ -107,9 +105,7 @@ class DatabaseView(View):
         if sql:
             redirect_url = datasette.urls.database(database) + "/-/query"
             if request.url_vars.get("format"):
-                redirect_url = path_with_format(
-                    path=redirect_url, format=request.url_vars.get("format")
-                )
+                redirect_url += "." + request.url_vars["format"]
             redirect_url += "?" + request.query_string
             response = Response.redirect(redirect_url)
             if datasette.cors:
@@ -232,13 +228,7 @@ class DatabaseView(View):
         assert format_ == "html"
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            datasette.urls.modify(request, format="json"),
         )
         templates = (f"database-{to_css_class(database)}.html", "database.html")
         environment = datasette.get_jinja_environment(request)
@@ -478,11 +468,6 @@ class QueryContext(Context):
     url_tsv_path: str = field(
         metadata={
             "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
-        }
-    )
-    append_querystring: callable = field(
-        metadata={
-            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
         }
     )
     show_hide_hidden: str = field(
@@ -956,13 +941,7 @@ class QueryView(View):
             template = environment.select_template(templates)
             alternate_url_json = datasette.absolute_url(
                 request,
-                datasette.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format="json",
-                    )
-                ),
+                datasette.urls.modify(request, format="json"),
             )
             data = {
                 "ok": query_error is None,
@@ -997,13 +976,7 @@ class QueryView(View):
                 )
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
-                    renderers[key] = datasette.urls.path(
-                        path_with_format(
-                            request=request,
-                            path=request.scope.get("route_path"),
-                            format=key,
-                        )
-                    )
+                    renderers[key] = datasette.urls.modify(request, format=key)
 
             allow_execute_sql = await datasette.allowed(
                 action="execute-sql",
@@ -1118,14 +1091,7 @@ class QueryView(View):
                         query_actions.extend(extra_links)
                 return query_actions
 
-            url_csv = datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="csv",
-                    extra_qs={"_size": "max"},
-                )
-            )
+            url_csv = datasette.urls.modify(request, format="csv", add={"_size": "max"})
             r = Response.html(
                 await datasette.render_template(
                     template,
@@ -1173,7 +1139,6 @@ class QueryView(View):
                         ]
                         + [("_size", "max")],
                         url_tsv_path=tsv_export_path(datasette, request),
-                        append_querystring=append_querystring,
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=metadata,
                         alternate_url_json=alternate_url_json,
@@ -1327,10 +1292,10 @@ async def display_rows(datasette, database, request, rows, columns):
                         )
                     )
                 elif isinstance(display_value, bytes):
-                    blob_url = path_with_format(
-                        request=request,
+                    blob_url = datasette.urls.modify(
+                        request,
                         format="blob",
-                        extra_qs={
+                        add={
                             "_blob_column": column,
                             "_blob_hash": hashlib.sha256(display_value).hexdigest(),
                         },

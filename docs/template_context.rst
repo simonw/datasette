@@ -218,9 +218,6 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``alternate_url_json`` - ``str``
     URL for alternate JSON version of this page
 
-``append_querystring`` - ``callable``
-    Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
-
 ``columns`` - ``list``
     List of result column names in the order they appear in ``display_rows`` and ``rows``.
 
@@ -339,9 +336,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``alternate_url_json`` - ``str``
     URL for the JSON version of this page
 
-``append_querystring`` - ``callable``
-    Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
-
 ``clear_filters_url`` - ``str``
     URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved.
 
@@ -392,9 +386,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``filters`` - ``Filters``
     ``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable.
-
-``fix_path`` - ``callable``
-    Function that applies the configured ``base_url`` prefix to a path.
 
 ``form_hidden_args`` - ``list``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.

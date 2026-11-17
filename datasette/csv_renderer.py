@@ -5,7 +5,7 @@ import io
 import markupsafe
 
 from datasette import hookimpl
-from datasette.utils import path_from_row_pks, path_with_format
+from datasette.utils import path_from_row_pks
 from datasette.utils.asgi import Response
 from datasette.views.base import DatasetteError
 
@@ -35,14 +35,13 @@ def _blob_url(datasette, request, format_, database, table, pks, columns, row, c
     # Otherwise generate URL for this query
     return datasette.absolute_url(
         request,
-        path_with_format(
-            request=request,
+        datasette.urls.modify(
+            request,
             format="blob",
-            extra_qs={
+            add={
                 "_blob_column": column,
                 "_blob_hash": hashlib.sha256(cell).hexdigest(),
             },
-            replace_format=format_,
         ),
     )
 

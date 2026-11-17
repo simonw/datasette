@@ -37,9 +37,30 @@ if typing.TYPE_CHECKING:
     from datasette.permissions import Resource
 
 
+functions_marked_as_documented = []
+
+
+def documented(fn=None, *, label=None):
+    def decorate(fn):
+        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
+        functions_marked_as_documented.append(fn)
+        return fn
+
+    if fn is None:
+        return decorate
+    return decorate(fn)
+
+
+@documented
 @dataclasses.dataclass
 class PaginatedResources:
-    """Paginated results from allowed_resources query."""
+    """
+    A page of results returned by :ref:`datasette.allowed_resources() <datasette_allowed_resources>`.
+
+    - ``.resources`` - list of ``Resource`` objects for the current page
+    - ``.next`` - keyset token for the next page, or ``None`` if there are no more results
+    - ``async for resource in page.all()`` - iterate over every resource across all pages
+    """
 
     resources: list["Resource"]
     next: str | None  # Keyset token for next page (None if no more results)
@@ -267,19 +288,6 @@ HASH_LENGTH = 7
 Column = namedtuple(
     "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
 )
-
-functions_marked_as_documented = []
-
-
-def documented(fn=None, *, label=None):
-    def decorate(fn):
-        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
-        functions_marked_as_documented.append(fn)
-        return fn
-
-    if fn is None:
-        return decorate
-    return decorate(fn)
 
 
 @documented
@@ -543,7 +551,10 @@ def _expand_pairs(args):
     return pairs
 
 
-def modify_query_string(query_string, *, add=None, replace=None, remove=None):
+@documented
+def modify_query_string(
+    query_string: str, *, add=None, replace=None, remove=None
+) -> str:
     """
     Return ``query_string`` with the given changes applied, in this order:
 
@@ -602,7 +613,17 @@ def escape_css_string(s):
     )
 
 
-def escape_sqlite(s):
+@documented
+def escape_sqlite(s: str) -> str:
+    """
+    Escape a table or column name so it can be safely included in a SQL query.
+
+    Returns the identifier unchanged if it is a plain word that is not a
+    SQLite reserved word, otherwise wraps it in double quotes with any
+    embedded double quotes doubled up.
+
+    e.g. ``escape_sqlite("my table")`` returns ``'"my table"'``
+    """
     if _boring_keyword_re.fullmatch(s) and (s.lower() not in reserved_words):
         return s
     return '"{}"'.format(s.replace('"', '""'))
@@ -1010,14 +1031,18 @@ css_class_re = re.compile(r"^[a-zA-Z]+[_a-zA-Z0-9-]*$")
 css_invalid_chars_re = re.compile(r"[^a-zA-Z0-9_\-]")
 
 
-def to_css_class(s):
+@documented
+def to_css_class(s: str) -> str:
     """
     Given a string (e.g. a table name) returns a valid unique CSS class.
+
     For simple cases, just returns the string again. If the string is not a
-    valid CSS class (we disallow - and _ prefixes even though they are valid
+    valid CSS class (we disallow ``-`` and ``_`` prefixes even though they are valid
     as they may be confused with browser prefixes) we strip invalid characters
     and add a 6 char md5 sum suffix, to make sure two tables with identical
     names after stripping characters don't end up with the same CSS class.
+
+    e.g. ``to_css_class("my table")`` returns ``"my-table-9f0572"``
     """
     if css_class_re.match(s):
         return s
@@ -1154,7 +1179,17 @@ class LoadExtension(click.ParamType):
 _escape_fts_re = re.compile(r'\s+|(".*?")')
 
 
-def escape_fts(query):
+@documented
+def escape_fts(query: str) -> str:
+    """
+    Escape a user-provided search string so it can be safely used with a SQLite
+    full-text search ``MATCH`` operator, by wrapping each term in double quotes.
+
+    e.g. ``escape_fts("hello world")`` returns ``'"hello" "world"'``
+
+    This prevents FTS operators such as ``AND``, ``NOT``, ``*`` and ``:`` in
+    user input from being interpreted as query syntax or causing errors.
+    """
     # If query has unbalanced ", add one at end
     if query.count('"') % 2:
         query += '"'
@@ -1163,7 +1198,16 @@ def escape_fts(query):
     return " ".join(f'"{bit}"' if not bit.startswith('"') else bit for bit in bits)
 
 
+@documented(label="internals_multiparams")
 class MultiParams:
+    """
+    Dictionary-like object for parameters that can have multiple values.
+    ``request.args`` is an instance of this class.
+
+    Construct with a dictionary of ``{"key": ["list", "of", "values"]}``
+    or a list of ``[key, value]`` pairs.
+    """
+
     def __init__(self, data):
         # data is a dictionary of key => [list, of, values] or a list of [["key", "value"]] pairs
         if isinstance(data, dict):
@@ -1239,8 +1283,9 @@ def check_connection(conn):
                 raise ConnectionProblem(e)
 
 
+@documented
 class BadMetadataError(Exception):
-    pass
+    "Raised by :ref:`parse_metadata() <internals_utils_parse_metadata>` if content is not valid JSON or YAML."
 
 
 @documented
@@ -1301,7 +1346,14 @@ async def async_call_with_supported_arguments(fn, **kwargs):
     return await fn(*call_with)
 
 
-def actor_matches_allow(actor, allow):
+@documented
+def actor_matches_allow(actor: dict | None, allow: dict | bool | None) -> bool:
+    """
+    Returns ``True`` if the actor matches the ``allow`` block, using the rules
+    described in :ref:`authentication_permissions_allow`.
+
+    ``allow=None`` matches every actor, including ``None`` for an unauthenticated user.
+    """
     if allow is True:
         return True
     if allow is False:
@@ -1381,7 +1433,16 @@ async def initial_path_for_datasette(datasette):
     return path
 
 
+@documented
 class PrefixedUrlString(str):
+    """
+    A ``str`` subclass returned by the :ref:`datasette.urls <internals_datasette_urls>` methods,
+    marking a path that has already had the :ref:`setting_base_url` prefix applied.
+
+    String methods such as ``.replace()`` and concatenation with ``+`` return
+    a ``PrefixedUrlString``, so the marker survives further manipulation.
+    """
+
     def __add__(self, other):
         return type(self)(super().__add__(other))
 
@@ -1407,8 +1468,12 @@ class PrefixedUrlString(str):
             return super().__getattribute__(name)
 
 
+@documented
 class StartupError(Exception):
-    pass
+    """
+    Raise this from a :ref:`startup() <plugin_hook_startup>` plugin hook to prevent Datasette
+    from starting. The message is shown to the user without a traceback.
+    """
 
 
 # Comments and string literals, matched in a single pass so that whichever
@@ -1498,7 +1563,12 @@ def error_body(messages, status):
     }
 
 
-def add_cors_headers(headers):
+@documented
+def add_cors_headers(headers: dict) -> None:
+    """
+    Add the CORS headers that Datasette sends when run with ``--cors``
+    to the provided ``headers`` dictionary, modifying it in place.
+    """
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
     headers["Access-Control-Expose-Headers"] = "Link"

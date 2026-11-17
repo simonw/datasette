@@ -22,7 +22,6 @@ from datasette.utils import (
     error_body,
     is_url,
     make_slot_function,
-    path_without_format,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -970,8 +969,8 @@ class QueryView(View):
                     database=database,
                     table=data.get("table"),
                     request=request,
-                    path=path_without_format(request),
-                    full_path=path_without_format(request, include_query_string=True),
+                    path=datasette.urls.modify(request, format=False).partition("?")[0],
+                    full_path=datasette.urls.modify(request, format=False),
                     view_name="query",
                 )
                 it_can_render = await await_me_maybe(it_can_render)

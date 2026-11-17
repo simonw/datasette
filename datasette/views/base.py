@@ -5,7 +5,6 @@ from datasette.renderer import RowStream
 from datasette.utils import (
     add_cors_headers,
     call_with_supported_arguments,
-    path_without_format,
 )
 from datasette.utils.asgi import (
     BadRequest,
@@ -273,8 +272,8 @@ async def render_with_output_renderer(
         database=database,
         table=table,
         request=request,
-        path=path_without_format(request),
-        full_path=path_without_format(request, include_query_string=True),
+        path=datasette.urls.modify(request, format=False).partition("?")[0],
+        full_path=datasette.urls.modify(request, format=False),
         view_name=view_name,
         truncated=truncated,
         error=error,

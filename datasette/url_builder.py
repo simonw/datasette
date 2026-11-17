@@ -44,7 +44,9 @@ class Urls:
             # Swap out the extension the request used, e.g. .json
             if replace_format:
                 path = path.removesuffix(f".{replace_format}")
-            path = f"{path}.{format}"
+            # format=False removes the extension without adding a new one
+            if format:
+                path = f"{path}.{format}"
         if prefixed:
             path = PrefixedUrlString(path)
         url = self.path(path)

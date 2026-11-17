@@ -1067,17 +1067,6 @@ def module_from_path(path, name):
     return mod
 
 
-def path_without_format(request, *, include_query_string=False):
-    "Path for this request with any ``.format`` removed, e.g. ``/db/table.json`` -> ``/db/table``"
-    path = request.path
-    format = request.url_vars.get("format")
-    if format and path.endswith(f".{format}"):
-        path = path[: -(1 + len(format))]
-    if include_query_string and request.query_string:
-        path = f"{path}?{request.query_string}"
-    return path
-
-
 class CustomRow(OrderedDict):
     # Loose imitation of sqlite3.Row which offers
     # both index-based AND key-based lookups

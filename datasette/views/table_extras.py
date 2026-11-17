@@ -11,7 +11,6 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
-    path_without_format,
     to_css_class,
 )
 
@@ -1132,10 +1131,10 @@ class RenderersExtra(Extra):
                 database=context.database_name,
                 table=table_name,
                 request=context.request,
-                path=path_without_format(context.request),
-                full_path=path_without_format(
-                    context.request, include_query_string=True
-                ),
+                path=context.datasette.urls.modify(
+                    context.request, format=False
+                ).partition("?")[0],
+                full_path=context.datasette.urls.modify(context.request, format=False),
                 view_name=view_name,
             )
             it_can_render = await await_me_maybe(it_can_render)

@@ -88,6 +88,36 @@ def test_modify_request_replaces_format(ds):
     assert ds.urls.modify(request, format="json") == "/db/t.json"
 
 
+@pytest.mark.parametrize(
+    "path,url_vars,expected_path,expected_full_path",
+    [
+        ("/db/table", {}, "/db/table", "/db/table"),
+        ("/db/table.json", {"format": "json"}, "/db/table", "/db/table"),
+        (
+            "/db/table.Notebook?_sort=pk",
+            {"format": "Notebook"},
+            "/db/table",
+            "/db/table?_sort=pk",
+        ),
+        (
+            "/prefix/db/-/query.csv?sql=select+1",
+            {"format": "csv"},
+            "/prefix/db/-/query",
+            "/prefix/db/-/query?sql=select+1",
+        ),
+    ],
+)
+def test_modify_request_format_false(
+    ds, path, url_vars, expected_path, expected_full_path
+):
+    # format=False removes the extension the request used
+    ds._settings["base_url"] = "/"
+    request = Request.fake(path, url_vars=url_vars)
+    full_path = ds.urls.modify(request, format=False)
+    assert full_path == expected_full_path
+    assert full_path.partition("?")[0] == expected_path
+
+
 def test_path_with_format_and_query_string(ds):
     ds._settings["base_url"] = "/"
     assert ds.urls.path("/db/-/query?sql=select+1", format="json") == (

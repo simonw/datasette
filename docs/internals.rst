@@ -1878,8 +1878,6 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     The same operations are available for a query string on its own as ``datasette.utils.modify_query_string(query_string, add=None, replace=None, remove=None)``.
 
-    The older ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()`` and ``path_with_replaced_args()`` functions still work, but do not apply ``base_url``. New code should use ``datasette.urls.modify()``.
-
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
 
 .. code-block:: jinja

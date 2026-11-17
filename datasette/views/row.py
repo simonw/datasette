@@ -26,7 +26,6 @@ from datasette.utils import (
     make_slot_function,
     path_from_row_pks,
     path_with_format,
-    path_with_removed_args,
     path_without_format,
     sqlite3,
     tilde_decode,
@@ -164,11 +163,9 @@ async def _database_and_table_resource_from_request(datasette, request):
 class RowView(BaseView):
     name = "row"
 
-    def redirect(self, request, path, forward_querystring=True, remove_args=None):
+    def redirect(self, request, path, forward_querystring=True):
         if request.query_string and "?" not in path and forward_querystring:
             path = f"{path}?{request.query_string}"
-        if remove_args:
-            path = path_with_removed_args(request, remove_args, path=path)
         response = Response.redirect(path)
         response.headers["Link"] = f"<{path}>; rel=preload"
         if self.ds.cors:

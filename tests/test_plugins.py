@@ -485,6 +485,139 @@ async def test_hook_extra_template_vars_invalid(ds_client, invalid_value):
         pm.unregister(plugin)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "hook_name",
+    ["extra_template_vars", "extra_css_urls", "extra_js_urls", "extra_body_script"],
+)
+@pytest.mark.parametrize(
+    "path,expected_first_column",
+    (
+        # Table pages, with filters, sorting and pagination
+        ("/fixtures/facet_cities?_sort_desc=id", [4, 3, 2, 1]),
+        ("/fixtures/facet_cities?name__contains=o&_sort=name", [3, 2, 4, 1]),
+        ("/fixtures/facetable?_size=2&_next=2", [3, 4]),
+        ("/fixtures/facet_cities/-/fragment?_sort_desc=id", [4, 3, 2, 1]),
+        # Row page
+        ("/fixtures/facet_cities/3", [3]),
+        # Arbitrary SQL query with a parameter
+        (
+            "/fixtures/-/query?sql=select+id+from+facet_cities+where+id+>+:min&min=2",
+            [3, 4],
+        ),
+        # Stored queries, the second using a magic parameter
+        ("/fixtures/neighborhood_search?text=town", ["Corktown", "Downtown"]),
+        ("/fixtures/magic_parameters", ["hook-test-agent"]),
+        # Pages that do not execute a SQL query to select their rows
+        ("/", None),
+        ("/fixtures", None),
+        ("/fixtures/-/query", None),
+    ),
+)
+async def test_hooks_sql_and_params(ds_client, hook_name, path, expected_first_column):
+    # https://github.com/simonw/datasette/issues/1817
+    seen = []
+
+    def hook(self, database, sql, params):
+        seen.append((database, sql, params))
+        return {} if hook_name == "extra_template_vars" else []
+
+    Plugin = type("Plugin", (), {hook_name: hookimpl(hook)})
+    plugin = Plugin()
+    pm.register(plugin)
+    try:
+        response = await ds_client.get(path, headers={"user-agent": "hook-test-agent"})
+    finally:
+        pm.unregister(plugin)
+    assert response.status_code == 200
+    assert len(seen) == 1
+    database, sql, params = seen[0]
+    if expected_first_column is None:
+        assert sql is None
+        assert params is None
+    else:
+        # The plugin can use them to run the same query as the page
+        assert type(params) is dict
+        results = await ds_client.ds.get_database(database).execute(sql, params)
+        assert [row[0] for row in results][
+            : len(expected_first_column)
+        ] == expected_first_column
+
+
+@pytest.mark.asyncio
+async def test_hooks_sql_and_params_stored_write_query():
+    # The form for a stored write query does not execute any SQL
+    ds = Datasette(
+        memory=True,
+        config={
+            "databases": {
+                "_memory": {
+                    "queries": {
+                        "add_name": {
+                            "sql": "insert into names (name) values (:name)",
+                            "write": True,
+                        }
+                    }
+                }
+            }
+        },
+    )
+    seen = []
+
+    class Plugin:
+        @hookimpl
+        def extra_template_vars(self, sql, params):
+            seen.append((sql, params))
+
+    plugin = Plugin()
+    pm.register(plugin)
+    try:
+        response = await ds.client.get("/_memory/add_name?name=Cleo")
+    finally:
+        pm.unregister(plugin)
+    assert response.status_code == 200
+    assert seen == [(None, None)]
+
+
+@pytest.mark.asyncio
+async def test_render_template_plugin_context(ds_client):
+    seen = []
+
+    class Plugin:
+        @hookimpl
+        def extra_template_vars(self, database, table, columns, sql, params):
+            seen.append((database, table, columns, sql, params))
+
+    plugin = Plugin()
+    pm.register(plugin)
+    try:
+        template = ds_client.ds.get_jinja_environment().from_string(
+            "{{ database }} {{ sql }}"
+        )
+        # database, table and columns default to the template context
+        context = {"database": "db", "table": "t", "sql": "from context"}
+        assert await ds_client.ds.render_template(template, context) == (
+            "db from context"
+        )
+        # plugin_context is passed to plugins but not to the template
+        assert await ds_client.ds.render_template(
+            template,
+            context,
+            plugin_context={
+                "table": "other",
+                "columns": ["id"],
+                "sql": "select :id as id",
+                "params": {"id": 1},
+            },
+        ) == ("db from context")
+    finally:
+        pm.unregister(plugin)
+    assert seen == [
+        ("db", "t", None, None, None),
+        ("db", "other", ["id"], "select :id as id", {"id": 1}),
+    ]
+
+
 async def test_plugins_async_template_function():
     ds = await make_ds(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
@@ -668,6 +801,7 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
             "<sqlite3.Row object at 0xXXX>",
         ],
         "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 51",
+        "params": {},
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",
@@ -924,6 +1058,7 @@ async def test_hook_register_output_renderer_can_render(ds_client):
             "n",
         ],
         "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 51",
+        "params": {},
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",

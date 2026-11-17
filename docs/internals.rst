@@ -487,8 +487,8 @@ If the plugin is not configured the return value will be ``None``.
 
 .. _datasette_render_template:
 
-await .render_template(template, context=None, request=None)
-------------------------------------------------------------
+await .render_template(template, context=None, request=None, view_name=None, plugin_context=None)
+-------------------------------------------------------------------------------------------------
 
 ``template`` - string, list of strings or jinja2.Template
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.
@@ -502,6 +502,12 @@ await .render_template(template, context=None, request=None)
 
 ``request`` - request object or None
     If you pass a Datasette request object here it will be made available to the template.
+
+``view_name`` - string or None
+    The name of the view, passed to plugin hooks as their ``view_name`` argument.
+
+``plugin_context`` - None or a Python dictionary
+    Values to pass to the :ref:`extra_template_vars() <plugin_hook_extra_template_vars>`, :ref:`extra_css_urls() <plugin_hook_extra_css_urls>`, :ref:`extra_js_urls() <plugin_hook_extra_js_urls>` and :ref:`extra_body_script() <plugin_hook_extra_body_script>` plugin hooks. Supported keys are ``database``, ``table``, ``columns``, ``sql`` and ``params``. ``database``, ``table`` and ``columns`` default to the values of those keys in ``context``; ``sql`` and ``params`` default to ``None``. This must be passed as a keyword argument, and its values are not added to the template context.
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 

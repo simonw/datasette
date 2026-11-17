@@ -260,6 +260,7 @@ async def render_with_output_renderer(
     truncated,
     error,
     fetch_next_page=None,
+    params=None,
 ):
     """
     Call the output renderer registered for format_ and return its Response.
@@ -276,6 +277,7 @@ async def render_with_output_renderer(
         rows=rows,
         row_stream=RowStream(rows, fetch_next_page if streaming else None),
         sql=sql,
+        params=params,
         query_name=query_name,
         database=database,
         table=table,

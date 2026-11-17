@@ -191,8 +191,8 @@ These plugin hooks can be used to affect the way HTML pages for different Datase
 
 .. _plugin_hook_extra_template_vars:
 
-extra_template_vars(template, database, table, columns, view_name, request, datasette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+extra_template_vars(template, database, table, columns, sql, params, view_name, request, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Extra template variables that should be made available in the rendered template context.
 
@@ -207,6 +207,12 @@ Extra template variables that should be made available in the rendered template 
 
 ``columns`` - list of strings or None
     The names of the database columns that will be displayed on this page. ``None`` if the page does not contain a table.
+
+``sql`` - string or None
+    The SQL query that was executed to select the rows displayed on a table, row or query page, including any filters, sorting and pagination. ``None`` for other pages, and for pages that did not execute a query such as the form for a :ref:`writable stored query <queries_writable>`.
+
+``params`` - dictionary or None
+    The parameters that were passed to that SQL query, including the resolved values of any :ref:`magic parameters <queries_magic_parameters>`. ``None`` if ``sql`` is ``None``.
 
 ``view_name`` - string
     The name of the view being displayed. (``index``, ``database``, ``table``, ``row`` and ``query`` are the most important ones.) ``query`` is used for both arbitrary SQL queries and stored queries.
@@ -285,8 +291,8 @@ Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-a
 
 .. _plugin_hook_extra_css_urls:
 
-extra_css_urls(template, database, table, columns, view_name, request, datasette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+extra_css_urls(template, database, table, columns, sql, params, view_name, request, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
@@ -339,8 +345,8 @@ Examples: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster
 
 .. _plugin_hook_extra_js_urls:
 
-extra_js_urls(template, database, table, columns, view_name, request, datasette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+extra_js_urls(template, database, table, columns, sql, params, view_name, request, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
@@ -389,8 +395,8 @@ Examples: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster
 
 .. _plugin_hook_extra_body_script:
 
-extra_body_script(template, database, table, columns, view_name, request, datasette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+extra_body_script(template, database, table, columns, sql, params, view_name, request, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
 
@@ -669,6 +675,9 @@ When a request is received, the ``"render"`` callback function is called with ze
 
 ``sql`` - string
     The SQL query that was executed.
+
+``params`` - dictionary or None
+    The parameters that were passed to that SQL query, including the resolved values of any :ref:`magic parameters <queries_magic_parameters>`.
 
 ``query_name`` - string or None
     If this was the execution of a :ref:`stored query <stored_queries>`, the name of that query.

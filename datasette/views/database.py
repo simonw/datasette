@@ -853,8 +853,12 @@ class QueryView(View):
         columns = []
 
         params_for_query = params
+        # Passed to plugins: the params used to execute the query, including
+        # resolved magic parameters. None if no query was executed.
+        params_for_plugins = None
 
         if sql and not stored_query_write:
+            params_for_plugins = params
             try:
                 if not stored_query:
                     # For regular queries we only allow SELECT, plus other rules
@@ -863,6 +867,7 @@ class QueryView(View):
                     # Stored queries can run magic parameters
                     params_for_query = MagicParameters(sql, params, request, datasette)
                     await params_for_query.execute_params()
+                    params_for_plugins = params_for_query.resolved()
                 results = await datasette.execute(
                     database, sql, params_for_query, truncate=True, **extra_args
                 )
@@ -939,6 +944,7 @@ class QueryView(View):
                 columns=columns,
                 rows=rows,
                 sql=sql,
+                params=params_for_plugins,
                 query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
@@ -990,6 +996,7 @@ class QueryView(View):
                     columns=data.get("columns") or [],
                     rows=data.get("rows") or [],
                     sql=data.get("query", {}).get("sql", None),
+                    params=params_for_plugins,
                     query_name=data.get("query_name"),
                     database=database,
                     table=data.get("table"),
@@ -1203,6 +1210,10 @@ class QueryView(View):
                     ),
                     request=request,
                     view_name="query",
+                    plugin_context={
+                        "sql": sql if params_for_plugins is not None else None,
+                        "params": params_for_plugins,
+                    },
                 ),
                 headers=headers,
             )
@@ -1236,6 +1247,10 @@ class MagicParameters(dict):
                         self._magics[prefix](suffix, self._request)
                     )
                     self._prepared[key] = result
+
+    def resolved(self):
+        "Plain dictionary of parameters, including resolved magic parameters"
+        return {**self, **self._prepared}
 
     def __len__(self):
         # Workaround for 'Incorrect number of bindings' error

@@ -11,6 +11,7 @@ Unreleased
 
 - **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
 - File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
+- The :ref:`extra_template_vars() <plugin_hook_extra_template_vars>`, :ref:`extra_css_urls() <plugin_hook_extra_css_urls>`, :ref:`extra_js_urls() <plugin_hook_extra_js_urls>` and :ref:`extra_body_script() <plugin_hook_extra_body_script>` plugin hooks now accept optional ``sql`` and ``params`` arguments, providing the SQL query and parameters used to select the rows shown on table, row and query pages. :ref:`Output renderer <plugin_register_output_renderer>` ``render`` and ``can_render`` functions can now accept ``params`` in addition to ``sql``. Plugins that call :ref:`datasette.render_template() <datasette_render_template>` can provide these values using the new ``plugin_context=`` keyword argument. (:issue:`1817`)
 
 .. _v1_0_a43:
 

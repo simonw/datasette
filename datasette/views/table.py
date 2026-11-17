@@ -1657,7 +1657,7 @@ class TableFragmentView(BaseView):
         )
         if isinstance(view_data, Response):
             return view_data
-        data, _rows, _columns, _expanded_columns, _sql, _next_url = view_data
+        data, _rows, _columns, _expanded_columns, sql, params, _next_url = view_data
         templates = data["custom_table_templates"]
         html = await self.ds.render_template(
             templates,
@@ -1670,6 +1670,7 @@ class TableFragmentView(BaseView):
             ),
             request=request,
             view_name="table",
+            plugin_context={"sql": sql, "params": params},
         )
         return Response.html(html)
 
@@ -1988,7 +1989,7 @@ async def table_view_traced(datasette, request):
     if isinstance(view_data, Response):
         return view_data
     query_ms = (time.perf_counter() - start) * 1000
-    data, rows, columns, _expanded_columns, sql, next_url = view_data
+    data, rows, columns, _expanded_columns, sql, params, next_url = view_data
 
     # Handle formats from plugins
     if format_ in datasette.renderers:
@@ -2018,6 +2019,7 @@ async def table_view_traced(datasette, request):
             columns=columns,
             rows=rows,
             sql=sql,
+            params=params,
             query_name=None,
             database=resolved.db.name,
             table=resolved.table,
@@ -2134,6 +2136,7 @@ async def table_view_traced(datasette, request):
                 table_context,
                 request=request,
                 view_name="table",
+                plugin_context={"sql": sql, "params": params},
             ),
             headers=headers,
         )
@@ -2621,6 +2624,7 @@ async def table_view_data(
             columns,
             expanded_columns,
             sql,
+            params,
             next_url,
         )
 
@@ -2843,7 +2847,7 @@ async def table_view_data(
             ),
         )
 
-    return data, rows[:page_size], columns, expanded_columns, sql, next_url
+    return data, rows[:page_size], columns, expanded_columns, sql, params, next_url
 
 
 async def _next_value_and_url(

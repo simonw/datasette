@@ -1841,6 +1841,45 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``row_path`` accepts the same values as ``datasette.urls.row()``. The column name is URL-encoded for you.
 
+.. _internals_datasette_urls_modify:
+
+``datasette.urls.modify(target, add=None, replace=None, remove=None, format=None)``
+    Returns a modified copy of a URL. Use this to build links that change the query string of the current page, such as sort, filter and pagination links.
+
+    ``target`` is either the current :ref:`request <internals_request>` or a path string, which can include a query string. A request uses the path and query string of that request, with any ``base_url`` prefix handled for you. A string should be a path without the ``base_url`` prefix, or a ``PrefixedUrlString`` returned by another ``datasette.urls`` method.
+
+    The changes are applied in this order:
+
+    - ``remove`` - a key, or a list or set of keys and ``(key, value)`` tuples, or a ``{key: value}`` dictionary. A key removes every value for that key. A key and value pair removes only that value, leaving other values for the same key in place.
+    - ``replace`` - a dictionary or list of ``(key, value)`` tuples. Any existing values for each key are dropped and the new value is used in their place. A value of ``None`` removes the key.
+    - ``add`` - a dictionary or list of ``(key, value)`` tuples. These are added to the end of the query string, keeping any existing values for the same key.
+
+    In ``add`` and ``replace`` a value can be a list, which sets several values for that key. Query string arguments with blank values, such as ``?name=``, are preserved.
+
+    ``format`` works like the ``format=`` argument to the other methods. When ``target`` is a request for a page such as ``/fixtures/facetable.json`` the existing ``.json`` extension is replaced.
+
+    .. code-block:: python
+
+        # request is for /fixtures/facetable?_sort=state&_facet=state&_next=10
+        datasette.urls.modify(
+            request, replace={"_sort_desc": "city"}, remove="_sort"
+        )
+        # "/fixtures/facetable?_facet=state&_next=10&_sort_desc=city"
+        datasette.urls.modify(
+            request,
+            add={"_facet": "city"},
+            remove=["_next", ("_facet", "state")],
+        )
+        # "/fixtures/facetable?_sort=state&_facet=city"
+        datasette.urls.modify(
+            "/fixtures/facetable?_size=10", add={"_labels": "on"}
+        )
+        # "/fixtures/facetable?_size=10&_labels=on"
+
+    The same operations are available for a query string on its own as ``datasette.utils.modify_query_string(query_string, add=None, replace=None, remove=None)``.
+
+    The older ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()`` and ``path_with_replaced_args()`` functions still work, but do not apply ``base_url``. New code should use ``datasette.urls.modify()``.
+
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
 
 .. code-block:: jinja
@@ -1850,6 +1889,7 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
     <a href="{{ urls.row("fixtures", "facetable", [1]) }}">facetable row 1</a>
+    <a href="{{ urls.modify(request, replace={"_size": 50}, remove="_next") }}">50 rows per page</a>
 
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 

@@ -41,7 +41,6 @@ from datasette.utils import (
     is_url,
     make_slot_function,
     path_from_row_pks,
-    path_with_added_args,
     path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
@@ -210,12 +209,12 @@ class TableContext(Context):
     )
     path_with_replaced_args: callable = field(
         metadata={
-            "help": "Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument."
+            "help": "Legacy function for building the current path with modified query string arguments. Datasette's own templates no longer use it - use ``urls.modify(request, replace={...})`` instead, see :ref:`internals_datasette_urls_modify`."
         }
     )
     fix_path: callable = field(
         metadata={
-            "help": "Function that applies the configured ``base_url`` prefix to a path."
+            "help": "Function that applies the configured ``base_url`` prefix to a path. The same function is available as ``urls.path()``."
         }
     )
     settings: dict = field(
@@ -418,10 +417,14 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(
-                path_with_added_args(
-                    request, redirect_params, path=request_route_path(request)
-                )
+            datasette.urls.modify(
+                request,
+                add=[
+                    (key, value) for key, value in redirect_params if value is not None
+                ],
+                # The filter form also submits a blank ?_search= when unused
+                remove=[key for key, value in redirect_params if value is None]
+                + [("_search", "")],
             ),
             forward_querystring=False,
         )
@@ -431,16 +434,10 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(
-                path_with_added_args(
-                    request,
-                    {
-                        "_sort_desc": request.args.get("_sort"),
-                        "_sort_by_desc": None,
-                        "_sort": None,
-                    },
-                    path=request_route_path(request),
-                )
+            datasette.urls.modify(
+                request,
+                add={"_sort_desc": request.args.get("_sort")},
+                remove=["_sort_by_desc", "_sort"],
             ),
             forward_querystring=False,
         )
@@ -2296,17 +2293,13 @@ def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid)
     _next = request.args.get("_next")
     if not _next:
         return None
-    route_path = request.scope.get("route_path")
     position = {
-        "first_url": datasette.urls.path(
-            path_with_removed_args(request, {"_next"}, path=route_path)
-        ),
-        "count_before_url": datasette.urls.path(
-            path_with_added_args(
-                request,
-                {"_count": "before"},
-                path=(route_path or request.path).rstrip("/") + "/-/count",
-            )
+        "first_url": datasette.urls.modify(request, remove="_next"),
+        "count_before_url": datasette.urls.modify(
+            request_route_path(request).rstrip("/")
+            + "/-/count?"
+            + request.query_string,
+            add={"_count": "before"},
         ),
         "after_column": None,
         "after_value": None,
@@ -2729,13 +2722,7 @@ async def table_view_data(
         ]
         filter_keys = {key for key, _ in filters.pairs}
         data["clear_filters_url"] = (
-            datasette.urls.path(
-                path_with_removed_args(
-                    request,
-                    filter_keys | {"_next"},
-                    path=request.scope.get("route_path"),
-                )
-            )
+            datasette.urls.modify(request, remove=filter_keys | {"_next"})
             if filter_keys
             else None
         )
@@ -2901,10 +2888,6 @@ async def _next_value_and_url(
             added_args = {"_next": next_value}
         next_url = datasette.absolute_url(
             request,
-            datasette.urls.path(
-                path_with_replaced_args(
-                    request, added_args, path=request_route_path(request)
-                )
-            ),
+            datasette.urls.modify(request, replace=added_args),
         )
     return next_value, next_url

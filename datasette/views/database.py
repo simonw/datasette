@@ -23,11 +23,8 @@ from datasette.utils import (
     error_body,
     is_url,
     make_slot_function,
-    path_with_added_args,
     path_with_format,
-    path_with_removed_args,
     path_without_format,
-    request_route_path,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -1022,30 +1019,26 @@ class QueryView(View):
             show_hide_hidden = ""
             if stored_query and stored_query.hide_sql:
                 if bool(params.get("_show_sql")):
-                    show_hide_link = path_with_removed_args(
-                        request, {"_show_sql"}, path=request_route_path(request)
-                    )
+                    show_hide_link = datasette.urls.modify(request, remove="_show_sql")
                     show_hide_text = "hide"
                     show_hide_hidden = (
                         '<input type="hidden" name="_show_sql" value="1">'
                     )
                 else:
-                    show_hide_link = path_with_added_args(
-                        request, {"_show_sql": 1}, path=request_route_path(request)
+                    show_hide_link = datasette.urls.modify(
+                        request, add={"_show_sql": 1}
                     )
                     show_hide_text = "show"
             else:
                 if bool(params.get("_hide_sql")):
-                    show_hide_link = path_with_removed_args(
-                        request, {"_hide_sql"}, path=request_route_path(request)
-                    )
+                    show_hide_link = datasette.urls.modify(request, remove="_hide_sql")
                     show_hide_text = "show"
                     show_hide_hidden = (
                         '<input type="hidden" name="_hide_sql" value="1">'
                     )
                 else:
-                    show_hide_link = path_with_added_args(
-                        request, {"_hide_sql": 1}, path=request_route_path(request)
+                    show_hide_link = datasette.urls.modify(
+                        request, add={"_hide_sql": 1}
                     )
                     show_hide_text = "hide"
             hide_sql = show_hide_text == "show"

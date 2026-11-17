@@ -2,6 +2,7 @@ import pytest
 
 from datasette.app import Datasette
 from datasette.utils import PrefixedUrlString
+from datasette.utils.asgi import Request
 
 
 @pytest.fixture(scope="module")
@@ -26,6 +27,56 @@ def test_path(ds, ds_base_url, path, expected):
     actual = ds.urls.path(path)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
+
+
+@pytest.mark.parametrize(
+    "base_url,target,kwargs,expected",
+    [
+        ("/", "/db/t?a=1", {"add": {"b": 2}}, "/db/t?a=1&b=2"),
+        ("/", "/db/t?a=1", {"remove": "a"}, "/db/t"),
+        ("/", "/db/t?a=1#top", {"replace": {"a": 2}}, "/db/t?a=2#top"),
+        ("/", "/db/t?a=1", {"format": "json"}, "/db/t.json?a=1"),
+        ("/prefix/", "/db/t?a=", {"add": {"b": 2}}, "/prefix/db/t?a=&b=2"),
+        ("/prefix/", "/db/t", {"format": "csv"}, "/prefix/db/t.csv"),
+    ],
+)
+def test_modify_path(ds, base_url, target, kwargs, expected):
+    ds._settings["base_url"] = base_url
+    actual = ds.urls.modify(target, **kwargs)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
+    # The result can be modified again without doubling the prefix
+    assert ds.urls.modify(actual) == expected
+
+
+@pytest.mark.parametrize(
+    "base_url,scope_extras,expected",
+    [
+        ("/", {}, "/db/t?b=&a=2"),
+        # base_url already stripped by a proxy
+        ("/prefix/", {}, "/prefix/db/t?b=&a=2"),
+        # base_url stripped by Datasette's router, which sets route_path
+        (
+            "/prefix/",
+            {"path": "/prefix/db/t", "route_path": "/db/t"},
+            "/prefix/db/t?b=&a=2",
+        ),
+    ],
+)
+def test_modify_request(ds, base_url, scope_extras, expected):
+    ds._settings["base_url"] = base_url
+    request = Request.fake("/db/t?a=1&b=&_next=5")
+    request.scope.update(scope_extras)
+    actual = ds.urls.modify(request, replace={"a": 2}, remove="_next")
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
+
+
+def test_modify_request_replaces_format(ds):
+    ds._settings["base_url"] = "/"
+    request = Request.fake("/db/t.json?a=1", url_vars={"format": "json"})
+    assert ds.urls.modify(request, format="csv") == "/db/t.csv?a=1"
+    assert ds.urls.modify(request, add={"b": 2}) == "/db/t.json?a=1&b=2"
 
 
 def test_path_applied_twice_does_not_double_prefix(ds):

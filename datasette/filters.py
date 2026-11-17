@@ -10,8 +10,6 @@ from datasette.views.base import DatasetteError
 from .utils import (
     detect_json1,
     escape_sqlite,
-    path_with_removed_args,
-    request_route_path,
 )
 
 
@@ -33,12 +31,8 @@ def where_filters(request, database, datasette):
                 extra_wheres_for_ui = [
                     {
                         "text": text,
-                        "remove_url": datasette.urls.path(
-                            path_with_removed_args(
-                                request,
-                                {"_where": text},
-                                path=request_route_path(request),
-                            )
+                        "remove_url": datasette.urls.modify(
+                            request, remove={"_where": text}
                         ),
                     }
                     for text in request.args.getlist("_where")

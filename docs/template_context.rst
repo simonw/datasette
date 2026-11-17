@@ -33,7 +33,7 @@ These variables are available on every page rendered by Datasette, including pag
     Async function returning breadcrumb navigation items for the current page. Call it with ``request=request`` plus optional ``database=`` and ``table=`` arguments; it returns a list of ``{"href": url, "label": label}`` dictionaries.
 
 ``urls``
-    Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)`` and ``urls.static(path)`` - see :ref:`internals_datasette_urls`.
+    Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)``, ``urls.static(path)`` and ``urls.modify(request, ...)`` for links that change the current query string - see :ref:`internals_datasette_urls`.
 
 ``actor``
     The currently authenticated actor dictionary, or None. Actors usually include an ``id`` key and may include any other keys supplied by authentication plugins.
@@ -394,7 +394,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     ``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable.
 
 ``fix_path`` - ``callable``
-    Function that applies the configured ``base_url`` prefix to a path.
+    Function that applies the configured ``base_url`` prefix to a path. The same function is available as ``urls.path()``.
 
 ``form_hidden_args`` - ``list``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
@@ -424,7 +424,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page.
 
 ``path_with_replaced_args`` - ``callable``
-    Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument.
+    Legacy function for building the current path with modified query string arguments. Datasette's own templates no longer use it - use ``urls.modify(request, replace={...})`` instead, see :ref:`internals_datasette_urls_modify`.
 
 ``primary_keys`` - ``list``
     List of primary key column names for this table, or an empty list if the table has no explicit primary key.

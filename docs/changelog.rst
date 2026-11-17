@@ -12,6 +12,11 @@ Unreleased
 - **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
 - File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
 
+- New ``datasette.urls.modify(target, add=, replace=, remove=, format=)`` method for building links that change the query string of the current page or of any other path. It applies ``base_url`` for you and is available in templates as ``urls.modify()``. See :ref:`internals_datasette_urls_modify`. (:issue:`1342`)
+- Fixed a bug where sort, facet and filter-removal links on the table page dropped query string arguments with blank values, so sorting ``/db/table?name=`` lost the filter for rows where ``name`` is the empty string.
+- ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()`` and ``path_with_replaced_args()`` now preserve blank values and accept a ``path=`` that includes a query string. They are still supported, but ``datasette.urls.modify()`` is now preferred. ``path_with_removed_args()`` now matches values using their string form, so ``{"_size": 10}`` removes ``?_size=10``.
+- Datasette's default templates no longer use the ``path_with_replaced_args`` and ``fix_path`` template variables. Both are still provided to custom templates.
+
 .. _v1_0_a43:
 
 1.0a43 (2026-11-15)

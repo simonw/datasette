@@ -920,8 +920,8 @@ Each Facet subclass implements a new type of facet operation. The class should l
                     # Construct the URL that will enable this facet:
                     "toggle_url": self.ds.absolute_url(
                         self.request,
-                        path_with_added_args(
-                            self.request, {"_facet": column}
+                        self.ds.urls.modify(
+                            self.request, add={"_facet": column}
                         ),
                     ),
                 }

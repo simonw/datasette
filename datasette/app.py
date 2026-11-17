@@ -460,6 +460,7 @@ class Datasette:
     def __init__(
         self,
         files=None,
+        *,
         immutables=None,
         cache_headers=True,
         cors=False,
@@ -996,7 +997,7 @@ class Datasette:
                 return result
         return None
 
-    def get_database(self, name=None, route=None):
+    def get_database(self, name=None, *, route=None):
         if route is not None:
             matches = [db for db in self.databases.values() if db.route == route]
             if not matches:
@@ -1006,7 +1007,7 @@ class Datasette:
             name = next(iter(self.databases.keys()))
         return self.databases[name]
 
-    def add_database(self, db, name=None, route=None):
+    def add_database(self, db, name=None, *, route=None):
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -1025,7 +1026,7 @@ class Datasette:
         self.databases = new_databases
         return db
 
-    def add_memory_database(self, memory_name, name=None, route=None):
+    def add_memory_database(self, memory_name, name=None, *, route=None):
         return self.add_database(
             Database(self, memory_name=memory_name), name=name, route=route
         )
@@ -1531,7 +1532,7 @@ class Datasette:
     def get_internal_database(self):
         return self._internal_database
 
-    def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
+    def plugin_config(self, plugin_name, *, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
         if database is None and table is None:
             config = self._plugin_config_top(plugin_name)
@@ -2335,6 +2336,7 @@ ORDER BY allowed.parent, allowed.child
         db_name,
         sql,
         params=None,
+        *,
         truncate=False,
         custom_time_limit=None,
         page_size=None,
@@ -2680,6 +2682,7 @@ ORDER BY allowed.parent, allowed.child
         self,
         templates: list[str] | str | Template,
         context: dict[str, Any] | Context | None = None,
+        *,
         request: Request | None = None,
         view_name: str | None = None,
     ):
@@ -2791,7 +2794,7 @@ ORDER BY allowed.parent, allowed.child
         return await template.render_async(template_context)
 
     def set_actor_cookie(
-        self, response: Response, actor: dict, expire_after: int | None = None
+        self, response: Response, actor: dict, *, expire_after: int | None = None
     ):
         data = {"a": actor}
         if expire_after:
@@ -3739,7 +3742,7 @@ class DatasetteClient:
         cookies["ds_actor"] = self.actor_cookie(actor)
         kwargs["cookies"] = cookies
 
-    async def _request(self, method, path, skip_permission_checks=False, **kwargs):
+    async def _request(self, method, path, *, skip_permission_checks=False, **kwargs):
         from datasette.permissions import SkipPermissions
 
         self._apply_actor(kwargs)
@@ -3758,42 +3761,42 @@ class DatasetteClient:
                 ) as client:
                     return await getattr(client, method)(self._fix(path), **kwargs)
 
-    async def get(self, path, skip_permission_checks=False, **kwargs):
+    async def get(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "get", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def options(self, path, skip_permission_checks=False, **kwargs):
+    async def options(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "options", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def head(self, path, skip_permission_checks=False, **kwargs):
+    async def head(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "head", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def post(self, path, skip_permission_checks=False, **kwargs):
+    async def post(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "post", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def put(self, path, skip_permission_checks=False, **kwargs):
+    async def put(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "put", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def patch(self, path, skip_permission_checks=False, **kwargs):
+    async def patch(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "patch", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def delete(self, path, skip_permission_checks=False, **kwargs):
+    async def delete(self, path, *, skip_permission_checks=False, **kwargs):
         return await self._request(
             "delete", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
 
-    async def request(self, method, path, skip_permission_checks=False, **kwargs):
+    async def request(self, method, path, *, skip_permission_checks=False, **kwargs):
         """Make an HTTP request with the specified method.
 
         Args:

@@ -12,7 +12,7 @@ class Urls:
     def __init__(self, ds):
         self.ds = ds
 
-    def path(self, path, format=None):
+    def path(self, path, *, format=None):
         if not isinstance(path, PrefixedUrlString):
             path = path.removeprefix("/")
             path = PrefixedUrlString(self.ds.setting("base_url") + path)
@@ -59,7 +59,7 @@ class Urls:
             url += f"#{fragment}"
         return url
 
-    def instance(self, format=None):
+    def instance(self, *, format=None):
         return self.path("", format=format)
 
     def static(self, path):
@@ -71,23 +71,23 @@ class Urls:
     def logout(self):
         return self.path("-/logout")
 
-    def database(self, database, format=None):
+    def database(self, database, *, format=None):
         db = self.ds.get_database(database)
         return self.path(tilde_encode(db.route), format=format)
 
-    def database_query(self, database, sql, format=None):
+    def database_query(self, database, sql, *, format=None):
         path = f"{self.database(database)}/-/query?" + urllib.parse.urlencode(
             {"sql": sql}
         )
         return self.path(path, format=format)
 
-    def table(self, database, table, format=None):
+    def table(self, database, table, *, format=None):
         path = f"{self.database(database)}/{tilde_encode(table)}"
         if format is not None:
             path = f"{path}.{format}"
         return PrefixedUrlString(path)
 
-    def query(self, database, query, format=None):
+    def query(self, database, query, *, format=None):
         path = f"{self.database(database)}/{tilde_encode(query)}"
         if format is not None:
             path = f"{path}.{format}"
@@ -100,7 +100,7 @@ class Urls:
             return ",".join(tilde_encode(str(value)) for value in row_path)
         return row_path
 
-    def row(self, database, table, row_path, format=None):
+    def row(self, database, table, row_path, *, format=None):
         path = f"{self.table(database, table)}/{self._row_path(row_path)}"
         if format is not None:
             path = f"{path}.{format}"

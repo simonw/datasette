@@ -9,6 +9,22 @@ Changelog
 Unreleased
 ----------
 
+- **Backwards incompatible:** optional arguments to many of the :ref:`documented internal methods <internals>` are now keyword-only, so they can no longer be passed positionally. (:issue:`1822`) The affected signatures are:
+
+  - ``Datasette(files=None, *, ...)`` - every argument other than ``files`` is keyword-only.
+  - ``datasette.render_template(templates, context=None, *, request=None, view_name=None)``
+  - ``datasette.execute(db_name, sql, params=None, *, ...)`` and ``db.execute(sql, params=None, *, ...)``
+  - ``db.execute_write(sql, params=None, *, ...)``, ``db.execute_write_script(sql, *, ...)``, ``db.execute_write_many(sql, params_seq, *, ...)`` and ``db.execute_write_fn(fn, *, ...)``
+  - ``datasette.get_database(name=None, *, route=None)``, ``datasette.add_database(db, name=None, *, route=None)`` and ``datasette.add_memory_database(memory_name, name=None, *, route=None)``
+  - ``datasette.plugin_config(plugin_name, *, database=None, table=None, fallback=True)``
+  - ``datasette.set_actor_cookie(response, actor, *, expire_after=None)``
+  - ``datasette.client.get(path, *, skip_permission_checks=False, **kwargs)`` and the other ``datasette.client`` methods.
+  - ``datasette.urls.instance()``, ``.path()``, ``.database()``, ``.database_query()``, ``.table()``, ``.query()`` and ``.row()`` now require ``format=`` as a keyword.
+  - ``Request.fake(path_with_query_string, *, method="GET", scheme="http", url_vars=None)``
+  - ``Response(body=None, *, status=200, headers=None, content_type="text/plain")``
+  - ``Response.html()``, ``.text()``, ``.json()``, ``.stream()``, ``.error()`` and ``.redirect()`` still accept ``status`` as a second positional argument - ``Response.json(data, 400)`` continues to work - but ``headers``, ``default`` and ``content_type`` are keyword-only.
+  - ``response.set_cookie(key, value="", *, max_age=None, ...)``
+
 - **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
 - File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
 

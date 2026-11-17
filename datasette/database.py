@@ -283,6 +283,7 @@ class Database:
         self,
         sql,
         params=None,
+        *,
         block=True,
         request=None,
         return_all=False,
@@ -329,7 +330,7 @@ class Database:
                     )
         return results
 
-    async def execute_write_script(self, sql, block=True, request=None):
+    async def execute_write_script(self, sql, *, block=True, request=None):
         self._check_not_closed()
 
         def _inner(conn):
@@ -350,7 +351,7 @@ class Database:
                     )
         return results
 
-    async def execute_write_many(self, sql, params_seq, block=True, request=None):
+    async def execute_write_many(self, sql, params_seq, *, block=True, request=None):
         self._check_not_closed()
 
         def _inner(conn):
@@ -429,7 +430,7 @@ class Database:
 
         return await self.execute_isolated_fn(_analyze_sql)
 
-    async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
+    async def execute_write_fn(self, fn, *, block=True, transaction=True, request=None):
         """Run `fn(conn)` on the write connection, traced as a `db.query` span.
 
         The SQL-string write methods call `_execute_write_fn()` directly to
@@ -718,6 +719,7 @@ class Database:
         self,
         sql,
         params=None,
+        *,
         truncate=False,
         custom_time_limit=None,
         page_size=None,

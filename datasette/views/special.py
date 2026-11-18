@@ -421,6 +421,25 @@ class PermissionsDebugView(BaseView):
         return Response.json(response, status=status)
 
 
+@dataclass
+class AllowedResourcesContext(Context):
+    "A tool for listing the resources the current actor can access for a given action, at ``/-/allowed``."
+
+    documented_template = "debug_allowed.html"
+
+    supported_actions: list[str] = field(
+        metadata={
+            "help": "Names of every registered action, with the most commonly used ones first"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class AllowedResourcesView(BaseView):
     name = "allowed"
     has_json_alternate = False
@@ -460,10 +479,10 @@ class AllowedResourcesView(BaseView):
             return await self.render(
                 ["debug_allowed.html"],
                 request,
-                {
-                    "supported_actions": sorted_actions,
-                    "has_debug_permission": has_debug_permission,
-                },
+                AllowedResourcesContext(
+                    supported_actions=sorted_actions,
+                    has_debug_permission=has_debug_permission,
+                ),
             )
 
         payload, status = await self._allowed_payload(request, has_debug_permission)

@@ -1005,4 +1005,18 @@ The permissions playground at ``/-/permissions``, which lists recent permission 
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Allowed resources page
+----------------------
+
+A tool for listing the resources the current actor can access for a given action, at ``/-/allowed``. Rendered using the ``debug_allowed.html`` template.
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``supported_actions`` - ``list[str]``
+    Names of every registered action, with the most commonly used ones first
+
 .. [[[end]]]

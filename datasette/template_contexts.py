@@ -26,6 +26,7 @@ from datasette.views.execute_write import ExecuteWriteContext
 from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
 from datasette.views.special import (
+    AllowedResourcesContext,
     ApiExplorerContext,
     AutocompleteDebugContext,
     CreateTokenContext,
@@ -60,6 +61,7 @@ PAGES = {
     "json_data": JsonDataContext,
     "autocomplete_debug": AutocompleteDebugContext,
     "permissions_debug": PermissionsDebugContext,
+    "allowed_resources": AllowedResourcesContext,
 }
 
 

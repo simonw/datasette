@@ -25,7 +25,11 @@ from datasette.views.database import DatabaseContext, QueryContext
 from datasette.views.execute_write import ExecuteWriteContext
 from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
-from datasette.views.special import CreateTokenContext, SchemaContext
+from datasette.views.special import (
+    ApiExplorerContext,
+    CreateTokenContext,
+    SchemaContext,
+)
 from datasette.views.stored_queries import (
     QueryCreateContext,
     QueryDeleteContext,
@@ -47,6 +51,7 @@ PAGES = {
     "execute_write": ExecuteWriteContext,
     "schema": SchemaContext,
     "create_token": CreateTokenContext,
+    "api_explorer": ApiExplorerContext,
 }
 
 

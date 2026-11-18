@@ -2,6 +2,7 @@ import json
 import logging
 import secrets
 import urllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from datasette.events import CreateTokenEvent, LoginEvent, LogoutEvent
@@ -980,6 +981,29 @@ class CreateTokenView(BaseView):
         )
 
 
+@dataclass
+class ApiExplorerContext(Context):
+    "The API explorer, a tool for trying out the JSON API, at ``/-/api``."
+
+    documented_template = "api_explorer.html"
+    documented_title = "API explorer page"
+
+    example_links: list[dict] = field(
+        metadata={
+            "help": "Example API calls for the databases the actor can see. Each database has ``name``, ``links`` and ``tables`` keys, and each table has ``name`` and ``links``. A link has ``label``, ``method`` and ``path`` keys, plus ``json`` holding an example request body for write APIs"
+        }
+    )
+    api_path: Callable = field(
+        metadata={
+            "help": "Function that takes one of those links and returns the URL of the API explorer with the form filled in for it"
+        }
+    )
+    private: bool = field(
+        metadata={"help": "True if anonymous users cannot view this instance"}
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class ApiExplorerView(BaseView):
     name = "api_explorer"
     has_json_alternate = False
@@ -1122,6 +1146,7 @@ class ApiExplorerView(BaseView):
             raise Forbidden("You do not have permission to view this instance")
 
         def api_path(link):
+            "URL of the API explorer with the form filled in for the given link"
             return "{}#{}".format(
                 self.ds.urls.path("/-/api"),
                 urllib.parse.urlencode(
@@ -1136,11 +1161,11 @@ class ApiExplorerView(BaseView):
         return await self.render(
             ["api_explorer.html"],
             request,
-            {
-                "example_links": await self.example_links(request),
-                "api_path": api_path,
-                "private": private,
-            },
+            ApiExplorerContext(
+                example_links=await self.example_links(request),
+                api_path=api_path,
+                private=private,
+            ),
         )
 
 

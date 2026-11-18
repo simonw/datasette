@@ -905,4 +905,21 @@ The form for creating an API token, at ``/-/create-token``. Rendered using the `
 ``token_bits`` - ``dict | None``
     The decoded contents of the token that was created, or None
 
+API explorer page
+-----------------
+
+The API explorer, a tool for trying out the JSON API, at ``/-/api``. Rendered using the ``api_explorer.html`` template.
+
+``api_path`` - ``Callable``
+    Function that takes one of those links and returns the URL of the API explorer with the form filled in for it
+
+``example_links`` - ``list[dict]``
+    Example API calls for the databases the actor can see. Each database has ``name``, ``links`` and ``tables`` keys, and each table has ``name`` and ``links``. A link has ``label``, ``method`` and ``path`` keys, plus ``json`` holding an example request body for write APIs
+
+``private`` - ``bool``
+    True if anonymous users cannot view this instance
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

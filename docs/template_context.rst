@@ -930,4 +930,27 @@ The page asking the actor to confirm that they want to log out, at ``/-/logout``
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+JSON data pages
+---------------
+
+The pages that display JSON describing the instance, such as ``/-/versions``, ``/-/plugins``, ``/-/settings``, ``/-/config``, ``/-/databases``, ``/-/threads`` and ``/-/actor``. ``/-/actions`` uses the same variables with the ``debug_actions.html`` template. Rendered using the ``show_json.html`` template.
+
+``alternate_url_json`` - ``str``
+    URL of the JSON version of this page
+
+``data`` - ``dict | list``
+    The data for this page, as returned by its JSON API
+
+``data_json`` - ``str``
+    That data as a string of indented JSON
+
+``filename`` - ``str``
+    Name of the JSON file for this page, such as ``versions.json``, used as the page title
+
+``has_debug_permission`` - ``bool``
+    True if this page requires the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

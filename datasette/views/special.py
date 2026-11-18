@@ -21,7 +21,7 @@ from datasette.utils import (
 )
 from datasette.utils.asgi import Forbidden, Response
 
-from . import Context, select_templates_field
+from . import Context, alternate_url_json_field, select_templates_field
 from .base import BaseView, View
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,31 @@ def _resource_path(parent, child):
     if child is None:
         return f"/{parent}"
     return f"/{parent}/{child}"
+
+
+@dataclass
+class JsonDataContext(Context):
+    "The pages that display JSON describing the instance, such as ``/-/versions``, ``/-/plugins``, ``/-/settings``, ``/-/config``, ``/-/databases``, ``/-/threads`` and ``/-/actor``. ``/-/actions`` uses the same variables with the ``debug_actions.html`` template."
+
+    documented_template = "show_json.html"
+    documented_title = "JSON data pages"
+
+    filename: str = field(
+        metadata={
+            "help": "Name of the JSON file for this page, such as ``versions.json``, used as the page title"
+        }
+    )
+    data: dict | list = field(
+        metadata={"help": "The data for this page, as returned by its JSON API"}
+    )
+    data_json: str = field(metadata={"help": "That data as a string of indented JSON"})
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if this page requires the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+    alternate_url_json: str = alternate_url_json_field()
 
 
 class JsonDataView(BaseView):
@@ -74,18 +99,15 @@ class JsonDataView(BaseView):
                 data = {"ok": True, **data}
             return Response.json(data, headers=headers)
         else:
-            context = {
-                "filename": self.filename,
-                "data": data,
-                "data_json": json.dumps(data, indent=2, default=repr),
-            }
-            # Add has_debug_permission if this view requires permissions-debug
-            if self.permission == "permissions-debug":
-                context["has_debug_permission"] = True
             return await self.render(
                 [self.template],
                 request=request,
-                context=context,
+                context=JsonDataContext(
+                    filename=self.filename,
+                    data=data,
+                    data_json=json.dumps(data, indent=2, default=repr),
+                    has_debug_permission=self.permission == "permissions-debug",
+                ),
             )
 
 

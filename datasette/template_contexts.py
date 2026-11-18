@@ -28,6 +28,7 @@ from datasette.views.row import RowContext
 from datasette.views.special import (
     ApiExplorerContext,
     CreateTokenContext,
+    JsonDataContext,
     LogoutContext,
     SchemaContext,
 )
@@ -54,6 +55,7 @@ PAGES = {
     "create_token": CreateTokenContext,
     "api_explorer": ApiExplorerContext,
     "logout": LogoutContext,
+    "json_data": JsonDataContext,
 }
 
 

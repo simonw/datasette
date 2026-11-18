@@ -10,6 +10,13 @@
                     <a href="{{ facet_info.toggle_url }}" class="cross" title="Remove this facet" aria-label="Remove {{ facet_info.name }} facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
                 {% endif %}
             </p>
+            {% if facet_info.interval_options %}
+                <p class="facet-info-intervals">By
+                    {% for option in facet_info.interval_options %}
+                        {% if option.selected %}<strong aria-current="true">{{ option.interval }}</strong>{% else %}<a href="{{ option.url }}">{{ option.interval }}</a>{% endif %}{% if not loop.last %} / {% endif %}
+                    {% endfor %}
+                </p>
+            {% endif %}
             <ul class="tight-bullets">
                 {% for facet_value in facet_info.results %}
                     {% set proportion = ([facet_value.count / facet_total * 100, 100]|min) if facet_total else none %}

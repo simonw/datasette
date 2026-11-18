@@ -1778,6 +1778,16 @@ button.core[type=button] {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+.facet-info p.facet-info-intervals {
+    margin: 0 0 0.25rem;
+    padding: 0 0.45rem;
+    color: #6b6b6b;
+    font-size: 0.75rem;
+}
+.facet-info-intervals strong {
+    color: #0f0f0f;
+    font-weight: 600;
+}
 .facet-info a.cross:link,
 .facet-info a.cross:visited,
 .facet-info a.cross:hover,

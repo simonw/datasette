@@ -296,3 +296,47 @@ If Datasette finds any columns that contain dates in the first 100 values, it wi
 This works especially well against timestamp values such as ``2019-03-01 12:44:00``.
 
 Example here: `latest.datasette.io/fixtures/facetable?_facet_date=created <https://latest.datasette.io/fixtures/facetable?_facet_date=created>`__
+
+Date facets group values by day by default. To group them by month or by year instead, pass a JSON object with ``column`` and ``interval`` keys, where ``interval`` is one of ``day``, ``month`` or ``year``::
+
+    ?_facet_date={"column":"created","interval":"month"}
+
+Each date facet in the table interface links to the other intervals, so you can switch between them without editing the URL.
+
+Selecting a value from a facet filters the table using the matching ``?created__date=``, ``?created__month=`` or ``?created__year=`` filter, see :ref:`table_arguments`.
+
+You can configure the interval for a date facet in :ref:`metadata <facets_metadata>` like this:
+
+.. [[[cog
+    config_example(cog, {
+      "facets": [
+        {"date": {"column": "created", "interval": "month"}}
+      ]
+    })
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
+
+        facets:
+        - date:
+            column: created
+            interval: month
+
+
+.. tab:: datasette.json
+
+    .. code-block:: json
+
+        {
+          "facets": [
+            {
+              "date": {
+                "column": "created",
+                "interval": "month"
+              }
+            }
+          ]
+        }
+.. [[[end]]]

@@ -391,6 +391,15 @@ class Filters:
         + [
             TemplatedFilter("date", "date", "date({c}) = :{p}", '"{c}" is on date {v}'),
             TemplatedFilter(
+                "month",
+                "month",
+                "strftime('%Y-%m', {c}) = :{p}",
+                '"{c}" is in month {v}',
+            ),
+            TemplatedFilter(
+                "year", "year", "strftime('%Y', {c}) = :{p}", '"{c}" is in year {v}'
+            ),
+            TemplatedFilter(
                 "isnull", "is null", "{c} is null", "{c} is null", no_argument=True
             ),
             TemplatedFilter(

@@ -162,6 +162,8 @@ def context_ds(tmp_path_factory):
             }
         },
     )
+    # The pages that need permissions are requested as the root actor
+    ds.root_enabled = True
     yield ds
     for db in ds.databases.values():
         if not db.is_memory:
@@ -192,6 +194,11 @@ async def get_template_context(ds, path, actor_id=None):
         ("query", "/fixtures/neighborhood_search?text=cork"),
         ("query_list", "/-/queries"),
         ("query_list", "/fixtures/-/queries?q=search"),
+        ("query_create", "/fixtures/-/queries/store as root"),
+        (
+            "query_create",
+            "/fixtures/-/queries/store?sql=select+*+from+facetable+where+pk=:pk as root",
+        ),
     ),
 )
 async def test_template_context_matches_documented_contract(

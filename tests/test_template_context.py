@@ -13,6 +13,7 @@ import pytest
 from datasette.app import TEMPLATE_BASE_CONTEXT, Datasette
 from datasette.extras import ExtraScope
 from datasette.fixtures import write_fixture_database
+from datasette.stored_queries import add_query
 from datasette.template_contexts import PAGES, documented_context_keys
 from datasette.views import Context
 
@@ -199,6 +200,7 @@ async def get_template_context(ds, path, actor_id=None):
             "query_create",
             "/fixtures/-/queries/store?sql=select+*+from+facetable+where+pk=:pk as root",
         ),
+        ("query_edit", "/fixtures/saved_by_root/-/edit as root"),
     ),
 )
 async def test_template_context_matches_documented_contract(
@@ -208,6 +210,17 @@ async def test_template_context_matches_documented_contract(
     # documented, and every documented key is present in the context.
     # A path can be followed by " as <actor_id>" to sign in as that actor
     path, _, actor_id = path.partition(" as ")
+    if "saved_by_root" in path:
+        # A query saved by a user, which can be edited and deleted
+        await context_ds.invoke_startup()
+        await add_query(
+            context_ds,
+            "fixtures",
+            "saved_by_root",
+            "select * from facetable where pk = :pk",
+            source="user",
+            owner_id="root",
+        )
     documented = documented_context_keys(page_name)
     actual = {
         key

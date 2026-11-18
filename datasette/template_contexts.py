@@ -24,7 +24,11 @@ from datasette.app import TEMPLATE_BASE_CONTEXT
 from datasette.views.database import DatabaseContext, QueryContext
 from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
-from datasette.views.stored_queries import QueryCreateContext, QueryListContext
+from datasette.views.stored_queries import (
+    QueryCreateContext,
+    QueryEditContext,
+    QueryListContext,
+)
 from datasette.views.table import TableContext
 
 PAGES = {
@@ -35,6 +39,7 @@ PAGES = {
     "row": RowContext,
     "query_list": QueryListContext,
     "query_create": QueryCreateContext,
+    "query_edit": QueryEditContext,
 }
 
 

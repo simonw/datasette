@@ -158,6 +158,50 @@ class QueryCreateContext(Context):
     select_templates: list[str] = select_templates_field()
 
 
+@dataclass
+class QueryEditContext(Context):
+    "The form for editing a stored query, at ``/<database>/<query>/-/edit``."
+
+    documented_template = "query_edit.html"
+
+    database: str = field(metadata={"help": "Database name"})
+    database_color: str = field(metadata={"help": "Color assigned to the database"})
+    name: str = field(metadata={"help": "Name of the query being edited"})
+    sql: str = field(metadata={"help": "The SQL for the query"})
+    title: str = field(metadata={"help": "The title of the query, or an empty string"})
+    description: str = field(
+        metadata={"help": "The description of the query, or an empty string"}
+    )
+    is_private: bool = field(
+        metadata={"help": "True if the private checkbox should be checked"}
+    )
+    query_url: str = field(metadata={"help": "URL of the page for the query"})
+    ok: bool = field(metadata={"help": "True if the SQL was analyzed without an error"})
+    parameters: list[str] = field(
+        metadata={"help": "Names of the ``:named`` parameters found in the SQL"}
+    )
+    analysis_error: str | None = field(
+        metadata={
+            "help": "Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None"
+        }
+    )
+    analysis_rows: list[dict] = field(
+        metadata={
+            "help": "The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation, and None for operations that need no permission check"
+        }
+    )
+    has_sql: bool = field(metadata={"help": "True if any SQL has been entered"})
+    analysis_is_write: bool = field(
+        metadata={"help": "True if the SQL writes to the database"}
+    )
+    save_disabled: bool = field(
+        metadata={
+            "help": "True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class QueryParametersView(BaseView):
     name = "query-parameters"
     has_json_alternate = False
@@ -711,15 +755,17 @@ class QueryEditView(BaseView):
         response = await self.render(
             ["query_edit.html"],
             request,
-            await _query_edit_form_context(
-                self.ds,
-                request,
-                db,
-                existing,
-                sql=sql,
-                title=title,
-                description=description,
-                is_private=is_private,
+            QueryEditContext(
+                **await _query_edit_form_context(
+                    self.ds,
+                    request,
+                    db,
+                    existing,
+                    sql=sql,
+                    title=title,
+                    description=description,
+                    is_private=is_private,
+                )
             ),
         )
         response.status = status

@@ -709,4 +709,57 @@ The form for saving a new stored query, at ``/<database>/-/queries/store``. Rend
 ``title`` - ``str``
     The title entered for the query
 
+Query edit page
+---------------
+
+The form for editing a stored query, at ``/<database>/<query>/-/edit``. Rendered using the ``query_edit.html`` template.
+
+``analysis_error`` - ``str | None``
+    Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None
+
+``analysis_is_write`` - ``bool``
+    True if the SQL writes to the database
+
+``analysis_rows`` - ``list[dict]``
+    The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation, and None for operations that need no permission check
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``description`` - ``str``
+    The description of the query, or an empty string
+
+``has_sql`` - ``bool``
+    True if any SQL has been entered
+
+``is_private`` - ``bool``
+    True if the private checkbox should be checked
+
+``name`` - ``str``
+    Name of the query being edited
+
+``ok`` - ``bool``
+    True if the SQL was analyzed without an error
+
+``parameters`` - ``list[str]``
+    Names of the ``:named`` parameters found in the SQL
+
+``query_url`` - ``str``
+    URL of the page for the query
+
+``save_disabled`` - ``bool``
+    True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sql`` - ``str``
+    The SQL for the query
+
+``title`` - ``str``
+    The title of the query, or an empty string
+
 .. [[[end]]]

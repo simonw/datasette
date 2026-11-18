@@ -42,11 +42,18 @@ Add ``/.json`` to the end of the URL for the JSON version of the same catalog, w
 * `latest.datasette.io/.json <https://latest.datasette.io/.json>`_
 * `latest.datasette.io/.json?q=facet <https://latest.datasette.io/.json?q=facet>`_
 
-The JSON has the keys ``databases``, ``items``, ``queries``, ``total``, ``queries_total``, ``totals``, ``q``, ``database_filter``, ``metadata`` and ``private``, each holding the value described for the variable of the same name in the :ref:`index page template context <template_context>`, with these differences:
+The JSON has these keys:
 
-- ``columns`` for each of the ``items`` is the complete list of column names. There is no ``more_columns`` key.
-- There are no ``color`` keys.
-- ``next_url`` and ``previous_url`` are absolute URLs to the next and previous page of JSON, or ``null``. To fetch every table and view follow ``next_url`` until it is ``null``.
+``databases``, ``items``, ``queries``, ``q``, ``database_filter``, ``metadata``, ``private``
+    The same values as the variables of those names in the :ref:`index page template context <template_context>`, except that ``columns`` for each of the ``items`` is the complete list of column names with no ``more_columns`` key, and there are no ``color`` keys.
+``total``
+    The number of tables and views matching the search and database filter, across all pages.
+``queries_total``
+    The number of stored queries matching the search and database filter, which can be more than the number listed in ``queries``.
+``totals``
+    An object with ``databases``, ``tables`` and ``views`` counts. The table and view counts are those matching the search across every database, ignoring the database filter.
+``next_url``, ``previous_url``
+    Absolute URLs to the next and previous page of JSON, or ``null``. To fetch every table and view follow ``next_url`` until it is ``null``.
 
 This JSON is :ref:`not yet part of the stable API <json_api_stability>` and includes the ``"unstable"`` marker key.
 

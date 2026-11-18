@@ -12,7 +12,6 @@ from bs4 import BeautifulSoup as Soup
 from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.jump import JumpSQL
-from datasette.views.index import IndexContext
 
 
 @pytest_asyncio.fixture
@@ -346,7 +345,22 @@ async def test_homepage_json(ds):
     response = await ds.client.get("/.json")
     assert response.status_code == 200
     data = response.json()
-    assert set(data) == {"ok", "unstable"} | set(IndexContext.json_keys())
+    assert list(data) == [
+        "ok",
+        "unstable",
+        "databases",
+        "items",
+        "queries",
+        "total",
+        "queries_total",
+        "totals",
+        "q",
+        "database_filter",
+        "previous_url",
+        "next_url",
+        "metadata",
+        "private",
+    ]
     assert [db["name"] for db in data["databases"]] == ["_memory", "books", "music"]
     assert data["databases"][1] == {
         "name": "books",

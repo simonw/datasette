@@ -27,8 +27,7 @@ class IndexContext(Context):
 
     databases: list[dict] = field(
         metadata={
-            "json": True,
-            "help": "One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url`` and ``size`` (bytes, or None for in-memory databases)",
+            "help": "One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url`` and ``size`` (bytes, or None for in-memory databases)"
         }
     )
     catalog: Catalog = field(
@@ -38,32 +37,12 @@ class IndexContext(Context):
     )
     items: list[dict] = field(
         metadata={
-            "json": True,
-            "help": "The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``more_columns`` (the rest of the column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long",
+            "help": "The tables and views on this page. Each is a dictionary with ``database``, ``name``, ``type`` (``table`` or ``view``), ``private``, ``title``, ``description``, ``columns`` (up to eight column names), ``more_columns`` (the rest of the column names), ``matched_columns`` (those matching the search), ``column_count``, ``linked_tables`` (other tables linked to or from by a foreign key), ``has_fts``, ``count``, ``count_truncated``, ``url`` and ``color``. ``count`` is None if counting took too long"
         }
     )
     queries: list[dict] = field(
         metadata={
-            "json": True,
-            "help": "Up to five stored queries. Without a search these are queries from configuration or plugins, then the actor's own saved queries; with a search, any matching query the actor can see. Each is a dictionary with ``database``, ``name``, ``title``, ``description``, ``sql``, ``is_write``, ``private``, ``parameters``, ``url``, ``color`` and ``mine``",
-        }
-    )
-    total: int = field(
-        metadata={
-            "json": True,
-            "help": "Number of tables and views matching the search and database filter, across all pages",
-        }
-    )
-    queries_total: int = field(
-        metadata={
-            "json": True,
-            "help": "Number of stored queries matching the search and database filter, which can be more than the number in ``queries``",
-        }
-    )
-    totals: dict = field(
-        metadata={
-            "json": True,
-            "help": "Dictionary of ``databases``, ``tables`` and ``views`` counts. The table and view counts are those matching the search, across every database - the database filter is ignored",
+            "help": "Up to five stored queries. Without a search these are queries from configuration or plugins, then the actor's own saved queries; with a search, any matching query the actor can see. Each is a dictionary with ``database``, ``name``, ``title``, ``description``, ``sql``, ``is_write``, ``private``, ``parameters``, ``url``, ``color`` and ``mine``"
         }
     )
     other_results: list[dict] = field(
@@ -71,11 +50,10 @@ class IndexContext(Context):
             "help": "While searching, items added to the Jump to menu by plugins using :ref:`plugin_hook_jump_items_sql` that match the search, excluding databases, tables, views and queries. Each has ``name``, ``url``, ``type`` and ``description`` keys"
         }
     )
-    q: str = field(metadata={"json": True, "help": "The current search, from ``?q=``"})
+    q: str = field(metadata={"help": "The current search, from ``?q=``"})
     database_filter: str | None = field(
         metadata={
-            "json": True,
-            "help": "Name of the database the list is filtered to with ``?database=``, or None",
+            "help": "Name of the database the list is filtered to with ``?database=``, or None"
         }
     )
     database_url: Callable = field(
@@ -89,28 +67,18 @@ class IndexContext(Context):
     page_count: int = field(metadata={"help": "The total number of pages"})
     page_size: int = field(metadata={"help": "The number of tables and views per page"})
     previous_url: str | None = field(
-        metadata={
-            "json": True,
-            "help": "URL of the previous page, or None on the first page",
-        }
+        metadata={"help": "URL of the previous page, or None on the first page"}
     )
     next_url: str | None = field(
-        metadata={
-            "json": True,
-            "help": "URL of the next page, or None on the last page",
-        }
+        metadata={"help": "URL of the next page, or None on the last page"}
     )
     metadata: dict = field(
         metadata={
-            "json": True,
-            "help": "Instance metadata, such as ``title``, ``description`` and ``license``",
+            "help": "Instance metadata, such as ``title``, ``description`` and ``license``"
         }
     )
     private: bool = field(
-        metadata={
-            "json": True,
-            "help": "True if anonymous users cannot view this instance",
-        }
+        metadata={"help": "True if anonymous users cannot view this instance"}
     )
     top_homepage: Callable = field(
         metadata={
@@ -213,10 +181,7 @@ class IndexView(BaseView):
             "databases": catalog.databases,
             "catalog": catalog,
             "items": catalog.items,
-            "total": catalog.total,
             "queries": catalog.queries,
-            "queries_total": catalog.queries_total,
-            "totals": catalog.totals,
             "q": q,
             "database_filter": database,
             "database_url": database_url,
@@ -229,24 +194,37 @@ class IndexView(BaseView):
 
     async def render_json(self, request):
         context = await self.catalog_context(request, json_urls=True)
-        data = {"ok": True, "unstable": UNSTABLE_API_MESSAGE}
-        data.update(
-            {key: context[key] for key in IndexContext.json_keys() if key in context}
-        )
-        # Colors and the split between previewed and remaining columns are
-        # there for the templates - JSON gets one complete list of columns
-        data["databases"] = [_without(d, "color") for d in data["databases"]]
-        data["items"] = [
+        catalog = context["catalog"]
+        return Response.json(
             {
-                **_without(item, "color", "more_columns"),
-                "columns": item["columns"] + item["more_columns"],
-            }
-            for item in data["items"]
-        ]
-        data["queries"] = [_without(query, "color") for query in data["queries"]]
-        data["metadata"] = await self.ds.get_instance_metadata()
-        data["private"] = not await self.ds.allowed(action="view-instance", actor=None)
-        return Response.json(data, default=CustomJSONEncoder().default)
+                "ok": True,
+                "unstable": UNSTABLE_API_MESSAGE,
+                # Colors and the split between previewed and remaining columns
+                # are there for the templates, so they are left out and
+                # columns is the complete list
+                "databases": [_without(d, "color") for d in catalog.databases],
+                "items": [
+                    {
+                        **_without(item, "color", "more_columns"),
+                        "columns": item["columns"] + item["more_columns"],
+                    }
+                    for item in catalog.items
+                ],
+                "queries": [_without(query, "color") for query in catalog.queries],
+                "total": catalog.total,
+                "queries_total": catalog.queries_total,
+                "totals": catalog.totals,
+                "q": context["q"],
+                "database_filter": context["database_filter"],
+                "previous_url": context["previous_url"],
+                "next_url": context["next_url"],
+                "metadata": await self.ds.get_instance_metadata(),
+                "private": not await self.ds.allowed(
+                    action="view-instance", actor=None
+                ),
+            },
+            default=CustomJSONEncoder().default,
+        )
 
     async def render_html(self, request):
         context = await self.catalog_context(request)

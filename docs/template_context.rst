@@ -79,8 +79,6 @@ Index page
 
 The homepage, listing the tables, views and queries across every database. Rendered using the ``index.html`` template.
 
-The JSON version of this page returns these keys: ``database_filter``, ``databases``, ``items``, ``metadata``, ``next_url``, ``previous_url``, ``private``, ``q``, ``queries``, ``queries_total``, ``total``, ``totals``.
-
 ``alternate_url_json`` - ``str``
     URL of the JSON version of this page: ``/.json`` followed by the current query string
 
@@ -135,20 +133,11 @@ The JSON version of this page returns these keys: ``database_filter``, ``databas
 ``queries`` - ``list[dict]``
     Up to five stored queries. Without a search these are queries from configuration or plugins, then the actor's own saved queries; with a search, any matching query the actor can see. Each is a dictionary with ``database``, ``name``, ``title``, ``description``, ``sql``, ``is_write``, ``private``, ``parameters``, ``url``, ``color`` and ``mine``
 
-``queries_total`` - ``int``
-    Number of stored queries matching the search and database filter, which can be more than the number in ``queries``
-
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
 ``top_homepage`` - ``Callable``
     Function returning HTML from plugins that implement :ref:`plugin_hook_top_homepage`
-
-``total`` - ``int``
-    Number of tables and views matching the search and database filter, across all pages
-
-``totals`` - ``dict``
-    Dictionary of ``databases``, ``tables`` and ``views`` counts. The table and view counts are those matching the search, across every database - the database filter is ignored
 
 Database page
 -------------

@@ -11,8 +11,6 @@ class ContextField:
     type_name: str
     help: str
     from_extra: bool = False
-    # True if the JSON version of the page returns a key of this name
-    json: bool = False
 
 
 def _type_name(type_):
@@ -105,18 +103,9 @@ class Context:
                     type_name=_type_name(f.type),
                     help=help_text,
                     from_extra=is_from_extra,
-                    json=bool(f.metadata.get("json")),
                 )
             )
         return documented
-
-    @classmethod
-    def json_keys(cls):
-        """
-        Names of the fields declared with ``"json": True`` in their metadata,
-        which the JSON version of the page returns under the same key.
-        """
-        return [f.name for f in dataclasses.fields(cls) if f.metadata.get("json")]
 
     @classmethod
     def _extra_description(cls, name):

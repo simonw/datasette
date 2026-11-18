@@ -2,6 +2,7 @@ import json
 import logging
 import secrets
 import urllib
+from dataclasses import dataclass, field
 
 from datasette.events import CreateTokenEvent, LoginEvent, LogoutEvent
 from datasette.jump import JumpSQL, namespace_sql_params
@@ -19,6 +20,7 @@ from datasette.utils import (
 )
 from datasette.utils.asgi import Forbidden, Response
 
+from . import Context, select_templates_field
 from .base import BaseView, View
 
 logger = logging.getLogger(__name__)
@@ -1303,6 +1305,26 @@ class JumpView(BaseView):
         return Response.json({"ok": True, "matches": matches, "truncated": truncated})
 
 
+@dataclass
+class SchemaContext(Context):
+    "The schema pages: ``/-/schema`` for every database, ``/<database>/-/schema`` for one database and ``/<database>/<table>/-/schema`` for one table."
+
+    documented_template = "schema.html"
+
+    schemas: list[dict] = field(
+        metadata={
+            "help": "One dictionary per database, with ``database`` (its name) and ``schema`` (the SQL that creates the tables and views the actor can see). The table page has a single item holding the SQL for just that table"
+        }
+    )
+    is_instance: bool = field(
+        metadata={"help": "True on the page showing the schema of every database"}
+    )
+    table_name: str | None = field(
+        metadata={"help": "Name of the table on the page for a single table, or None"}
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class SchemaBaseView(BaseView):
     """Base class for schema views with common response formatting."""
 
@@ -1354,13 +1376,15 @@ class SchemaBaseView(BaseView):
         self, request, schemas, is_instance=False, table_name=None
     ):
         """Format schema as HTML response."""
-        context = {
-            "schemas": schemas,
-            "is_instance": is_instance,
-        }
-        if table_name:
-            context["table_name"] = table_name
-        return await self.render(["schema.html"], request=request, context=context)
+        return await self.render(
+            ["schema.html"],
+            request=request,
+            context=SchemaContext(
+                schemas=schemas,
+                is_instance=is_instance,
+                table_name=table_name or None,
+            ),
+        )
 
 
 class InstanceSchemaView(SchemaBaseView):

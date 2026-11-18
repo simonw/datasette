@@ -859,4 +859,21 @@ The form for running SQL that writes to a database, at ``/<database>/-/execute-w
 ``write_template_tables`` - ``dict``
     Tables the actor can write to. Maps each table name to a dictionary with a ``templates`` key, itself a dictionary mapping an operation such as ``insert`` to example SQL for that operation
 
+Schema page
+-----------
+
+The schema pages: ``/-/schema`` for every database, ``/<database>/-/schema`` for one database and ``/<database>/<table>/-/schema`` for one table. Rendered using the ``schema.html`` template.
+
+``is_instance`` - ``bool``
+    True on the page showing the schema of every database
+
+``schemas`` - ``list[dict]``
+    One dictionary per database, with ``database`` (its name) and ``schema`` (the SQL that creates the tables and views the actor can see). The table page has a single item holding the SQL for just that table
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``table_name`` - ``str | None``
+    Name of the table on the page for a single table, or None
+
 .. [[[end]]]

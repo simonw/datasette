@@ -207,6 +207,9 @@ async def get_template_context(ds, path, actor_id=None):
             "execute_write",
             "/fixtures/-/execute-write?sql=delete+from+facetable+where+pk=:pk as root",
         ),
+        ("schema", "/-/schema"),
+        ("schema", "/fixtures/-/schema"),
+        ("schema", "/fixtures/facetable/-/schema"),
     ),
 )
 async def test_template_context_matches_documented_contract(

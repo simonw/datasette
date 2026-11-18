@@ -1,6 +1,7 @@
 from datasette import Response, hookimpl
 
 from .utils import add_cors_headers
+from .views.base import ErrorContext
 
 
 @hookimpl(trylast=True)
@@ -18,10 +19,7 @@ def forbidden(datasette, request, message):
         return Response.html(
             await datasette.render_template(
                 "error.html",
-                {
-                    "title": "Forbidden",
-                    "error": message,
-                },
+                ErrorContext(ok=False, error=message, status=403, title="Forbidden"),
                 request=request,
             ),
             status=403,

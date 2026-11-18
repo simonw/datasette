@@ -171,13 +171,13 @@ def context_ds(tmp_path_factory):
             db.close()
 
 
-async def get_template_context(ds, path, actor_id=None):
+async def get_template_context(ds, path, actor_id=None, expected_status=200):
     sep = "&" if "?" in path else "?"
     cookies = {}
     if actor_id:
         cookies["ds_actor"] = ds.client.actor_cookie({"id": actor_id})
     response = await ds.client.get(path + sep + "_context_json=1", cookies=cookies)
-    assert response.status_code == 200, path
+    assert response.status_code == expected_status, path
     body = html.unescape(response.text.removeprefix("<pre>").removesuffix("</pre>"))
     return json.loads(body)
 
@@ -230,6 +230,7 @@ async def get_template_context(ds, path, actor_id=None):
         ("allow_debug", "/-/allow-debug"),
         ("allow_debug", "/-/allow-debug?actor=nope"),
         ("messages_debug", "/-/messages"),
+        ("error", "/-/permissions"),
     ),
 )
 async def test_template_context_matches_documented_contract(
@@ -253,7 +254,13 @@ async def test_template_context_matches_documented_contract(
     documented = documented_context_keys(page_name)
     actual = {
         key
-        for key in await get_template_context(context_ds, path, actor_id)
+        for key in await get_template_context(
+            context_ds,
+            path,
+            actor_id,
+            # The error page is tested using a page that denies permission
+            expected_status=403 if page_name == "error" else 200,
+        )
         if not key.startswith("_")
     }
     undocumented = actual - documented

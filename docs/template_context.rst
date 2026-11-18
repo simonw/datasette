@@ -1081,4 +1081,23 @@ A tool for setting a message to be shown on the next page, at ``/-/messages``. I
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Error page
+----------
+
+The page shown for an error, such as a 404 or a 500. Datasette looks for a template named after the status code first, so ``404.html`` can be used to customize just that error. Rendered using the ``error.html`` template.
+
+Error pages other than the 403 permission denied page are rendered without most of the variables that are available on every page - only ``urls`` and ``menu_links`` are provided. Errors raised by plugins can include additional variables of their own.
+
+``error`` - ``str``
+    The error message
+
+``ok`` - ``bool``
+    Always ``False``
+
+``status`` - ``int``
+    The HTTP status code, for example ``404``
+
+``title`` - ``str | None``
+    Title for the page, or None to use the default of ``Error`` followed by the status code
+
 .. [[[end]]]

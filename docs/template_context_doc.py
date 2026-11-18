@@ -3,6 +3,8 @@ Cog helpers for generating docs/template_context.rst from the Context
 dataclasses and TEMPLATE_BASE_CONTEXT - same pattern as json_api_doc.py.
 """
 
+import inspect
+
 
 def template_context(cog):
     from datasette.app import TEMPLATE_BASE_CONTEXT
@@ -26,7 +28,16 @@ def template_context(cog):
 
     for klass in PAGES.values():
         title = klass.page_title()
-        intro = f"{klass.__doc__} Rendered using the ``{klass.documented_template}`` template."
+        # The first paragraph of the docstring introduces the page, any
+        # further paragraphs follow the sentence naming its template
+        first, *rest = [
+            " ".join(paragraph.split())
+            for paragraph in inspect.cleandoc(klass.__doc__).split("\n\n")
+        ]
+        intro = "\n\n".join(
+            [f"{first} Rendered using the ``{klass.documented_template}`` template."]
+            + rest
+        )
         _section(cog, title, intro)
         if klass.extras_scope is not None:
             cog.out(

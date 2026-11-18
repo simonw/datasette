@@ -36,6 +36,33 @@ class DatasetteError(Exception):
         self.plain_message = plain_message
 
 
+@dataclasses.dataclass
+class ErrorContext(Context):
+    """
+    The page shown for an error, such as a 404 or a 500. Datasette looks for
+    a template named after the status code first, so ``404.html`` can be used
+    to customize just that error.
+
+    Error pages other than the 403 permission denied page are rendered
+    without most of the variables that are available on every page - only
+    ``urls`` and ``menu_links`` are provided. Errors raised by plugins can
+    include additional variables of their own.
+    """
+
+    documented_template = "error.html"
+
+    ok: bool = dataclasses.field(metadata={"help": "Always ``False``"})
+    error: str = dataclasses.field(metadata={"help": "The error message"})
+    status: int = dataclasses.field(
+        metadata={"help": "The HTTP status code, for example ``404``"}
+    )
+    title: str | None = dataclasses.field(
+        metadata={
+            "help": "Title for the page, or None to use the default of ``Error`` followed by the status code"
+        }
+    )
+
+
 class View:
     async def head(self, request, datasette):
         if not hasattr(self, "get"):

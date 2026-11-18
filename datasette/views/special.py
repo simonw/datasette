@@ -614,6 +614,23 @@ class AllowedResourcesView(BaseView):
         return response, 200
 
 
+@dataclass
+class PermissionRulesContext(Context):
+    "A tool for viewing the permission rules that apply to the current actor for a given action, at ``/-/rules``."
+
+    documented_template = "debug_rules.html"
+
+    sorted_actions: list[str] = field(
+        metadata={"help": "Names of every registered action, in alphabetical order"}
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class PermissionRulesView(BaseView):
     name = "permission_rules"
     has_json_alternate = False
@@ -630,10 +647,10 @@ class PermissionRulesView(BaseView):
             return await self.render(
                 ["debug_rules.html"],
                 request,
-                {
-                    "sorted_actions": sorted(self.ds.actions.keys()),
-                    "has_debug_permission": True,
-                },
+                PermissionRulesContext(
+                    sorted_actions=sorted(self.ds.actions.keys()),
+                    has_debug_permission=True,
+                ),
             )
 
         # JSON API - action parameter is required

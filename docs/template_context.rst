@@ -1019,4 +1019,18 @@ A tool for listing the resources the current actor can access for a given action
 ``supported_actions`` - ``list[str]``
     Names of every registered action, with the most commonly used ones first
 
+Permission rules page
+---------------------
+
+A tool for viewing the permission rules that apply to the current actor for a given action, at ``/-/rules``. Rendered using the ``debug_rules.html`` template.
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sorted_actions`` - ``list[str]``
+    Names of every registered action, in alphabetical order
+
 .. [[[end]]]

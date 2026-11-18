@@ -22,6 +22,7 @@ same classes.
 
 from datasette.app import TEMPLATE_BASE_CONTEXT
 from datasette.views.database import DatabaseContext, QueryContext
+from datasette.views.execute_write import ExecuteWriteContext
 from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
 from datasette.views.stored_queries import (
@@ -42,6 +43,7 @@ PAGES = {
     "query_create": QueryCreateContext,
     "query_edit": QueryEditContext,
     "query_delete": QueryDeleteContext,
+    "execute_write": ExecuteWriteContext,
 }
 
 

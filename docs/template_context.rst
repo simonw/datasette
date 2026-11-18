@@ -782,4 +782,81 @@ The page asking for confirmation before deleting a stored query, at ``/<database
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Execute write page
+------------------
+
+The form for running SQL that writes to a database, at ``/<database>/-/execute-write``. Rendered using the ``execute_write.html`` template.
+
+``analysis_error`` - ``str | None``
+    Error message if the SQL could not be analyzed or is not a write, otherwise None
+
+``analysis_rows`` - ``list[dict]``
+    The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``execute_disabled`` - ``bool``
+    True if the SQL cannot be executed as it stands
+
+``execute_disabled_reason`` - ``str | None``
+    Why the SQL cannot be executed, or None if it can or if that reason is already displayed as the error for this request
+
+``execute_write_columns`` - ``list[str]``
+    Names of the columns of the returned rows
+
+``execute_write_display_rows`` - ``list``
+    The returned rows, formatted for display in the same way as ``display_rows`` on the query page
+
+``execute_write_returns_rows`` - ``bool``
+    True if the executed SQL returned rows, for example by using ``RETURNING``
+
+``execute_write_truncated`` - ``bool``
+    True if more rows were returned than are displayed
+
+``execution_links`` - ``list[dict]``
+    Links to show after the SQL was executed, such as to a row that was inserted. Each has ``href`` and ``label`` keys
+
+``execution_message`` - ``str | None``
+    Message describing the result of executing the SQL, or None if nothing has been executed
+
+``execution_ok`` - ``bool | None``
+    True if the SQL was executed, False if it failed and None if nothing has been executed
+
+``parameter_names`` - ``list[str]``
+    Names of the ``:named`` parameters found in the SQL
+
+``parameter_values`` - ``dict``
+    Dictionary mapping parameter names to the values that were submitted for them
+
+``save_query_base_url`` - ``str | None``
+    URL of the form for saving a stored query without any SQL filled in, or None if the actor cannot save queries
+
+``save_query_url`` - ``str | None``
+    URL for saving this SQL as a stored query, or None if the actor cannot do that or the SQL cannot be executed
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sql`` - ``str``
+    The SQL in the editor
+
+``sql_parameter_name_prefix`` - ``str``
+    Prefix added to the name of each parameter to make the name of its form field
+
+``table_columns`` - ``dict``
+    Dictionary mapping the name of each table and view in the database to a list of its column names, used for autocomplete in the editor
+
+``write_create_table_template_sql`` - ``str | None``
+    Example ``CREATE TABLE`` SQL, or None if the actor cannot create tables
+
+``write_template_operations`` - ``list[dict]``
+    The operations that have example SQL for at least one table, each with ``name`` and ``label`` keys
+
+``write_template_tables`` - ``dict``
+    Tables the actor can write to. Maps each table name to a dictionary with a ``templates`` key, itself a dictionary mapping an operation such as ``insert`` to example SQL for that operation
+
 .. [[[end]]]

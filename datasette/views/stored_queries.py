@@ -1,7 +1,8 @@
+from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode
 
 from datasette.resources import DatabaseResource, QueryResource
-from datasette.stored_queries import stored_query_to_dict
+from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.utils import (
     UNSTABLE_API_MESSAGE,
     named_parameters,
@@ -10,6 +11,7 @@ from datasette.utils import (
 )
 from datasette.utils.asgi import Response
 
+from . import Context, alternate_url_json_field, select_templates_field
 from .base import BaseView
 from .query_helpers import (
     QueryValidationError,
@@ -26,6 +28,91 @@ from .query_helpers import (
     _query_edit_form_context,
     _query_list_limit,
 )
+
+
+@dataclass
+class QueryListContext(Context):
+    "The list of stored queries, at ``/-/queries`` for every database and ``/<database>/-/queries`` for one database."
+
+    documented_template = "query_list.html"
+
+    ok: bool = field(metadata={"help": "Always ``True``"})
+    database: str | None = field(
+        metadata={
+            "help": "Name of the database the list is for, or None for the list covering every database"
+        }
+    )
+    database_color: str | None = field(
+        metadata={"help": "Color assigned to the database, or None"}
+    )
+    queries: list[StoredQuery] = field(
+        metadata={
+            "help": "The stored queries on this page that the actor can see. Each has ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source`` and ``owner_id`` attributes"
+        }
+    )
+    next: str | None = field(
+        metadata={"help": "Pagination token for the next page, or None"}
+    )
+    next_url: str | None = field(
+        metadata={"help": "URL of the next page of queries, or None"}
+    )
+    limit: int = field(metadata={"help": "Maximum number of queries per page"})
+    total: int = field(
+        metadata={
+            "help": "Number of queries matching the current search and filters, across all pages"
+        }
+    )
+    start: int = field(
+        metadata={
+            "help": "Number of queries on earlier pages, used to display the position of this page"
+        }
+    )
+    show_private_note: bool = field(
+        metadata={"help": "True if any query on this page is private"}
+    )
+    show_trusted_note: bool = field(
+        metadata={
+            "help": "True if any query on this page is trusted, meaning it skips the permission checks for the SQL it runs"
+        }
+    )
+    query_list_path: str = field(
+        metadata={
+            "help": "Path to this list without its query string, used as the action for the search form"
+        }
+    )
+    show_database: bool = field(
+        metadata={
+            "help": "True if the list covers every database, so each query should be shown with its database"
+        }
+    )
+    facets: list[dict] = field(
+        metadata={
+            "help": "Filters shown next to the list. Each has a ``title`` and a list of ``items``, each with ``label``, ``count``, ``href`` (to toggle the filter, or None) and ``active`` keys"
+        }
+    )
+    filters: dict = field(
+        metadata={
+            "help": "The current values of the ``q``, ``is_write``, ``is_private``, ``source`` and ``owner_id`` query string arguments, as strings that are empty if not set"
+        }
+    )
+    database_chips: list[dict] = field(
+        metadata={
+            "help": "Links for switching between databases, each with ``name``, ``count``, ``color``, ``selected`` and ``href`` keys. Empty if fewer than two databases have queries"
+        }
+    )
+    all_queries_href: str | None = field(
+        metadata={
+            "help": "URL of the list covering every database, keeping the current search and filters"
+        }
+    )
+    actor_id: str | None = field(metadata={"help": "ID of the current actor, or None"})
+    query_parameters: dict = field(
+        metadata={
+            "help": "Dictionary mapping ``(database, name)`` tuples to the list of named parameters for that query"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+    alternate_url_json: str = alternate_url_json_field()
 
 
 class QueryParametersView(BaseView):
@@ -292,15 +379,14 @@ class QueryListView(BaseView):
                 },
             }
         )
+        context = QueryListContext(**data)
         if request.args.get("_fragment") == "results":
-            response = await self.render(["_query_list_fragment.html"], request, data)
+            response = await self.render(
+                ["_query_list_fragment.html"], request, context
+            )
             response.headers["X-Robots-Tag"] = "noindex"
             return response
-        return await self.render(
-            ["query_list.html"],
-            request,
-            data,
-        )
+        return await self.render(["query_list.html"], request, context)
 
 
 class GlobalQueryListView(QueryListView):

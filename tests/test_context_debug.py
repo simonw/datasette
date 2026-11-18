@@ -2,6 +2,7 @@
 Tests for the ?_context=1 template debug page
 """
 
+import json
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -12,6 +13,7 @@ from datasette.app import TEMPLATE_BASE_CONTEXT
 from datasette.context_debug import (
     MAX_VALUE_LENGTH,
     build_context_debug,
+    context_as_json,
     describe_variable,
     format_value,
     rst_to_html,
@@ -70,6 +72,18 @@ def test_format_value():
     assert format_value({"key": "x" * 200}).startswith('{\n  "key": ')
     # Values that cannot be serialized fall back to their repr
     assert format_value({(1, 2): 3}) == "{(1, 2): 3}"
+
+
+def test_context_as_json():
+    assert json.loads(context_as_json({"a": {1}, "b": "two"})) == {
+        "a": [1],
+        "b": "two",
+    }
+    # Values that cannot be serialized are replaced by their repr
+    assert json.loads(context_as_json({"a": {(1, 2): 3}, "b": "two"})) == {
+        "a": "{(1, 2): 3}",
+        "b": "two",
+    }
 
 
 def test_describe_variable_value():

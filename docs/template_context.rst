@@ -591,4 +591,72 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``url_tsv_path`` - ``str``
     Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
 
+Query list page
+---------------
+
+The list of stored queries, at ``/-/queries`` for every database and ``/<database>/-/queries`` for one database. Rendered using the ``query_list.html`` template.
+
+``actor_id`` - ``str | None``
+    ID of the current actor, or None
+
+``all_queries_href`` - ``str | None``
+    URL of the list covering every database, keeping the current search and filters
+
+``alternate_url_json`` - ``str``
+    URL of the JSON version of this page
+
+``database`` - ``str | None``
+    Name of the database the list is for, or None for the list covering every database
+
+``database_chips`` - ``list[dict]``
+    Links for switching between databases, each with ``name``, ``count``, ``color``, ``selected`` and ``href`` keys. Empty if fewer than two databases have queries
+
+``database_color`` - ``str | None``
+    Color assigned to the database, or None
+
+``facets`` - ``list[dict]``
+    Filters shown next to the list. Each has a ``title`` and a list of ``items``, each with ``label``, ``count``, ``href`` (to toggle the filter, or None) and ``active`` keys
+
+``filters`` - ``dict``
+    The current values of the ``q``, ``is_write``, ``is_private``, ``source`` and ``owner_id`` query string arguments, as strings that are empty if not set
+
+``limit`` - ``int``
+    Maximum number of queries per page
+
+``next`` - ``str | None``
+    Pagination token for the next page, or None
+
+``next_url`` - ``str | None``
+    URL of the next page of queries, or None
+
+``ok`` - ``bool``
+    Always ``True``
+
+``queries`` - ``list[StoredQuery]``
+    The stored queries on this page that the actor can see. Each has ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source`` and ``owner_id`` attributes
+
+``query_list_path`` - ``str``
+    Path to this list without its query string, used as the action for the search form
+
+``query_parameters`` - ``dict``
+    Dictionary mapping ``(database, name)`` tuples to the list of named parameters for that query
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``show_database`` - ``bool``
+    True if the list covers every database, so each query should be shown with its database
+
+``show_private_note`` - ``bool``
+    True if any query on this page is private
+
+``show_trusted_note`` - ``bool``
+    True if any query on this page is trusted, meaning it skips the permission checks for the SQL it runs
+
+``start`` - ``int``
+    Number of queries on earlier pages, used to display the position of this page
+
+``total`` - ``int``
+    Number of queries matching the current search and filters, across all pages
+
 .. [[[end]]]

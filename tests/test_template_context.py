@@ -168,9 +168,12 @@ def context_ds(tmp_path_factory):
             db.close()
 
 
-async def get_template_context(ds, path):
+async def get_template_context(ds, path, actor_id=None):
     sep = "&" if "?" in path else "?"
-    response = await ds.client.get(path + sep + "_context_json=1")
+    cookies = {}
+    if actor_id:
+        cookies["ds_actor"] = ds.client.actor_cookie({"id": actor_id})
+    response = await ds.client.get(path + sep + "_context_json=1", cookies=cookies)
     assert response.status_code == 200, path
     body = html.unescape(response.text.removeprefix("<pre>").removesuffix("</pre>"))
     return json.loads(body)
@@ -187,17 +190,21 @@ async def get_template_context(ds, path):
         ("row", "/fixtures/facetable/1"),
         ("query", "/fixtures/-/query?sql=select+*+from+facetable"),
         ("query", "/fixtures/neighborhood_search?text=cork"),
+        ("query_list", "/-/queries"),
+        ("query_list", "/fixtures/-/queries?q=search"),
     ),
 )
 async def test_template_context_matches_documented_contract(
     context_ds, isolate_extra_template_vars_plugins, page_name, path
 ):
     # The full contract: every key in the rendered template context is
-    # documented, and every documented key is present in the context
+    # documented, and every documented key is present in the context.
+    # A path can be followed by " as <actor_id>" to sign in as that actor
+    path, _, actor_id = path.partition(" as ")
     documented = documented_context_keys(page_name)
     actual = {
         key
-        for key in await get_template_context(context_ds, path)
+        for key in await get_template_context(context_ds, path, actor_id)
         if not key.startswith("_")
     }
     undocumented = actual - documented

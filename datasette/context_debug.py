@@ -83,6 +83,27 @@ def format_value(value):
         return repr(value)
 
 
+def context_as_json(template_context):
+    "The ?_context_json=1 view: the whole context as indented JSON"
+
+    def dump(value):
+        return json.dumps(value, default=_json_default, indent=4)
+
+    try:
+        return dump(template_context)
+    except (TypeError, ValueError):
+        # One of the values cannot be serialized, for example a dictionary
+        # with tuples for keys. Fall back to the repr() of just those values
+        safe = {}
+        for key, value in template_context.items():
+            try:
+                dump(value)
+                safe[key] = value
+            except (TypeError, ValueError):
+                safe[key] = repr(value)
+        return dump(safe)
+
+
 def _signature(obj):
     try:
         return str(inspect.signature(obj))

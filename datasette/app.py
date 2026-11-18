@@ -44,7 +44,7 @@ from markupsafe import Markup, escape
 from . import stored_queries, write_sql
 from .background_tasks import BackgroundTask, BackgroundTaskSupervisor
 from .column_types import SQLiteType
-from .context_debug import build_context_debug
+from .context_debug import build_context_debug, context_as_json
 from .csrf import CrossOriginProtectionMiddleware
 from .database import Database, QueryInterrupted
 from .events import Event
@@ -400,15 +400,6 @@ def _to_string(value):
         return value
     else:
         return json.dumps(value, default=str)
-
-
-def _template_context_json_default(value):
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: getattr(value, field.name)
-            for field in dataclasses.fields(value)
-        }
-    return repr(value)
 
 
 @pass_context
@@ -2785,15 +2776,7 @@ ORDER BY allowed.parent, allowed.child
         }
         if request and self.setting("template_debug"):
             if request.args.get("_context_json"):
-                return "<pre>{}</pre>".format(
-                    escape(
-                        json.dumps(
-                            template_context,
-                            default=_template_context_json_default,
-                            indent=4,
-                        )
-                    )
-                )
+                return f"<pre>{escape(context_as_json(template_context))}</pre>"
             if request.args.get("_context"):
                 return await self._render_context_debug(
                     template,

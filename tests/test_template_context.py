@@ -217,6 +217,11 @@ async def get_template_context(ds, path, actor_id=None):
         ("json_data", "/-/versions"),
         ("json_data", "/-/settings"),
         ("json_data", "/-/actions as root"),
+        ("autocomplete_debug", "/-/debug/autocomplete"),
+        (
+            "autocomplete_debug",
+            "/-/debug/autocomplete?database=fixtures&table=facetable",
+        ),
     ),
 )
 async def test_template_context_matches_documented_contract(

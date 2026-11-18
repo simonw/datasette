@@ -953,4 +953,36 @@ The pages that display JSON describing the instance, such as ``/-/versions``, ``
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Autocomplete debug page
+-----------------------
+
+A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/autocomplete``. Rendered using the ``debug_autocomplete.html`` template.
+
+``autocomplete_url`` - ``str | None``
+    URL of the autocomplete API for the table, or None if no table has been selected
+
+``database_name`` - ``str | None``
+    Name of the database from ``?database=``, or None
+
+``error`` - ``str | None``
+    Error message if the database or table could not be found, otherwise None
+
+``label_column`` - ``str | None``
+    The label column for the table, which autocomplete searches against, or None
+
+``reached_scan_limit`` - ``bool``
+    True if the search for suggestions stopped because it reached its limit of 100 tables
+
+``scanned`` - ``int``
+    Number of tables examined while looking for suggestions
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``suggestions`` - ``list[dict]``
+    Up to five tables with a label column to try, shown if no table has been selected. Each has ``database``, ``table``, ``label_column`` and ``url`` keys
+
+``table_name`` - ``str | None``
+    Name of the table from ``?table=``, or None
+
 .. [[[end]]]

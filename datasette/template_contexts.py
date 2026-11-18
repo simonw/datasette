@@ -27,6 +27,7 @@ from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
 from datasette.views.special import (
     ApiExplorerContext,
+    AutocompleteDebugContext,
     CreateTokenContext,
     JsonDataContext,
     LogoutContext,
@@ -56,6 +57,7 @@ PAGES = {
     "api_explorer": ApiExplorerContext,
     "logout": LogoutContext,
     "json_data": JsonDataContext,
+    "autocomplete_debug": AutocompleteDebugContext,
 }
 
 

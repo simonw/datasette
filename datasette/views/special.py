@@ -127,6 +127,55 @@ class PatternPortfolioView(View):
         )
 
 
+@dataclass
+class AutocompleteDebugContext(Context):
+    "A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/autocomplete``."
+
+    documented_template = "debug_autocomplete.html"
+
+    database_name: str | None = field(
+        metadata={"help": "Name of the database from ``?database=``, or None"}
+    )
+    table_name: str | None = field(
+        metadata={"help": "Name of the table from ``?table=``, or None"}
+    )
+    error: str | None = field(
+        default=None,
+        metadata={
+            "help": "Error message if the database or table could not be found, otherwise None"
+        },
+    )
+    autocomplete_url: str | None = field(
+        default=None,
+        metadata={
+            "help": "URL of the autocomplete API for the table, or None if no table has been selected"
+        },
+    )
+    label_column: str | None = field(
+        default=None,
+        metadata={
+            "help": "The label column for the table, which autocomplete searches against, or None"
+        },
+    )
+    suggestions: list[dict] = field(
+        default_factory=list,
+        metadata={
+            "help": "Up to five tables with a label column to try, shown if no table has been selected. Each has ``database``, ``table``, ``label_column`` and ``url`` keys"
+        },
+    )
+    scanned: int = field(
+        default=0,
+        metadata={"help": "Number of tables examined while looking for suggestions"},
+    )
+    reached_scan_limit: bool = field(
+        default=False,
+        metadata={
+            "help": "True if the search for suggestions stopped because it reached its limit of 100 tables"
+        },
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class AutocompleteDebugView(BaseView):
     name = "autocomplete_debug"
     has_json_alternate = False
@@ -226,7 +275,9 @@ class AutocompleteDebugView(BaseView):
                 }
             )
 
-        return await self.render(["debug_autocomplete.html"], request, context)
+        return await self.render(
+            ["debug_autocomplete.html"], request, AutocompleteDebugContext(**context)
+        )
 
 
 class AuthTokenView(BaseView):

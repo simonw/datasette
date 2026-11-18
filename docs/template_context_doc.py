@@ -25,7 +25,7 @@ def template_context(cog):
         cog.out(f"    {doc}\n\n")
 
     for klass in PAGES.values():
-        title = "{} page".format(klass.__name__.removesuffix("Context"))
+        title = klass.page_title()
         intro = f"{klass.__doc__} Rendered using the ``{klass.documented_template}`` template."
         _section(cog, title, intro)
         if klass.extras_scope is not None:

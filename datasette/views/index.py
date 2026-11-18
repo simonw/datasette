@@ -13,9 +13,8 @@ from datasette.utils import (
     make_slot_function,
 )
 from datasette.utils.asgi import Response
-from datasette.version import __version__
 
-from . import Context
+from . import Context, select_templates_field
 from .base import BaseView
 
 # Maximum number of plugin-provided jump items in homepage search results
@@ -104,13 +103,10 @@ class IndexContext(Context):
             "help": "True for the ``/-/`` alternative homepage, which should not be indexed by search engines"
         }
     )
+    select_templates: list[str] = select_templates_field()
     alternate_url_json: str = field(
-        metadata={"help": "URL of the JSON version of this page, ``/.json``"}
-    )
-    select_templates: list[str] = field(
-        metadata={
-            "help": "The template names Datasette considered, with an asterisk next to the one that was used"
-        }
+        default=None,
+        metadata={"help": "URL of the JSON version of this page, ``/.json``"},
     )
 
 
@@ -349,15 +345,12 @@ class IndexView(BaseView):
         return await self.render(
             ["default:index.html" if alternative_homepage else "index.html"],
             request=request,
-            context={
+            context=IndexContext(
                 **context,
-                "metadata": await self.ds.get_instance_metadata(),
-                "datasette_version": __version__,
-                "private": not await self.ds.allowed(
-                    action="view-instance", actor=None
-                ),
-                "top_homepage": make_slot_function("top_homepage", self.ds, request),
-                "homepage_actions": homepage_actions,
-                "noindex": request.path == "/-/",
-            },
+                metadata=await self.ds.get_instance_metadata(),
+                private=not await self.ds.allowed(action="view-instance", actor=None),
+                top_homepage=make_slot_function("top_homepage", self.ds, request),
+                homepage_actions=homepage_actions,
+                noindex=request.path == "/-/",
+            ),
         )

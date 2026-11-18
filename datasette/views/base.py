@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 
 from datasette.extras import extra_names_from_request
 from datasette.renderer import RowStream
@@ -11,6 +12,8 @@ from datasette.utils.asgi import (
     NotFound,
     Response,
 )
+
+from . import Context
 
 
 class DatasetteError(Exception):
@@ -118,11 +121,16 @@ class BaseView:
         return response
 
     async def render(self, templates, request, context=None):
+        """
+        Render the first of ``templates`` that exists. ``context`` is a
+        dictionary or a Context dataclass, which must declare a
+        ``select_templates`` field and, for views with a JSON alternate,
+        an ``alternate_url_json`` field.
+        """
         context = context or {}
         environment = self.ds.get_jinja_environment(request)
         template = environment.select_template(templates)
-        template_context = {
-            **context,
+        extra_context = {
             "select_templates": [
                 f"{'*' if template_name == template.name else ''}{template_name}"
                 for template_name in templates
@@ -134,12 +142,17 @@ class BaseView:
                 request,
                 self.ds.urls.modify(request, format="json"),
             )
-            template_context["alternate_url_json"] = alternate_url_json
+            extra_context["alternate_url_json"] = alternate_url_json
             headers.update(
                 {
                     "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
                 }
             )
+        if isinstance(context, Context):
+            # Stays a dataclass, so render_template() knows its class
+            template_context = dataclasses.replace(context, **extra_context)
+        else:
+            template_context = {**context, **extra_context}
         return Response.html(
             await self.ds.render_template(
                 template,

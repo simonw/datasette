@@ -37,6 +37,26 @@ def test_documented_fields():
     ]
 
 
+def test_page_title():
+    @dataclass
+    class QueryListContext(Context):
+        pass
+
+    @dataclass
+    class ApiExplorerContext(Context):
+        documented_title = "API explorer"
+
+    assert QueryListContext.page_title() == "Query list page"
+    assert ApiExplorerContext.page_title() == "API explorer"
+    assert [klass.page_title() for klass in list(PAGES.values())[:5]] == [
+        "Index page",
+        "Database page",
+        "Query page",
+        "Table page",
+        "Row page",
+    ]
+
+
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_fields_all_have_help(klass):
     for context_field in klass.documented_fields():
@@ -204,7 +224,7 @@ def test_template_context_docs_cover_every_documented_key():
     for name in TEMPLATE_BASE_CONTEXT:
         assert f"``{name}``" in docs, name
     for page_name, klass in PAGES.items():
-        title = "{} page".format(klass.__name__.removesuffix("Context"))
+        title = klass.page_title()
         assert title in docs, title
         for context_field in klass.documented_fields():
             assert (

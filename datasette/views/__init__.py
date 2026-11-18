@@ -1,4 +1,5 @@
 import dataclasses
+import re
 import types
 import typing
 from dataclasses import dataclass
@@ -25,6 +26,31 @@ def _type_name(type_):
     return getattr(type_, "__name__", str(type_).removeprefix("typing."))
 
 
+def select_templates_field():
+    """
+    The select_templates field of a Context rendered by BaseView.render(),
+    which fills it in. Has a default, so declare it after the other fields.
+    """
+    return dataclasses.field(
+        default=None,
+        metadata={
+            "help": "The template names Datasette considered, with an asterisk next to the one that was used"
+        },
+    )
+
+
+def alternate_url_json_field():
+    """
+    The alternate_url_json field of a Context rendered by BaseView.render()
+    for a view that has a JSON alternate. Has a default, so declare it after
+    the other fields.
+    """
+    return dataclasses.field(
+        default=None,
+        metadata={"help": "URL of the JSON version of this page"},
+    )
+
+
 def from_extra():
     """
     Declare a Context dataclass field whose value comes from a registered
@@ -41,6 +67,18 @@ class Context:
     # Set on subclasses whose from_extra() fields should be resolved
     # against the extras registry for this scope
     extras_scope = None
+
+    # Heading used for this page in the documentation. Defaults to the
+    # class name, so QueryListContext becomes "Query list page"
+    documented_title = None
+
+    @classmethod
+    def page_title(cls):
+        "Title of this page in the template context documentation"
+        if cls.documented_title:
+            return cls.documented_title
+        words = re.findall(r"[A-Z][a-z0-9]*", cls.__name__.removesuffix("Context"))
+        return " ".join([words[0]] + [w.lower() for w in words[1:]]) + " page"
 
     @classmethod
     def documented_fields(cls):

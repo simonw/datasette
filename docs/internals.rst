@@ -3200,7 +3200,9 @@ Add, replace or remove arguments in a query string. :ref:`datasette.urls.modify(
     from datasette.utils import modify_query_string
 
     modify_query_string(
-        "_size=10&_next=20", replace={"_size": 50}, remove="_next"
+        "_size=10&_next=20",
+        replace={"_size": 50},
+        remove="_next",
     )
     # "_size=50"
 

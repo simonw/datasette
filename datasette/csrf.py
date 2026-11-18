@@ -9,12 +9,29 @@ token-based asgi-csrf mechanism.
 
 from __future__ import annotations
 
+import dataclasses
 import secrets
 import urllib.parse
 
 from .utils.asgi import asgi_send
+from .views import Context
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+@dataclasses.dataclass
+class CsrfErrorContext(Context):
+    "The page shown when a form submission is rejected by Datasette's CSRF protection."
+
+    documented_template = "csrf_error.html"
+    documented_title = "CSRF error page"
+
+    reason: str = dataclasses.field(
+        metadata={
+            "help": "Technical explanation of why the request was rejected, intended for developers"
+        }
+    )
+
 
 DEFAULT_PORTS = {"http": 80, "https": 443, "ws": 80, "wss": 443}
 
@@ -170,7 +187,7 @@ class CrossOriginProtectionMiddleware:
         await asgi_send(
             send,
             content=await self.datasette.render_template(
-                "csrf_error.html", {"reason": reason}
+                "csrf_error.html", CsrfErrorContext(reason=reason)
             ),
             status=403,
             content_type="text/html; charset=utf-8",

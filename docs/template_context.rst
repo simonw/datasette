@@ -1100,4 +1100,12 @@ Error pages other than the 403 permission denied page are rendered without most 
 ``title`` - ``str | None``
     Title for the page, or None to use the default of ``Error`` followed by the status code
 
+CSRF error page
+---------------
+
+The page shown when a form submission is rejected by Datasette's CSRF protection. Rendered using the ``csrf_error.html`` template.
+
+``reason`` - ``str``
+    Technical explanation of why the request was rejected, intended for developers
+
 .. [[[end]]]

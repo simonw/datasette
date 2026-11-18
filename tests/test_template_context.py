@@ -275,6 +275,33 @@ async def test_template_context_matches_documented_contract(
     )
 
 
+async def test_csrf_error_context_matches_documented_contract(context_ds):
+    # This page is rendered without a request, so ?_context_json=1 cannot
+    # be used to inspect it
+    await context_ds.invoke_startup()
+    rendered = {}
+
+    async def render_template(templates, context=None, **kwargs):
+        rendered["templates"] = templates
+        rendered["context"] = context
+        return ""
+
+    original = context_ds.render_template
+    context_ds.render_template = render_template
+    try:
+        response = await context_ds.client.post(
+            "/-/messages",
+            data={"message": "hi"},
+            headers={"origin": "https://evil.example.com"},
+        )
+    finally:
+        context_ds.render_template = original
+    assert response.status_code == 403
+    assert rendered["templates"] == PAGES["csrf_error"].documented_template
+    assert isinstance(rendered["context"], PAGES["csrf_error"])
+    assert "origin" in rendered["context"].reason.lower()
+
+
 def test_base_context_keys_all_have_docs():
     for name, doc in TEMPLATE_BASE_CONTEXT.items():
         assert doc, f"Base context key {name} is missing docs"

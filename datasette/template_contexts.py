@@ -21,6 +21,7 @@ same classes.
 """
 
 from datasette.app import TEMPLATE_BASE_CONTEXT
+from datasette.csrf import CsrfErrorContext
 from datasette.views.base import ErrorContext
 from datasette.views.database import DatabaseContext, QueryContext
 from datasette.views.execute_write import ExecuteWriteContext
@@ -72,6 +73,7 @@ PAGES = {
     "allow_debug": AllowDebugContext,
     "messages_debug": MessagesDebugContext,
     "error": ErrorContext,
+    "csrf_error": CsrfErrorContext,
 }
 
 

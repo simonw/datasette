@@ -213,6 +213,7 @@ async def get_template_context(ds, path, actor_id=None):
         ("create_token", "/-/create-token as root"),
         ("api_explorer", "/-/api"),
         ("api_explorer", "/-/api as root"),
+        ("logout", "/-/logout as root"),
     ),
 )
 async def test_template_context_matches_documented_contract(

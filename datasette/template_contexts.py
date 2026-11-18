@@ -28,6 +28,7 @@ from datasette.views.row import RowContext
 from datasette.views.special import (
     ApiExplorerContext,
     CreateTokenContext,
+    LogoutContext,
     SchemaContext,
 )
 from datasette.views.stored_queries import (
@@ -52,6 +53,7 @@ PAGES = {
     "schema": SchemaContext,
     "create_token": CreateTokenContext,
     "api_explorer": ApiExplorerContext,
+    "logout": LogoutContext,
 }
 
 

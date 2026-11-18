@@ -229,6 +229,15 @@ class AuthTokenView(BaseView):
             raise Forbidden("Invalid token")
 
 
+@dataclass
+class LogoutContext(Context):
+    "The page asking the actor to confirm that they want to log out, at ``/-/logout``. It has no variables of its own - the actor is the ``actor`` variable available on every page."
+
+    documented_template = "logout.html"
+
+    select_templates: list[str] = select_templates_field()
+
+
 class LogoutView(BaseView):
     name = "logout"
     has_json_alternate = False
@@ -236,11 +245,7 @@ class LogoutView(BaseView):
     async def get(self, request):
         if not request.actor:
             return Response.redirect(self.ds.urls.instance())
-        return await self.render(
-            ["logout.html"],
-            request,
-            {"actor": request.actor},
-        )
+        return await self.render(["logout.html"], request, LogoutContext())
 
     async def post(self, request):
         response = Response.redirect(self.ds.urls.instance())

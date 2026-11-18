@@ -922,4 +922,12 @@ The API explorer, a tool for trying out the JSON API, at ``/-/api``. Rendered us
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Logout page
+-----------
+
+The page asking the actor to confirm that they want to log out, at ``/-/logout``. It has no variables of its own - the actor is the ``actor`` variable available on every page. Rendered using the ``logout.html`` template.
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

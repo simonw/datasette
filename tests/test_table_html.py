@@ -3079,3 +3079,13 @@ async def test_foreign_keys_special_character_in_database_name(ds_on_disk_with_d
     client = ds_on_disk_with_dot.client
     response = await client.get("/fixtures~2Edot/complex_foreign_keys")
     assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text
+
+
+async def test_search_box_shows_current_search(ds_client):
+    response = await ds_client.get("/fixtures/searchable?_search=dog")
+    assert response.status_code == 200
+    search_input = Soup(response.text, "html.parser").select_one("input#_search")
+    assert search_input["value"] == "dog"
+    response = await ds_client.get("/fixtures/searchable")
+    search_input = Soup(response.text, "html.parser").select_one("input#_search")
+    assert search_input["value"] == ""

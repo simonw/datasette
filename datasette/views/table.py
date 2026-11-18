@@ -157,6 +157,11 @@ class TableContext(Context):
     supports_search: bool = field(
         metadata={"help": "True if this table has full-text search configured"}
     )
+    search: str = field(
+        metadata={
+            "help": "The current full-text search from ``?_search=``, or an empty string"
+        }
+    )
     extra_wheres_for_ui: list = field(
         metadata={
             "help": "Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment."
@@ -2058,6 +2063,7 @@ async def table_view_traced(datasette, request):
             rows=data["rows"],
             filter_columns=data["filter_columns"],
             supports_search=data["supports_search"],
+            search=data.get("search") or "",
             extra_wheres_for_ui=data["extra_wheres_for_ui"],
             clear_filters_url=data["clear_filters_url"],
             page_position=data["page_position"],

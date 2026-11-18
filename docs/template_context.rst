@@ -4,7 +4,7 @@ Template context
 ================
 
 This page documents the variables that are available to custom templates
-for each of Datasette's core pages. See :ref:`customization_custom_templates`
+for each of Datasette's pages. See :ref:`customization_custom_templates`
 for how to provide your own templates.
 
 The variables documented here are a stable contract: custom templates that
@@ -13,8 +13,14 @@ major version (Datasette 2.0). Anything present in the template context but
 not documented on this page is not part of that contract and may change or
 be removed in any release.
 
+The pages listed under :ref:`template_context_debugging_tools` at the end are
+the exception. They are documented for reference, but are not covered by that
+contract.
+
 You can inspect the full context for any page by starting Datasette with
 ``--setting template_debug 1`` and adding ``?_context=1`` to the page URL.
+This shows each variable with its documentation and current value - see
+:ref:`setting_template_debug`.
 
 .. [[[cog
     from template_context_doc import template_context
@@ -438,6 +444,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``rows`` - ``list``
     The rows for this page, as a list of dictionaries mapping column name to raw value.
 
+``search`` - ``str``
+    The current full-text search from ``?_search=``, or an empty string
+
 ``select_templates`` - ``list``
     List of template names that were considered for this page, with the selected template prefixed by ``*``.
 
@@ -588,5 +597,529 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``url_tsv_path`` - ``str``
     Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format
+
+Query list page
+---------------
+
+The list of stored queries, at ``/-/queries`` for every database and ``/<database>/-/queries`` for one database. Rendered using the ``query_list.html`` template.
+
+``actor_id`` - ``str | None``
+    ID of the current actor, or None
+
+``all_queries_href`` - ``str | None``
+    URL of the list covering every database, keeping the current search and filters
+
+``alternate_url_json`` - ``str``
+    URL of the JSON version of this page
+
+``database`` - ``str | None``
+    Name of the database the list is for, or None for the list covering every database
+
+``database_chips`` - ``list[dict]``
+    Links for switching between databases, each with ``name``, ``count``, ``color``, ``selected`` and ``href`` keys. Empty if fewer than two databases have queries
+
+``database_color`` - ``str | None``
+    Color assigned to the database, or None
+
+``facets`` - ``list[dict]``
+    Filters shown next to the list. Each has a ``title`` and a list of ``items``, each with ``label``, ``count``, ``href`` (to toggle the filter, or None) and ``active`` keys
+
+``filters`` - ``dict``
+    The current values of the ``q``, ``is_write``, ``is_private``, ``source`` and ``owner_id`` query string arguments, as strings that are empty if not set
+
+``limit`` - ``int``
+    Maximum number of queries per page
+
+``next`` - ``str | None``
+    Pagination token for the next page, or None
+
+``next_url`` - ``str | None``
+    URL of the next page of queries, or None
+
+``ok`` - ``bool``
+    Always ``True``
+
+``queries`` - ``list[StoredQuery]``
+    The stored queries on this page that the actor can see. Each has ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source`` and ``owner_id`` attributes
+
+``query_list_path`` - ``str``
+    Path to this list without its query string, used as the action for the search form
+
+``query_parameters`` - ``dict``
+    Dictionary mapping ``(database, name)`` tuples to the list of named parameters for that query
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``show_database`` - ``bool``
+    True if the list covers every database, so each query should be shown with its database
+
+``show_private_note`` - ``bool``
+    True if any query on this page is private
+
+``show_trusted_note`` - ``bool``
+    True if any query on this page is trusted, meaning it skips the permission checks for the SQL it runs
+
+``start`` - ``int``
+    Number of queries on earlier pages, used to display the position of this page
+
+``total`` - ``int``
+    Number of queries matching the current search and filters, across all pages
+
+Query create page
+-----------------
+
+The form for saving a new stored query, at ``/<database>/-/queries/store``. Rendered using the ``query_create.html`` template.
+
+``analysis_error`` - ``str | None``
+    Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None
+
+``analysis_is_write`` - ``bool``
+    True if the SQL writes to the database
+
+``analysis_rows`` - ``list[dict]``
+    The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation, and None for operations that need no permission check
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``description`` - ``str``
+    The description entered for the query
+
+``has_sql`` - ``bool``
+    True if any SQL has been entered
+
+``is_private`` - ``bool``
+    True if the private checkbox should be checked
+
+``name`` - ``str``
+    The name entered for the query, used in its URL
+
+``ok`` - ``bool``
+    True if the SQL was analyzed without an error
+
+``parameters`` - ``list[str]``
+    Names of the ``:named`` parameters found in the SQL
+
+``save_disabled`` - ``bool``
+    True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sql`` - ``str``
+    The SQL for the query
+
+``title`` - ``str``
+    The title entered for the query
+
+Query edit page
+---------------
+
+The form for editing a stored query, at ``/<database>/<query>/-/edit``. Rendered using the ``query_edit.html`` template.
+
+``analysis_error`` - ``str | None``
+    Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None
+
+``analysis_is_write`` - ``bool``
+    True if the SQL writes to the database
+
+``analysis_rows`` - ``list[dict]``
+    The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation, and None for operations that need no permission check
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``description`` - ``str``
+    The description of the query, or an empty string
+
+``has_sql`` - ``bool``
+    True if any SQL has been entered
+
+``is_private`` - ``bool``
+    True if the private checkbox should be checked
+
+``name`` - ``str``
+    Name of the query being edited
+
+``ok`` - ``bool``
+    True if the SQL was analyzed without an error
+
+``parameters`` - ``list[str]``
+    Names of the ``:named`` parameters found in the SQL
+
+``query_url`` - ``str``
+    URL of the page for the query
+
+``save_disabled`` - ``bool``
+    True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sql`` - ``str``
+    The SQL for the query
+
+``title`` - ``str``
+    The title of the query, or an empty string
+
+Query delete page
+-----------------
+
+The page asking for confirmation before deleting a stored query, at ``/<database>/<query>/-/delete``. Rendered using the ``query_delete.html`` template.
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``query`` - ``dict``
+    The query to be deleted, a dictionary with keys including ``name``, ``sql``, ``title``, ``description``, ``is_write``, ``is_private`` and ``owner_id``
+
+``query_url`` - ``str``
+    URL of the page for the query
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+Execute write page
+------------------
+
+The form for running SQL that writes to a database, at ``/<database>/-/execute-write``. Rendered using the ``execute_write.html`` template.
+
+``analysis_error`` - ``str | None``
+    Error message if the SQL could not be analyzed or is not a write, otherwise None
+
+``analysis_rows`` - ``list[dict]``
+    The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``execute_disabled`` - ``bool``
+    True if the SQL cannot be executed as it stands
+
+``execute_disabled_reason`` - ``str | None``
+    Why the SQL cannot be executed, or None if it can or if that reason is already displayed as the error for this request
+
+``execute_write_columns`` - ``list[str]``
+    Names of the columns of the returned rows
+
+``execute_write_display_rows`` - ``list``
+    The returned rows, formatted for display in the same way as ``display_rows`` on the query page
+
+``execute_write_returns_rows`` - ``bool``
+    True if the executed SQL returned rows, for example by using ``RETURNING``
+
+``execute_write_truncated`` - ``bool``
+    True if more rows were returned than are displayed
+
+``execution_links`` - ``list[dict]``
+    Links to show after the SQL was executed, such as to a row that was inserted. Each has ``href`` and ``label`` keys
+
+``execution_message`` - ``str | None``
+    Message describing the result of executing the SQL, or None if nothing has been executed
+
+``execution_ok`` - ``bool | None``
+    True if the SQL was executed, False if it failed and None if nothing has been executed
+
+``parameter_names`` - ``list[str]``
+    Names of the ``:named`` parameters found in the SQL
+
+``parameter_values`` - ``dict``
+    Dictionary mapping parameter names to the values that were submitted for them
+
+``save_query_base_url`` - ``str | None``
+    URL of the form for saving a stored query without any SQL filled in, or None if the actor cannot save queries
+
+``save_query_url`` - ``str | None``
+    URL for saving this SQL as a stored query, or None if the actor cannot do that or the SQL cannot be executed
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sql`` - ``str``
+    The SQL in the editor
+
+``sql_parameter_name_prefix`` - ``str``
+    Prefix added to the name of each parameter to make the name of its form field
+
+``table_columns`` - ``dict``
+    Dictionary mapping the name of each table and view in the database to a list of its column names, used for autocomplete in the editor
+
+``write_create_table_template_sql`` - ``str | None``
+    Example ``CREATE TABLE`` SQL, or None if the actor cannot create tables
+
+``write_template_operations`` - ``list[dict]``
+    The operations that have example SQL for at least one table, each with ``name`` and ``label`` keys
+
+``write_template_tables`` - ``dict``
+    Tables the actor can write to. Maps each table name to a dictionary with a ``templates`` key, itself a dictionary mapping an operation such as ``insert`` to example SQL for that operation
+
+Schema page
+-----------
+
+The schema pages: ``/-/schema`` for every database, ``/<database>/-/schema`` for one database and ``/<database>/<table>/-/schema`` for one table. Rendered using the ``schema.html`` template.
+
+``is_instance`` - ``bool``
+    True on the page showing the schema of every database
+
+``schemas`` - ``list[dict]``
+    One dictionary per database, with ``database`` (its name) and ``schema`` (the SQL that creates the tables and views the actor can see). The table page has a single item holding the SQL for just that table
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``table_name`` - ``str | None``
+    Name of the table on the page for a single table, or None
+
+Create token page
+-----------------
+
+The form for creating an API token, at ``/-/create-token``. Rendered using the ``create_token.html`` template.
+
+``all_actions`` - ``list[str]``
+    Names of every action, which the token can be restricted to across the whole instance
+
+``child_actions`` - ``list[str]``
+    Names of the actions that can be restricted to a specific table or other resource in a database
+
+``database_actions`` - ``list[str]``
+    Names of the actions that can be restricted to a specific database
+
+``database_with_tables`` - ``list[dict]``
+    The databases the actor can see. Each has ``name``, ``encoded`` (the name encoded for use in a form field) and ``tables``, a list of dictionaries with ``name`` and ``encoded`` keys
+
+``errors`` - ``list[str]``
+    Error messages from validating the submitted form
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``token`` - ``str | None``
+    The token that was created, or None if the form has not been successfully submitted
+
+``token_bits`` - ``dict | None``
+    The decoded contents of the token that was created, or None
+
+API explorer page
+-----------------
+
+The API explorer, a tool for trying out the JSON API, at ``/-/api``. Rendered using the ``api_explorer.html`` template.
+
+``api_path`` - ``Callable``
+    Function that takes one of those links and returns the URL of the API explorer with the form filled in for it
+
+``example_links`` - ``list[dict]``
+    Example API calls for the databases the actor can see. Each database has ``name``, ``links`` and ``tables`` keys, and each table has ``name`` and ``links``. A link has ``label``, ``method`` and ``path`` keys, plus ``json`` holding an example request body for write APIs
+
+``private`` - ``bool``
+    True if anonymous users cannot view this instance
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+Logout page
+-----------
+
+The page asking the actor to confirm that they want to log out, at ``/-/logout``. It has no variables of its own - the actor is the ``actor`` variable available on every page. Rendered using the ``logout.html`` template.
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+JSON data pages
+---------------
+
+The pages that display JSON describing the instance, such as ``/-/versions``, ``/-/plugins``, ``/-/settings``, ``/-/config``, ``/-/databases``, ``/-/threads`` and ``/-/actor``. ``/-/actions`` uses the same variables with the ``debug_actions.html`` template. Rendered using the ``show_json.html`` template.
+
+``alternate_url_json`` - ``str``
+    URL of the JSON version of this page
+
+``data`` - ``dict | list``
+    The data for this page, as returned by its JSON API
+
+``data_json`` - ``str``
+    That data as a string of indented JSON
+
+``filename`` - ``str``
+    Name of the JSON file for this page, such as ``versions.json``, used as the page title
+
+``has_debug_permission`` - ``bool``
+    True if this page requires the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+Error page
+----------
+
+The page shown for an error, such as a 404 or a 500. Datasette looks for a template named after the status code first, so ``404.html`` can be used to customize just that error. Rendered using the ``error.html`` template.
+
+Error pages other than the 403 permission denied page are rendered without most of the variables that are available on every page - only ``urls`` and ``menu_links`` are provided. Errors raised by plugins can include additional variables of their own.
+
+``error`` - ``str``
+    The error message
+
+``ok`` - ``bool``
+    Always ``False``
+
+``status`` - ``int``
+    The HTTP status code, for example ``404``
+
+``title`` - ``str | None``
+    Title for the page, or None to use the default of ``Error`` followed by the status code
+
+CSRF error page
+---------------
+
+The page shown when a form submission is rejected by Datasette's CSRF protection. Rendered using the ``csrf_error.html`` template.
+
+``reason`` - ``str``
+    Technical explanation of why the request was rejected, intended for developers
+
+.. _template_context_debugging_tools:
+
+Debugging tools
+---------------
+
+These pages are tools for debugging a Datasette instance. Their variables are documented here for reference but are **not** part of the stable contract described at the top of this page: they may change or be removed in any release.
+
+Autocomplete debug page
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/autocomplete``. Rendered using the ``debug_autocomplete.html`` template.
+
+``autocomplete_url`` - ``str | None``
+    URL of the autocomplete API for the table, or None if no table has been selected
+
+``database_name`` - ``str | None``
+    Name of the database from ``?database=``, or None
+
+``error`` - ``str | None``
+    Error message if the database or table could not be found, otherwise None
+
+``label_column`` - ``str | None``
+    The label column for the table, which autocomplete searches against, or None
+
+``reached_scan_limit`` - ``bool``
+    True if the search for suggestions stopped because it reached its limit of 100 tables
+
+``scanned`` - ``int``
+    Number of tables examined while looking for suggestions
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``suggestions`` - ``list[dict]``
+    Up to five tables with a label column to try, shown if no table has been selected. Each has ``database``, ``table``, ``label_column`` and ``url`` keys
+
+``table_name`` - ``str | None``
+    Name of the table from ``?table=``, or None
+
+Permissions debug page
+~~~~~~~~~~~~~~~~~~~~~~
+
+The permissions playground at ``/-/permissions``, which lists recent permission checks and has a form for testing a permission check against any actor. Rendered using the ``debug_permissions_playground.html`` template.
+
+``filter`` - ``str``
+    Which checks are listed, from ``?filter=``: ``all``, ``exclude-yours`` or ``only-yours``
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``permission_checks`` - ``list``
+    Recent permission checks, most recent first. Each has ``when``, ``actor``, ``action``, ``parent``, ``child`` and ``result`` attributes. ``result`` is None if no rule had an opinion
+
+``permissions`` - ``list[dict]``
+    Every registered action, each with ``name``, ``abbr``, ``description``, ``takes_parent`` and ``takes_child`` keys
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+Allowed resources page
+~~~~~~~~~~~~~~~~~~~~~~
+
+A tool for listing the resources the current actor can access for a given action, at ``/-/allowed``. Rendered using the ``debug_allowed.html`` template.
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``supported_actions`` - ``list[str]``
+    Names of every registered action, with the most commonly used ones first
+
+Permission rules page
+~~~~~~~~~~~~~~~~~~~~~
+
+A tool for viewing the permission rules that apply to the current actor for a given action, at ``/-/rules``. Rendered using the ``debug_rules.html`` template.
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``sorted_actions`` - ``list[str]``
+    Names of every registered action, in alphabetical order
+
+Permission check page
+~~~~~~~~~~~~~~~~~~~~~
+
+A tool for testing whether an actor can perform an action against a resource, with an explanation of the result, at ``/-/check``. Rendered using the ``debug_check.html`` template.
+
+``actions`` - ``list[dict]``
+    Every registered action in alphabetical order, each with ``name``, ``description``, ``takes_parent``, ``takes_child`` and ``also_requires`` keys
+
+``actor_json`` - ``str``
+    JSON for the actor to test, from ``?actor=`` or otherwise the current actor
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+Allow debug page
+~~~~~~~~~~~~~~~~
+
+A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``. Rendered using the ``allow_debug.html`` template.
+
+``actor_input`` - ``str``
+    JSON for the actor to test, from ``?actor=``
+
+``allow_input`` - ``str``
+    JSON for the allow block to test, from ``?allow=``
+
+``error`` - ``str``
+    Error messages for input that was not valid JSON, or an empty string
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``result`` - ``str | None``
+    ``"True"`` if the actor matches the allow block, ``"False"`` if it does not, or None if either input was not valid JSON
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+Messages debug page
+~~~~~~~~~~~~~~~~~~~
+
+A tool for setting a message to be shown on the next page, at ``/-/messages``. It has no variables of its own. Rendered using the ``messages_debug.html`` template.
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
 
 .. [[[end]]]

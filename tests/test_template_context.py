@@ -13,6 +13,7 @@ import pytest
 from datasette.app import TEMPLATE_BASE_CONTEXT, Datasette
 from datasette.extras import ExtraScope
 from datasette.fixtures import write_fixture_database
+from datasette.stored_queries import add_query
 from datasette.template_contexts import PAGES, documented_context_keys
 from datasette.views import Context
 
@@ -34,6 +35,26 @@ def test_documented_fields():
         ("name", "str", "The name"),
         ("count", "int", "How many there are"),
         ("items", "list[DemoNested]", "Nested items"),
+    ]
+
+
+def test_page_title():
+    @dataclass
+    class QueryListContext(Context):
+        pass
+
+    @dataclass
+    class ApiExplorerContext(Context):
+        documented_title = "API explorer"
+
+    assert QueryListContext.page_title() == "Query list page"
+    assert ApiExplorerContext.page_title() == "API explorer"
+    assert [klass.page_title() for klass in list(PAGES.values())[:5]] == [
+        "Index page",
+        "Database page",
+        "Query page",
+        "Table page",
+        "Row page",
     ]
 
 
@@ -142,16 +163,21 @@ def context_ds(tmp_path_factory):
             }
         },
     )
+    # The pages that need permissions are requested as the root actor
+    ds.root_enabled = True
     yield ds
     for db in ds.databases.values():
         if not db.is_memory:
             db.close()
 
 
-async def get_template_context(ds, path):
+async def get_template_context(ds, path, actor_id=None, expected_status=200):
     sep = "&" if "?" in path else "?"
-    response = await ds.client.get(path + sep + "_context=1")
-    assert response.status_code == 200, path
+    cookies = {}
+    if actor_id:
+        cookies["ds_actor"] = ds.client.actor_cookie({"id": actor_id})
+    response = await ds.client.get(path + sep + "_context_json=1", cookies=cookies)
+    assert response.status_code == expected_status, path
     body = html.unescape(response.text.removeprefix("<pre>").removesuffix("</pre>"))
     return json.loads(body)
 
@@ -167,17 +193,74 @@ async def get_template_context(ds, path):
         ("row", "/fixtures/facetable/1"),
         ("query", "/fixtures/-/query?sql=select+*+from+facetable"),
         ("query", "/fixtures/neighborhood_search?text=cork"),
+        ("query_list", "/-/queries"),
+        ("query_list", "/fixtures/-/queries?q=search"),
+        ("query_create", "/fixtures/-/queries/store as root"),
+        (
+            "query_create",
+            "/fixtures/-/queries/store?sql=select+*+from+facetable+where+pk=:pk as root",
+        ),
+        ("query_edit", "/fixtures/saved_by_root/-/edit as root"),
+        ("query_delete", "/fixtures/saved_by_root/-/delete as root"),
+        ("execute_write", "/fixtures/-/execute-write as root"),
+        (
+            "execute_write",
+            "/fixtures/-/execute-write?sql=delete+from+facetable+where+pk=:pk as root",
+        ),
+        ("schema", "/-/schema"),
+        ("schema", "/fixtures/-/schema"),
+        ("schema", "/fixtures/facetable/-/schema"),
+        ("create_token", "/-/create-token as root"),
+        ("api_explorer", "/-/api"),
+        ("api_explorer", "/-/api as root"),
+        ("logout", "/-/logout as root"),
+        ("json_data", "/-/versions"),
+        ("json_data", "/-/settings"),
+        ("json_data", "/-/actions as root"),
+        ("autocomplete_debug", "/-/debug/autocomplete"),
+        (
+            "autocomplete_debug",
+            "/-/debug/autocomplete?database=fixtures&table=facetable",
+        ),
+        ("permissions_debug", "/-/permissions as root"),
+        ("allowed_resources", "/-/allowed"),
+        ("allowed_resources", "/-/allowed as root"),
+        ("permission_rules", "/-/rules as root"),
+        ("permission_check", "/-/check as root"),
+        ("allow_debug", "/-/allow-debug"),
+        ("allow_debug", "/-/allow-debug?actor=nope"),
+        ("messages_debug", "/-/messages"),
+        ("error", "/-/permissions"),
     ),
 )
 async def test_template_context_matches_documented_contract(
     context_ds, isolate_extra_template_vars_plugins, page_name, path
 ):
     # The full contract: every key in the rendered template context is
-    # documented, and every documented key is present in the context
+    # documented, and every documented key is present in the context.
+    # A path can be followed by " as <actor_id>" to sign in as that actor
+    path, _, actor_id = path.partition(" as ")
+    if "saved_by_root" in path:
+        # A query saved by a user, which can be edited and deleted
+        await context_ds.invoke_startup()
+        await add_query(
+            context_ds,
+            "fixtures",
+            "saved_by_root",
+            "select * from facetable where pk = :pk",
+            source="user",
+            owner_id="root",
+        )
     documented = documented_context_keys(page_name)
     actual = {
         key
-        for key in await get_template_context(context_ds, path)
+        for key in await get_template_context(
+            context_ds,
+            path,
+            actor_id,
+            # The error page is tested using a page that denies permission
+            expected_status=403 if page_name == "error" else 200,
+        )
         if not key.startswith("_")
     }
     undocumented = actual - documented
@@ -192,6 +275,55 @@ async def test_template_context_matches_documented_contract(
     )
 
 
+async def test_csrf_error_context_matches_documented_contract(context_ds):
+    # This page is rendered without a request, so ?_context_json=1 cannot
+    # be used to inspect it
+    await context_ds.invoke_startup()
+    rendered = {}
+
+    async def render_template(templates, context=None, **kwargs):
+        rendered["templates"] = templates
+        rendered["context"] = context
+        return ""
+
+    original = context_ds.render_template
+    context_ds.render_template = render_template
+    try:
+        response = await context_ds.client.post(
+            "/-/messages",
+            data={"message": "hi"},
+            headers={"origin": "https://evil.example.com"},
+        )
+    finally:
+        context_ds.render_template = original
+    assert response.status_code == 403
+    assert rendered["templates"] == PAGES["csrf_error"].documented_template
+    assert isinstance(rendered["context"], PAGES["csrf_error"])
+    assert "origin" in rendered["context"].reason.lower()
+
+
+def test_debugging_tools_are_not_part_of_the_stable_contract():
+    assert {key for key, klass in PAGES.items() if not klass.stable} == {
+        "autocomplete_debug",
+        "permissions_debug",
+        "allowed_resources",
+        "permission_rules",
+        "permission_check",
+        "allow_debug",
+        "messages_debug",
+    }
+    # They are documented in their own section, after every stable page
+    docs = (
+        pathlib.Path(__file__).parent.parent / "docs" / "template_context.rst"
+    ).read_text()
+    stable_docs, debugging_docs = docs.split("\nDebugging tools\n")
+    assert "not** part of the stable contract" in debugging_docs
+    for klass in PAGES.values():
+        heading = f"\n{klass.page_title()}\n"
+        assert (heading in stable_docs) is klass.stable, klass.__name__
+        assert (heading in debugging_docs) is not klass.stable, klass.__name__
+
+
 def test_base_context_keys_all_have_docs():
     for name, doc in TEMPLATE_BASE_CONTEXT.items():
         assert doc, f"Base context key {name} is missing docs"
@@ -204,7 +336,7 @@ def test_template_context_docs_cover_every_documented_key():
     for name in TEMPLATE_BASE_CONTEXT:
         assert f"``{name}``" in docs, name
     for page_name, klass in PAGES.items():
-        title = "{} page".format(klass.__name__.removesuffix("Context"))
+        title = klass.page_title()
         assert title in docs, title
         for context_field in klass.documented_fields():
             assert (

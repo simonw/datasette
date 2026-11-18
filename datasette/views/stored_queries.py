@@ -1,7 +1,8 @@
+from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode
 
 from datasette.resources import DatabaseResource, QueryResource
-from datasette.stored_queries import stored_query_to_dict
+from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.utils import (
     UNSTABLE_API_MESSAGE,
     named_parameters,
@@ -10,6 +11,7 @@ from datasette.utils import (
 )
 from datasette.utils.asgi import Response
 
+from . import Context, alternate_url_json_field, select_templates_field
 from .base import BaseView
 from .query_helpers import (
     QueryValidationError,
@@ -26,6 +28,195 @@ from .query_helpers import (
     _query_edit_form_context,
     _query_list_limit,
 )
+
+
+@dataclass
+class QueryListContext(Context):
+    "The list of stored queries, at ``/-/queries`` for every database and ``/<database>/-/queries`` for one database."
+
+    documented_template = "query_list.html"
+
+    ok: bool = field(metadata={"help": "Always ``True``"})
+    database: str | None = field(
+        metadata={
+            "help": "Name of the database the list is for, or None for the list covering every database"
+        }
+    )
+    database_color: str | None = field(
+        metadata={"help": "Color assigned to the database, or None"}
+    )
+    queries: list[StoredQuery] = field(
+        metadata={
+            "help": "The stored queries on this page that the actor can see. Each has ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source`` and ``owner_id`` attributes"
+        }
+    )
+    next: str | None = field(
+        metadata={"help": "Pagination token for the next page, or None"}
+    )
+    next_url: str | None = field(
+        metadata={"help": "URL of the next page of queries, or None"}
+    )
+    limit: int = field(metadata={"help": "Maximum number of queries per page"})
+    total: int = field(
+        metadata={
+            "help": "Number of queries matching the current search and filters, across all pages"
+        }
+    )
+    start: int = field(
+        metadata={
+            "help": "Number of queries on earlier pages, used to display the position of this page"
+        }
+    )
+    show_private_note: bool = field(
+        metadata={"help": "True if any query on this page is private"}
+    )
+    show_trusted_note: bool = field(
+        metadata={
+            "help": "True if any query on this page is trusted, meaning it skips the permission checks for the SQL it runs"
+        }
+    )
+    query_list_path: str = field(
+        metadata={
+            "help": "Path to this list without its query string, used as the action for the search form"
+        }
+    )
+    show_database: bool = field(
+        metadata={
+            "help": "True if the list covers every database, so each query should be shown with its database"
+        }
+    )
+    facets: list[dict] = field(
+        metadata={
+            "help": "Filters shown next to the list. Each has a ``title`` and a list of ``items``, each with ``label``, ``count``, ``href`` (to toggle the filter, or None) and ``active`` keys"
+        }
+    )
+    filters: dict = field(
+        metadata={
+            "help": "The current values of the ``q``, ``is_write``, ``is_private``, ``source`` and ``owner_id`` query string arguments, as strings that are empty if not set"
+        }
+    )
+    database_chips: list[dict] = field(
+        metadata={
+            "help": "Links for switching between databases, each with ``name``, ``count``, ``color``, ``selected`` and ``href`` keys. Empty if fewer than two databases have queries"
+        }
+    )
+    all_queries_href: str | None = field(
+        metadata={
+            "help": "URL of the list covering every database, keeping the current search and filters"
+        }
+    )
+    actor_id: str | None = field(metadata={"help": "ID of the current actor, or None"})
+    query_parameters: dict = field(
+        metadata={
+            "help": "Dictionary mapping ``(database, name)`` tuples to the list of named parameters for that query"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+    alternate_url_json: str = alternate_url_json_field()
+
+
+@dataclass
+class QueryCreateContext(Context):
+    "The form for saving a new stored query, at ``/<database>/-/queries/store``."
+
+    documented_template = "query_create.html"
+
+    database: str = field(metadata={"help": "Database name"})
+    database_color: str = field(metadata={"help": "Color assigned to the database"})
+    sql: str = field(metadata={"help": "The SQL for the query"})
+    name: str = field(
+        metadata={"help": "The name entered for the query, used in its URL"}
+    )
+    title: str = field(metadata={"help": "The title entered for the query"})
+    description: str = field(metadata={"help": "The description entered for the query"})
+    is_private: bool = field(
+        metadata={"help": "True if the private checkbox should be checked"}
+    )
+    ok: bool = field(metadata={"help": "True if the SQL was analyzed without an error"})
+    parameters: list[str] = field(
+        metadata={"help": "Names of the ``:named`` parameters found in the SQL"}
+    )
+    analysis_error: str | None = field(
+        metadata={
+            "help": "Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None"
+        }
+    )
+    analysis_rows: list[dict] = field(
+        metadata={
+            "help": "The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation, and None for operations that need no permission check"
+        }
+    )
+    has_sql: bool = field(metadata={"help": "True if any SQL has been entered"})
+    analysis_is_write: bool = field(
+        metadata={"help": "True if the SQL writes to the database"}
+    )
+    save_disabled: bool = field(
+        metadata={
+            "help": "True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
+@dataclass
+class QueryEditContext(Context):
+    "The form for editing a stored query, at ``/<database>/<query>/-/edit``."
+
+    documented_template = "query_edit.html"
+
+    database: str = field(metadata={"help": "Database name"})
+    database_color: str = field(metadata={"help": "Color assigned to the database"})
+    name: str = field(metadata={"help": "Name of the query being edited"})
+    sql: str = field(metadata={"help": "The SQL for the query"})
+    title: str = field(metadata={"help": "The title of the query, or an empty string"})
+    description: str = field(
+        metadata={"help": "The description of the query, or an empty string"}
+    )
+    is_private: bool = field(
+        metadata={"help": "True if the private checkbox should be checked"}
+    )
+    query_url: str = field(metadata={"help": "URL of the page for the query"})
+    ok: bool = field(metadata={"help": "True if the SQL was analyzed without an error"})
+    parameters: list[str] = field(
+        metadata={"help": "Names of the ``:named`` parameters found in the SQL"}
+    )
+    analysis_error: str | None = field(
+        metadata={
+            "help": "Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None"
+        }
+    )
+    analysis_rows: list[dict] = field(
+        metadata={
+            "help": "The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation, and None for operations that need no permission check"
+        }
+    )
+    has_sql: bool = field(metadata={"help": "True if any SQL has been entered"})
+    analysis_is_write: bool = field(
+        metadata={"help": "True if the SQL writes to the database"}
+    )
+    save_disabled: bool = field(
+        metadata={
+            "help": "True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
+@dataclass
+class QueryDeleteContext(Context):
+    "The page asking for confirmation before deleting a stored query, at ``/<database>/<query>/-/delete``."
+
+    documented_template = "query_delete.html"
+
+    database: str = field(metadata={"help": "Database name"})
+    database_color: str = field(metadata={"help": "Color assigned to the database"})
+    query: dict = field(
+        metadata={
+            "help": "The query to be deleted, a dictionary with keys including ``name``, ``sql``, ``title``, ``description``, ``is_write``, ``is_private`` and ``owner_id``"
+        }
+    )
+    query_url: str = field(metadata={"help": "URL of the page for the query"})
+    select_templates: list[str] = select_templates_field()
 
 
 class QueryParametersView(BaseView):
@@ -292,15 +483,14 @@ class QueryListView(BaseView):
                 },
             }
         )
+        context = QueryListContext(**data)
         if request.args.get("_fragment") == "results":
-            response = await self.render(["_query_list_fragment.html"], request, data)
+            response = await self.render(
+                ["_query_list_fragment.html"], request, context
+            )
             response.headers["X-Robots-Tag"] = "noindex"
             return response
-        return await self.render(
-            ["query_list.html"],
-            request,
-            data,
-        )
+        return await self.render(["query_list.html"], request, context)
 
 
 class GlobalQueryListView(QueryListView):
@@ -332,15 +522,17 @@ class QueryCreateView(BaseView):
         response = await self.render(
             ["query_create.html"],
             request,
-            await _query_create_form_context(
-                self.ds,
-                request,
-                db,
-                sql=sql,
-                name=name,
-                title=title,
-                description=description,
-                is_private=is_private,
+            QueryCreateContext(
+                **await _query_create_form_context(
+                    self.ds,
+                    request,
+                    db,
+                    sql=sql,
+                    name=name,
+                    title=title,
+                    description=description,
+                    is_private=is_private,
+                )
             ),
         )
         response.status = status
@@ -580,15 +772,17 @@ class QueryEditView(BaseView):
         response = await self.render(
             ["query_edit.html"],
             request,
-            await _query_edit_form_context(
-                self.ds,
-                request,
-                db,
-                existing,
-                sql=sql,
-                title=title,
-                description=description,
-                is_private=is_private,
+            QueryEditContext(
+                **await _query_edit_form_context(
+                    self.ds,
+                    request,
+                    db,
+                    existing,
+                    sql=sql,
+                    title=title,
+                    description=description,
+                    is_private=is_private,
+                )
             ),
         )
         response.status = status
@@ -708,12 +902,12 @@ class QueryDeleteView(BaseView):
             await self.render(
                 ["query_delete.html"],
                 request,
-                {
-                    "database": db.name,
-                    "database_color": db.color,
-                    "query": stored_query_to_dict(existing),
-                    "query_url": self.ds.urls.table(db.name, query_name),
-                },
+                QueryDeleteContext(
+                    database=db.name,
+                    database_color=db.color,
+                    query=stored_query_to_dict(existing),
+                    query_url=self.ds.urls.table(db.name, query_name),
+                ),
             )
         )
 

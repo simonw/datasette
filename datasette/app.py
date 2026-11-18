@@ -44,6 +44,7 @@ from markupsafe import Markup, escape
 from . import stored_queries, write_sql
 from .background_tasks import BackgroundTask, BackgroundTaskSupervisor
 from .column_types import SQLiteType
+from .context_debug import build_context_debug, context_as_json
 from .csrf import CrossOriginProtectionMiddleware
 from .database import Database, QueryInterrupted
 from .events import Event
@@ -399,15 +400,6 @@ def _to_string(value):
         return value
     else:
         return json.dumps(value, default=str)
-
-
-def _template_context_json_default(value):
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: getattr(value, field.name)
-            for field in dataclasses.fields(value)
-        }
-    return repr(value)
 
 
 @pass_context
@@ -2697,6 +2689,8 @@ ORDER BY allowed.parent, allowed.child
             if isinstance(templates, str):
                 templates = [templates]
             template = self.get_jinja_environment(request).select_template(templates)
+        # Kept for the ?_context=1 debug page, which shows its documentation
+        context_class = type(context) if isinstance(context, Context) else None
         if dataclasses.is_dataclass(context):
             # Shallow conversion - asdict() would deep-copy values, which
             # is wasteful and fails on values like sqlite3.Row
@@ -2780,18 +2774,69 @@ ORDER BY allowed.parent, allowed.child
             "datasette_version": __version__,
             **extra_template_vars,
         }
-        if request and request.args.get("_context") and self.setting("template_debug"):
-            return "<pre>{}</pre>".format(
-                escape(
-                    json.dumps(
-                        template_context,
-                        default=_template_context_json_default,
-                        indent=4,
-                    )
+        if request and self.setting("template_debug"):
+            if request.args.get("_context_json"):
+                return f"<pre>{escape(context_as_json(template_context))}</pre>"
+            if request.args.get("_context"):
+                return await self._render_context_debug(
+                    template,
+                    template_context,
+                    request=request,
+                    context_class=context_class,
+                    plugin_keys=set(extra_template_vars),
                 )
-            )
 
         return await template.render_async(template_context)
+
+    async def _render_context_debug(
+        self,
+        template,
+        template_context,
+        *,
+        request,
+        context_class,
+        plugin_keys,
+    ):
+        "The ?_context=1 page, describing the context passed to a template"
+        debug_template = self.get_jinja_environment(request).get_template(
+            "debug_context.html"
+        )
+        # The debug page is rendered with the base context of the real page
+        # but none of its assets, so plugin JavaScript written for that
+        # page does not run here
+        debug_context = {
+            key: template_context[key]
+            for key in TEMPLATE_BASE_CONTEXT
+            if key not in plugin_keys
+        }
+        debug_context.update(
+            {
+                "request": request,
+                "urls": self.urls,
+                "actor": request.actor,
+                "body_scripts": [],
+                "extra_css_urls": [],
+                "extra_js_urls": [],
+                "debug_template_name": template.name,
+                "debug_templates_considered": template_context.get("select_templates"),
+                "debug_context_class": (
+                    context_class.__name__ if context_class else None
+                ),
+                "debug_page_url": self.urls.modify(
+                    request, remove=["_context", "_context_json"]
+                ),
+                "debug_json_url": self.urls.modify(
+                    request, remove=["_context"], replace={"_context_json": "1"}
+                ),
+                "debug_sections": build_context_debug(
+                    template_context,
+                    context_class=context_class,
+                    plugin_keys=plugin_keys,
+                    base_docs=TEMPLATE_BASE_CONTEXT,
+                ),
+            }
+        )
+        return await debug_template.render_async(debug_context)
 
     def set_actor_cookie(
         self, response: Response, actor: dict, *, expire_after: int | None = None

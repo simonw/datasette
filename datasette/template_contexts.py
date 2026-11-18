@@ -31,6 +31,7 @@ from datasette.views.special import (
     CreateTokenContext,
     JsonDataContext,
     LogoutContext,
+    PermissionsDebugContext,
     SchemaContext,
 )
 from datasette.views.stored_queries import (
@@ -58,6 +59,7 @@ PAGES = {
     "logout": LogoutContext,
     "json_data": JsonDataContext,
     "autocomplete_debug": AutocompleteDebugContext,
+    "permissions_debug": PermissionsDebugContext,
 }
 
 

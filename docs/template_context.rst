@@ -985,4 +985,24 @@ A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/au
 ``table_name`` - ``str | None``
     Name of the table from ``?table=``, or None
 
+Permissions debug page
+----------------------
+
+The permissions playground at ``/-/permissions``, which lists recent permission checks and has a form for testing a permission check against any actor. Rendered using the ``debug_permissions_playground.html`` template.
+
+``filter`` - ``str``
+    Which checks are listed, from ``?filter=``: ``all``, ``exclude-yours`` or ``only-yours``
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``permission_checks`` - ``list``
+    Recent permission checks, most recent first. Each has ``when``, ``actor``, ``action``, ``parent``, ``child`` and ``result`` attributes. ``result`` is None if no rule had an opinion
+
+``permissions`` - ``list[dict]``
+    Every registered action, each with ``name``, ``abbr``, ``description``, ``takes_parent`` and ``takes_child`` keys
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

@@ -328,6 +328,35 @@ class LogoutView(BaseView):
         return response
 
 
+@dataclass
+class PermissionsDebugContext(Context):
+    "The permissions playground at ``/-/permissions``, which lists recent permission checks and has a form for testing a permission check against any actor."
+
+    documented_template = "debug_permissions_playground.html"
+
+    permission_checks: list = field(
+        metadata={
+            "help": "Recent permission checks, most recent first. Each has ``when``, ``actor``, ``action``, ``parent``, ``child`` and ``result`` attributes. ``result`` is None if no rule had an opinion"
+        }
+    )
+    filter: str = field(
+        metadata={
+            "help": "Which checks are listed, from ``?filter=``: ``all``, ``exclude-yours`` or ``only-yours``"
+        }
+    )
+    permissions: list[dict] = field(
+        metadata={
+            "help": "Every registered action, each with ``name``, ``abbr``, ``description``, ``takes_parent`` and ``takes_child`` keys"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class PermissionsDebugView(BaseView):
     name = "permissions_debug"
     has_json_alternate = False
@@ -352,12 +381,13 @@ class PermissionsDebugView(BaseView):
         return await self.render(
             ["debug_permissions_playground.html"],
             request,
-            # list() avoids error if check is performed during template render:
-            {
-                "permission_checks": permission_checks,
-                "filter": filter_,
-                "has_debug_permission": True,
-                "permissions": [
+            PermissionsDebugContext(
+                # A list, so checks performed while the template renders
+                # do not change it
+                permission_checks=permission_checks,
+                filter=filter_,
+                has_debug_permission=True,
+                permissions=[
                     {
                         "name": p.name,
                         "abbr": p.abbr,
@@ -367,7 +397,7 @@ class PermissionsDebugView(BaseView):
                     }
                     for p in self.ds.actions.values()
                 ],
-            },
+            ),
         )
 
     async def post(self, request):

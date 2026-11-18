@@ -222,6 +222,7 @@ async def get_template_context(ds, path, actor_id=None):
             "autocomplete_debug",
             "/-/debug/autocomplete?database=fixtures&table=facetable",
         ),
+        ("permissions_debug", "/-/permissions as root"),
     ),
 )
 async def test_template_context_matches_documented_contract(

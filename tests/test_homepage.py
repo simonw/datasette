@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.jump import JumpSQL
+from datasette.views.index import IndexContext
 
 
 @pytest_asyncio.fixture
@@ -341,11 +342,128 @@ async def test_homepage_results_fragment(ds):
     assert results.select_one('a.catalog-item-name[href="/books/authors"]')
 
 
-async def test_homepage_json_unchanged(ds):
+async def test_homepage_json(ds):
     response = await ds.client.get("/.json")
+    assert response.status_code == 200
     data = response.json()
-    assert set(data) == {"ok", "unstable", "databases", "metadata"}
-    assert {db["name"] for db in data["databases"]} >= {"books", "music"}
+    assert set(data) == {"ok", "unstable"} | set(IndexContext.json_keys())
+    assert [db["name"] for db in data["databases"]] == ["_memory", "books", "music"]
+    assert data["databases"][1] == {
+        "name": "books",
+        "private": False,
+        "tables": 2,
+        "views": 1,
+        "url": "/books",
+        "size": None,
+    }
+    # The same tables and views as the HTML version, in the same order
+    html = await ds.client.get("/")
+    assert [item["url"] for item in data["items"]] == item_links(html.text)
+    assert data["total"] == len(data["items"]) == 4
+    assert data["totals"] == {"databases": 3, "tables": 3, "views": 1}
+    assert [q["url"] for q in data["queries"]] == query_links(html.text)
+    # Counts every query the actor can see, including saved queries
+    # belonging to other people which are only listed when searching
+    assert data["queries_total"] == 3
+    assert data["q"] == ""
+    assert data["database_filter"] is None
+    assert data["previous_url"] is None
+    assert data["next_url"] is None
+    assert data["private"] is False
+    books = next(i for i in data["items"] if i["url"] == "/books/books")
+    assert books == {
+        "database": "books",
+        "name": "books",
+        "type": "table",
+        "private": False,
+        "title": None,
+        "description": "Every book in the library",
+        "columns": ["id", "title", "price", "author_id"],
+        "matched_columns": [],
+        "column_count": 4,
+        "linked_tables": ["authors"],
+        "has_fts": True,
+        "count": 3,
+        "count_truncated": False,
+        "url": "/books/books",
+    }
+    # Presentation details of the HTML page are left out
+    for collection in ("databases", "items", "queries"):
+        assert not any("color" in d for d in data[collection])
+
+
+async def test_homepage_json_never_shows_private_tables(ds):
+    urls = lambda r: [item["url"] for item in r.json()["items"]]
+    assert "/books/secret" not in urls(await ds.client.get("/.json"))
+    assert "/books/secret" in urls(
+        await ds.client.get("/.json", cookies=cookies(ds, "root"))
+    )
+
+
+async def test_homepage_json_search_and_database_filter(ds):
+    data = (await ds.client.get("/.json?q=price")).json()
+    assert data["q"] == "price"
+    assert [(i["url"], i["matched_columns"]) for i in data["items"]] == [
+        ("/books/books", ["price"]),
+    ]
+    assert data["total"] == 1
+    # Totals follow the search but not the database filter
+    assert data["totals"] == {"databases": 3, "tables": 1, "views": 0}
+
+    data = (await ds.client.get("/.json?database=music")).json()
+    assert data["database_filter"] == "music"
+    assert [i["url"] for i in data["items"]] == ["/music/albums"]
+    assert data["total"] == 1
+    assert data["totals"] == {"databases": 3, "tables": 3, "views": 1}
+    # A database that does not exist is ignored
+    data = (await ds.client.get("/.json?database=nope")).json()
+    assert data["database_filter"] is None
+    assert data["total"] == 4
+
+
+async def test_homepage_json_lists_every_column():
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("wide")
+    await db.execute_write(
+        "create table wide ({})".format(", ".join(f"c{i}" for i in range(12)))
+    )
+    item = (await ds.client.get("/.json")).json()["items"][0]
+    assert item["columns"] == [f"c{i}" for i in range(12)]
+    assert item["column_count"] == 12
+    assert "more_columns" not in item
+
+
+async def test_homepage_json_pagination():
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("many")
+    await db.execute_write_script(
+        "".join(f"create table t{i:03d} (id integer primary key);" for i in range(65))
+    )
+    seen = []
+    url = "/.json?database=many"
+    previous_urls = []
+    while url:
+        data = (await ds.client.get(url)).json()
+        assert data["total"] == 65
+        seen.extend(item["name"] for item in data["items"])
+        previous_urls.append(data["previous_url"])
+        url = (data["next_url"] or "").removeprefix("http://localhost")
+    assert sorted(seen) == [f"t{i:03d}" for i in range(65)]
+    assert previous_urls == [
+        None,
+        "http://localhost/.json?database=many",
+        "http://localhost/.json?database=many&page=2",
+    ]
+
+
+async def test_homepage_json_alternate_keeps_query_string(ds):
+    response = await ds.client.get("/?q=price&database=books")
+    alternate = response.headers["link"].split(">")[0].lstrip("<")
+    assert alternate == "http://localhost/.json?q=price&database=books"
+    data = (await ds.client.get(alternate.removeprefix("http://localhost"))).json()
+    assert [i["url"] for i in data["items"]] == item_links(response.text)
 
 
 class JumpItemsPlugin:

@@ -37,9 +37,18 @@ The homepage accepts these query string parameters:
 
 Results only include tables, views and queries that the current actor has permission to see.
 
-Add ``/.json`` to the end of the URL for the JSON version of the underlying data:
+Add ``/.json`` to the end of the URL for the JSON version of the same catalog, which accepts the same ``?q=``, ``?database=`` and ``?page=`` parameters:
 
 * `latest.datasette.io/.json <https://latest.datasette.io/.json>`_
+* `latest.datasette.io/.json?q=facet <https://latest.datasette.io/.json?q=facet>`_
+
+The JSON has the keys ``databases``, ``items``, ``queries``, ``total``, ``queries_total``, ``totals``, ``q``, ``database_filter``, ``metadata`` and ``private``, each holding the value described for the variable of the same name in the :ref:`index page template context <template_context>`, with these differences:
+
+- ``columns`` for each of the ``items`` is the complete list of column names. There is no ``more_columns`` key.
+- There are no ``color`` keys.
+- ``next_url`` and ``previous_url`` are absolute URLs to the next and previous page of JSON, or ``null``. To fetch every table and view follow ``next_url`` until it is ``null``.
+
+This JSON is :ref:`not yet part of the stable API <json_api_stability>` and includes the ``"unstable"`` marker key.
 
 The index page can also be accessed at ``/-/``, useful for if the default index page has been replaced using an :ref:`index.html custom template <customization_custom_templates>`. The ``/-/`` page will always render the default Datasette ``index.html`` template.
 

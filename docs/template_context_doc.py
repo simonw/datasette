@@ -62,6 +62,13 @@ def _page(cog, klass, underline):
             "Many of these keys are shared with the :ref:`JSON API "
             "<json_api>` for this page.\n\n"
         )
+    json_keys = sorted(klass.json_keys())
+    if json_keys:
+        cog.out(
+            "The JSON version of this page returns these keys: {}.\n\n".format(
+                ", ".join(f"``{key}``" for key in json_keys)
+            )
+        )
     for f in sorted(klass.documented_fields(), key=lambda f: f.name):
         cog.out(f"``{f.name}`` - ``{f.type_name}``\n")
         cog.out(f"    {f.help}\n\n")

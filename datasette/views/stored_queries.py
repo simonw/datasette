@@ -202,6 +202,23 @@ class QueryEditContext(Context):
     select_templates: list[str] = select_templates_field()
 
 
+@dataclass
+class QueryDeleteContext(Context):
+    "The page asking for confirmation before deleting a stored query, at ``/<database>/<query>/-/delete``."
+
+    documented_template = "query_delete.html"
+
+    database: str = field(metadata={"help": "Database name"})
+    database_color: str = field(metadata={"help": "Color assigned to the database"})
+    query: dict = field(
+        metadata={
+            "help": "The query to be deleted, a dictionary with keys including ``name``, ``sql``, ``title``, ``description``, ``is_write``, ``is_private`` and ``owner_id``"
+        }
+    )
+    query_url: str = field(metadata={"help": "URL of the page for the query"})
+    select_templates: list[str] = select_templates_field()
+
+
 class QueryParametersView(BaseView):
     name = "query-parameters"
     has_json_alternate = False
@@ -885,12 +902,12 @@ class QueryDeleteView(BaseView):
             await self.render(
                 ["query_delete.html"],
                 request,
-                {
-                    "database": db.name,
-                    "database_color": db.color,
-                    "query": stored_query_to_dict(existing),
-                    "query_url": self.ds.urls.table(db.name, query_name),
-                },
+                QueryDeleteContext(
+                    database=db.name,
+                    database_color=db.color,
+                    query=stored_query_to_dict(existing),
+                    query_url=self.ds.urls.table(db.name, query_name),
+                ),
             )
         )
 

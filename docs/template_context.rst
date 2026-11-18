@@ -762,4 +762,24 @@ The form for editing a stored query, at ``/<database>/<query>/-/edit``. Rendered
 ``title`` - ``str``
     The title of the query, or an empty string
 
+Query delete page
+-----------------
+
+The page asking for confirmation before deleting a stored query, at ``/<database>/<query>/-/delete``. Rendered using the ``query_delete.html`` template.
+
+``database`` - ``str``
+    Database name
+
+``database_color`` - ``str``
+    Color assigned to the database
+
+``query`` - ``dict``
+    The query to be deleted, a dictionary with keys including ``name``, ``sql``, ``title``, ``description``, ``is_write``, ``is_private`` and ``owner_id``
+
+``query_url`` - ``str``
+    URL of the page for the query
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

@@ -26,6 +26,7 @@ from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
 from datasette.views.stored_queries import (
     QueryCreateContext,
+    QueryDeleteContext,
     QueryEditContext,
     QueryListContext,
 )
@@ -40,6 +41,7 @@ PAGES = {
     "query_list": QueryListContext,
     "query_create": QueryCreateContext,
     "query_edit": QueryEditContext,
+    "query_delete": QueryDeleteContext,
 }
 
 

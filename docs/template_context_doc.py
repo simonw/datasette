@@ -27,28 +27,46 @@ def template_context(cog):
         cog.out(f"    {doc}\n\n")
 
     for klass in PAGES.values():
-        title = klass.page_title()
-        # The first paragraph of the docstring introduces the page, any
-        # further paragraphs follow the sentence naming its template
-        first, *rest = [
-            " ".join(paragraph.split())
-            for paragraph in inspect.cleandoc(klass.__doc__).split("\n\n")
-        ]
-        intro = "\n\n".join(
-            [f"{first} Rendered using the ``{klass.documented_template}`` template."]
-            + rest
+        if klass.stable:
+            _page(cog, klass, "-")
+
+    cog.out(".. _template_context_debugging_tools:\n\n")
+    _section(
+        cog,
+        "Debugging tools",
+        (
+            "These pages are tools for debugging a Datasette instance. Their "
+            "variables are documented here for reference but are **not** part "
+            "of the stable contract described at the top of this page: they "
+            "may change or be removed in any release."
+        ),
+    )
+    for klass in PAGES.values():
+        if not klass.stable:
+            _page(cog, klass, "~")
+
+
+def _page(cog, klass, underline):
+    # The first paragraph of the docstring introduces the page, any
+    # further paragraphs follow the sentence naming its template
+    first, *rest = [
+        " ".join(paragraph.split())
+        for paragraph in inspect.cleandoc(klass.__doc__).split("\n\n")
+    ]
+    intro = "\n\n".join(
+        [f"{first} Rendered using the ``{klass.documented_template}`` template."] + rest
+    )
+    _section(cog, klass.page_title(), intro, underline)
+    if klass.extras_scope is not None:
+        cog.out(
+            "Many of these keys are shared with the :ref:`JSON API "
+            "<json_api>` for this page.\n\n"
         )
-        _section(cog, title, intro)
-        if klass.extras_scope is not None:
-            cog.out(
-                "Many of these keys are shared with the :ref:`JSON API "
-                "<json_api>` for this page.\n\n"
-            )
-        for f in sorted(klass.documented_fields(), key=lambda f: f.name):
-            cog.out(f"``{f.name}`` - ``{f.type_name}``\n")
-            cog.out(f"    {f.help}\n\n")
+    for f in sorted(klass.documented_fields(), key=lambda f: f.name):
+        cog.out(f"``{f.name}`` - ``{f.type_name}``\n")
+        cog.out(f"    {f.help}\n\n")
 
 
-def _section(cog, title, intro):
-    cog.out("{}\n{}\n\n".format(title, "-" * len(title)))
+def _section(cog, title, intro, underline="-"):
+    cog.out("{}\n{}\n\n".format(title, underline * len(title)))
     cog.out(f"{intro}\n\n")

@@ -211,6 +211,21 @@ def describe_variable(name, value, *, help="", type_name=None):
     return variable
 
 
+def _page_intro(context_class):
+    if context_class is None:
+        return ""
+    if context_class.stable:
+        promise = "These are a stable contract for custom templates."
+    else:
+        promise = (
+            "This page is a debugging tool, so these are not a stable "
+            "contract and may change or be removed in any release."
+        )
+    return Markup("Documented fields of <code>{}</code>. {}").format(
+        context_class.__name__, promise
+    )
+
+
 def build_context_debug(template_context, *, context_class, plugin_keys, base_docs):
     """
     Group the variables in a rendered template context into the sections
@@ -247,14 +262,7 @@ def build_context_debug(template_context, *, context_class, plugin_keys, base_do
         {
             "id": "page",
             "title": "Variables for this page",
-            "intro": (
-                Markup(
-                    "Documented fields of <code>{}</code>. These are a stable "
-                    "contract for custom templates."
-                ).format(context_class.__name__)
-                if context_class is not None
-                else ""
-            ),
+            "intro": _page_intro(context_class),
             "variables": page,
         },
         {

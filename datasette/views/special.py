@@ -132,6 +132,7 @@ class AutocompleteDebugContext(Context):
     "A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/autocomplete``."
 
     documented_template = "debug_autocomplete.html"
+    stable = False
 
     database_name: str | None = field(
         metadata={"help": "Name of the database from ``?database=``, or None"}
@@ -333,6 +334,7 @@ class PermissionsDebugContext(Context):
     "The permissions playground at ``/-/permissions``, which lists recent permission checks and has a form for testing a permission check against any actor."
 
     documented_template = "debug_permissions_playground.html"
+    stable = False
 
     permission_checks: list = field(
         metadata={
@@ -426,6 +428,7 @@ class AllowedResourcesContext(Context):
     "A tool for listing the resources the current actor can access for a given action, at ``/-/allowed``."
 
     documented_template = "debug_allowed.html"
+    stable = False
 
     supported_actions: list[str] = field(
         metadata={
@@ -619,6 +622,7 @@ class PermissionRulesContext(Context):
     "A tool for viewing the permission rules that apply to the current actor for a given action, at ``/-/rules``."
 
     documented_template = "debug_rules.html"
+    stable = False
 
     sorted_actions: list[str] = field(
         metadata={"help": "Names of every registered action, in alphabetical order"}
@@ -819,6 +823,7 @@ class PermissionCheckContext(Context):
     "A tool for testing whether an actor can perform an action against a resource, with an explanation of the result, at ``/-/check``."
 
     documented_template = "debug_check.html"
+    stable = False
 
     actions: list[dict] = field(
         metadata={
@@ -898,6 +903,7 @@ class AllowDebugContext(Context):
     "A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``."
 
     documented_template = "allow_debug.html"
+    stable = False
 
     actor_input: str = field(
         metadata={"help": "JSON for the actor to test, from ``?actor=``"}
@@ -966,6 +972,7 @@ class MessagesDebugContext(Context):
     "A tool for setting a message to be shown on the next page, at ``/-/messages``. It has no variables of its own."
 
     documented_template = "messages_debug.html"
+    stable = False
 
     select_templates: list[str] = select_templates_field()
 

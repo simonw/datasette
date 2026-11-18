@@ -302,6 +302,28 @@ async def test_csrf_error_context_matches_documented_contract(context_ds):
     assert "origin" in rendered["context"].reason.lower()
 
 
+def test_debugging_tools_are_not_part_of_the_stable_contract():
+    assert {key for key, klass in PAGES.items() if not klass.stable} == {
+        "autocomplete_debug",
+        "permissions_debug",
+        "allowed_resources",
+        "permission_rules",
+        "permission_check",
+        "allow_debug",
+        "messages_debug",
+    }
+    # They are documented in their own section, after every stable page
+    docs = (
+        pathlib.Path(__file__).parent.parent / "docs" / "template_context.rst"
+    ).read_text()
+    stable_docs, debugging_docs = docs.split("\nDebugging tools\n")
+    assert "not** part of the stable contract" in debugging_docs
+    for klass in PAGES.values():
+        heading = f"\n{klass.page_title()}\n"
+        assert (heading in stable_docs) is klass.stable, klass.__name__
+        assert (heading in debugging_docs) is not klass.stable, klass.__name__
+
+
 def test_base_context_keys_all_have_docs():
     for name, doc in TEMPLATE_BASE_CONTEXT.items():
         assert doc, f"Base context key {name} is missing docs"

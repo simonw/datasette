@@ -13,6 +13,10 @@ major version (Datasette 2.0). Anything present in the template context but
 not documented on this page is not part of that contract and may change or
 be removed in any release.
 
+The pages listed under :ref:`template_context_debugging_tools` at the end are
+the exception. They are documented for reference, but are not covered by that
+contract.
+
 You can inspect the full context for any page by starting Datasette with
 ``--setting template_debug 1`` and adding ``?_context=1`` to the page URL.
 This shows each variable with its documentation and current value - see
@@ -956,8 +960,42 @@ The pages that display JSON describing the instance, such as ``/-/versions``, ``
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Error page
+----------
+
+The page shown for an error, such as a 404 or a 500. Datasette looks for a template named after the status code first, so ``404.html`` can be used to customize just that error. Rendered using the ``error.html`` template.
+
+Error pages other than the 403 permission denied page are rendered without most of the variables that are available on every page - only ``urls`` and ``menu_links`` are provided. Errors raised by plugins can include additional variables of their own.
+
+``error`` - ``str``
+    The error message
+
+``ok`` - ``bool``
+    Always ``False``
+
+``status`` - ``int``
+    The HTTP status code, for example ``404``
+
+``title`` - ``str | None``
+    Title for the page, or None to use the default of ``Error`` followed by the status code
+
+CSRF error page
+---------------
+
+The page shown when a form submission is rejected by Datasette's CSRF protection. Rendered using the ``csrf_error.html`` template.
+
+``reason`` - ``str``
+    Technical explanation of why the request was rejected, intended for developers
+
+.. _template_context_debugging_tools:
+
+Debugging tools
+---------------
+
+These pages are tools for debugging a Datasette instance. Their variables are documented here for reference but are **not** part of the stable contract described at the top of this page: they may change or be removed in any release.
+
 Autocomplete debug page
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/autocomplete``. Rendered using the ``debug_autocomplete.html`` template.
 
@@ -989,7 +1027,7 @@ A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/au
     Name of the table from ``?table=``, or None
 
 Permissions debug page
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 The permissions playground at ``/-/permissions``, which lists recent permission checks and has a form for testing a permission check against any actor. Rendered using the ``debug_permissions_playground.html`` template.
 
@@ -1009,7 +1047,7 @@ The permissions playground at ``/-/permissions``, which lists recent permission 
     The template names Datasette considered, with an asterisk next to the one that was used
 
 Allowed resources page
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 A tool for listing the resources the current actor can access for a given action, at ``/-/allowed``. Rendered using the ``debug_allowed.html`` template.
 
@@ -1023,7 +1061,7 @@ A tool for listing the resources the current actor can access for a given action
     Names of every registered action, with the most commonly used ones first
 
 Permission rules page
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 A tool for viewing the permission rules that apply to the current actor for a given action, at ``/-/rules``. Rendered using the ``debug_rules.html`` template.
 
@@ -1037,7 +1075,7 @@ A tool for viewing the permission rules that apply to the current actor for a gi
     Names of every registered action, in alphabetical order
 
 Permission check page
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 A tool for testing whether an actor can perform an action against a resource, with an explanation of the result, at ``/-/check``. Rendered using the ``debug_check.html`` template.
 
@@ -1054,7 +1092,7 @@ A tool for testing whether an actor can perform an action against a resource, wi
     The template names Datasette considered, with an asterisk next to the one that was used
 
 Allow debug page
-----------------
+~~~~~~~~~~~~~~~~
 
 A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``. Rendered using the ``allow_debug.html`` template.
 
@@ -1077,38 +1115,11 @@ A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``. R
     The template names Datasette considered, with an asterisk next to the one that was used
 
 Messages debug page
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 A tool for setting a message to be shown on the next page, at ``/-/messages``. It has no variables of its own. Rendered using the ``messages_debug.html`` template.
 
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
-
-Error page
-----------
-
-The page shown for an error, such as a 404 or a 500. Datasette looks for a template named after the status code first, so ``404.html`` can be used to customize just that error. Rendered using the ``error.html`` template.
-
-Error pages other than the 403 permission denied page are rendered without most of the variables that are available on every page - only ``urls`` and ``menu_links`` are provided. Errors raised by plugins can include additional variables of their own.
-
-``error`` - ``str``
-    The error message
-
-``ok`` - ``bool``
-    Always ``False``
-
-``status`` - ``int``
-    The HTTP status code, for example ``404``
-
-``title`` - ``str | None``
-    Title for the page, or None to use the default of ``Error`` followed by the status code
-
-CSRF error page
----------------
-
-The page shown when a form submission is rejected by Datasette's CSRF protection. Rendered using the ``csrf_error.html`` template.
-
-``reason`` - ``str``
-    Technical explanation of why the request was rejected, intended for developers
 
 .. [[[end]]]

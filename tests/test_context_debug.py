@@ -189,9 +189,27 @@ def test_build_context_debug_sections():
     ]
     assert str(sections[0]["variables"][0]["help"]) == "The name"
     assert "DemoContext" in sections[0]["intro"]
+    assert "These are a stable contract" in sections[0]["intro"]
     assert (
         str(sections[3]["variables"][0]["help"]) == "The <code>base_url</code> setting"
     )
+
+
+def test_build_context_debug_says_debugging_tools_are_not_stable():
+    @dataclass
+    class DemoDebugContext(Context):
+        stable = False
+
+        name: str = field(metadata={"help": "The name"})
+
+    sections = build_context_debug(
+        {"name": "demo"},
+        context_class=DemoDebugContext,
+        plugin_keys=set(),
+        base_docs={},
+    )
+    assert "not a stable contract" in sections[0]["intro"]
+    assert "These are a stable contract" not in sections[0]["intro"]
 
 
 def test_build_context_debug_plugins_can_replace_documented_variables():

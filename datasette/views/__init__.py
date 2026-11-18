@@ -68,6 +68,11 @@ class Context:
     # against the extras registry for this scope
     extras_scope = None
 
+    # False for debugging tools. Their variables are documented, but are
+    # not part of the contract that custom templates can rely on until the
+    # next major version
+    stable = True
+
     # Heading used for this page in the documentation. Defaults to the
     # class name, so QueryListContext becomes "Query list page"
     documented_title = None

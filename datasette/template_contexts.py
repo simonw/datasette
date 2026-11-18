@@ -32,6 +32,7 @@ from datasette.views.special import (
     CreateTokenContext,
     JsonDataContext,
     LogoutContext,
+    PermissionCheckContext,
     PermissionRulesContext,
     PermissionsDebugContext,
     SchemaContext,
@@ -64,6 +65,7 @@ PAGES = {
     "permissions_debug": PermissionsDebugContext,
     "allowed_resources": AllowedResourcesContext,
     "permission_rules": PermissionRulesContext,
+    "permission_check": PermissionCheckContext,
 }
 
 

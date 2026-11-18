@@ -1033,4 +1033,21 @@ A tool for viewing the permission rules that apply to the current actor for a gi
 ``sorted_actions`` - ``list[str]``
     Names of every registered action, in alphabetical order
 
+Permission check page
+---------------------
+
+A tool for testing whether an actor can perform an action against a resource, with an explanation of the result, at ``/-/check``. Rendered using the ``debug_check.html`` template.
+
+``actions`` - ``list[dict]``
+    Every registered action in alphabetical order, each with ``name``, ``description``, ``takes_parent``, ``takes_child`` and ``also_requires`` keys
+
+``actor_json`` - ``str``
+    JSON for the actor to test, from ``?actor=`` or otherwise the current actor
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

@@ -814,6 +814,30 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     return response, 200
 
 
+@dataclass
+class PermissionCheckContext(Context):
+    "A tool for testing whether an actor can perform an action against a resource, with an explanation of the result, at ``/-/check``."
+
+    documented_template = "debug_check.html"
+
+    actions: list[dict] = field(
+        metadata={
+            "help": "Every registered action in alphabetical order, each with ``name``, ``description``, ``takes_parent``, ``takes_child`` and ``also_requires`` keys"
+        }
+    )
+    actor_json: str = field(
+        metadata={
+            "help": "JSON for the actor to test, from ``?actor=`` or otherwise the current actor"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class PermissionCheckView(BaseView):
     name = "permission_check"
     has_json_alternate = False
@@ -838,12 +862,12 @@ class PermissionCheckView(BaseView):
             return await self.render(
                 ["debug_check.html"],
                 request,
-                {
-                    "actions": actions,
-                    "actor_json": request.args.get("actor")
+                PermissionCheckContext(
+                    actions=actions,
+                    actor_json=request.args.get("actor")
                     or json.dumps(request.actor, indent=2),
-                    "has_debug_permission": True,
-                },
+                    has_debug_permission=True,
+                ),
             )
 
         # JSON API - action parameter is required

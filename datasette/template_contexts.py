@@ -26,6 +26,7 @@ from datasette.views.execute_write import ExecuteWriteContext
 from datasette.views.index import IndexContext
 from datasette.views.row import RowContext
 from datasette.views.special import (
+    AllowDebugContext,
     AllowedResourcesContext,
     ApiExplorerContext,
     AutocompleteDebugContext,
@@ -66,6 +67,7 @@ PAGES = {
     "allowed_resources": AllowedResourcesContext,
     "permission_rules": PermissionRulesContext,
     "permission_check": PermissionCheckContext,
+    "allow_debug": AllowDebugContext,
 }
 
 

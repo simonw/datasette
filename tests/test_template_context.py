@@ -227,6 +227,8 @@ async def get_template_context(ds, path, actor_id=None):
         ("allowed_resources", "/-/allowed as root"),
         ("permission_rules", "/-/rules as root"),
         ("permission_check", "/-/check as root"),
+        ("allow_debug", "/-/allow-debug"),
+        ("allow_debug", "/-/allow-debug?actor=nope"),
     ),
 )
 async def test_template_context_matches_documented_contract(

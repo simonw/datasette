@@ -893,6 +893,36 @@ class PermissionCheckView(BaseView):
         return Response.json(response, status=status)
 
 
+@dataclass
+class AllowDebugContext(Context):
+    "A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``."
+
+    documented_template = "allow_debug.html"
+
+    actor_input: str = field(
+        metadata={"help": "JSON for the actor to test, from ``?actor=``"}
+    )
+    allow_input: str = field(
+        metadata={"help": "JSON for the allow block to test, from ``?allow=``"}
+    )
+    result: str | None = field(
+        metadata={
+            "help": '``"True"`` if the actor matches the allow block, ``"False"`` if it does not, or None if either input was not valid JSON'
+        }
+    )
+    error: str = field(
+        metadata={
+            "help": "Error messages for input that was not valid JSON, or an empty string"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class AllowDebugView(BaseView):
     name = "allow_debug"
     has_json_alternate = False
@@ -919,15 +949,15 @@ class AllowDebugView(BaseView):
         return await self.render(
             ["allow_debug.html"],
             request,
-            {
-                "result": result,
-                "error": "\n\n".join(errors) if errors else "",
-                "actor_input": actor_input,
-                "allow_input": allow_input,
-                "has_debug_permission": await self.ds.allowed(
+            AllowDebugContext(
+                result=result,
+                error="\n\n".join(errors) if errors else "",
+                actor_input=actor_input,
+                allow_input=allow_input,
+                has_debug_permission=await self.ds.allowed(
                     action="permissions-debug", actor=request.actor
                 ),
-            },
+            ),
         )
 
 

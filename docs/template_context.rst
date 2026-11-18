@@ -1050,4 +1050,27 @@ A tool for testing whether an actor can perform an action against a resource, wi
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Allow debug page
+----------------
+
+A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``. Rendered using the ``allow_debug.html`` template.
+
+``actor_input`` - ``str``
+    JSON for the actor to test, from ``?actor=``
+
+``allow_input`` - ``str``
+    JSON for the allow block to test, from ``?allow=``
+
+``error`` - ``str``
+    Error messages for input that was not valid JSON, or an empty string
+
+``has_debug_permission`` - ``bool``
+    True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown
+
+``result`` - ``str | None``
+    ``"True"`` if the actor matches the allow block, ``"False"`` if it does not, or None if either input was not valid JSON
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

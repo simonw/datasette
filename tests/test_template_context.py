@@ -210,6 +210,7 @@ async def get_template_context(ds, path, actor_id=None):
         ("schema", "/-/schema"),
         ("schema", "/fixtures/-/schema"),
         ("schema", "/fixtures/facetable/-/schema"),
+        ("create_token", "/-/create-token as root"),
     ),
 )
 async def test_template_context_matches_documented_contract(

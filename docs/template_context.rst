@@ -876,4 +876,33 @@ The schema pages: ``/-/schema`` for every database, ``/<database>/-/schema`` for
 ``table_name`` - ``str | None``
     Name of the table on the page for a single table, or None
 
+Create token page
+-----------------
+
+The form for creating an API token, at ``/-/create-token``. Rendered using the ``create_token.html`` template.
+
+``all_actions`` - ``list[str]``
+    Names of every action, which the token can be restricted to across the whole instance
+
+``child_actions`` - ``list[str]``
+    Names of the actions that can be restricted to a specific table or other resource in a database
+
+``database_actions`` - ``list[str]``
+    Names of the actions that can be restricted to a specific database
+
+``database_with_tables`` - ``list[dict]``
+    The databases the actor can see. Each has ``name``, ``encoded`` (the name encoded for use in a form field) and ``tables``, a list of dictionaries with ``name`` and ``encoded`` keys
+
+``errors`` - ``list[str]``
+    Error messages from validating the submitted form
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
+``token`` - ``str | None``
+    The token that was created, or None if the form has not been successfully submitted
+
+``token_bits`` - ``dict | None``
+    The decoded contents of the token that was created, or None
+
 .. [[[end]]]

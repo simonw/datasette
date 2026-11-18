@@ -786,6 +786,51 @@ class MessagesDebugView(BaseView):
         return Response.redirect(self.ds.urls.instance())
 
 
+@dataclass
+class CreateTokenContext(Context):
+    "The form for creating an API token, at ``/-/create-token``."
+
+    documented_template = "create_token.html"
+
+    all_actions: list[str] = field(
+        metadata={
+            "help": "Names of every action, which the token can be restricted to across the whole instance"
+        }
+    )
+    database_actions: list[str] = field(
+        metadata={
+            "help": "Names of the actions that can be restricted to a specific database"
+        }
+    )
+    child_actions: list[str] = field(
+        metadata={
+            "help": "Names of the actions that can be restricted to a specific table or other resource in a database"
+        }
+    )
+    database_with_tables: list[dict] = field(
+        metadata={
+            "help": "The databases the actor can see. Each has ``name``, ``encoded`` (the name encoded for use in a form field) and ``tables``, a list of dictionaries with ``name`` and ``encoded`` keys"
+        }
+    )
+    errors: list[str] = field(
+        default_factory=list,
+        metadata={"help": "Error messages from validating the submitted form"},
+    )
+    token: str | None = field(
+        default=None,
+        metadata={
+            "help": "The token that was created, or None if the form has not been successfully submitted"
+        },
+    )
+    token_bits: dict | None = field(
+        default=None,
+        metadata={
+            "help": "The decoded contents of the token that was created, or None"
+        },
+    )
+    select_templates: list[str] = select_templates_field()
+
+
 class CreateTokenView(BaseView):
     name = "create_token"
     has_json_alternate = False
@@ -841,8 +886,7 @@ class CreateTokenView(BaseView):
                 }
             )
         return {
-            "actor": request.actor,
-            "all_actions": self.ds.actions.keys(),
+            "all_actions": list(self.ds.actions.keys()),
             "database_actions": [
                 key for key, value in self.ds.actions.items() if value.takes_parent
             ],
@@ -855,7 +899,9 @@ class CreateTokenView(BaseView):
     async def get(self, request):
         self.check_permission(request)
         return await self.render(
-            ["create_token.html"], request, await self.shared(request)
+            ["create_token.html"],
+            request,
+            CreateTokenContext(**await self.shared(request)),
         )
 
     async def post(self, request):
@@ -883,9 +929,11 @@ class CreateTokenView(BaseView):
                     errors.append("Invalid expire duration unit")
 
         if errors:
-            context = await self.shared(request)
-            context["errors"] = errors
-            return await self.render(["create_token.html"], request, context)
+            return await self.render(
+                ["create_token.html"],
+                request,
+                CreateTokenContext(**await self.shared(request), errors=errors),
+            )
 
         # Are there any restrictions?
         from datasette.tokens import TokenRestrictions
@@ -920,9 +968,16 @@ class CreateTokenView(BaseView):
                 restrict_resource=restrictions.resource,
             )
         )
-        context = await self.shared(request)
-        context.update({"errors": errors, "token": token, "token_bits": token_bits})
-        return await self.render(["create_token.html"], request, context)
+        return await self.render(
+            ["create_token.html"],
+            request,
+            CreateTokenContext(
+                **await self.shared(request),
+                errors=errors,
+                token=token,
+                token_bits=token_bits,
+            ),
+        )
 
 
 class ApiExplorerView(BaseView):

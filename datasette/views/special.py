@@ -961,13 +961,24 @@ class AllowDebugView(BaseView):
         )
 
 
+@dataclass
+class MessagesDebugContext(Context):
+    "A tool for setting a message to be shown on the next page, at ``/-/messages``. It has no variables of its own."
+
+    documented_template = "messages_debug.html"
+
+    select_templates: list[str] = select_templates_field()
+
+
 class MessagesDebugView(BaseView):
     name = "messages_debug"
     has_json_alternate = False
 
     async def get(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
-        return await self.render(["messages_debug.html"], request)
+        return await self.render(
+            ["messages_debug.html"], request, MessagesDebugContext()
+        )
 
     async def post(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)

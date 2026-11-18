@@ -33,6 +33,7 @@ from datasette.views.special import (
     CreateTokenContext,
     JsonDataContext,
     LogoutContext,
+    MessagesDebugContext,
     PermissionCheckContext,
     PermissionRulesContext,
     PermissionsDebugContext,
@@ -68,6 +69,7 @@ PAGES = {
     "permission_rules": PermissionRulesContext,
     "permission_check": PermissionCheckContext,
     "allow_debug": AllowDebugContext,
+    "messages_debug": MessagesDebugContext,
 }
 
 

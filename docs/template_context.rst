@@ -1073,4 +1073,12 @@ A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``. R
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
 
+Messages debug page
+-------------------
+
+A tool for setting a message to be shown on the next page, at ``/-/messages``. It has no variables of its own. Rendered using the ``messages_debug.html`` template.
+
+``select_templates`` - ``list[str]``
+    The template names Datasette considered, with an asterisk next to the one that was used
+
 .. [[[end]]]

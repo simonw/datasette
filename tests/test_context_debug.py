@@ -18,6 +18,7 @@ from datasette.context_debug import (
     format_value,
     rst_to_html,
 )
+from datasette.utils.asgi import Request
 from datasette.views import Context
 
 from .fixtures import make_ds
@@ -265,12 +266,17 @@ async def test_context_debug_page_for_documented_page(debug_ds):
 
 
 async def test_context_debug_page_for_undocumented_page(debug_ds):
-    response = await debug_ds.client.get("/-/messages?_context=1")
-    assert response.status_code == 200
-    soup = Soup(response.text, "html.parser")
+    # A plugin, say, that passes a dictionary to render_template()
+    await debug_ds.invoke_startup()
+    html = await debug_ds.render_template(
+        "error.html",
+        {"error": "Oh no", "custom": [1, 2]},
+        request=Request.fake("/-/demo?_context=1"),
+    )
+    soup = Soup(html, "html.parser")
     assert "plain dictionary" in soup.select_one(".context-debug-summary").text
     assert not _variables(soup, "page")
-    assert "select_templates" in _variables(soup, "undocumented")
+    assert set(_variables(soup, "undocumented")) == {"error", "custom"}
     assert set(_variables(soup, "base")) == set(TEMPLATE_BASE_CONTEXT) - set(
         _variables(soup, "plugins")
     )

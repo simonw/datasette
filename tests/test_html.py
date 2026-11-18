@@ -1208,7 +1208,7 @@ async def test_config_template_debug_off(ds_client, arg):
     response = await ds_client.get(f"/fixtures/facetable?{arg}=1")
     assert response.status_code == 200
     assert not response.text.startswith("<pre>{")
-    assert "<h1>Template context</h1>" not in response.text
+    assert "template context</h1>" not in response.text
     assert "<h1>facetable</h1>" in response.text
 
 

@@ -214,16 +214,12 @@ def describe_variable(name, value, *, help="", type_name=None):
 def _page_intro(context_class):
     if context_class is None:
         return ""
-    if context_class.stable:
-        promise = "These are a stable contract for custom templates."
-    else:
-        promise = (
-            "This page is a debugging tool, so these are not a stable "
-            "contract and may change or be removed in any release."
-        )
-    return Markup("Documented fields of <code>{}</code>. {}").format(
-        context_class.__name__, promise
+    intro = Markup("Documented fields of <code>{}</code>.").format(
+        context_class.__name__
     )
+    if context_class.stable:
+        intro += " These are a stable contract for custom templates."
+    return intro
 
 
 def build_context_debug(template_context, *, context_class, plugin_keys, base_docs):
@@ -263,6 +259,8 @@ def build_context_debug(template_context, *, context_class, plugin_keys, base_do
             "id": "page",
             "title": "Variables for this page",
             "intro": _page_intro(context_class),
+            # The template shows a warning for the variables of a debugging tool
+            "unstable": context_class is not None and not context_class.stable,
             "variables": page,
         },
         {

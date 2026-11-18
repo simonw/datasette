@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Template context: {{ debug_template_name }}{% endblock %}
+{% block title %}{{ request.path }} template context{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -100,6 +100,14 @@
 .context-debug .context-debug-members code {
     font-weight: bold;
 }
+.context-debug .context-debug-warning {
+    margin: 0.75rem 0 1rem;
+    padding: 0.6rem 0.9rem;
+    background: #fff8e1;
+    border: 1px solid #e6c200;
+    border-left-width: 5px;
+    border-radius: 6px;
+}
 .context-debug .context-debug-note {
     color: #6b6b6b;
     font-size: 0.9rem;
@@ -112,7 +120,7 @@
 
 {% block content %}
 <div class="context-debug">
-<h1>Template context</h1>
+<h1><code>{{ request.path }}</code> template context</h1>
 
 <ul class="context-debug-summary">
     <li>Template: <code>{{ debug_template_name }}</code></li>
@@ -130,6 +138,9 @@
 <section id="context-{{ section.id }}">
     <h2>{{ section.title }}</h2>
     {% if section.intro %}<p>{{ section.intro }}</p>{% endif %}
+    {% if section.unstable %}
+        <p class="context-debug-warning"><strong>Not a stable contract.</strong> <code>{{ request.path }}</code> is one of Datasette's debugging tools. The variables it passes to its template are documented here for reference, but a custom template that uses them may break in any future Datasette release.</p>
+    {% endif %}
     <ul class="context-debug-jump">
         {% for variable in section.variables %}
             <li><a href="#var-{{ variable.name }}">{{ variable.name }}</a></li>

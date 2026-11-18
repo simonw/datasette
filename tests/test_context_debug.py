@@ -190,6 +190,7 @@ def test_build_context_debug_sections():
     assert str(sections[0]["variables"][0]["help"]) == "The name"
     assert "DemoContext" in sections[0]["intro"]
     assert "These are a stable contract" in sections[0]["intro"]
+    assert not sections[0]["unstable"]
     assert (
         str(sections[3]["variables"][0]["help"]) == "The <code>base_url</code> setting"
     )
@@ -208,8 +209,8 @@ def test_build_context_debug_says_debugging_tools_are_not_stable():
         plugin_keys=set(),
         base_docs={},
     )
-    assert "not a stable contract" in sections[0]["intro"]
-    assert "These are a stable contract" not in sections[0]["intro"]
+    assert sections[0]["unstable"]
+    assert "stable contract" not in sections[0]["intro"]
 
 
 def test_build_context_debug_plugins_can_replace_documented_variables():
@@ -242,7 +243,9 @@ async def test_context_debug_page_for_documented_page(debug_ds):
     response = await debug_ds.client.get("/fixtures/facetable?_size=2&_context=1")
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    assert soup.select_one("h1").text == "Template context"
+    # The path, without its query string, is in the heading and the title
+    assert soup.select_one("h1").text == "/fixtures/facetable template context"
+    assert soup.select_one("title").text == "/fixtures/facetable template context"
     summary = soup.select_one(".context-debug-summary").text
     assert "table.html" in summary
     assert "TableContext" in summary
@@ -321,3 +324,17 @@ async def test_context_debug_page_escapes_values(debug_ds):
     assert response.status_code == 200
     assert "<script>alert(1)</script>" not in response.text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
+
+
+async def test_context_debug_page_warns_that_debugging_tools_are_not_stable(debug_ds):
+    response = await debug_ds.client.get("/-/allow-debug?_context=1")
+    soup = Soup(response.text, "html.parser")
+    warning = soup.select_one("section#context-page .context-debug-warning")
+    assert warning.text.startswith(
+        "Not a stable contract. /-/allow-debug is one of Datasette's debugging tools."
+    )
+    # Pages that are part of the stable contract have no warning
+    response = await debug_ds.client.get("/fixtures/facetable?_context=1")
+    soup = Soup(response.text, "html.parser")
+    assert not soup.select(".context-debug-warning")
+    assert "These are a stable contract" in soup.select_one("section#context-page").text

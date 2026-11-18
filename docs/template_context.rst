@@ -4,7 +4,7 @@ Template context
 ================
 
 This page documents the variables that are available to custom templates
-for each of Datasette's core pages. See :ref:`customization_custom_templates`
+for each of Datasette's pages. See :ref:`customization_custom_templates`
 for how to provide your own templates.
 
 The variables documented here are a stable contract: custom templates that

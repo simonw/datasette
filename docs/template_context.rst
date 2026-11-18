@@ -80,7 +80,7 @@ Index page
 The homepage, listing the tables, views and queries across every database. Rendered using the ``index.html`` template.
 
 ``alternate_url_json`` - ``str``
-    URL of the JSON version of this page, ``/.json``
+    URL of the JSON version of this page: ``/.json`` followed by the current query string
 
 ``catalog`` - ``Catalog``
     The full catalog object: ``items`` and ``queries`` (see below), ``total`` (tables and views matching the search and database filter, across all pages), ``queries_total``, ``databases`` and ``totals`` (a dictionary of ``databases``, ``tables`` and ``views`` counts)

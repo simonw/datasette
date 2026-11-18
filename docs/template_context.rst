@@ -15,6 +15,8 @@ be removed in any release.
 
 You can inspect the full context for any page by starting Datasette with
 ``--setting template_debug 1`` and adding ``?_context=1`` to the page URL.
+This shows each variable with its documentation and current value - see
+:ref:`setting_template_debug`.
 
 .. [[[cog
     from template_context_doc import template_context

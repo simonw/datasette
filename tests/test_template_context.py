@@ -150,7 +150,7 @@ def context_ds(tmp_path_factory):
 
 async def get_template_context(ds, path):
     sep = "&" if "?" in path else "?"
-    response = await ds.client.get(path + sep + "_context=1")
+    response = await ds.client.get(path + sep + "_context_json=1")
     assert response.status_code == 200, path
     body = html.unescape(response.text.removeprefix("<pre>").removesuffix("</pre>"))
     return json.loads(body)

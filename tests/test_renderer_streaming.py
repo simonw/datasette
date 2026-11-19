@@ -5,12 +5,14 @@ datasette/csv_renderer.py are built on this.
 """
 
 import json
+import re
 
 import pytest
 import pytest_asyncio
 
 from datasette import hookimpl
 from datasette.app import Datasette
+from datasette.database import Database, QueryInterrupted
 from datasette.plugins import pm
 from datasette.utils.asgi import Response
 from datasette.views.base import StreamSizeExceeded
@@ -396,3 +398,117 @@ async def test_export_dialog_binary_format_that_can_stream(ds):
     note = dialog.select_one("#export-page-note").text
     assert "to export every row as TSV, CSV, " in note
     assert "Binary" in note
+
+
+def _interrupt_page_queries(monkeypatch, should_interrupt):
+    """
+    Makes the SQL queries that fetch a page of rows raise QueryInterrupted,
+    as they do on reaching sql_time_limit_ms, when should_interrupt(limits)
+    is true. limits is the "limit N" of every page query so far, which is
+    one more than the page size. Returns that list.
+    """
+    limits = []
+    original = Database.execute
+
+    async def execute(self, sql, *args, **kwargs):
+        match = re.search(r" from numbers .*limit (\d+)", sql)
+        if match:
+            limits.append(int(match.group(1)))
+            if should_interrupt(limits):
+                raise QueryInterrupted(None, sql, {})
+        return await original(self, sql, *args, **kwargs)
+
+    monkeypatch.setattr(Database, "execute", execute)
+    return limits
+
+
+@pytest.mark.parametrize(
+    "slow_page,expected_page_sizes,expected_limits",
+    (
+        # The first page is too slow at 20 rows, so every page is 10 rows
+        (1, ["10", "10", "10", "5"], [21, 11, 11, 11, 11]),
+        # The second page is too slow, so it and the pages after are 10 rows
+        (2, ["20", "10", "5"], [21, 21, 11, 11]),
+    ),
+)
+async def test_stream_uses_smaller_pages_after_a_timeout(
+    plugin, monkeypatch, slow_page, expected_page_sizes, expected_limits
+):
+    # max_returned_rows of 20, so streaming 35 rows takes two pages
+    ds = _make_datasette(max_returned_rows=20)
+    await _add_numbers(ds)
+    limits = _interrupt_page_queries(
+        monkeypatch, lambda limits: limits.count(21) == slow_page and limits[-1] == 21
+    )
+    try:
+        response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
+        assert response.status_code == 200
+        assert response.text.split() == expected_page_sizes
+        assert limits == expected_limits
+        # No rows are lost or repeated
+        del limits[:]
+        response = await ds.client.get("/data/numbers.ndjson?_stream=1")
+        assert _ids(response) == list(range(1, 36))
+        assert limits == expected_limits
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize(
+    "settings,table_config,expected_page_sizes",
+    (
+        # The smaller pages are the size set in the table configuration
+        ({}, {"size": 5}, ["5"] * 7),
+        # A default page size above max_returned_rows would lose rows
+        ({"default_page_size": 30}, {}, ["20", "15"]),
+        ({}, {"size": 30}, ["20", "15"]),
+    ),
+)
+async def test_stream_smaller_page_size(
+    plugin, monkeypatch, settings, table_config, expected_page_sizes
+):
+    ds = _make_datasette(max_returned_rows=20, **settings)
+    ds.config = {"databases": {"data": {"tables": {"numbers": table_config}}}}
+    await _add_numbers(ds)
+    # Only the first query is too slow
+    _interrupt_page_queries(monkeypatch, lambda limits: len(limits) == 1)
+    try:
+        response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
+        assert response.status_code == 200
+        assert response.text.split() == expected_page_sizes
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize(
+    "path,expected_limits",
+    (
+        # ?_size= asked for that page size, so it is not replaced
+        ("/data/numbers.csv?_stream=1&_size=20", [21]),
+        ("/data/numbers.csv?_stream=1&_size=max", [1001]),
+        # Not streaming
+        ("/data/numbers.csv?_size=max", [1001]),
+        ("/data/numbers.json", [11]),
+        # The smaller page is too slow as well
+        ("/data/numbers.csv?_stream=1", [1001, 11]),
+    ),
+)
+async def test_timeout_that_is_not_retried(ds, monkeypatch, path, expected_limits):
+    limits = _interrupt_page_queries(monkeypatch, lambda limits: True)
+    response = await ds.client.get(path)
+    assert response.status_code == 500
+    assert "QueryInterrupted" in response.text
+    assert limits == expected_limits
+
+
+async def test_stream_with_max_returned_rows_of_zero(plugin):
+    # 0 means no limit, so there is no largest page size to stream with
+    ds = _make_datasette(max_returned_rows=0)
+    await _add_numbers(ds)
+    try:
+        response = await ds.client.get("/data/numbers.pagesizes?_stream=1")
+        assert response.text.split() == ["10", "10", "10", "5"]
+        response = await ds.client.get("/data/numbers.ndjson?_stream=1")
+        assert _ids(response) == list(range(1, 36))
+    finally:
+        ds.close()

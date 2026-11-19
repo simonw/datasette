@@ -250,5 +250,6 @@ def temporary_heroku_directory(
         yield
 
     finally:
-        tmp.cleanup()
+        # Windows cannot delete the current working directory, so leave it first
         os.chdir(saved_cwd)
+        tmp.cleanup()

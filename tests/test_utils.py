@@ -431,6 +431,7 @@ def test_temporary_docker_directory_uses_hard_link():
         with utils.temporary_docker_directory(
             files=["hello"],
             name="t",
+            config=None,
             metadata=None,
             extra_options=None,
             branch=None,
@@ -461,6 +462,7 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
         with utils.temporary_docker_directory(
             files=["hello"],
             name="t",
+            config=None,
             metadata=None,
             extra_options=None,
             branch=None,
@@ -487,6 +489,7 @@ def test_temporary_docker_directory_quotes_args():
         with utils.temporary_docker_directory(
             files=["hello"],
             name="t",
+            config=None,
             metadata=None,
             extra_options="--$HOME",
             branch=None,

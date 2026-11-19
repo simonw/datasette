@@ -1942,6 +1942,9 @@ async def test_hook_register_events():
     datasette = Datasette(memory=True)
     await datasette.invoke_startup()
     assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)
+    # Core database lifecycle events should be registered too
+    registered_names = {k.name for k in datasette.event_classes}
+    assert {"add-database", "remove-database"} <= registered_names
 
 
 async def test_hook_register_token_handler(ds_client):

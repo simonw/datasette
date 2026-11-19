@@ -144,6 +144,15 @@ The three visible metadata fields you can apply to everything, specific database
 
 For each of these you can provide just the ``*_url`` field and Datasette will treat that as the default link label text and display the URL directly on the page.
 
+.. _metadata_description:
+
+Descriptions
+------------
+
+You can apply a **description** or **description_html** field to the index page, specific databases or specific tables. If both are present, the HTML description wins.
+
+Unlike the metadata fields above, descriptions do not cascade from the index to databases or from databases to their columns.
+
 .. _metadata_column_descriptions:
 
 Column descriptions

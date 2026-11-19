@@ -1,5 +1,4 @@
 import inspect
-import types
 from typing import Any, NamedTuple
 
 
@@ -16,8 +15,11 @@ def check_callable(obj: Any) -> CallableStatus:
         # It's a class
         return CallableStatus(True, False)
 
-    if isinstance(obj, types.FunctionType):
-        return CallableStatus(True, inspect.iscoroutinefunction(obj))
+    if inspect.iscoroutinefunction(obj):
+        # Inspect the object itself, so bound methods and functools.partial objects
+        # wrapping an async function are recognised - they are not types.FunctionType,
+        # and their __call__ is a method wrapper rather than a coroutine function.
+        return CallableStatus(True, True)
 
     if callable(obj):
         return CallableStatus(True, inspect.iscoroutinefunction(obj.__call__))

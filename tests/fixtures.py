@@ -31,6 +31,8 @@ EXPECTED_PLUGINS = [
         "templates": False,
         "version": None,
         "hooks": ["register_output_renderer"],
+        "actions": [],
+        "permissions": [],
     },
     {
         "name": "my_plugin.py",
@@ -63,6 +65,25 @@ EXPECTED_PLUGINS = [
             "table_actions",
             "view_actions",
         ],
+        "actions": [
+            {
+                "name": "action-from-plugin",
+                "description": "New action added by a plugin",
+            },
+            {"name": "this_is_allowed", "description": None},
+            {"name": "this_is_allowed_async", "description": None},
+            {"name": "this_is_denied", "description": None},
+            {"name": "this_is_denied_async", "description": None},
+            {"name": "view-collection", "description": "View a collection"},
+        ],
+        "permissions": [
+            "action-from-plugin",
+            "this_is_allowed",
+            "this_is_allowed_async",
+            "this_is_denied",
+            "this_is_denied_async",
+            "view-collection",
+        ],
     },
     {
         "name": "my_plugin_2.py",
@@ -82,6 +103,8 @@ EXPECTED_PLUGINS = [
             "startup",
             "table_actions",
         ],
+        "actions": [],
+        "permissions": [],
     },
     {
         "name": "register_output_renderer.py",
@@ -89,6 +112,8 @@ EXPECTED_PLUGINS = [
         "templates": False,
         "version": None,
         "hooks": ["register_output_renderer"],
+        "actions": [],
+        "permissions": [],
     },
     {
         "name": "sleep_sql_function.py",
@@ -96,6 +121,8 @@ EXPECTED_PLUGINS = [
         "templates": False,
         "version": None,
         "hooks": ["prepare_connection"],
+        "actions": [],
+        "permissions": [],
     },
     {
         "name": "view_name.py",
@@ -103,6 +130,8 @@ EXPECTED_PLUGINS = [
         "templates": False,
         "version": None,
         "hooks": ["extra_template_vars"],
+        "actions": [],
+        "permissions": [],
     },
 ]
 

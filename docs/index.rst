@@ -66,6 +66,7 @@ Contents
    testing_plugins
    plugin_telemetry
    internals
+   database_errors
    events
    upgrade_guide
    contributing

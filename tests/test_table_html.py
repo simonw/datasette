@@ -772,8 +772,11 @@ async def test_table_view_and_edit_sql_button(ds_client):
         "Export data",
     ]
     link = tools.select_one("a.quiet-button.view-sql-button")
-    assert link["href"].startswith("/fixtures?sql=select+id")
+    assert link["href"].startswith("/fixtures/-/query?sql=select+id")
     assert link["title"].startswith("select id, content from simple_primary_key")
+    # The link should go straight to the query page, not via a redirect
+    query_response = await ds_client.get(link["href"].replace("&amp;", "&"))
+    assert query_response.status_code == 200
 
 
 def _export_urls(soup):

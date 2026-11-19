@@ -1,6 +1,7 @@
 import signal
 import socket
 import subprocess
+import sys
 import time
 
 import httpx2
@@ -179,7 +180,17 @@ def _start_serve_with_shutdown_sentinel(serve_with_plugins, tmp_path):
     return proc, sentinel_path
 
 
+# On Windows send_signal(SIGTERM) calls TerminateProcess(), which kills the
+# server without giving it a chance to run anything, and send_signal() does
+# not support SIGINT at all
+skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows cannot deliver SIGTERM or SIGINT to a subprocess",
+)
+
+
 @pytest.mark.serial
+@skip_on_windows
 def test_sigterm_runs_shutdown_hooks(serve_with_plugins, tmp_path):
     ds_proc, sentinel_path = _start_serve_with_shutdown_sentinel(
         serve_with_plugins, tmp_path
@@ -206,6 +217,7 @@ def test_sigterm_runs_shutdown_hooks(serve_with_plugins, tmp_path):
 @pytest.mark.skipif(
     not hasattr(signal, "SIGINT"), reason="Requires signal.SIGINT support"
 )
+@skip_on_windows
 def test_sigint_runs_shutdown_hooks(serve_with_plugins, tmp_path):
     ds_proc, sentinel_path = _start_serve_with_shutdown_sentinel(
         serve_with_plugins, tmp_path

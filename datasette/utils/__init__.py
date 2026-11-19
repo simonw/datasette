@@ -806,8 +806,9 @@ def temporary_docker_directory(
             )
         yield datasette_dir
     finally:
-        tmp.cleanup()
+        # Windows cannot delete the current working directory, so leave it first
         os.chdir(saved_cwd)
+        tmp.cleanup()
 
 
 def detect_primary_keys(conn, table):

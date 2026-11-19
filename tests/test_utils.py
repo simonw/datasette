@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import pathlib
-import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -422,88 +421,87 @@ def test_to_css_class(s, expected):
     assert utils.to_css_class(s) == expected
 
 
-def test_temporary_docker_directory_uses_hard_link():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        # Default usage of this should use symlink
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options=None,
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note=None,
-            secret="secret",
-        ) as temp_docker:
-            hello = os.path.join(temp_docker, "hello")
-            with open(hello) as fp:
-                assert fp.read() == "world"
-            # It should be a hard link
-            assert os.stat(hello).st_nlink == 2
+def test_temporary_docker_directory_uses_hard_link(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    # Default usage of this should use symlink
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options=None,
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note=None,
+        secret="secret",
+    ) as temp_docker:
+        hello = os.path.join(temp_docker, "hello")
+        with open(hello) as fp:
+            assert fp.read() == "world"
+        # It should be a hard link
+        assert os.stat(hello).st_nlink == 2
 
 
 @patch("os.link")
-def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
+def test_temporary_docker_directory_uses_copy_if_hard_link_fails(
+    mock_link, tmp_path, monkeypatch
+):
     # Copy instead if os.link raises OSError (normally due to different device)
     mock_link.side_effect = OSError
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        # Default usage of this should use symlink
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options=None,
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note=None,
-            secret=None,
-        ) as temp_docker:
-            hello = os.path.join(temp_docker, "hello")
-            with open(hello) as fp:
-                assert fp.read() == "world"
-            # It should be a copy, not a hard link
-            assert os.stat(hello).st_nlink == 1
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    # Default usage of this should use symlink
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options=None,
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note=None,
+        secret=None,
+    ) as temp_docker:
+        hello = os.path.join(temp_docker, "hello")
+        with open(hello) as fp:
+            assert fp.read() == "world"
+        # It should be a copy, not a hard link
+        assert os.stat(hello).st_nlink == 1
 
 
-def test_temporary_docker_directory_quotes_args():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options="--$HOME",
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note="$PWD",
-            secret="secret",
-        ) as temp_docker:
-            df = os.path.join(temp_docker, "Dockerfile")
-            with open(df) as fp:
-                df_contents = fp.read()
-            assert "'$PWD'" in df_contents
-            assert "'--$HOME'" in df_contents
-            assert "ENV DATASETTE_SECRET 'secret'" in df_contents
+def test_temporary_docker_directory_quotes_args(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options="--$HOME",
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note="$PWD",
+        secret="secret",
+    ) as temp_docker:
+        df = os.path.join(temp_docker, "Dockerfile")
+        with open(df) as fp:
+            df_contents = fp.read()
+        assert "'$PWD'" in df_contents
+        assert "'--$HOME'" in df_contents
+        assert "ENV DATASETTE_SECRET 'secret'" in df_contents
 
 
 def test_compound_keys_after_sql():

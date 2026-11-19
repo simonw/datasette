@@ -81,16 +81,12 @@ def test_serve_with_inspect_file_prepopulates_table_counts_cache():
         assert db.cached_table_counts == {"hithere": 44}
 
 
-@pytest.mark.parametrize(
-    "spatialite_paths,should_suggest_load_extension",
-    (
-        ([], False),
-        (["/tmp"], True),
-    ),
-)
+@pytest.mark.parametrize("should_suggest_load_extension", (False, True))
 def test_spatialite_error_if_attempt_to_open_spatialite(
-    spatialite_paths, should_suggest_load_extension
+    should_suggest_load_extension, tmp_path
 ):
+    # find_spatialite() only checks that one of these paths exists
+    spatialite_paths = [str(tmp_path)] if should_suggest_load_extension else []
     with mock.patch("datasette.utils.SPATIALITE_PATHS", spatialite_paths):
         runner = CliRunner()
         result = runner.invoke(

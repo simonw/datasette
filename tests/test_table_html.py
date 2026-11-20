@@ -772,8 +772,11 @@ async def test_table_view_and_edit_sql_button(ds_client):
         "Export data",
     ]
     link = tools.select_one("a.quiet-button.view-sql-button")
-    assert link["href"].startswith("/fixtures?sql=select+id")
+    assert link["href"].startswith("/fixtures/-/query?sql=select+id")
     assert link["title"].startswith("select id, content from simple_primary_key")
+    # The link should go straight to the query page, not via a redirect
+    query_response = await ds_client.get(link["href"].replace("&amp;", "&"))
+    assert query_response.status_code == 200
 
 
 def _export_urls(soup):
@@ -3079,3 +3082,13 @@ async def test_foreign_keys_special_character_in_database_name(ds_on_disk_with_d
     client = ds_on_disk_with_dot.client
     response = await client.get("/fixtures~2Edot/complex_foreign_keys")
     assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text
+
+
+async def test_search_box_shows_current_search(ds_client):
+    response = await ds_client.get("/fixtures/searchable?_search=dog")
+    assert response.status_code == 200
+    search_input = Soup(response.text, "html.parser").select_one("input#_search")
+    assert search_input["value"] == "dog"
+    response = await ds_client.get("/fixtures/searchable")
+    search_input = Soup(response.text, "html.parser").select_one("input#_search")
+    assert search_input["value"] == ""

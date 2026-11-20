@@ -516,11 +516,19 @@ Enable it like this::
 
 Now you can add ``?_context=1`` or ``&_context=1`` to any Datasette page to see the context that was passed to that template.
 
+This shows a page listing every variable, grouped into the documented variables for that page, any undocumented variables, variables added by plugins and the variables that are available on every page. Each variable is shown with its description from the :ref:`template context documentation <template_context>`, its current value and the ``{{ variable }}`` syntax for using it in a template, with a button to copy that to your clipboard. Functions are shown with their arguments and docstring, and objects such as ``urls`` list their methods.
+
 Some examples:
 
 * https://latest.datasette.io/?_context=1
 * https://latest.datasette.io/fixtures?_context=1
 * https://latest.datasette.io/fixtures/roadside_attractions?_context=1
+
+Use ``?_context_json=1`` to see the same context as indented JSON instead:
+
+* https://latest.datasette.io/fixtures/roadside_attractions?_context_json=1
+
+Template contexts can include information that is not otherwise visible on the page, so this setting should not be enabled on a public instance unless you are happy for that information to be seen.
 
 .. _setting_trace_debug:
 

@@ -1198,21 +1198,25 @@ async def test_query_error(ds_client):
 
 async def test_config_template_debug_on():
     ds = await make_ds(settings={"template_debug": True})
-    response = await ds.client.get("/fixtures/facetable?_context=1")
+    response = await ds.client.get("/fixtures/facetable?_context_json=1")
     assert response.status_code == 200
     assert response.text.startswith("<pre>{")
 
 
-async def test_config_template_debug_off(ds_client):
-    response = await ds_client.get("/fixtures/facetable?_context=1")
+@pytest.mark.parametrize("arg", ("_context", "_context_json"))
+async def test_config_template_debug_off(ds_client, arg):
+    response = await ds_client.get(f"/fixtures/facetable?{arg}=1")
     assert response.status_code == 200
     assert not response.text.startswith("<pre>{")
+    assert "template context</h1>" not in response.text
+    assert "<h1>facetable</h1>" in response.text
 
 
-async def test_debug_context_includes_extra_template_vars():
+@pytest.mark.parametrize("arg", ("_context", "_context_json"))
+async def test_debug_context_includes_extra_template_vars(arg):
     # https://github.com/simonw/datasette/issues/693
     ds = await make_ds(settings={"template_debug": True})
-    response = await ds.client.get("/fixtures/facetable?_context=1")
+    response = await ds.client.get(f"/fixtures/facetable?{arg}=1")
     # scope_path is added by PLUGIN1
     assert "scope_path" in response.text
 

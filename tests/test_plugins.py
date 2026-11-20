@@ -2320,3 +2320,67 @@ async def test_hook_register_column_types():
     assert "email" in ds._column_types
     assert "json" in ds._column_types
     assert "nonexistent" not in ds._column_types
+
+
+@pytest.mark.parametrize(
+    "path,expected_table,expected_a_id",
+    (
+        # Table and row pages expand foreign keys to {"value", "label"}
+        ("/demo/b", "b", {"value": 1, "label": "one"}),
+        ("/demo/b/1", "b", {"value": 1, "label": "one"}),
+        # ... unless labels are turned off
+        ("/demo/b?_labels=off", "b", 1),
+        # Views and custom SQL queries do not expand them
+        ("/demo/b_view", "b_view", 1),
+        ("/demo/-/query?sql=select+*+from+b", None, 1),
+    ),
+)
+async def test_hook_render_cell_row_and_value(path, expected_table, expected_a_id):
+    # https://github.com/simonw/datasette/issues/1973
+    calls = []
+
+    class Plugin:
+        __name__ = "RenderCellRowPlugin"
+
+        @hookimpl
+        def render_cell(self, row, value, column, table):
+            calls.append(
+                {
+                    "table": table,
+                    "column": column,
+                    "value": value,
+                    "keys": list(row.keys()),
+                    "by_name": row[column],
+                    "by_index": row[list(row.keys()).index(column)],
+                }
+            )
+
+    ds = Datasette()
+    db = ds.add_memory_database("demo")
+    await db.execute_write_script("""
+        create table a (id integer primary key, name text);
+        create table b (
+            id integer primary key, a_id integer references a(id), t text
+        );
+        create view b_view as select * from b;
+        insert into a values (1, 'one');
+        insert into b values (1, 1, 'x');
+        """)
+    await ds.invoke_startup()
+    plugin = Plugin()
+    pm.register(plugin, name="RenderCellRowPlugin")
+    try:
+        response = await ds.client.get(path)
+    finally:
+        pm.unregister(plugin)
+    assert response.status_code == 200
+    assert calls
+    by_column = {call["column"]: call for call in calls}
+    for call in calls:
+        assert call["table"] == expected_table
+        # row supports .keys() plus lookups by both name and index
+        assert call["keys"] == ["id", "a_id", "t"]
+        assert call["by_name"] == call["value"]
+        assert call["by_index"] == call["value"]
+    assert by_column["a_id"]["value"] == expected_a_id
+    assert by_column["t"]["value"] == "x"

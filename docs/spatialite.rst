@@ -70,6 +70,11 @@ Depending on your distribution, you should be able to run Datasette something li
 
 If you are unsure of the location of the module, try running ``locate mod_spatialite`` and see what comes back.
 
+Installing SpatiaLite on Windows
+-----------------------------
+
+For Windows, you may find binaries on the `Gaia-SINS <https://www.gaia-gis.it/gaia-sins/>`_ home page.
+
 Spatial indexing latitude/longitude columns
 ===========================================
 

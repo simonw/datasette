@@ -769,7 +769,7 @@ A table can have far more rows than fit on one page. A ``"render"`` function tha
 
 ``row_stream`` yields the rows on the current page. If the URL includes ``?_stream=1`` it carries on past the end of that page, fetching one page at a time, until it has yielded every row in the table or view. Your function does not need to know which of those is happening.
 
-Use ``async for rows in row_stream.pages()`` to receive a list of rows for each page instead of one row at a time. When streaming every row those pages are up to :ref:`setting_max_returned_rows` rows each, unless the URL sets a different ``?_size=``. If fetching a page that size takes longer than :ref:`setting_sql_time_limit_ms`, that page and the ones after it use the default page size instead.
+Use ``async for rows in row_stream.pages()`` to receive a list of rows for each page instead of one row at a time. When streaming every row those pages are up to :ref:`setting_max_returned_rows` rows each, unless the URL sets a different ``?_size=``.
 
 The :ref:`Export data dialog <csv_export>` lists formats that accept ``row_stream`` in the same group as TSV and CSV, so that its "Include all rows" and "Expand labels" options apply to them. Like TSV and CSV, their links in the dialog use ``?_size=max``.
 

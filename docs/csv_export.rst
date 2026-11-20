@@ -108,13 +108,6 @@ If a table returns more than 100MB of data Datasette stops and drops the
 connection, so the download fails instead of saving a file that is silently
 missing rows. The same thing happens if an error occurs part of the way through.
 
-Rows are fetched in pages of :ref:`setting_max_returned_rows`. If one of those
-pages takes longer than :ref:`setting_sql_time_limit_ms`, which can happen for a
-view that is slow to compute, Datasette fetches it again using the
-:ref:`default page size <setting_default_page_size>` and uses that size for the
-rest of the export. A ``?_size=`` in the URL sets the page size instead, and
-turns this off.
-
 You can increase or remove this limit using the :ref:`setting_max_stream_mb` config
 setting. You can also disable the *include all rows* option entirely using
 :ref:`setting_default_allow_stream`.

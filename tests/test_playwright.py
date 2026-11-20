@@ -4732,3 +4732,113 @@ def test_row_page_long_value_replaced_by_plugin_is_not_clamped(
     expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
     expect(expand).to_be_visible()
     assert value.bounding_box()["height"] == clamped_height
+
+
+PANEL_PLUGIN_SCRIPT = """
+document.addEventListener("datasette_init", function (event) {
+  event.detail.registerPlugin("panel-plugin", {
+    version: 0.1,
+    makeAboveTablePanelConfigs: () => ["First", "Second", "Third"].map((name) => ({
+      id: name.toLowerCase() + "-panel",
+      label: name + " panel",
+      render: (node) => {
+        node.innerHTML = "<p>" + name + " panel content</p>";
+      },
+    })),
+  });
+});
+"""
+
+
+@pytest.mark.playwright
+def test_above_table_panel_tabs_show_selected_state(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(PANEL_PLUGIN_SCRIPT)
+    page.goto(f"{datasette_server}data/projects")
+
+    tablist = page.get_by_role("tablist")
+    expect(tablist).to_have_count(1)
+    expect(tablist).to_have_accessible_name("Panels")
+    tabs = tablist.get_by_role("tab")
+    expect(tabs).to_have_count(3)
+    first, second, third = tabs.nth(0), tabs.nth(1), tabs.nth(2)
+
+    def expect_selected(selected):
+        for tab in (first, second, third):
+            is_selected = tab == selected
+            expect(tab).to_have_attribute(
+                "aria-selected", "true" if is_selected else "false"
+            )
+            # Only the selected tab is in the tab order
+            expect(tab).to_have_attribute("tabindex", "0" if is_selected else "-1")
+            panel = page.locator(f"#{tab.get_attribute('aria-controls')}")
+            expect(panel).to_have_attribute("role", "tabpanel")
+            expect(panel).to_have_attribute("aria-labelledby", tab.get_attribute("id"))
+            if is_selected:
+                expect(panel).to_be_visible()
+                expect(panel).to_have_accessible_name(tab.inner_text())
+            else:
+                expect(panel).to_be_hidden()
+
+    def underline(tab):
+        return tab.evaluate("el => getComputedStyle(el).borderBottomWidth")
+
+    # The first panel is selected by default
+    expect_selected(first)
+    expect(page.get_by_role("tabpanel")).to_have_text("First panel content")
+    # ... and the selected state is visible without relying on colour
+    assert underline(first) == "3px"
+    assert underline(second) == "0px"
+
+    second.click()
+    expect_selected(second)
+    assert underline(first) == "0px"
+    assert underline(second) == "3px"
+
+    # Arrow keys move between the tabs, wrapping at either end
+    page.keyboard.press("ArrowRight")
+    expect(third).to_be_focused()
+    expect_selected(third)
+    page.keyboard.press("ArrowRight")
+    expect(first).to_be_focused()
+    expect_selected(first)
+    page.keyboard.press("ArrowLeft")
+    expect(third).to_be_focused()
+    expect_selected(third)
+    page.keyboard.press("Home")
+    expect(first).to_be_focused()
+    expect_selected(first)
+    page.keyboard.press("End")
+    expect(third).to_be_focused()
+    expect_selected(third)
+
+    # Tab leaves the tablist for the selected panel
+    page.keyboard.press("Tab")
+    expect(page.get_by_role("tabpanel")).to_be_focused()
+    expect(page.get_by_role("tabpanel")).to_have_text("Third panel content")
+
+
+@pytest.mark.playwright
+def test_above_table_panel_keeps_selection_when_plugin_registers_later(
+    page, datasette_server
+):
+    from playwright.sync_api import expect
+
+    page.add_init_script(PANEL_PLUGIN_SCRIPT)
+    page.goto(f"{datasette_server}data/projects")
+    tabs = page.get_by_role("tab")
+    tabs.nth(1).click()
+    page.evaluate("""
+        window.__DATASETTE__.registerPlugin("late-plugin", {
+          version: 0.1,
+          makeAboveTablePanelConfigs: () => [
+            {id: "late", label: "Late panel", render: (node) => {}},
+          ],
+        });
+        """)
+    expect(page.get_by_role("tablist")).to_have_count(1)
+    expect(tabs).to_have_count(4)
+    expect(tabs.nth(1)).to_have_attribute("aria-selected", "true")
+    expect(tabs.nth(3)).to_have_attribute("aria-selected", "false")
+    expect(page.get_by_role("tabpanel")).to_have_text("Second panel content")

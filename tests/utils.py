@@ -8,21 +8,21 @@ def last_event(datasette):
 
 def assert_footer_links(soup):
     footer_links = soup.find("footer").find_all("a")
-    assert 4 == len(footer_links)
+    assert len(footer_links) == 4
     datasette_link, license_link, source_link, about_link = footer_links
-    assert "Datasette" == datasette_link.text.strip()
-    assert "tests/fixtures.py" == source_link.text.strip()
-    assert "Apache License 2.0" == license_link.text.strip()
-    assert "About Datasette" == about_link.text.strip()
-    assert "https://datasette.io/" == datasette_link["href"]
+    assert datasette_link.text.strip() == "Datasette"
+    assert source_link.text.strip() == "tests/fixtures.py"
+    assert license_link.text.strip() == "Apache License 2.0"
+    assert about_link.text.strip() == "About Datasette"
+    assert datasette_link["href"] == "https://datasette.io/"
     assert (
-        "https://github.com/simonw/datasette/blob/main/tests/fixtures.py"
-        == source_link["href"]
+        source_link["href"]
+        == "https://github.com/simonw/datasette/blob/main/tests/fixtures.py"
     )
     assert (
-        "https://github.com/simonw/datasette/blob/main/LICENSE" == license_link["href"]
+        license_link["href"] == "https://github.com/simonw/datasette/blob/main/LICENSE"
     )
-    assert "https://github.com/simonw/datasette" == about_link["href"]
+    assert about_link["href"] == "https://github.com/simonw/datasette"
 
 
 def inner_html(soup):

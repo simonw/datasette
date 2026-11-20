@@ -75,7 +75,6 @@ async def counting_ds(ds):
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_allowed_memoized_when_cache_active(counting_ds):
     ds, plugin = counting_ds
     resource = TableResource("analytics", "users")
@@ -99,7 +98,6 @@ async def test_allowed_memoized_when_cache_active(counting_ds):
         _permission_check_cache.reset(token)
 
 
-@pytest.mark.asyncio
 async def test_allowed_not_memoized_without_cache(counting_ds):
     ds, plugin = counting_ds
     resource = TableResource("analytics", "users")
@@ -111,7 +109,6 @@ async def test_allowed_not_memoized_without_cache(counting_ds):
     assert plugin.count(actor_id="alice", action="view-table") == first_count * 2
 
 
-@pytest.mark.asyncio
 async def test_cache_keyed_on_full_actor_identity(counting_ds):
     """Interleaved checks for different actors never share cache entries."""
     # Uses drop-table because default permissions deny it to non-root actors
@@ -157,7 +154,6 @@ async def test_cache_keyed_on_full_actor_identity(counting_ds):
         _permission_check_cache.reset(token)
 
 
-@pytest.mark.asyncio
 async def test_cache_keyed_on_resource(counting_ds):
     ds, plugin = counting_ds
     token = _permission_check_cache.set({})
@@ -179,7 +175,6 @@ async def test_cache_keyed_on_resource(counting_ds):
         _permission_check_cache.reset(token)
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_bypasses_cache(counting_ds):
     ds, _plugin = counting_ds
     resource = TableResource("analytics", "users")
@@ -229,7 +224,6 @@ class MatrixRulesPlugin:
         return None
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_basic(ds):
     plugin = MatrixRulesPlugin()
     ds.pm.register(plugin, name="matrix")
@@ -255,7 +249,6 @@ async def test_allowed_many_basic(ds):
         ds.pm.unregister(name="matrix")
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_matches_allowed(ds):
     """Every action resolved by allowed_many() must match allowed()."""
     plugin = MatrixRulesPlugin()
@@ -282,7 +275,6 @@ async def test_allowed_many_matches_allowed(ds):
         ds.pm.unregister(name="matrix")
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_unknown_action_raises(ds):
     with pytest.raises(ValueError, match="Unknown action"):
         await ds.allowed_many(
@@ -292,7 +284,6 @@ async def test_allowed_many_unknown_action_raises(ds):
         )
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_empty_actions(ds):
     assert (
         await ds.allowed_many(
@@ -325,7 +316,6 @@ class AlsoRequiresRulesPlugin:
         return None
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_also_requires(ds):
     # store-query also_requires execute-sql, which also_requires view-database
     plugin = AlsoRequiresRulesPlugin()
@@ -364,7 +354,6 @@ async def test_allowed_many_also_requires(ds):
         ds.pm.unregister(name="also_requires")
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_respects_restrictions(ds):
     """Token-style _r restrictions are enforced within the batch."""
     actor = {"id": "root", "_r": {"d": {"analytics": ["vt"]}}}
@@ -415,7 +404,6 @@ class ParamCollisionPlugin:
         )
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_namespaces_params_across_actions(ds):
     """40+ actions whose rules use identical param names must not collide."""
     plugin = ParamCollisionPlugin()
@@ -439,7 +427,6 @@ async def test_allowed_many_namespaces_params_across_actions(ds):
         ds.pm.unregister(name="collision")
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_single_internal_db_query(ds):
     internal_db = ds.get_internal_database()
     calls = []
@@ -462,7 +449,6 @@ async def test_allowed_many_single_internal_db_query(ds):
         internal_db.execute = original_execute
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_no_query_when_no_rules(ds):
     """Actions with no rules from any plugin are denied without SQL.
 
@@ -500,7 +486,6 @@ async def test_allowed_many_no_query_when_no_rules(ds):
         internal_db.execute = original_execute
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_global_actions_without_resource(ds):
     results = await ds.allowed_many(
         actions=["view-instance", "permissions-debug"],
@@ -514,7 +499,6 @@ async def test_allowed_many_global_actions_without_resource(ds):
     assert anon == {"permissions-debug": False}
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_seeds_request_cache(counting_ds):
     ds, plugin = counting_ds
     resource = TableResource("analytics", "users")
@@ -532,7 +516,6 @@ async def test_allowed_many_seeds_request_cache(counting_ds):
         _permission_check_cache.reset(token)
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_skip_permission_checks(ds):
     with SkipPermissions():
         results = await ds.allowed_many(
@@ -566,7 +549,6 @@ class ManyActionsPlugin:
             )
 
 
-@pytest.mark.asyncio
 async def test_allowed_many_more_than_sqlite_compound_select_limit():
     plugin = ManyActionsPlugin(600)
     ds = Datasette()
@@ -649,7 +631,6 @@ async def spying_ds(ds, monkeypatch):
         ds.pm.unregister(name="action_hooks")
 
 
-@pytest.mark.asyncio
 async def test_table_page_precomputes_action_permissions(spying_ds):
     ds, recorded = spying_ds
     cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
@@ -676,7 +657,6 @@ async def test_table_page_precomputes_action_permissions(spying_ds):
     assert ["create-table"] not in recorded
 
 
-@pytest.mark.asyncio
 async def test_database_page_precomputes_action_permissions(spying_ds):
     ds, recorded = spying_ds
     cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
@@ -692,7 +672,6 @@ async def test_database_page_precomputes_action_permissions(spying_ds):
     assert ["create-table"] not in recorded
 
 
-@pytest.mark.asyncio
 async def test_cache_does_not_leak_across_requests(counting_ds):
     ds, plugin = counting_ds
     cookies = {"ds_actor": ds.client.actor_cookie({"id": "alice"})}

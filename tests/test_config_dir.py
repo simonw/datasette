@@ -4,10 +4,9 @@ import pathlib
 import pytest
 
 from datasette.app import Datasette
+from datasette.plugins import pm
 from datasette.utils import StartupError
 from datasette.utils.sqlite import sqlite3
-
-from .fixtures import TestClient as _TestClient
 
 PLUGIN = """
 from datasette import hookimpl
@@ -94,56 +93,59 @@ def test_invalid_settings(config_dir):
         (config_dir / "datasette.json").write_text(previous, "utf-8")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def config_dir_client(config_dir):
     ds = Datasette([], config_dir=config_dir)
-    yield _TestClient(ds)
-    for db in ds.databases.values():
-        db.close()
+    try:
+        yield ds.client
+    finally:
+        # plugins_dir plugins are registered on the global plugin manager
+        pm.unregister(name="hooray.py")
+        ds.close()
 
 
-def test_settings(config_dir_client):
-    response = config_dir_client.get("/-/settings.json")
-    assert 200 == response.status
-    assert 60 == response.json["default_cache_ttl"]
+async def test_settings(config_dir_client):
+    response = await config_dir_client.get("/-/settings.json")
+    assert response.status_code == 200
+    assert response.json()["default_cache_ttl"] == 60
 
 
-def test_plugins(config_dir_client):
-    response = config_dir_client.get("/-/plugins.json")
-    assert 200 == response.status
-    plugins = response.json
+async def test_plugins(config_dir_client):
+    response = await config_dir_client.get("/-/plugins.json")
+    assert response.status_code == 200
+    plugins = response.json()
     assert "hooray.py" in {p["name"] for p in plugins}
     assert "non_py_file.txt" not in {p["name"] for p in plugins}
     assert "mypy_cache" not in {p["name"] for p in plugins}
 
 
-def test_templates_and_plugin(config_dir_client):
-    response = config_dir_client.get("/demo/cities/1")
-    assert 200 == response.status
-    assert "Show row here. Plugin says hooray" == response.text
+async def test_templates_and_plugin(config_dir_client):
+    response = await config_dir_client.get("/demo/cities/1")
+    assert response.status_code == 200
+    assert response.text == "Show row here. Plugin says hooray"
 
 
-def test_static(config_dir_client):
-    response = config_dir_client.get("/static/hello.css")
-    assert 200 == response.status
+async def test_static(config_dir_client):
+    response = await config_dir_client.get("/static/hello.css")
+    assert response.status_code == 200
     assert CSS == response.text
-    assert "text/css" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/css"
 
 
-def test_static_directory_browsing_not_allowed(config_dir_client):
-    response = config_dir_client.get("/static/")
-    assert 403 == response.status
-    assert "403: Directory listing is not allowed" == response.text
+async def test_static_directory_browsing_not_allowed(config_dir_client):
+    response = await config_dir_client.get("/static/")
+    assert response.status_code == 403
+    assert response.text == "403: Directory listing is not allowed"
 
 
-def test_databases(config_dir_client):
-    response = config_dir_client.get("/-/databases.json")
-    assert 200 == response.status
-    databases = response.json["databases"]
-    assert 4 == len(databases)
+async def test_databases(config_dir_client):
+    response = await config_dir_client.get("/-/databases.json")
+    assert response.status_code == 200
+    databases = response.json()["databases"]
+    assert len(databases) == 4
     databases.sort(key=lambda d: d["name"])
     for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):
-        assert expected_name == db["name"]
+        assert db["name"] == expected_name
         assert db["is_mutable"] == (expected_name != "immutable")
 
 

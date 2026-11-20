@@ -1,10 +1,13 @@
+import re
+
 import pytest
 import pytest_asyncio
+from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def schema_ds():
     """Create a Datasette instance with test databases and permission config."""
     ds = Datasette(
@@ -39,7 +42,6 @@ async def schema_ds():
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "format_ext,expected_in_content",
     [
@@ -68,7 +70,6 @@ async def test_database_schema_formats(schema_ds, format_ext, expected_in_conten
             assert expected in content
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "format_ext,expected_in_content",
     [
@@ -104,7 +105,6 @@ async def test_instance_schema_formats(schema_ds, format_ext, expected_in_conten
             assert expected in content
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "format_ext,expected_in_content",
     [
@@ -135,7 +135,6 @@ async def test_table_schema_formats(schema_ds, format_ext, expected_in_content):
             assert expected in content
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "url",
     [
@@ -157,7 +156,6 @@ async def test_schema_permission_enforcement(schema_ds, url):
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_instance_schema_respects_database_permissions(schema_ds):
     """Test that /-/schema only shows databases the user can view."""
     # Anonymous user should only see public databases
@@ -182,7 +180,6 @@ async def test_instance_schema_respects_database_permissions(schema_ds):
     assert "schema_private_db" in db_names
 
 
-@pytest.mark.asyncio
 async def test_database_schema_with_multiple_tables(schema_ds):
     """Test schema with multiple tables in a database."""
     response = await schema_ds.client.get("/schema_public_db/-/schema.json")
@@ -196,7 +193,30 @@ async def test_database_schema_with_multiple_tables(schema_ds):
     assert "CREATE VIEW recent_posts" in schema
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_names",
+    [
+        # schema_empty_db has no schema, so nothing to copy
+        ("/-/schema", ["schema_public_db schema"]),
+        ("/schema_public_db/-/schema", ["schema_public_db schema"]),
+        ("/schema_public_db/users/-/schema", ["users schema"]),
+    ],
+)
+async def test_schema_html_copy_buttons(schema_ds, path, expected_names):
+    response = await schema_ds.client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.find("script", src=re.compile(r"copy-button\.js"))
+    buttons = soup.select(".copyable-sql > datasette-copy-button")
+    assert sorted(b["name"] for b in buttons) == expected_names
+    # Each button copies the text of the <pre> it sits next to
+    for button in buttons:
+        pre = button.find_previous_sibling("pre")
+        assert pre["id"] == button["for"]
+        assert "CREATE TABLE" in pre.text
+    assert len({b["for"] for b in buttons}) == len(buttons)
+
+
 async def test_empty_database_schema(schema_ds):
     """Test schema for an empty database."""
     response = await schema_ds.client.get("/schema_empty_db/-/schema.json")
@@ -206,7 +226,6 @@ async def test_empty_database_schema(schema_ds):
     assert data["schema"] == ""
 
 
-@pytest.mark.asyncio
 async def test_database_not_exists(schema_ds):
     """Test schema for a non-existent database returns 404."""
     # Test JSON format
@@ -227,7 +246,6 @@ async def test_database_not_exists(schema_ds):
     assert "not found" in response.text.lower()
 
 
-@pytest.mark.asyncio
 async def test_table_not_exists(schema_ds):
     """Test schema for a non-existent table returns 404."""
     # Test JSON format
@@ -248,7 +266,7 @@ async def test_table_not_exists(schema_ds):
     assert "not found" in response.text.lower()
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def schema_table_perms_ds():
     """
     A database that is viewable by anonymous users, but with one table
@@ -283,7 +301,6 @@ async def schema_table_perms_ds():
     return ds
 
 
-@pytest.mark.asyncio
 async def test_schema_table_perms_controls(schema_table_perms_ds):
     """Sanity check: the locked down table really is denied to anonymous users."""
     ds = schema_table_perms_ds
@@ -299,7 +316,6 @@ async def test_schema_table_perms_controls(schema_table_perms_ds):
     assert "employee_salaries" not in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "base_url",
     ["/-/schema", "/schema_table_perms_db/-/schema"],
@@ -335,7 +351,6 @@ async def test_schema_parent_views_hide_denied_tables(
     assert "trg_employee_salaries" in response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "object_name", ["idx_employee_salaries_ssn", "trg_employee_salaries"]
 )

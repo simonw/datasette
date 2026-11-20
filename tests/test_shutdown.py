@@ -13,8 +13,6 @@ import asyncio
 import contextlib
 import logging
 
-import pytest
-
 from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.plugins import pm
@@ -53,7 +51,6 @@ async def _drive_lifespan(app, messages):
     return sent
 
 
-@pytest.mark.asyncio
 async def test_shutdown_hook_runs_before_task_cancellation_then_closes():
     # Ordering proof: the shutdown hook observes the background task still
     # "running" (hooks run BEFORE cancellation); after the whole lifespan
@@ -105,7 +102,6 @@ async def test_shutdown_hook_runs_before_task_cancellation_then_closes():
     assert ds._shutdown_invoked is True
 
 
-@pytest.mark.asyncio
 async def test_second_lifespan_shutdown_does_not_double_invoke():
     call_count = {"n": 0}
 
@@ -143,7 +139,6 @@ async def test_second_lifespan_shutdown_does_not_double_invoke():
     assert ds._closed is True
 
 
-@pytest.mark.asyncio
 async def test_raising_shutdown_hook_is_logged_and_does_not_block_the_rest(caplog):
     events = []
 
@@ -202,7 +197,6 @@ async def test_raising_shutdown_hook_is_logged_and_does_not_block_the_rest(caplo
     assert ds._closed is True
 
 
-@pytest.mark.asyncio
 async def test_sync_shutdown_hook_variant_works():
     events = []
 
@@ -231,7 +225,6 @@ async def test_sync_shutdown_hook_variant_works():
     assert ds._closed is True
 
 
-@pytest.mark.asyncio
 async def test_shutdown_logs_stragglers_that_outlive_the_grace_period(
     caplog, monkeypatch
 ):

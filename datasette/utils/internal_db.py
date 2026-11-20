@@ -36,6 +36,7 @@ INTERNAL_DB_SCHEMA_SQL = textwrap.dedent("""
         table_name TEXT,
         rootpage INTEGER,
         sql TEXT,
+        hidden INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );
@@ -173,6 +174,12 @@ def initial_internal_schema(db):
     db.executescript(INTERNAL_DB_SCHEMA_SQL)
 
 
+@internal_migrations(name="0002_catalog_tables_hidden")
+def catalog_tables_hidden(db):
+    if "hidden" not in db["catalog_tables"].columns_dict:
+        db["catalog_tables"].add_column("hidden", int, not_null_default=0)
+
+
 async def init_internal_db(db):
     def apply_migrations(conn):
         internal_migrations.apply(SQLiteUtilsDatabase(conn, execute_plugins=False))
@@ -184,6 +191,7 @@ async def populate_schema_tables(internal_db, db, schema_version):
     database_name = db.name
 
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
+    hidden_table_names = set(await db.hidden_table_names())
     views = (await db.execute("select * from sqlite_master WHERE type = 'view'")).rows
 
     def collect_info(conn):
@@ -202,7 +210,13 @@ async def populate_schema_tables(internal_db, db, schema_version):
         for table in tables:
             table_name = table["name"]
             tables_to_insert.append(
-                (database_name, table_name, table["rootpage"], table["sql"])
+                (
+                    database_name,
+                    table_name,
+                    table["rootpage"],
+                    table["sql"],
+                    int(table_name in hidden_table_names),
+                )
             )
             columns = table_column_details(conn, table_name)
             columns_to_insert.extend(
@@ -280,8 +294,9 @@ async def populate_schema_tables(internal_db, db, schema_version):
         )
         conn.executemany(
             """
-            INSERT INTO catalog_tables (database_name, table_name, rootpage, sql)
-            values (?, ?, ?, ?)
+            INSERT INTO catalog_tables (
+                database_name, table_name, rootpage, sql, hidden
+            ) values (?, ?, ?, ?, ?)
             """,
             tables_to_insert,
         )

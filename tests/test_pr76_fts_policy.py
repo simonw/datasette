@@ -33,7 +33,6 @@ def test_vocabulary_dependency_identity(module, arguments, vocab_name):
         conn.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("module", ["fts5", "fts4"])
 @pytest.mark.parametrize("external_content", [False, True], ids=["one-hop", "two-hop"])
 @pytest.mark.parametrize(

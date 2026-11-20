@@ -14,7 +14,6 @@ def has_spatialite():
         return False
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(not has_spatialite(), reason="Requires SpatiaLite")
 @pytest.mark.skipif(not has_load_extension(), reason="Requires enable_load_extension")
 async def test_spatialite_version_info():

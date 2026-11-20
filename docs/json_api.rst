@@ -129,10 +129,11 @@ Some endpoints add extra context keys. For example, a SQL error from a
 ``"rows"`` and ``"truncated"`` keys of the response it was unable to
 produce.
 
-Permission errors use the same format: a request that fails a permission
-check receives a ``403`` with this JSON error body when the URL ends in
-``.json`` or the request sends an ``Accept: application/json`` or
-``Content-Type: application/json`` header.
+Errors handled by Datasette's exception and permission handlers use this
+format when the URL ends in ``.json`` or the request sends an
+``Accept: application/json`` or ``Content-Type: application/json`` header.
+Without one of these signals, an error on an HTML page is rendered as HTML.
+Errors on explicit ``.csv`` URLs remain plain text, regardless of headers.
 
 .. _json_api_custom_sql:
 
@@ -153,6 +154,34 @@ Values for named SQL parameters can be provided as additional query string param
 
 The response uses the same default representation described above.
 
+.. _json_api_row:
+
+Rows
+----
+
+Every row in a table has its own JSON URL, see :ref:`RowView`. The row is returned as an object in the ``"row"`` key:
+
+::
+
+    GET /fixtures/simple_primary_key/1.json
+
+.. code-block:: json
+
+    {
+      "ok": true,
+      "database": "fixtures",
+      "table": "simple_primary_key",
+      "primary_keys": ["id"],
+      "primary_key_values": ["1"],
+      "query_ms": 1.2,
+      "row": {
+        "id": 1,
+        "content": "hello"
+      }
+    }
+
+Pass any :ref:`?_shape= option <json_api_shapes>` to return the row using the same shapes as table JSON instead. ``?_shape=objects`` returns the table default representation, with the row as the only item in the ``"rows"`` list.
+
 .. _json_api_shapes:
 
 Different shapes
@@ -162,7 +191,7 @@ The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
 options:
 
-* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default for tables and queries
 * ``?_shape=arrays`` - ``"rows"`` is a list of lists, where the order of values in each list matches the order of the columns
 * ``?_shape=array`` - a JSON array of objects - effectively just the ``"rows"`` key from the default representation
 * ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
@@ -296,7 +325,10 @@ query string arguments:
     JSON. Without this argument those columns will be returned as JSON objects
     that have been double-encoded into a JSON string value.
 
-    Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
+    With ``_shape=object``, the object keys still use the original database
+    primary-key values, even when a primary-key column is decoded using ``_json``.
+
+    Compare `this query without the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array>`_ to `this query using the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``
     If your data contains infinity or -infinity values, Datasette will replace
@@ -511,7 +543,7 @@ The available table extras are listed below.
         }
 
 ``display_columns``
-    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.
 
     Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
 
@@ -753,7 +785,9 @@ The available table extras are listed below.
     .. code-block:: json
 
         {
-          "json": "/fixtures/facetable.json?_extra=renderers&_format=json&_labels=on"
+          "json": "/fixtures/facetable.json?_extra=renderers&_labels=on",
+          "tsv": "/fixtures/facetable.tsv?_extra=renderers&_labels=on",
+          "csv": "/fixtures/facetable.csv?_extra=renderers&_labels=on"
         }
 
 ``custom_table_templates``
@@ -865,6 +899,17 @@ The available table extras are listed below.
           ]
         ]
 
+``expanded_columns``
+    List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects. (See :ref:`expand_foreign_keys` for how to expand these labels.)
+
+    ``GET /fixtures/facetable.json?_labels=on&_extra=expanded_columns``
+
+    .. code-block:: json
+
+        [
+          "_city_id"
+        ]
+
 ``form_hidden_args``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
 
@@ -937,22 +982,18 @@ The following extras are available for row JSON responses.
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
 
-    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+    The ``render_cell`` object is keyed by column name. Only columns whose rendered value differs from the default are included. If a ``?_shape=`` is specified ``render_cell`` is instead a list with one item, matching the ``rows`` list.
 
     .. code-block:: json
 
         {
-          "rows": [
-            {
-              "id": 4,
-              "content": "RENDER_CELL_DEMO"
-            }
-          ],
-          "render_cell": [
-            {
-              "content": "<strong>Custom rendered HTML</strong>"
-            }
-          ]
+          "row": {
+            "id": 4,
+            "content": "RENDER_CELL_DEMO"
+          },
+          "render_cell": {
+            "content": "<strong>Custom rendered HTML</strong>"
+          }
         }
 
 ``debug``

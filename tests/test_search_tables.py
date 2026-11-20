@@ -2,7 +2,6 @@
 Tests for special endpoints in datasette/views/special.py
 """
 
-import pytest
 import pytest_asyncio
 
 from datasette.app import Datasette
@@ -62,7 +61,6 @@ async def ds_with_tables():
 
 
 # /-/jump.json table search tests
-@pytest.mark.asyncio
 async def test_tables_basic_search(ds_with_tables):
     """Test basic table search functionality."""
     # Search for "articles" - should find it in both content and public databases
@@ -82,7 +80,6 @@ async def test_tables_basic_search(ds_with_tables):
     assert "/public/articles" in match["url"]
 
 
-@pytest.mark.asyncio
 async def test_tables_search_with_auth(ds_with_tables):
     """Test that authenticated users see more tables."""
     # Editor user should see content.articles
@@ -100,7 +97,6 @@ async def test_tables_search_with_auth(ds_with_tables):
     assert names == {"content: articles", "public: articles"}
 
 
-@pytest.mark.asyncio
 async def test_tables_search_partial_match(ds_with_tables):
     """Test that search matches partial table names."""
     # Search for "com" should match "comments"
@@ -115,7 +111,6 @@ async def test_tables_search_partial_match(ds_with_tables):
     assert data["matches"][0]["name"] == "content: comments"
 
 
-@pytest.mark.asyncio
 async def test_tables_search_respects_database_permissions(ds_with_tables):
     """Test that tables from denied databases are not shown."""
     # Search for "secrets" which is in the private database
@@ -131,7 +126,6 @@ async def test_tables_search_respects_database_permissions(ds_with_tables):
     assert len(data["matches"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_tables_search_respects_table_permissions(ds_with_tables):
     """Test that tables with specific permissions are filtered correctly."""
     # Regular authenticated user searching for "users"
@@ -147,7 +141,6 @@ async def test_tables_search_respects_table_permissions(ds_with_tables):
     assert data["matches"][0]["name"] == "content: users"
 
 
-@pytest.mark.asyncio
 async def test_tables_search_response_structure(ds_with_tables):
     """Test that response has correct structure."""
     response = await ds_with_tables.client.get(

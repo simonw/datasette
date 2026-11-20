@@ -94,8 +94,11 @@ from datasette.permissions import PermissionSQL
 
 @hookimpl
 def permission_resources_sql(action):
-    return PermissionSQL.allow(reason="datasette-allow-permissions-debug")
+    if action == "permissions-debug":
+        return PermissionSQL.allow(reason="datasette-allow-permissions-debug")
 ```
+The `if action == ...` check is essential. This hook is called for every action, and `PermissionSQL.allow()` with no conditions allows the action for every actor, including anonymous users. A hook that returns it without checking `action` first allows every action that no other rule explicitly denies, including write actions such as `insert-row` and `drop-table`.
+
 A `.deny(reason="")` class method is also available.
 
 For more complex permission checks consult the documentation for that plugin hook:

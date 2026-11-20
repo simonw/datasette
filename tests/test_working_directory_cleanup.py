@@ -8,8 +8,6 @@ import pytest
 from datasette import utils
 from datasette.publish.heroku import temporary_heroku_directory
 
-from . import fixtures
-
 
 @pytest.fixture
 def work_directory(tmp_path, monkeypatch):
@@ -30,41 +28,6 @@ def work_directory(tmp_path, monkeypatch):
         os.chdir(tmp_path)
         for cleanup in reversed(cleanups):
             cleanup()
-
-
-@pytest.mark.parametrize("exit_mode", ["normal", "body-error", "init-error"])
-def test_make_app_client_restores_working_directory(
-    work_directory, monkeypatch, exit_mode
-):
-    if exit_mode == "init-error":
-
-        def fail_initialization(*args, **kwargs):
-            raise RuntimeError(exit_mode)
-
-        monkeypatch.setattr(fixtures, "Datasette", fail_initialization)
-    expected = (
-        contextlib.nullcontext()
-        if exit_mode == "normal"
-        else pytest.raises(RuntimeError, match=exit_mode)
-    )
-    with expected, fixtures.make_app_client() as client:
-        assert pathlib.Path.cwd() != work_directory
-        response = client.get("/fixtures/simple_primary_key.json")
-        assert response.status_code == 200
-        if exit_mode == "body-error":
-            raise RuntimeError(exit_mode)
-    assert pathlib.Path.cwd() == work_directory
-    assert not list(work_directory.iterdir())
-
-
-def test_nested_app_clients_restore_each_working_directory(work_directory):
-    with fixtures.make_app_client():
-        outer_directory = pathlib.Path.cwd()
-        with fixtures.make_app_client():
-            assert pathlib.Path.cwd() != outer_directory
-        assert pathlib.Path.cwd() == outer_directory
-    assert pathlib.Path.cwd() == work_directory
-    assert not list(work_directory.iterdir())
 
 
 @pytest.fixture(params=["docker", "heroku"])

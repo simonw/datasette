@@ -14,7 +14,6 @@ import pytest
 
 from datasette import utils
 from datasette.app import Datasette
-from datasette.utils.asgi import Request
 from datasette.utils.sqlite import (
     sqlite3,
     sqlite_derived_table_dependencies,
@@ -35,69 +34,47 @@ from datasette.utils.sqlite import (
     ],
 )
 def test_urlsafe_components(path, expected):
-    assert expected == utils.urlsafe_components(path)
+    assert utils.urlsafe_components(path) == expected
 
 
 @pytest.mark.parametrize(
-    "path,added_args,expected",
+    "query_string,kwargs,expected",
     [
-        ("/foo", {"bar": 1}, "/foo?bar=1"),
-        ("/foo?bar=1", {"baz": 2}, "/foo?bar=1&baz=2"),
-        ("/foo?bar=1&bar=2", {"baz": 3}, "/foo?bar=1&bar=2&baz=3"),
-        ("/foo?bar=1", {"bar": None}, "/foo"),
-        # Test order is preserved
+        ("", {}, ""),
+        ("a=1&b=", {}, "a=1&b="),
+        # add keeps existing values, accepts dicts, pairs and list values
+        ("a=1", {"add": {"a": 2}}, "a=1&a=2"),
+        ("a=1", {"add": [("b", 2), ("b", 3)]}, "a=1&b=2&b=3"),
+        ("a=1", {"add": {"b": [2, 3]}}, "a=1&b=2&b=3"),
+        ("a=1", {"add": {"b": None}}, "a=1"),
+        # replace drops every existing value, None removes the key
+        ("a=1&b=2&a=3", {"replace": {"a": 9}}, "b=2&a=9"),
+        ("a=1&b=2", {"replace": {"a": None}}, "b=2"),
+        ("a=1&b=2", {"replace": {"a": [5, 6]}}, "b=2&a=5&a=6"),
+        # remove takes a key, keys, (key, value) pairs or a dictionary
+        ("a=1&b=2", {"remove": "a"}, "b=2"),
+        ("a=1&b=2&c=3", {"remove": ["a", "c"]}, "b=2"),
+        ("a=1&b=2&c=3", {"remove": {"a", "c"}}, "b=2"),
+        ("a=1&a=2&b=2", {"remove": [("a", 2)]}, "a=1&b=2"),
+        ("a=1&a=2&b=2", {"remove": {"a": "1"}}, "a=2&b=2"),
+        ("a=1&a=2&b=2", {"remove": ["b", ("a", "1")]}, "a=2"),
+        ("a=&a=2", {"remove": [("a", "")]}, "a=2"),
+        # Order is remove, then replace, then add
         (
-            "/?_facet=prim_state&_facet=area_name",
-            (("prim_state", "GA"),),
-            "/?_facet=prim_state&_facet=area_name&prim_state=GA",
+            "a=1&b=2&c=3",
+            {"add": {"a": 4}, "replace": {"b": 5}, "remove": "a"},
+            "c=3&b=5&a=4",
         ),
-        (
-            "/?_facet=state&_facet=city&state=MI",
-            (("city", "Detroit"),),
-            "/?_facet=state&_facet=city&state=MI&city=Detroit",
-        ),
-        (
-            "/?_facet=state&_facet=city",
-            (("_facet", "planet_int"),),
-            "/?_facet=state&_facet=city&_facet=planet_int",
-        ),
+        ("q=a+b%26c", {"add": {"x": "d e"}}, "q=a+b%26c&x=d+e"),
+        # Existing arguments are left exactly as they are unless something
+        # is removed or replaced, when the whole query string is re-encoded
+        ("q=a%20b&n=3,7", {"add": {"x": 1}}, "q=a%20b&n=3,7&x=1"),
+        ("q=a%20b&n=3,7", {}, "q=a%20b&n=3,7"),
+        ("q=a%20b&n=3,7&z=1", {"remove": "z"}, "q=a+b&n=3%2C7"),
     ],
 )
-def test_path_with_added_args(path, added_args, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_added_args(request, added_args)
-    assert expected == actual
-
-
-@pytest.mark.parametrize(
-    "path,args,expected",
-    [
-        ("/foo?bar=1", {"bar"}, "/foo"),
-        ("/foo?bar=1&baz=2", {"bar"}, "/foo?baz=2"),
-        ("/foo?bar=1&bar=2&bar=3", {"bar": "2"}, "/foo?bar=1&bar=3"),
-    ],
-)
-def test_path_with_removed_args(path, args, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_removed_args(request, args)
-    assert expected == actual
-    # Run the test again but this time use the path= argument
-    request = Request.fake("/")
-    actual = utils.path_with_removed_args(request, args, path=path)
-    assert expected == actual
-
-
-@pytest.mark.parametrize(
-    "path,args,expected",
-    [
-        ("/foo?bar=1", {"bar": 2}, "/foo?bar=2"),
-        ("/foo?bar=1&baz=2", {"bar": None}, "/foo?baz=2"),
-    ],
-)
-def test_path_with_replaced_args(path, args, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_replaced_args(request, args)
-    assert expected == actual
+def test_modify_query_string(query_string, kwargs, expected):
+    assert utils.modify_query_string(query_string, **kwargs) == expected
 
 
 @pytest.mark.parametrize(
@@ -121,7 +98,7 @@ def test_path_with_replaced_args(path, args, expected):
 )
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = utils.path_from_row_pks(row, pks, False)
-    assert expected_path == actual_path
+    assert actual_path == expected_path
 
 
 @pytest.mark.parametrize(
@@ -145,7 +122,7 @@ def test_path_from_row_pks(row, pks, expected_path):
 )
 def test_custom_json_encoder(obj, expected):
     actual = json.dumps(obj, cls=utils.CustomJSONEncoder, sort_keys=True)
-    assert expected == actual
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -196,7 +173,10 @@ def test_validate_sql_select_good(good_sql):
     utils.validate_sql_select(good_sql)
 
 
-@pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
+@pytest.mark.parametrize(
+    "open_quote,close_quote",
+    [('"', '"'), ("[", "]"), ("'", "'"), ("`", "`"), ("", "")],
+)
 def test_detect_fts(open_quote, close_quote):
     sql = f"""
     CREATE TABLE "Dumb_Table" (
@@ -221,7 +201,8 @@ def test_detect_fts(open_quote, close_quote):
     assert None is utils.detect_fts(conn, "Dumb_Table")
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
-    assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
+    assert None is utils.detect_fts(conn, "Street_Tree")
+    assert utils.detect_fts(conn, "Street_Tree_List") == "Street_Tree_List_fts"
     conn.close()
 
 
@@ -423,7 +404,7 @@ def test_sqlite_derived_table_dependencies():
     ],
 )
 def test_is_url(url, expected):
-    assert expected == utils.is_url(url)
+    assert utils.is_url(url) == expected
 
 
 @pytest.mark.parametrize(
@@ -439,7 +420,7 @@ def test_is_url(url, expected):
     ],
 )
 def test_to_css_class(s, expected):
-    assert expected == utils.to_css_class(s)
+    assert utils.to_css_class(s) == expected
 
 
 def test_temporary_docker_directory_uses_hard_link():
@@ -463,9 +444,9 @@ def test_temporary_docker_directory_uses_hard_link():
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
             with open(hello) as fp:
-                assert "world" == fp.read()
+                assert fp.read() == "world"
             # It should be a hard link
-            assert 2 == os.stat(hello).st_nlink
+            assert os.stat(hello).st_nlink == 2
 
 
 @patch("os.link")
@@ -492,9 +473,9 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
             with open(hello) as fp:
-                assert "world" == fp.read()
+                assert fp.read() == "world"
             # It should be a copy, not a hard link
-            assert 1 == os.stat(hello).st_nlink
+            assert os.stat(hello).st_nlink == 1
 
 
 def test_temporary_docker_directory_quotes_args():
@@ -524,7 +505,7 @@ def test_temporary_docker_directory_quotes_args():
 
 
 def test_compound_keys_after_sql():
-    assert "((a > :p0))" == utils.compound_keys_after_sql(["a"])
+    assert utils.compound_keys_after_sql(["a"]) == "((a > :p0))"
     assert """
 ((a > :p0)
   or
@@ -539,56 +520,29 @@ def test_compound_keys_after_sql():
     """.strip() == utils.compound_keys_after_sql(["a", "b", "c"])
 
 
+def test_compound_keys_at_or_before_sql():
+    assert utils.compound_keys_at_or_before_sql(["a"]) == "((a <= :p0))"
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b <= :p1))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b"])
+    assert """
+((a < :p3)
+  or
+(a = :p3 and b < :p4)
+  or
+(a = :p3 and b = :p4 and c <= :p5))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b", "c"], 3)
+
+
 def test_table_columns():
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
     create table places (id integer primary key, name text, bob integer)
     """)
-    assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
+    assert utils.table_columns(conn, "places") == ["id", "name", "bob"]
     conn.close()
-
-
-@pytest.mark.parametrize(
-    "path,format,extra_qs,expected",
-    [
-        ("/foo?sql=select+1", "csv", {}, "/foo.csv?sql=select+1"),
-        ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
-        ("/foo/bar", "json", {}, "/foo/bar.json"),
-        ("/foo/bar", "csv", {}, "/foo/bar.csv"),
-        ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
-        (
-            "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
-            "csv",
-            {"_dl": 1},
-            "/sf-trees/Street_Tree_List.csv?_search=cherry&_size=1000&_dl=1",
-        ),
-    ],
-)
-def test_path_with_format(path, format, extra_qs, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
-    assert expected == actual
-
-
-def test_path_with_format_can_override_request_path():
-    request = Request.fake("/prefix/foo?x=1")
-    actual = utils.path_with_format(request=request, path="/foo", format="json")
-    assert "/foo.json?x=1" == actual
-
-
-@pytest.mark.parametrize(
-    "bytes,expected",
-    [
-        (120, "120 bytes"),
-        (1024, "1.0 KB"),
-        (1024 * 1024, "1.0 MB"),
-        (1024 * 1024 * 1024, "1.0 GB"),
-        (1024 * 1024 * 1024 * 1.3, "1.3 GB"),
-        (1024 * 1024 * 1024 * 1024, "1.0 TB"),
-    ],
-)
-def test_format_bytes(bytes, expected):
-    assert expected == utils.format_bytes(bytes)
 
 
 @pytest.mark.parametrize(
@@ -606,7 +560,7 @@ def test_format_bytes(bytes, expected):
     ],
 )
 def test_escape_fts(query, expected):
-    assert expected == utils.escape_fts(query)
+    assert utils.escape_fts(query) == expected
 
 
 @pytest.mark.parametrize(
@@ -618,7 +572,7 @@ def test_escape_fts(query, expected):
     ],
 )
 def test_escape_css_string(input, expected):
-    assert expected == utils.escape_css_string(input)
+    assert utils.escape_css_string(input) == expected
 
 
 def test_check_connection_spatialite_raises():
@@ -639,8 +593,8 @@ def test_call_with_supported_arguments():
     def foo(a, b):
         return f"{a}+{b}"
 
-    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2)
-    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2, c=3)
+    assert utils.call_with_supported_arguments(foo, a=1, b=2) == "1+2"
+    assert utils.call_with_supported_arguments(foo, a=1, b=2, c=3) == "1+2"
 
     with pytest.raises(TypeError):
         utils.call_with_supported_arguments(foo, a=1)
@@ -664,8 +618,8 @@ def test_multi_params(data, should_raise):
             utils.MultiParams(data)
         return
     p1 = utils.MultiParams(data)
-    assert "bar" == p1["foo"]
-    assert ["bar", "baz"] == list(p1.getlist("foo"))
+    assert p1["foo"] == "bar"
+    assert list(p1.getlist("foo")) == ["bar", "baz"]
 
 
 @pytest.mark.parametrize(
@@ -711,7 +665,7 @@ def test_multi_params(data, should_raise):
     ],
 )
 def test_actor_matches_allow(actor, allow, expected):
-    assert expected == utils.actor_matches_allow(actor, allow)
+    assert utils.actor_matches_allow(actor, allow) == expected
 
 
 @pytest.mark.parametrize(
@@ -725,7 +679,7 @@ def test_actor_matches_allow(actor, allow, expected):
     ],
 )
 def test_resolve_env_secrets(config, expected):
-    assert expected == utils.resolve_env_secrets(config, {"FOO": "x"})
+    assert utils.resolve_env_secrets(config, {"FOO": "x"}) == expected
 
 
 @pytest.mark.parametrize(
@@ -743,10 +697,9 @@ def test_resolve_env_secrets(config, expected):
     ],
 )
 def test_display_actor(actor, expected):
-    assert expected == utils.display_actor(actor)
+    assert utils.display_actor(actor) == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dbs,expected_path",
     [
@@ -789,7 +742,6 @@ def test_parse_metadata(content, expected):
         assert utils.parse_metadata(content) == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sql,expected",
     (
@@ -921,7 +873,6 @@ def test_sha256_file(tmp_path):
     assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
 
 
-@pytest.mark.asyncio
 async def test_calculate_etag(tmp_path):
     path = tmp_path / "test.txt"
     path.write_text("hello")
@@ -929,7 +880,7 @@ async def test_calculate_etag(tmp_path):
     assert etag == await utils.calculate_etag(path)
     assert utils._etag_cache[path] == etag
     utils._etag_cache[path] = "hash"
-    assert "hash" == await utils.calculate_etag(path)
+    assert await utils.calculate_etag(path) == "hash"
     utils._etag_cache.clear()
 
 
@@ -963,3 +914,43 @@ def test_deep_dict_update(dict1, dict2, expected):
     assert result == expected
     # Check that the original dict1 was modified
     assert dict1 == expected
+
+
+@pytest.mark.parametrize(
+    "install,branch,expected",
+    [
+        # Defaults to the version of Datasette running the command
+        ([], None, ["datasette==VERSION"]),
+        (["datasette-vega"], None, ["datasette==VERSION", "datasette-vega"]),
+        # --branch installs from GitHub instead
+        (
+            ["datasette-vega"],
+            "main",
+            ["https://github.com/simonw/datasette/archive/main.zip", "datasette-vega"],
+        ),
+        # A requirement for Datasette in --install replaces the default
+        (["datasette==0.65.5"], None, ["datasette==0.65.5"]),
+        (["datasette>=1.0a0", "datasette-vega"], None, None),
+        (["Datasette[rich]"], None, None),
+        (["datasette @ https://example.com/d.zip"], None, None),
+        (["/app/plugins/datasette-1.0a42-py3-none-any.whl"], None, None),
+        (["https://example.com/datasette-1.0a42.tar.gz"], None, None),
+        # Plugins that merely start with datasette do not
+        (
+            ["datasette-vega==0.6", "/tmp/datasette-vega-0.6.whl"],
+            None,
+            [
+                "datasette==VERSION",
+                "datasette-vega==0.6",
+                "/tmp/datasette-vega-0.6.whl",
+            ],
+        ),
+    ],
+)
+def test_datasette_install_requirements(install, branch, expected):
+    from datasette.version import __version__
+
+    if expected is None:
+        expected = install
+    expected = [item.replace("VERSION", __version__) for item in expected]
+    assert utils.datasette_install_requirements(install, branch) == expected

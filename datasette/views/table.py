@@ -1957,17 +1957,37 @@ async def table_view_traced(datasette, request):
     stream = bool(
         request.args.get("_stream") and datasette._renderer_can_stream.get(format_)
     )
+    # ... until one of those pages takes too long
+    stream_small_pages = False
+
+    async def fetch_page(**kwargs):
+        nonlocal stream_small_pages
+        try:
+            return await table_view_data(
+                datasette,
+                request,
+                resolved,
+                stream=stream,
+                stream_small_pages=stream_small_pages,
+                **kwargs,
+            )
+        except QueryInterrupted:
+            # A page of max_returned_rows can exceed sql_time_limit_ms where
+            # a smaller page would not, for example for a view that is slow
+            # to compute. Fetch this page again, and every page after it,
+            # using the default page size. A ?_size= in the URL is a request
+            # for that exact size, so it gets the error instead.
+            if not stream or stream_small_pages or request.args.get("_size"):
+                raise
+            stream_small_pages = True
+            return await fetch_page(**kwargs)
 
     start = time.perf_counter()
-    view_data = await table_view_data(
-        datasette,
-        request,
-        resolved,
+    view_data = await fetch_page(
         extra_extras=extra_extras,
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
         renderer_extras=datasette._renderer_extras.get(format_),
-        stream=stream,
     )
     if isinstance(view_data, Response):
         return view_data
@@ -1983,14 +2003,10 @@ async def table_view_traced(datasette, request):
             nonlocal next_token
             if not next_token:
                 return None
-            page_data, page_rows, *_ = await table_view_data(
-                datasette,
-                request,
-                resolved,
+            page_data, page_rows, *_ = await fetch_page(
                 default_labels=default_labels,
                 _next=next_token,
                 rows_only=True,
-                stream=stream,
             )
             next_token = page_data["next"]
             return page_rows
@@ -2348,6 +2364,7 @@ async def table_view_data(
     renderer_extras=None,
     rows_only=False,
     stream=False,
+    stream_small_pages=False,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -2478,9 +2495,17 @@ async def table_view_data(
     # TODO: This was:
     # page_size = _size or request.args.get("_size") or table_metadata.get("size")
     page_size = request.args.get("_size")
+    # Streaming chooses its own page size unless the URL has a ?_size=. A
+    # max_returned_rows of 0 means no limit, so there is no largest page
+    stream_page_size = bool(stream and not page_size and datasette.max_returned_rows)
     if not page_size:
-        # Streaming every row is fastest using the largest possible pages
-        page_size = "max" if stream else table_metadata.get("size")
+        page_size = table_metadata.get("size")
+        if stream_page_size:
+            if stream_small_pages:
+                page_size = page_size or datasette.page_size
+            else:
+                # Streaming every row is fastest using the largest pages
+                page_size = "max"
     if page_size:
         if page_size == "max":
             page_size = datasette.max_returned_rows
@@ -2491,6 +2516,11 @@ async def table_view_data(
 
         except ValueError:
             raise BadRequest("_size must be a positive integer")
+
+        if stream_page_size:
+            # A page longer than max_returned_rows is cut short without a
+            # next page, which would end the stream with rows still to come
+            page_size = min(page_size, datasette.max_returned_rows)
 
         if page_size > datasette.max_returned_rows:
             raise BadRequest(f"_size must be <= {datasette.max_returned_rows}")

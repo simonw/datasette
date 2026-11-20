@@ -1,5 +1,6 @@
 import json
 import math
+import re
 from typing import ClassVar
 
 from datasette import hookimpl
@@ -284,7 +285,9 @@ class InFilter(Filter):
         if value.startswith("["):
             return json.loads(value)
         else:
-            return [v.strip() for v in value.split(",")]
+            # Only split on commas not followed by whitespace, so values
+            # like "Smith, John" are treated as a single value
+            return [v.strip() for v in re.split(r",(?!\s)", value)]
 
     def where_clause(self, table, column, value, param_counter):
         values = self.split_value(value)

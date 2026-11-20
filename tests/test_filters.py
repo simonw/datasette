@@ -53,6 +53,13 @@ from datasette.utils.asgi import Request
         ((("foo__in", "1,2,3"),), ["foo in (:p0, :p1, :p2)"], ["1", "2", "3"]),
         # date
         ((("foo__date", "1988-01-01"),), ['date("foo") = :p0'], ["1988-01-01"]),
+        # month and year
+        (
+            (("foo__month", "1988-01"),),
+            ["strftime('%Y-%m', \"foo\") = :p0"],
+            ["1988-01"],
+        ),
+        ((("foo__year", "1988"),), ["strftime('%Y', \"foo\") = :p0"], ["1988"]),
         # JSON array variants of __in (useful for unexpected characters)
         ((("foo__in", "[1,2,3]"),), ["foo in (:p0, :p1, :p2)"], [1, 2, 3]),
         (

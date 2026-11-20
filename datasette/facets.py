@@ -1,6 +1,7 @@
 import json
 import time
 import urllib
+from typing import ClassVar
 
 from datasette import hookimpl
 from datasette.database import QueryInterrupted
@@ -9,6 +10,7 @@ from datasette.utils import (
     escape_sqlite,
     sqlite3,
 )
+from datasette.utils.asgi import BadRequest
 
 # Suggesting facets for a page can take at most this many multiples of
 # the facet_suggest_time_limit_ms setting in total, see #862
@@ -34,11 +36,12 @@ def start_suggest_deadline(ds, facet_instances):
 def load_facet_configs(request, table_config):
     # Given a request and the configuration for a table, return
     # a dictionary of selected facets, their lists of configs and for each
-    # config whether it came from the request or the metadata.
+    # config whether it came from the request or the metadata. Configs from
+    # the request also record the raw query string value they were parsed from.
     #
     #   return {type: [
     #       {"source": "metadata", "config": config1},
-    #       {"source": "request", "config": config2}]}
+    #       {"source": "request", "config": config2, "value": value}]}
     facet_configs = {}
     table_config = table_config or {}
     table_facet_configs = table_config.get("facets", [])
@@ -70,7 +73,7 @@ def load_facet_configs(request, table_config):
                     json.loads(value) if value.startswith("{") else {"simple": value}
                 )
                 facet_configs.setdefault(type, []).append(
-                    {"source": "request", "config": facet_config}
+                    {"source": "request", "config": facet_config, "value": value}
                 )
     return facet_configs
 
@@ -499,10 +502,30 @@ class ArrayFacet(Facet):
 
 class DateFacet(Facet):
     type = "date"
+    # Each interval maps to the SQL expression that groups a column by it and
+    # the filter lookup that selects one of those groups, see #483
+    intervals: ClassVar[dict[str, tuple[str, str]]] = {
+        "day": ("date({col})", "date"),
+        "month": ("strftime('%Y-%m', {col})", "month"),
+        "year": ("strftime('%Y', {col})", "year"),
+    }
+
+    @staticmethod
+    def _facet_arg(column, interval):
+        # ?_facet_date=column for days, or the JSON form for other intervals:
+        # ?_facet_date={"column":"column","interval":"month"}
+        if interval == "day":
+            return column
+        return json.dumps(
+            {"column": column, "interval": interval}, separators=(",", ":")
+        )
 
     async def suggest(self):
         columns = await self.get_columns(self.sql, self.params)
-        already_enabled = [c["config"]["simple"] for c in self.get_configs()]
+        already_enabled = [
+            c["config"].get("column") or c["config"]["simple"]
+            for c in self.get_configs()
+        ]
         suggested_facets = []
         for column in columns:
             if self.suggest_time_exceeded():
@@ -551,14 +574,24 @@ class DateFacet(Facet):
             config = source_and_config["config"]
             source = source_and_config["source"]
             column = config.get("column") or config["simple"]
-            # TODO: does this query break if inner sql produces value or count columns?
-            facet_sql = """
-                select date({col}) as value, count(*) as count from (
-                    {sql}
+            interval = config.get("interval") or "day"
+            if interval not in self.intervals:
+                raise BadRequest(
+                    "Invalid date facet interval: {}, must be one of {}".format(
+                        interval, ", ".join(self.intervals)
+                    )
                 )
-                where date({col}) is not null
-                group by date({col}) order by count desc, value limit {limit}
-            """.format(col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1)
+            expression, lookup = self.intervals[interval]
+            expression = expression.format(col=escape_sqlite(column))
+            request_value = source_and_config.get("value", column)
+            # TODO: does this query break if inner sql produces value or count columns?
+            facet_sql = f"""
+                select {expression} as value, count(*) as count from (
+                    {self.sql}
+                )
+                where {expression} is not null
+                group by {expression} order by count desc, value limit {facet_size + 1}
+            """
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,
@@ -568,30 +601,52 @@ class DateFacet(Facet):
                     custom_time_limit=self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
+                interval_options = []
+                # Metadata facets cannot be removed, so they cannot be swapped
+                # for a facet with a different interval either
+                if source != "metadata":
+                    for other_interval in self.intervals:
+                        url = self.ds.urls.modify(
+                            self.request,
+                            remove=[("_facet_date", request_value)],
+                            add=[
+                                ("_facet_date", self._facet_arg(column, other_interval))
+                            ],
+                        )
+                        interval_options.append(
+                            {
+                                "interval": other_interval,
+                                "url": self.ds.absolute_url(self.request, url),
+                                "selected": other_interval == interval,
+                            }
+                        )
                 facet_results.append(
                     {
                         "name": column,
                         "type": self.type,
+                        "interval": interval,
+                        "interval_options": interval_options,
                         "results": facet_results_values,
                         "hideable": source != "metadata",
                         "toggle_url": self.ds.urls.modify(
-                            self.request, remove={"_facet_date": column}
+                            self.request, remove={"_facet_date": request_value}
                         ),
                         "truncated": len(facet_rows_results) > facet_size,
                     }
                 )
                 facet_rows = facet_rows_results.rows[:facet_size]
+                filter_key = f"{column}__{lookup}"
                 for row in facet_rows:
-                    selected = str(args.get(f"{column}__date")) == str(row["value"])
+                    selected = str(args.get(filter_key)) == str(row["value"])
                     if selected:
                         toggle_path = self.ds.urls.modify(
                             self.request,
-                            remove=[(f"{column}__date", row["value"]), "_next"],
+                            remove=[(filter_key, row["value"]), "_next"],
                         )
                     else:
                         toggle_path = self.ds.urls.modify(
                             self.request,
-                            add={f"{column}__date": row["value"]},
+                            add={filter_key: row["value"]},
                             remove="_next",
                         )
                     facet_results_values.append(

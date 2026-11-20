@@ -322,6 +322,21 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
     return ",".join(bits)
 
 
+def row_has_null_primary_key(row, pks):
+    """True if any of the row's primary key values are null.
+
+    SQLite allows null primary keys in rowid tables, and allows several rows
+    to share one, so such a row has no identifier that can be used to link to
+    it, edit it or delete it."""
+    for pk in pks:
+        value = row[pk]
+        if isinstance(value, dict):
+            value = value["value"]
+        if value is None:
+            return True
+    return False
+
+
 def compound_keys_at_or_before_sql(pks, start_index=0):
     # The inverse of compound_keys_after_sql(): rows up to and including the
     # cursor. Written out directly, rather than as "not (...after...)", so

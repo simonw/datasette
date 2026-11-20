@@ -41,6 +41,7 @@ from datasette.utils import (
     make_slot_function,
     path_from_row_pks,
     request_route_path,
+    row_has_null_primary_key,
     sqlite3,
     tilde_decode,
     tilde_encode,
@@ -806,62 +807,66 @@ async def display_columns_and_rows(
     base_url = datasette.setting("base_url")
     for row in rows:
         cells = []
+        null_pk = row_has_null_primary_key(row, pks)
         # Unless we are a view, the first column is a link - either to the rowid
         # or to the simple or compound primary key
         if link_column:
             is_special_link_column = len(pks) != 1
-            pk_path = path_from_row_pks(row, pks, not pks, False)
-            row_path = path_from_row_pks(row, pks, not pks)
-            row_label = row_label_from_label_column(row, label_column)
-            row_action_label = pk_path
-            if row_label and row_label != pk_path:
-                row_action_label = f"{pk_path} {row_label}"
-            table_path = datasette.urls.table(database_name, table_name)
-            row_link = (
-                f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
-            )
-            edit_icon = (
-                '<svg class="row-inline-action-icon" aria-hidden="true" '
-                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
-                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>'
-                '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>'
-                "</svg>"
-            )
-            delete_icon = (
-                '<svg class="row-inline-action-icon" aria-hidden="true" '
-                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
-                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                '<path d="M3 6h18"></path>'
-                '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
-                '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
-                '<path d="M10 11v6"></path>'
-                '<path d="M14 11v6"></path>'
-                "</svg>"
-            )
-            row_actions = []
-            if row_action_permissions.get("update-row"):
-                row_actions.append(
-                    '<button type="button" class="row-inline-action row-inline-action-edit" '
-                    f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
-                    'data-row-action="edit">'
-                    f"{edit_icon}</button>"
+            pk_path = row_path = row_label = None
+            # A row with a null primary key cannot be uniquely identified,
+            # so it gets no link to a row page and no edit or delete buttons
+            row_link = "&nbsp;"
+            if not null_pk:
+                pk_path = path_from_row_pks(row, pks, not pks, False)
+                row_path = path_from_row_pks(row, pks, not pks)
+                row_label = row_label_from_label_column(row, label_column)
+                row_action_label = pk_path
+                if row_label and row_label != pk_path:
+                    row_action_label = f"{pk_path} {row_label}"
+                table_path = datasette.urls.table(database_name, table_name)
+                row_link = f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
+                edit_icon = (
+                    '<svg class="row-inline-action-icon" aria-hidden="true" '
+                    'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                    'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>'
+                    '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>'
+                    "</svg>"
                 )
-            if row_action_permissions.get("delete-row"):
-                row_actions.append(
-                    '<button type="button" class="row-inline-action row-inline-action-delete" '
-                    f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '
-                    'data-row-action="delete">'
-                    f"{delete_icon}</button>"
+                delete_icon = (
+                    '<svg class="row-inline-action-icon" aria-hidden="true" '
+                    'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                    'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                    '<path d="M3 6h18"></path>'
+                    '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
+                    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
+                    '<path d="M10 11v6"></path>'
+                    '<path d="M14 11v6"></path>'
+                    "</svg>"
                 )
-            if row_actions:
-                row_link = (
-                    '<span class="row-link-with-actions">{row_link}'
-                    '<span class="row-inline-actions" aria-label="Row actions">'
-                    "{row_actions}</span></span>"
-                ).format(row_link=row_link, row_actions="".join(row_actions))
+                row_actions = []
+                if row_action_permissions.get("update-row"):
+                    row_actions.append(
+                        '<button type="button" class="row-inline-action row-inline-action-edit" '
+                        f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
+                        'data-row-action="edit">'
+                        f"{edit_icon}</button>"
+                    )
+                if row_action_permissions.get("delete-row"):
+                    row_actions.append(
+                        '<button type="button" class="row-inline-action row-inline-action-delete" '
+                        f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '
+                        'data-row-action="delete">'
+                        f"{delete_icon}</button>"
+                    )
+                if row_actions:
+                    row_link = (
+                        '<span class="row-link-with-actions">{row_link}'
+                        '<span class="row-inline-actions" aria-label="Row actions">'
+                        "{row_actions}</span></span>"
+                    ).format(row_link=row_link, row_actions="".join(row_actions))
             cells.append(
                 {
                     "column": pks[0] if len(pks) == 1 else "Link",
@@ -914,7 +919,7 @@ async def display_columns_and_rows(
                 display_value = plugin_display_value
             elif isinstance(value, bytes):
                 formatted = do_filesizeformat(len(value))
-                if pks or has_rowid_column or request is None:
+                if ((pks or has_rowid_column) and not null_pk) or request is None:
                     blob_url = datasette.urls.row_blob(
                         database_name,
                         table_name,
@@ -922,8 +927,9 @@ async def display_columns_and_rows(
                         column,
                     )
                 else:
-                    # Views usually have no rowid to link to a row by,
-                    # so find the blob by its content hash instead
+                    # Views usually have no rowid to link to a row by, and
+                    # neither do rows with a null primary key, so find the
+                    # blob by its content hash instead
                     blob_url = datasette.urls.modify(
                         request,
                         format="blob",

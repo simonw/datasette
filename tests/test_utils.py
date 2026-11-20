@@ -101,6 +101,28 @@ def test_path_from_row_pks(row, pks, expected_path):
 
 
 @pytest.mark.parametrize(
+    "row,pks,expected",
+    [
+        ({"A": "foo", "B": "bar"}, ["A", "B"], False),
+        ({"A": None}, ["A"], True),
+        ({"A": "foo", "B": None}, ["A", "B"], True),
+        # Falsey values that are not null still identify a row
+        ({"A": ""}, ["A"], False),
+        ({"A": 0}, ["A"], False),
+        # Only primary key columns count
+        ({"A": 1, "B": None}, ["A"], False),
+        # Tables with no primary key use rowid, which is never null
+        ({"rowid": 1, "A": None}, [], False),
+        # Foreign key columns expanded to a label
+        ({"A": {"value": None, "label": None}}, ["A"], True),
+        ({"A": {"value": 1, "label": "One"}}, ["A"], False),
+    ],
+)
+def test_row_has_null_primary_key(row, pks, expected):
+    assert utils.row_has_null_primary_key(row, pks) is expected
+
+
+@pytest.mark.parametrize(
     "obj,expected",
     [
         (

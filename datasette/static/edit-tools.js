@@ -6629,7 +6629,8 @@ function rowPathFromRowData(row, primaryKeys) {
   var bits = [];
   for (var i = 0; i < keys.length; i += 1) {
     var key = keys[i];
-    if (typeof row[key] === "undefined") {
+    // A row with a null primary key has no row path
+    if (typeof row[key] === "undefined" || row[key] === null) {
       return null;
     }
     bits.push(tildeEncode(row[key]));

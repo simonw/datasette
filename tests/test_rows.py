@@ -134,6 +134,23 @@ def test_row_pickle_and_deepcopy(duplicate):
     assert copied.columns == row.columns
 
 
+@pytest.mark.parametrize("duplicate", (pickle.dumps, copy.deepcopy))
+@pytest.mark.parametrize(
+    "columns",
+    (
+        Columns(["id", "owner_id"]),
+        Columns(["id", Column("owner_id", foreign_key=ForeignKey("owners", "id"))]),
+    ),
+)
+def test_columns_pickle_and_deepcopy(duplicate, columns):
+    copied = duplicate(columns)
+    if isinstance(copied, bytes):
+        copied = pickle.loads(copied)
+    assert copied == columns
+    assert copied.names == ("id", "owner_id")
+    assert copied["owner_id"] == columns["owner_id"]
+
+
 def test_row_json_encoding(row):
     assert json.loads(json.dumps({"row": row}, cls=CustomJSONEncoder)) == {
         "row": [1, "Cleo", None]

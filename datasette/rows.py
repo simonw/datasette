@@ -220,9 +220,6 @@ class Columns:
     def __repr__(self) -> str:
         return f"<Columns: {', '.join(self.names)}>"
 
-    def __reduce__(self) -> tuple[type[Columns], tuple[tuple[Column, ...]]]:
-        return (Columns, (self._columns,))
-
 
 class Row:
     """

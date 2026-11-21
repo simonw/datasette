@@ -8,7 +8,6 @@ from datasette.facets import Facet
 from datasette.permissions import Action
 from datasette.resources import DatabaseResource
 from datasette.tokens import TokenHandler
-from datasette.utils import path_with_added_args
 from datasette.utils.asgi import Response, asgi_send_json
 
 
@@ -178,7 +177,7 @@ class DummyFacet(Facet):
                     "name": column,
                     "toggle_url": self.ds.absolute_url(
                         self.request,
-                        path_with_added_args(self.request, {"_facet_dummy": column}),
+                        self.ds.urls.modify(self.request, add={"_facet_dummy": column}),
                     ),
                     "type": "dummy",
                 }

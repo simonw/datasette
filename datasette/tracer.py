@@ -142,14 +142,14 @@ class AsgiTracer:
                     "",
                 )
                 if "text/html" in content_type and b"</body>" in accumulated_body:
-                    extra = escape(json.dumps(trace_info, indent=2))
+                    extra = escape(json.dumps(trace_info, indent=2, default=repr))
                     extra_html = f"<pre>{extra}</pre></body>".encode()
                     accumulated_body = accumulated_body.replace(b"</body>", extra_html)
                 elif "json" in content_type and accumulated_body.startswith(b"{"):
                     data = json.loads(accumulated_body.decode("utf8"))
                     if "_trace" not in data:
                         data["_trace"] = trace_info
-                    accumulated_body = json.dumps(data).encode("utf8")
+                    accumulated_body = json.dumps(data, default=repr).encode("utf8")
                 await send({"type": "http.response.body", "body": accumulated_body})
 
         with capture_traces(traces):

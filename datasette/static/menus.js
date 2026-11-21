@@ -51,11 +51,18 @@
     const x = viewport ? viewport.offsetLeft : 0;
     const y = viewport ? viewport.offsetTop : 0;
     const narrow = width <= 600;
-    const panelWidth = Math.max(
-      0,
-      Math.min(narrow ? 360 : 300, width - gutter * 2),
-    );
-    panel.style.width = panelWidth + "px";
+    const availableWidth = Math.max(0, width - gutter * 2);
+    const compactAppMenu =
+      panel.classList.contains("nav-menu-inner") &&
+      window.matchMedia("(max-width: 600px)").matches;
+    let panelWidth;
+    if (compactAppMenu) {
+      panel.style.removeProperty("width");
+      panelWidth = panel.getBoundingClientRect().width;
+    } else {
+      panelWidth = Math.min(narrow ? 360 : 300, availableWidth);
+      panel.style.width = panelWidth + "px";
+    }
     panel.style.maxHeight = Math.max(0, height - gutter * 2) + "px";
     const naturalHeight =
       panel.scrollHeight + panel.offsetHeight - panel.clientHeight;

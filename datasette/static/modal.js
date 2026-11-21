@@ -1,10 +1,13 @@
 // Shared lifecycle for native modal dialogs.
 (() => {
+  let confirmCount = 0;
+
   class DatasetteModal extends HTMLElement {
     constructor() {
       super();
       this.beforeClose = null;
       this._busy = false;
+      this._closeGuard = null;
       this._restoreFocus = true;
       this._returnFocusTo = null;
       this._escapeCleanup = null;
@@ -15,6 +18,72 @@
       const modal = document.createElement("datasette-modal");
       modal.appendChild(document.createElement("dialog"));
       return modal;
+    }
+
+    // In-page replacement for window.confirm(), which embedded browsers can
+    // dismiss without ever showing it. Resolves to true if the user confirms.
+    static confirm({
+      message = "",
+      confirmLabel = "OK",
+      cancelLabel = "Cancel",
+      danger = false,
+    } = {}) {
+      return new Promise((resolve) => {
+        const modal = DatasetteModal.create();
+        const dialog = modal.dialog;
+        confirmCount += 1;
+        const messageId = `modal-confirm-message-${confirmCount}`;
+        dialog.classList.add("modal-confirm-dialog");
+        dialog.setAttribute("role", "alertdialog");
+        dialog.setAttribute("aria-labelledby", messageId);
+
+        const text = document.createElement("p");
+        text.className = "modal-confirm-message";
+        text.id = messageId;
+        text.textContent = message;
+
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className =
+          "modal-btn modal-btn-ghost modal-confirm-cancel";
+        cancelButton.textContent = cancelLabel;
+
+        const confirmButton = document.createElement("button");
+        confirmButton.type = "button";
+        confirmButton.className = `modal-btn ${
+          danger ? "modal-btn-danger" : "modal-btn-primary"
+        } modal-confirm-ok`;
+        confirmButton.textContent = confirmLabel;
+
+        const footer = document.createElement("div");
+        footer.className = "modal-footer";
+        footer.append(cancelButton, confirmButton);
+        dialog.append(text, footer);
+
+        let confirmed = false;
+        // Answer as soon as the dialog is closed. The native close event
+        // fires in a later task, by which time the user may have acted again.
+        const close = modal.close.bind(modal);
+        modal.close = (options) => {
+          close(options);
+          resolve(confirmed);
+        };
+        cancelButton.addEventListener("click", () =>
+          modal.requestClose("cancel"),
+        );
+        confirmButton.addEventListener("click", () => {
+          confirmed = true;
+          modal.close();
+        });
+        document.body.appendChild(modal);
+        // Registered after the wrapper's own close listener, so focus has
+        // already been restored by the time the dialog is removed
+        dialog.addEventListener("close", () => {
+          modal.remove();
+          resolve(confirmed);
+        });
+        modal.show({ initialFocus: confirmButton });
+      });
     }
 
     get dialog() {
@@ -134,6 +203,8 @@
       this._escapeCleanup = null;
       clearTimeout(this._escapeTimer);
       this._escapeTimer = null;
+      // Any beforeClose() promise still pending no longer applies
+      this._closeGuard = null;
     }
 
     show({ returnFocusTo, initialFocus } = {}) {
@@ -149,8 +220,24 @@
     }
 
     requestClose(source = "cancel") {
-      if (!this.dialog.open || this.busy) return false;
-      if (this.beforeClose && this.beforeClose(source) === false) return false;
+      // A beforeClose() promise is still deciding an earlier request
+      if (!this.dialog.open || this.busy || this._closeGuard) return false;
+      const allowed = this.beforeClose ? this.beforeClose(source) : true;
+      if (allowed === false) return false;
+      if (allowed && typeof allowed.then === "function") {
+        // An async guard: stay open now, close later unless it resolves false
+        const guard = (this._closeGuard = allowed);
+        const settle = (result) => {
+          if (this._closeGuard !== guard) return;
+          this._closeGuard = null;
+          if (result !== false && this.dialog.open && !this.busy) this.close();
+        };
+        guard.then(settle, (error) => {
+          settle(false);
+          throw error;
+        });
+        return false;
+      }
       this.close();
       return true;
     }

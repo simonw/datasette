@@ -1,10 +1,7 @@
-import pytest
-
 from datasette.app import Datasette
 from datasette.database import QueryInterrupted
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_single_pk_exact_match_and_label_order():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_single")
@@ -36,7 +33,6 @@ async def test_autocomplete_single_pk_exact_match_and_label_order():
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_blank_q_returns_no_results():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_blank")
@@ -61,7 +57,6 @@ async def test_autocomplete_blank_q_returns_no_results():
     assert response.json() == {"ok": True, "rows": []}
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_initial_returns_latest_rows():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_initial")
@@ -105,7 +100,6 @@ async def test_autocomplete_initial_returns_latest_rows():
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_escapes_like_characters():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_escape")
@@ -131,7 +125,6 @@ async def test_autocomplete_escapes_like_characters():
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_compound_pk_searches_all_pk_columns():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_compound")
@@ -162,7 +155,6 @@ async def test_autocomplete_compound_pk_searches_all_pk_columns():
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_primary_key_called_label():
     ds = Datasette(
         memory=True,
@@ -196,7 +188,6 @@ async def test_autocomplete_primary_key_called_label():
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
     ds = Datasette(
         memory=True,

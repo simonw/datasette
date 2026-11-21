@@ -304,78 +304,28 @@ class NavigationSearch extends HTMLElement {
     }
   }
 
-  recentItemsStorageKey() {
-    return "datasette.navigationSearch.recentItems";
-  }
-
+  // Recent items come from the visit history kept by recent.js, which
+  // records every table, view, query and database page you open.
   loadRecentItems() {
-    if (typeof localStorage === "undefined") {
+    const recent = window.datasetteRecent;
+    if (!recent || typeof recent.list !== "function") {
       return [];
     }
-
-    try {
-      const raw = localStorage.getItem(this.recentItemsStorageKey());
-      if (!raw) {
-        return [];
-      }
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-      return parsed
-        .filter((item) => item && item.name && item.url)
-        .map((item) => ({
-          name: String(item.name),
-          display_name: item.display_name ? String(item.display_name) : "",
-          url: String(item.url),
-          type: item.type ? String(item.type) : "",
-          description: item.description ? String(item.description) : "",
-        }))
-        .slice(0, 5);
-    } catch (e) {
-      return [];
-    }
-  }
-
-  saveRecentItem(match) {
-    if (
-      typeof localStorage === "undefined" ||
-      !match ||
-      !match.name ||
-      !match.url
-    ) {
-      return;
-    }
-
-    try {
-      const item = {
-        name: String(match.name),
-        display_name: match.display_name ? String(match.display_name) : "",
-        url: String(match.url),
-        type: match.type ? String(match.type) : "",
-        description: match.description ? String(match.description) : "",
-      };
-      const recentItems = this.loadRecentItems().filter(
-        (recentItem) => recentItem.url !== item.url,
-      );
-      localStorage.setItem(
-        this.recentItemsStorageKey(),
-        JSON.stringify([item, ...recentItems].slice(0, 5)),
-      );
-    } catch (e) {
-      // localStorage may be unavailable, full, or disabled.
-    }
+    return recent.list({ limit: 5 }).map((item) => ({
+      name:
+        item.type === "database"
+          ? recent.label(item)
+          : `${item.database}: ${recent.label(item)}`,
+      display_name: "",
+      url: item.url,
+      type: item.type,
+      description: "",
+    }));
   }
 
   clearRecentItems() {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    try {
-      localStorage.removeItem(this.recentItemsStorageKey());
-    } catch (e) {
-      localStorage.setItem(this.recentItemsStorageKey(), "[]");
+    if (window.datasetteRecent) {
+      window.datasetteRecent.clear();
     }
     this.renderResults();
     this.setStatus("Recent items cleared.");
@@ -552,8 +502,6 @@ class NavigationSearch extends HTMLElement {
     const matches = this.renderedMatches || this.matches;
     const match = matches[index];
     if (match) {
-      this.saveRecentItem(match);
-
       // Dispatch custom event
       this.dispatchEvent(
         new CustomEvent("select", {

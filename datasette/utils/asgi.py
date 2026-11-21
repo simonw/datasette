@@ -80,7 +80,7 @@ SAMESITE_VALUES = ("strict", "lax", "none")
 # far below multipart's DEFAULT_MAX_REQUEST_SIZE: that parser streams to disk,
 # while these bodies are held in RAM and json.loads() can multiply their
 # footprint several times over.
-DEFAULT_MAX_POST_BODY_BYTES = 2 * 1024 * 1024  # 2MB
+DEFAULT_MAX_POST_BODY_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 class _RequestHeaders(dict):
@@ -173,7 +173,7 @@ class Request:
         Read the request body fully into memory.
 
         The body is capped at max_bytes - or self.max_post_body_bytes
-        (default 2MB, set from the max_post_body_bytes setting for requests
+        (default 10MB, set from the max_post_body_bytes setting for requests
         created by Datasette) if max_bytes is not provided. Pass max_bytes=0
         to disable the limit. Raises PayloadTooLarge (HTTP 413) if exceeded -
         oversized bodies are rejected as soon as the limit is passed, without
@@ -280,7 +280,9 @@ class Request:
             raise BadRequest(str(e))
 
     @classmethod
-    def fake(cls, path_with_query_string, method="GET", scheme="http", url_vars=None):
+    def fake(
+        cls, path_with_query_string, *, method="GET", scheme="http", url_vars=None
+    ):
         """Useful for constructing Request objects for tests"""
         path, _, query_string = path_with_query_string.partition("?")
         scope = {
@@ -339,7 +341,9 @@ class AsgiLifespan:
 
 
 class AsgiStream:
-    def __init__(self, stream_fn, status=200, headers=None, content_type="text/plain"):
+    def __init__(
+        self, stream_fn, *, status=200, headers=None, content_type="text/plain"
+    ):
         self.stream_fn = stream_fn
         self.status = status
         self.headers = headers or {}
@@ -378,7 +382,7 @@ class AsgiWriter:
         )
 
 
-async def asgi_send_json(send, info, status=200, headers=None):
+async def asgi_send_json(send, info, status=200, *, headers=None):
     headers = headers or {}
     await asgi_send(
         send,
@@ -389,7 +393,7 @@ async def asgi_send_json(send, info, status=200, headers=None):
     )
 
 
-async def asgi_send_html(send, html, status=200, headers=None):
+async def asgi_send_html(send, html, status=200, *, headers=None):
     headers = headers or {}
     await asgi_send(
         send,
@@ -415,12 +419,12 @@ async def asgi_send_redirect(send, location, status=302):
     )
 
 
-async def asgi_send(send, content, status, headers=None, content_type="text/plain"):
-    await asgi_start(send, status, headers, content_type)
+async def asgi_send(send, content, status, *, headers=None, content_type="text/plain"):
+    await asgi_start(send, status, headers=headers, content_type=content_type)
     await send({"type": "http.response.body", "body": content.encode("utf-8")})
 
 
-async def asgi_start(send, status, headers=None, content_type="text/plain"):
+async def asgi_start(send, status, *, headers=None, content_type="text/plain"):
     headers = headers or {}
     # Remove any existing content-type header
     headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
@@ -438,7 +442,7 @@ async def asgi_start(send, status, headers=None, content_type="text/plain"):
 
 
 async def asgi_send_file(
-    send, filepath, filename=None, content_type=None, chunk_size=4096, headers=None
+    send, filepath, filename=None, *, content_type=None, chunk_size=4096, headers=None
 ):
     headers = headers or {}
     if filename:
@@ -451,8 +455,10 @@ async def asgi_send_file(
             await asgi_start(
                 send,
                 200,
-                headers,
-                content_type or guess_type(str(filepath))[0] or "text/plain",
+                headers=headers,
+                content_type=content_type
+                or guess_type(str(filepath))[0]
+                or "text/plain",
             )
             first = False
         more_body = True
@@ -467,7 +473,28 @@ async def asgi_send_file(
 HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
 
 
-def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+def etag_matches(if_none_match, etag):
+    """
+    Does this If-None-Match request header match the ETag of the response?
+
+    If-None-Match uses weak comparison, so a W/ prefix on either side is
+    ignored. The header can be a comma-separated list of ETags, or * which
+    matches any ETag.
+    """
+    if not if_none_match:
+        return False
+
+    def strong(value):
+        return value.strip().removeprefix("W/")
+
+    etag = strong(etag)
+    return any(
+        candidate.strip() == "*" or strong(candidate) == etag
+        for candidate in if_none_match.split(",")
+    )
+
+
+def asgi_static(root_path, *, chunk_size=4096, headers=None, content_type=None):
     root_path = Path(root_path)
     static_headers = {}
 
@@ -501,8 +528,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
                 headers["Cache-Control"] = HASHED_STATIC_CACHE_CONTROL
             etag = await calculate_etag(full_path, chunk_size=chunk_size)
             headers["ETag"] = etag
-            if_none_match = request.headers.get("if-none-match")
-            if if_none_match and if_none_match == etag:
+            if etag_matches(request.headers.get("if-none-match"), etag):
                 return await asgi_send(send, "", 304, headers=headers)
             await asgi_send_file(
                 send, full_path, chunk_size=chunk_size, headers=headers
@@ -517,7 +543,9 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
 
 
 class Response:
-    def __init__(self, body=None, status=200, headers=None, content_type="text/plain"):
+    def __init__(
+        self, body=None, *, status=200, headers=None, content_type="text/plain"
+    ):
         self.body = body
         self.status = status
         self.headers = headers or {}
@@ -542,14 +570,44 @@ class Response:
             }
         )
         body = self.body
+        if hasattr(body, "__aiter__"):
+            await self._asgi_send_stream(body, send)
+            return
         if not isinstance(body, bytes):
             body = body.encode("utf-8")
         await send({"type": "http.response.body", "body": body})
+
+    async def _asgi_send_stream(self, body, send):
+        # An exception raised here - by the iterator, or by send() if the
+        # client has gone away - propagates without the final empty chunk,
+        # so the server drops the connection and the client can tell that
+        # the response is incomplete.
+        iterator = body.__aiter__()
+        try:
+            async for chunk in iterator:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                if chunk:
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": chunk,
+                            "more_body": True,
+                        }
+                    )
+        finally:
+            # Runs the finally: blocks of an async generator that did not
+            # finish, for example because the client disconnected
+            aclose = getattr(iterator, "aclose", None)
+            if aclose is not None:
+                await aclose()
+        await send({"type": "http.response.body", "body": b""})
 
     def set_cookie(
         self,
         key,
         value="",
+        *,
         max_age=None,
         expires=None,
         path="/",
@@ -578,7 +636,7 @@ class Response:
         self._set_cookie_headers.append(cookie.output(header="").strip())
 
     @classmethod
-    def html(cls, body, status=200, headers=None):
+    def html(cls, body, status=200, *, headers=None):
         return cls(
             body,
             status=status,
@@ -587,7 +645,7 @@ class Response:
         )
 
     @classmethod
-    def text(cls, body, status=200, headers=None):
+    def text(cls, body, status=200, *, headers=None):
         return cls(
             str(body),
             status=status,
@@ -596,7 +654,7 @@ class Response:
         )
 
     @classmethod
-    def json(cls, body, status=200, headers=None, default=None):
+    def json(cls, body, status=200, *, headers=None, default=None):
         return cls(
             json.dumps(body, default=default),
             status=status,
@@ -605,7 +663,29 @@ class Response:
         )
 
     @classmethod
-    def error(cls, messages, status=400, headers=None):
+    def stream(
+        cls,
+        body,
+        status=200,
+        *,
+        headers=None,
+        content_type="text/plain; charset=utf-8",
+    ):
+        """
+        A response that is sent to the client a chunk at a time.
+
+        body is an async iterator - usually an async generator - yielding
+        strings or bytes. Strings are encoded as UTF-8.
+        """
+        if not hasattr(body, "__aiter__"):
+            raise TypeError(
+                "Response.stream() body must be an async iterator, "
+                "such as an async generator"
+            )
+        return cls(body, status=status, headers=headers, content_type=content_type)
+
+    @classmethod
+    def error(cls, messages, status=400, *, headers=None):
         """
         A JSON error response using Datasette's standard error format.
 
@@ -617,7 +697,7 @@ class Response:
         return cls.json(error_body(messages, status), status=status, headers=headers)
 
     @classmethod
-    def redirect(cls, path, status=302, headers=None):
+    def redirect(cls, path, status=302, *, headers=None):
         headers = headers or {}
         headers["Location"] = path
         return cls("", status=status, headers=headers)
@@ -628,6 +708,7 @@ class AsgiFileDownload:
         self,
         filepath,
         filename=None,
+        *,
         content_type="application/octet-stream",
         headers=None,
     ):

@@ -54,6 +54,10 @@ def jump_items_sql(datasette, actor, request):
                 LEFT JOIN catalog_views
                     ON catalog_views.database_name = allowed_tables.parent
                    AND catalog_views.view_name = allowed_tables.child
+                LEFT JOIN catalog_tables
+                    ON catalog_tables.database_name = allowed_tables.parent
+                   AND catalog_tables.table_name = allowed_tables.child
+                WHERE NOT COALESCE(catalog_tables.hidden, 0)
                 """,
                 params=table_params,
             ),
@@ -72,8 +76,11 @@ def jump_items_sql(datasette, actor, request):
                         'query', allowed_queries.child
                     ) AS url,
                     allowed_queries.parent || ' ' || allowed_queries.child AS search_text,
-                    NULL AS display_name
+                    queries.title AS display_name
                 FROM allowed_queries
+                LEFT JOIN queries
+                    ON queries.database_name = allowed_queries.parent
+                   AND queries.name = allowed_queries.child
                 """,
                 params=query_params,
             ),

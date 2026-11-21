@@ -1,7 +1,8 @@
-import asyncio
+import hashlib
 import inspect
 import itertools
 import json
+import math
 import time
 import urllib
 import urllib.parse
@@ -9,6 +10,7 @@ from dataclasses import dataclass, field
 
 import markupsafe
 import sqlite_utils
+from jinja2.filters import do_filesizeformat
 
 from datasette import tracer
 from datasette.column_types import SQLiteType
@@ -22,6 +24,7 @@ from datasette.events import (
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.filters import Filters
 from datasette.plugins import pm
+from datasette.renderer import apply_column_type_transforms
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     CustomJSONEncoder,
@@ -29,22 +32,18 @@ from datasette.utils import (
     InvalidSql,
     WriteJsonValueError,
     add_cors_headers,
-    append_querystring,
     await_me_maybe,
-    call_with_supported_arguments,
     compound_keys_after_sql,
+    compound_keys_at_or_before_sql,
     decode_write_json_rows,
     escape_sqlite,
     filters_should_redirect,
-    format_bytes,
     is_url,
     make_slot_function,
     path_from_row_pks,
-    path_with_added_args,
-    path_with_format,
-    path_with_removed_args,
-    path_with_replaced_args,
+    request_route_path,
     sqlite3,
+    tilde_decode,
     tilde_encode,
     to_css_class,
     truncate_url,
@@ -62,7 +61,13 @@ from datasette.utils.asgi import (
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    render_with_output_renderer,
+    stream_requested,
+    tsv_export_path,
+)
 from .database import QueryView
 from .table_create_alter import (
     ALTER_TABLE_COLUMN_TYPES,
@@ -113,6 +118,11 @@ class TableContext(Context):
     private: bool = from_extra()
     query: dict = from_extra()
     renderers: dict = from_extra()
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     set_column_type_ui: dict = from_extra()
     sorted_facet_results: list = from_extra()
     suggested_facets: list = from_extra()
@@ -148,36 +158,51 @@ class TableContext(Context):
     supports_search: bool = field(
         metadata={"help": "True if this table has full-text search configured"}
     )
+    search: str = field(
+        metadata={
+            "help": "The current full-text search from ``?_search=``, or an empty string"
+        }
+    )
     extra_wheres_for_ui: list = field(
         metadata={
             "help": "Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment."
+        }
+    )
+    clear_filters_url: str = field(
+        metadata={
+            "help": "URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved."
+        }
+    )
+    page_position: dict = field(
+        metadata={
+            "help": "On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page."
+        }
+    )
+    filter_description_en: str = field(
+        metadata={
+            "help": 'Human readable description of the filters, search and ``?_where=`` clauses applied to the table, for example ``where state = "CA"``, or an empty string if there are none.'
+        }
+    )
+    sort_description_en: str = field(
+        metadata={
+            "help": "Human readable description of the sort order, for example ``sorted by name descending``, or an empty string if no sort order was specified."
         }
     )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
     sort_desc: str = field(
         metadata={"help": "Column the page is sorted by in descending order, or None"}
-    )
-    append_querystring: callable = field(
-        metadata={
-            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
-        }
-    )
-    path_with_replaced_args: callable = field(
-        metadata={
-            "help": "Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument."
-        }
-    )
-    fix_path: callable = field(
-        metadata={
-            "help": "Function that applies the configured ``base_url`` prefix to a path."
-        }
     )
     settings: dict = field(
         metadata={
@@ -186,11 +211,6 @@ class TableContext(Context):
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for the JSON version of this page"}
-    )
-    datasette_allow_facet: str = field(
-        metadata={
-            "help": 'The string "true" or "false" reflecting the allow_facet setting'
-        }
     )
     is_sortable: bool = field(
         metadata={"help": "True if any of the displayed columns can be used to sort"}
@@ -217,12 +237,17 @@ class TableContext(Context):
     )
     table_page_data: dict = field(
         metadata={
-            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
+            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data, optional ``alterTable`` data and optional ``executeSql`` data with ``queryUrl`` and ``editorUrl`` keys, present if the current actor can execute custom SQL against this database. ``executeSql`` also has a ``columns`` list of every column in the table with its ``name`` and declared ``type``, and an optional ``filter`` key with the ``where`` clause, ``params`` and human readable ``description`` of the filters currently applied to the table."
         }
     )
     table_insert_ui: dict = field(
         metadata={
             "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
+        }
+    )
+    row_mutation_ui: bool = field(
+        metadata={
+            "help": "True if the current actor can edit or delete rows in this table, which enables the row edit/delete JavaScript UI"
         }
     )
     table_alter_ui: dict = field(
@@ -360,11 +385,9 @@ async def _fragment_request_for_row(request, resolved):
     return _request_with_query_string(request, urllib.parse.urlencode(args))
 
 
-def _redirect(datasette, request, path, forward_querystring=True, remove_args=None):
+def _redirect(datasette, request, path, forward_querystring=True):
     if request.query_string and "?" not in path and forward_querystring:
         path = f"{path}?{request.query_string}"
-    if remove_args:
-        path = path_with_removed_args(request, remove_args, path=path)
     r = Response.redirect(path)
     r.headers["Link"] = f"<{path}>; rel=preload"
     if datasette.cors:
@@ -379,7 +402,15 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(path_with_added_args(request, redirect_params)),
+            datasette.urls.modify(
+                request,
+                add=[
+                    (key, value) for key, value in redirect_params if value is not None
+                ],
+                # The filter form also submits a blank ?_search= when unused
+                remove=[key for key, value in redirect_params if value is None]
+                + [("_search", "")],
+            ),
             forward_querystring=False,
         )
 
@@ -388,15 +419,10 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(
-                path_with_added_args(
-                    request,
-                    {
-                        "_sort_desc": request.args.get("_sort"),
-                        "_sort_by_desc": None,
-                        "_sort": None,
-                    },
-                )
+            datasette.urls.modify(
+                request,
+                add={"_sort_desc": request.args.get("_sort")},
+                remove=["_sort_by_desc", "_sort"],
             ),
             forward_querystring=False,
         )
@@ -465,6 +491,7 @@ async def _table_page_data(
     is_view,
     table_insert_ui,
     table_alter_ui,
+    execute_sql_ui=None,
 ):
     data = {
         "database": database_name,
@@ -475,6 +502,8 @@ async def _table_page_data(
         data["insertRow"] = table_insert_ui
     if table_alter_ui:
         data["alterTable"] = table_alter_ui
+    if execute_sql_ui:
+        data["executeSql"] = execute_sql_ui
     if not is_view:
         foreign_keys = await _foreign_key_autocomplete_urls(
             datasette, request, db, database_name, table_name
@@ -549,6 +578,62 @@ async def _table_insert_ui(
         data["upsertPath"] = (
             f"{datasette.urls.table(database_name, table_name)}/-/upsert"
         )
+    return data
+
+
+async def _execute_sql_ui(
+    datasette,
+    request,
+    database_name,
+    filter_where=None,
+    filter_params=None,
+    filter_description=None,
+    db=None,
+    table_name=None,
+    use_rowid=False,
+):
+    # URLs JavaScript can use to run read-only SQL against this database, used
+    # by the column statistics dialog. Only provided if the actor is allowed
+    # to execute arbitrary SQL.
+    if not await datasette.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database=database_name),
+        actor=request.actor,
+    ):
+        return None
+    query_path = f"{datasette.urls.database(database_name)}/-/query"
+    data = {
+        "queryUrl": query_path + ".json",
+        "editorUrl": query_path,
+    }
+    if db is not None and table_name is not None:
+        # Every column with its declared type, including any hidden from the
+        # current page, so the column statistics dialog can switch between them
+        columns = [{"name": "rowid", "type": "integer"}] if use_rowid else []
+        columns.extend(
+            {"name": column.name, "type": (column.type or "").lower()}
+            for column in await db.table_column_details(table_name)
+            # hidden == 1 is a hidden virtual table column, 2 and 3 are
+            # generated columns which can be queried
+            if column.hidden != 1
+        )
+        data["columns"] = columns
+    if filter_where:
+        # The where clause for the filters currently applied to the table,
+        # without pagination. Parameters keep their types (numeric filters
+        # such as __gt use numbers) so JavaScript can inline them as literals.
+        # Statistics can't faithfully reproduce a filter whose parameters
+        # can't be expressed in JSON, so the feature is disabled instead.
+        if not all(
+            value is None or isinstance(value, (str, int, float))
+            for value in (filter_params or {}).values()
+        ):
+            return None
+        data["filter"] = {
+            "where": filter_where,
+            "params": dict(filter_params or {}),
+            "description": filter_description or "",
+        }
     return data
 
 
@@ -679,6 +764,7 @@ async def display_columns_and_rows(
         col.name: col for col in await db.table_column_details(table_name)
     }
     pks = await db.primary_keys(table_name)
+    has_rowid_column = any(d[0] == "rowid" for d in description)
     pks_for_display = pks
     if not pks_for_display and not await db.view_exists(table_name):
         pks_for_display = ["rowid"]
@@ -723,6 +809,8 @@ async def display_columns_and_rows(
     }
 
     cell_rows = []
+    # Columns with at least one cell displayed as a link to a foreign key row
+    fk_link_columns = set()
     base_url = datasette.setting("base_url")
     for row in rows:
         cells = []
@@ -837,22 +925,36 @@ async def display_columns_and_rows(
             if plugin_display_value:
                 display_value = plugin_display_value
             elif isinstance(value, bytes):
-                formatted = format_bytes(len(value))
+                formatted = do_filesizeformat(len(value))
+                if pks or has_rowid_column or request is None:
+                    blob_url = datasette.urls.row_blob(
+                        database_name,
+                        table_name,
+                        path_from_row_pks(row, pks, not pks),
+                        column,
+                    )
+                else:
+                    # Views usually have no rowid to link to a row by,
+                    # so find the blob by its content hash instead
+                    blob_url = datasette.urls.modify(
+                        request,
+                        format="blob",
+                        add={
+                            "_blob_column": column,
+                            "_blob_hash": hashlib.sha256(value).hexdigest(),
+                        },
+                    )
                 display_value = markupsafe.Markup(
                     '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
-                        datasette.urls.row_blob(
-                            database_name,
-                            table_name,
-                            path_from_row_pks(row, pks, not pks),
-                            column,
-                        ),
-                        (f' title="{formatted}"' if "bytes" not in formatted else ""),
+                        blob_url,
+                        (f' title="{formatted}"' if len(value) >= 1000 else ""),
                         len(value),
                         "" if len(value) == 1 else "s",
                     )
                 )
             elif isinstance(value, dict):
                 # It's an expanded foreign key - display link to other row
+                fk_link_columns.add(column)
                 label = value["label"]
                 value = value["value"]
                 # The table we link to depends on the column
@@ -905,6 +1007,9 @@ async def display_columns_and_rows(
             )
         else:
             cell_rows.append(Row(cells))
+
+    for col_dict in columns:
+        col_dict["has_fks"] = col_dict["name"] in fk_link_columns
 
     if link_column:
         # Add the link column header.
@@ -1462,6 +1567,11 @@ class TableCountView(BaseView):
         _, where_clauses, params, _, _ = await _table_filters(
             self.ds, request, resolved.db.name, resolved.table
         )
+        _next = request.args.get("_next")
+        if request.args.get("_count") == "before" and _next:
+            return await self.count_before(
+                request, resolved, _next, where_clauses, params
+            )
         sql = f"select count(*) from {escape_sqlite(resolved.table)}"
         if where_clauses:
             sql += " where " + " and ".join(where_clauses)
@@ -1473,6 +1583,50 @@ class TableCountView(BaseView):
             return Response.error(str(ex), status=400)
         return Response.json(
             {"ok": True, "count": results.single_value()},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def count_before(self, request, resolved, _next, where_clauses, params):
+        """Count the filtered rows that come before a ?_next= cursor.
+
+        Used to show "Rows 51-100" on pages after the first, without slowing
+        down the page itself."""
+        db, table_name = resolved.db, resolved.table
+        if resolved.is_view:
+            # For views _next is a plain offset
+            try:
+                count = int(_next)
+            except ValueError:
+                return Response.error("Invalid _next", status=400)
+        else:
+            pks = await db.primary_keys(table_name)
+            use_rowid = not pks
+            table_metadata = await self.ds.table_config(db.name, table_name)
+            sortable_columns = await _sortable_columns_for_table(
+                self.ds, db.name, table_name, use_rowid
+            )
+            sort, sort_desc, _ = await _sort_order(
+                table_metadata, sortable_columns, request, ""
+            )
+            params = dict(params)
+            before_clause = _at_or_before_next_where_clause(
+                _next, sort, sort_desc, pks, use_rowid, params
+            )
+            if before_clause is None:
+                return Response.error("Invalid _next", status=400)
+            sql = "select count(*) from {} where {}".format(
+                escape_sqlite(table_name),
+                " and ".join(where_clauses + [before_clause]),
+            )
+            try:
+                results = await db.execute(sql, params)
+            except QueryInterrupted:
+                return Response.error("Count query timed out", status=400)
+            except (sqlite3.OperationalError, InvalidSql) as ex:
+                return Response.error(str(ex), status=400)
+            count = results.single_value()
+        return Response.json(
+            {"ok": True, "count": count},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -1502,9 +1656,6 @@ class TableFragmentView(BaseView):
             templates,
             dict(
                 data,
-                append_querystring=append_querystring,
-                path_with_replaced_args=path_with_replaced_args,
-                fix_path=self.ds.urls.path,
                 settings=self.ds.settings_dict(),
             ),
             request=request,
@@ -1814,14 +1965,41 @@ async def table_view_traced(datasette, request):
         context_for_html_hack = True
         default_labels = True
 
+    # ?_stream=1 for a format that can stream fetches the largest pages
+    stream = bool(
+        request.args.get("_stream") and datasette._renderer_can_stream.get(format_)
+    )
+    # ... until one of those pages takes too long
+    stream_small_pages = False
+
+    async def fetch_page(**kwargs):
+        nonlocal stream_small_pages
+        try:
+            return await table_view_data(
+                datasette,
+                request,
+                resolved,
+                stream=stream,
+                stream_small_pages=stream_small_pages,
+                **kwargs,
+            )
+        except QueryInterrupted:
+            # A page of max_returned_rows can exceed sql_time_limit_ms where
+            # a smaller page would not, for example for a view that is slow
+            # to compute. Fetch this page again, and every page after it,
+            # using the default page size. A ?_size= in the URL is a request
+            # for that exact size, so it gets the error instead.
+            if not stream or stream_small_pages or request.args.get("_size"):
+                raise
+            stream_small_pages = True
+            return await fetch_page(**kwargs)
+
     start = time.perf_counter()
-    view_data = await table_view_data(
-        datasette,
-        request,
-        resolved,
+    view_data = await fetch_page(
         extra_extras=extra_extras,
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
+        renderer_extras=datasette._renderer_extras.get(format_),
     )
     if isinstance(view_data, Response):
         return view_data
@@ -1829,70 +2007,41 @@ async def table_view_traced(datasette, request):
     data, rows, columns, _expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
-    if format_ == "csv":
+    if format_ in datasette.renderers:
+        next_token = data["next"]
 
-        async def fetch_data(request, _next=None):
-            (
-                data,
-                rows,
-                columns,
-                expanded_columns,
-                _sql,
-                _next_url,
-            ) = await table_view_data(
-                datasette,
-                request,
-                resolved,
-                extra_extras=extra_extras,
-                context_for_html_hack=context_for_html_hack,
+        async def fetch_next_page():
+            # Used to stream every row, a page at a time
+            nonlocal next_token
+            if not next_token:
+                return None
+            page_data, page_rows, *_ = await fetch_page(
                 default_labels=default_labels,
-                _next=_next,
+                _next=next_token,
+                rows_only=True,
             )
-            data["rows"] = rows
-            data["table"] = resolved.table
-            data["columns"] = columns
-            data["expanded_columns"] = expanded_columns
-            return data, None, None
+            next_token = page_data["next"]
+            return page_rows
 
-        return await stream_csv(datasette, fetch_data, request, resolved.db.name)
-    elif format_ in datasette.renderers:
-        # Dispatch request to the correct output format renderer
-        # (CSV is not handled here due to streaming)
-        result = call_with_supported_arguments(
-            datasette.renderers[format_][0],
-            datasette=datasette,
+        r = await render_with_output_renderer(
+            datasette,
+            request,
+            format_,
+            data=data,
             columns=columns,
             rows=rows,
             sql=sql,
             query_name=None,
             database=resolved.db.name,
             table=resolved.table,
-            request=request,
             view_name="table",
             truncated=False,
             error=None,
-            # These will be deprecated in Datasette 1.0:
-            args=request.args,
-            data=data,
+            fetch_next_page=fetch_next_page,
         )
-        if asyncio.iscoroutine(result):
-            result = await result
-        if result is None:
-            raise NotFound("No data")
-        if isinstance(result, dict):
-            r = Response(
-                body=result.get("body"),
-                status=result.get("status_code") or 200,
-                content_type=result.get("content_type", "text/plain"),
-                headers=result.get("headers"),
-            )
-        elif isinstance(result, Response):
-            r = result
-            # if status_code is not None:
-            #     # Over-ride the status code
-            #     r.status = status_code
-        else:
-            assert False, f"{result} should be dict or Response"
+        if stream_requested(datasette, request, format_):
+            # Every row is in this response, so there is no next page
+            next_url = None
     elif format_ == "html":
         headers = {}
         templates = [
@@ -1903,13 +2052,7 @@ async def table_view_traced(datasette, request):
         template = environment.select_template(templates)
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            datasette.urls.modify(request, format="json"),
         )
         headers.update(
             {
@@ -1933,6 +2076,8 @@ async def table_view_traced(datasette, request):
             filters=data["filters"],
             form_hidden_args=data["form_hidden_args"],
             human_description_en=data["human_description_en"],
+            filter_description_en=data["filter_description_en"],
+            sort_description_en=data["sort_description_en"],
             is_view=data["is_view"],
             metadata=data["metadata"],
             next_url=data["next_url"],
@@ -1940,6 +2085,7 @@ async def table_view_traced(datasette, request):
             private=data["private"],
             query=data["query"],
             renderers=data["renderers"],
+            renderer_options=datasette._renderer_options,
             set_column_type_ui=data["set_column_type_ui"],
             sorted_facet_results=data["sorted_facet_results"],
             suggested_facets=data["suggested_facets"],
@@ -1952,20 +2098,18 @@ async def table_view_traced(datasette, request):
             rows=data["rows"],
             filter_columns=data["filter_columns"],
             supports_search=data["supports_search"],
+            search=data.get("search") or "",
             extra_wheres_for_ui=data["extra_wheres_for_ui"],
+            clear_filters_url=data["clear_filters_url"],
+            page_position=data["page_position"],
             url_csv=data["url_csv"],
             url_csv_path=data["url_csv_path"],
             url_csv_hidden_args=data["url_csv_hidden_args"],
+            url_tsv_path=data["url_tsv_path"],
             sort=data["sort"],
             sort_desc=data["sort_desc"],
-            append_querystring=append_querystring,
-            path_with_replaced_args=path_with_replaced_args,
-            fix_path=datasette.urls.path,
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,
-            datasette_allow_facet=(
-                "true" if datasette.setting("allow_facet") else "false"
-            ),
             is_sortable=any(c["sortable"] for c in data["display_columns"]),
             allow_execute_sql=await datasette.allowed(
                 action="execute-sql",
@@ -1987,6 +2131,7 @@ async def table_view_traced(datasette, request):
             table_page_data=data["table_page_data"],
             table_insert_ui=data["table_insert_ui"],
             table_alter_ui=data["table_alter_ui"],
+            row_mutation_ui=data["row_mutation_ui"],
         )
         r = Response.html(
             await datasette.render_template(
@@ -1999,9 +2144,184 @@ async def table_view_traced(datasette, request):
         )
     else:
         assert False, f"Invalid format: {format_}"
-    if next_url:
+    if next_url and format_ != "html":
         r.headers["link"] = f'<{next_url}>; rel="next"'
     return r
+
+
+def _encode_sort_value(value):
+    if value is None:
+        return "$null"
+    # A raw colon cannot occur in a legacy tilde-encoded text component.
+    if isinstance(value, int):
+        return f"i:{value}"
+    if isinstance(value, float):
+        # float.hex() writes positive exponents as "p+1". A raw "+" in a query
+        # string decodes to a space, so drop it - float.fromhex() accepts "p1"
+        return f"f:{value.hex().replace('+', '')}"
+    if isinstance(value, bytes):
+        return f"b:{value.hex()}"
+    return tilde_encode(str(value))
+
+
+def _decode_sort_value(value):
+    if value == "$null":
+        return None
+    # Typed values are not tilde-encoded, so check for them before tilde_decode()
+    try:
+        if value.startswith("i:"):
+            number = int(value[2:])
+            if not -(2**63) <= number < 2**63:
+                raise ValueError
+            return number
+        if value.startswith("f:"):
+            number = float.fromhex(value[2:])
+            if math.isnan(number):
+                raise ValueError
+            return number
+        if value.startswith("b:"):
+            return bytes.fromhex(value[2:])
+    except (ValueError, OverflowError):
+        raise BadRequest("Invalid _next")
+    return tilde_decode(value)
+
+
+def _parse_next(_next, sort, sort_desc):
+    """Split a ?_next= cursor into (sort_value, primary key components)."""
+    sort_value = None
+    components = _next.split(",")
+    # If a sort order is applied and there are multiple components,
+    # the first of these is the sort value
+    if (sort or sort_desc) and (len(components) > 1):
+        sort_value = _decode_sort_value(components.pop(0))
+    return sort_value, [tilde_decode(component) for component in components]
+
+
+def _at_or_before_next_where_clause(_next, sort, sort_desc, pks, use_rowid, params):
+    """SQL clause selecting the rows up to and including a ?_next= cursor - the
+    rows on earlier pages. Returns None if the cursor is not valid.
+
+    This is the inverse of _next_where_clauses(), written out directly rather
+    than as "not (...)" so that SQLite can use an index range search on the
+    primary key (or on the sort column, if it is indexed)."""
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+    if use_rowid:
+        if len(components) != 1:
+            return None
+        pk_clause = f"rowid <= :p{len(params)}"
+        params[f"p{len(params)}"] = components[0]
+    else:
+        if len(components) != len(pks):
+            return None
+        param_len = len(params)
+        pk_clause = compound_keys_at_or_before_sql(pks, param_len)
+        for i, pk_value in enumerate(components):
+            params[f"p{param_len + i}"] = pk_value
+    if not (sort or sort_desc):
+        return pk_clause
+    # Rows are ordered by the sort column then the primary key. SQLite puts
+    # nulls first in ascending order and last in descending order.
+    column = escape_sqlite(sort or sort_desc)
+    if sort_value is None:
+        if sort:
+            # Only nulls come before, up to the cursor's primary key
+            return f"({column} is null and {pk_clause})"
+        # Every non-null value comes before the nulls
+        return f"({column} is not null or ({column} is null and {pk_clause}))"
+    p = f":p{len(params)}"
+    params[f"p{len(params)}"] = sort_value
+    if sort:
+        return (
+            f"({column} is null or {column} < {p}"
+            f" or ({column} = {p} and {pk_clause}))"
+        )
+    return f"({column} > {p} or ({column} = {p} and {pk_clause}))"
+
+
+def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
+    """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
+
+    Adds the cursor's values to params and returns a list of where clauses."""
+    clauses = []
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+
+    # Figure out the SQL for next-based-on-primary-key first
+    next_by_pk_clauses = []
+    if use_rowid:
+        next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+        params[f"p{len(params)}"] = components[0]
+    else:
+        # Apply the tie-breaker based on primary keys
+        if len(components) == len(pks):
+            param_len = len(params)
+            next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
+            for i, pk_value in enumerate(components):
+                params[f"p{param_len + i}"] = pk_value
+
+    # Now add the sort SQL, which may incorporate next_by_pk_clauses
+    if sort or sort_desc:
+        if sort_value is None:
+            if sort_desc:
+                # Just items where column is null ordered by pk
+                clauses.append(
+                    "({column} is null and {next_clauses})".format(
+                        column=escape_sqlite(sort_desc),
+                        next_clauses=" and ".join(next_by_pk_clauses),
+                    )
+                )
+            else:
+                clauses.append(
+                    "({column} is not null or ({column} is null and {next_clauses}))".format(
+                        column=escape_sqlite(sort),
+                        next_clauses=" and ".join(next_by_pk_clauses),
+                    )
+                )
+        else:
+            clauses.append(
+                "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
+                    column=escape_sqlite(sort or sort_desc),
+                    op=">" if sort else "<",
+                    p=len(params),
+                    extra_desc_only=(
+                        ""
+                        if sort
+                        else f" or {escape_sqlite(sort or sort_desc)} is null"
+                    ),
+                    next_clauses=" and ".join(next_by_pk_clauses),
+                )
+            )
+            params[f"p{len(params)}"] = sort_value
+    else:
+        clauses.extend(next_by_pk_clauses)
+    return clauses
+
+
+def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid):
+    """Context for the "you are not on the first page" strip, or None on page 1."""
+    _next = request.args.get("_next")
+    if not _next:
+        return None
+    position = {
+        "first_url": datasette.urls.modify(request, remove="_next"),
+        "count_before_url": datasette.urls.modify(
+            request_route_path(request).rstrip("/")
+            + "/-/count?"
+            + request.query_string,
+            add={"_count": "before"},
+        ),
+        "after_column": None,
+        "after_value": None,
+    }
+    if is_view:
+        return position
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+    if (sort or sort_desc) and len(_next.split(",")) > 1:
+        position["after_column"] = sort or sort_desc
+        position["after_value"] = None if sort_value is None else str(sort_value)
+    else:
+        position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
+        position["after_value"] = ", ".join(components)
+    return position
 
 
 async def _table_filters(datasette, request, database_name, table_name):
@@ -2053,6 +2373,10 @@ async def table_view_data(
     context_for_html_hack=False,
     default_labels=False,
     _next=None,
+    renderer_extras=None,
+    rows_only=False,
+    stream=False,
+    stream_small_pages=False,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -2148,6 +2472,8 @@ async def table_view_data(
     )
     # Copy of params so we can mutate them later:
     from_sql_params = dict(**params)
+    # The filter where clause before any pagination clauses are added
+    filter_where_sql = " and ".join(where_clauses)
 
     count_sql = f"select count(*) {from_sql}"
 
@@ -2156,70 +2482,18 @@ async def table_view_data(
 
     offset = ""
     if _next:
-        sort_value = None
         if is_view:
             # _next is an offset
             offset = f" offset {int(_next)}"
         else:
-            components = urlsafe_components(_next)
-            # If a sort order is applied and there are multiple components,
-            # the first of these is the sort value
-            if (sort or sort_desc) and (len(components) > 1):
-                sort_value = components[0]
-                # Special case for if non-urlencoded first token was $null
-                if _next.split(",")[0] == "$null":
-                    sort_value = None
-                components = components[1:]
+            where_clauses.extend(
+                _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params)
+            )
 
-            # Figure out the SQL for next-based-on-primary-key first
-            next_by_pk_clauses = []
-            if use_rowid:
-                next_by_pk_clauses.append(f"rowid > :p{len(params)}")
-                params[f"p{len(params)}"] = components[0]
-            else:
-                # Apply the tie-breaker based on primary keys
-                if len(components) == len(pks):
-                    param_len = len(params)
-                    next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
-                    for i, pk_value in enumerate(components):
-                        params[f"p{param_len + i}"] = pk_value
-
-            # Now add the sort SQL, which may incorporate next_by_pk_clauses
-            if sort or sort_desc:
-                if sort_value is None:
-                    if sort_desc:
-                        # Just items where column is null ordered by pk
-                        where_clauses.append(
-                            "({column} is null and {next_clauses})".format(
-                                column=escape_sqlite(sort_desc),
-                                next_clauses=" and ".join(next_by_pk_clauses),
-                            )
-                        )
-                    else:
-                        where_clauses.append(
-                            "({column} is not null or ({column} is null and {next_clauses}))".format(
-                                column=escape_sqlite(sort),
-                                next_clauses=" and ".join(next_by_pk_clauses),
-                            )
-                        )
-                else:
-                    where_clauses.append(
-                        "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
-                            column=escape_sqlite(sort or sort_desc),
-                            op=">" if sort else "<",
-                            p=len(params),
-                            extra_desc_only=(
-                                ""
-                                if sort
-                                else f" or {escape_sqlite(sort or sort_desc)} is null"
-                            ),
-                            next_clauses=" and ".join(next_by_pk_clauses),
-                        )
-                    )
-                    params[f"p{len(params)}"] = sort_value
-                order_by = f"{order_by}, {order_by_pks}"
-            else:
-                where_clauses.extend(next_by_pk_clauses)
+    # The first page needs this tie-breaker too: the ?_next= cursor assumes that
+    # rows with the same sort value come back in primary key order
+    if (sort or sort_desc) and not is_view:
+        order_by = f"{order_by}, {order_by_pks}"
 
     where_clause = ""
     if where_clauses:
@@ -2232,7 +2506,18 @@ async def table_view_data(
     # Handle ?_size=500
     # TODO: This was:
     # page_size = _size or request.args.get("_size") or table_metadata.get("size")
-    page_size = request.args.get("_size") or table_metadata.get("size")
+    page_size = request.args.get("_size")
+    # Streaming chooses its own page size unless the URL has a ?_size=. A
+    # max_returned_rows of 0 means no limit, so there is no largest page
+    stream_page_size = bool(stream and not page_size and datasette.max_returned_rows)
+    if not page_size:
+        page_size = table_metadata.get("size")
+        if stream_page_size:
+            if stream_small_pages:
+                page_size = page_size or datasette.page_size
+            else:
+                # Streaming every row is fastest using the largest pages
+                page_size = "max"
     if page_size:
         if page_size == "max":
             page_size = datasette.max_returned_rows
@@ -2244,6 +2529,11 @@ async def table_view_data(
         except ValueError:
             raise BadRequest("_size must be a positive integer")
 
+        if stream_page_size:
+            # A page longer than max_returned_rows is cut short without a
+            # next page, which would end the stream with rows still to come
+            page_size = min(page_size, datasette.max_returned_rows)
+
         if page_size > datasette.max_returned_rows:
             raise BadRequest(f"_size must be <= {datasette.max_returned_rows}")
 
@@ -2252,9 +2542,7 @@ async def table_view_data(
         page_size = datasette.page_size
 
     # Facets are calculated against SQL without order by or limit
-    sql_no_order_no_limit = (
-        f"select {select_all_columns} from {escape_sqlite(table_name)} {where_clause}"
-    )
+    sql_no_order_no_limit = f"select {select_all_columns} {from_sql}"
 
     # This is the SQL that populates the main table on the page
     sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
@@ -2344,12 +2632,27 @@ async def table_view_data(
     )
     rows = rows[:page_size]
 
+    if rows_only:
+        # A later page of a streaming response: skip the extras
+        return (
+            {"next": next_value and str(next_value) or None},
+            rows,
+            columns,
+            expanded_columns,
+            sql,
+            next_url,
+        )
+
     # Resolve extras
     extras = extra_names_from_request(request)
     if not extra_extras:
         # Data formats reject unknown extras; the HTML path (which passes
         # extra_extras={"_html"}) resolves internal extras of its own
         table_extra_registry.validate_requested(extras, ExtraScope.TABLE)
+    if renderer_extras:
+        # Extras declared by the output renderer for this format. Any that
+        # are not available for tables are skipped when extras are resolved.
+        extras.update(renderer_extras)
     if any(k for k in request.args if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
@@ -2360,7 +2663,7 @@ async def table_view_data(
         extras.update(extra_extras)
 
     # Faceting
-    if not datasette.setting("allow_facet") and any(
+    if not datasette.setting("default_allow_facet") and any(
         arg.startswith("_facet") for arg in request.args
     ):
         raise BadRequest("_facet= is not allowed")
@@ -2381,6 +2684,7 @@ async def table_view_data(
         private=private,
         rows=rows,
         columns=columns,
+        expanded_columns=expanded_columns,
         results_description=results.description,
         table_columns=table_columns,
         pks=pks,
@@ -2420,19 +2724,14 @@ async def table_view_data(
             include_internal=bool(extra_extras),
         )
     )
-    raw_sqlite_rows = rows[:page_size]
-    # Apply transform_value for columns with assigned types
-    ct_map = await datasette.get_column_types(database_name, table_name)
-    transformed_rows = []
-    for r in raw_sqlite_rows:
-        row_dict = dict(r)
-        for col_name, ct in ct_map.items():
-            if col_name in row_dict:
-                row_dict[col_name] = await ct.transform_value(
-                    row_dict[col_name], datasette
-                )
-        transformed_rows.append(row_dict)
-    data["rows"] = transformed_rows
+    if context_for_html_hack:
+        # Apply transform_value for columns with assigned types
+        data["rows"] = await apply_column_type_transforms(
+            datasette, database_name, table_name, rows[:page_size]
+        )
+    else:
+        # The JSON renderer applies those transforms itself
+        data["rows"] = [dict(row) for row in rows[:page_size]]
 
     if context_for_html_hack:
         data["count_truncated"] = count_is_truncated(
@@ -2447,30 +2746,52 @@ async def table_view_data(
             for table_column in table_columns
             if table_column not in columns
         ]
+        filter_keys = {key for key, _ in filters.pairs}
+        data["clear_filters_url"] = (
+            datasette.urls.modify(request, remove=filter_keys | {"_next"})
+            if filter_keys
+            else None
+        )
         url_labels_extra = {}
         if data.get("expandable_columns"):
             url_labels_extra = {"_labels": "on"}
-        url_csv_args = {"_size": "max", **url_labels_extra}
-        url_csv = datasette.urls.path(
-            path_with_format(
-                request=request,
-                path=request.scope.get("route_path"),
-                format="csv",
-                extra_qs=url_csv_args,
-            )
-        )
+        url_csv_args = {**url_labels_extra, "_size": "max"}
+        url_csv = datasette.urls.modify(request, format="csv", add=url_csv_args)
         url_csv_path = url_csv.split("?")[0]
         data.update(
             {
+                "filter_description_en": filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+                "sort_description_en": (
+                    "sorted by {}{}".format(
+                        sort or sort_desc, " descending" if sort_desc else ""
+                    )
+                    if (sort or sort_desc)
+                    else ""
+                ),
                 "url_csv": url_csv,
                 "url_csv_path": url_csv_path,
+                "url_tsv_path": tsv_export_path(datasette, request),
                 "url_csv_hidden_args": [
                     (key, value)
-                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    # Blank values matter: ?name= filters for name = ""
+                    for key, value in urllib.parse.parse_qsl(
+                        request.query_string, keep_blank_values=True
+                    )
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],
             }
+        )
+        data["page_position"] = _page_position(
+            datasette, request, is_view, sort, sort_desc, pks, use_rowid
         )
         # if no sort specified AND table has a single primary key,
         # set sort to that so arrow is displayed
@@ -2489,6 +2810,15 @@ async def table_view_data(
         )
         data["table_insert_ui"] = table_insert_ui
         data["table_alter_ui"] = table_alter_ui
+        row_mutation_ui = False
+        if not is_view and db.is_mutable:
+            row_action_permissions = await datasette.allowed_many(
+                actions=["update-row", "delete-row"],
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
+            )
+            row_mutation_ui = any(row_action_permissions.values())
+        data["row_mutation_ui"] = row_mutation_ui
         data["table_page_data"] = await _table_page_data(
             datasette=datasette,
             request=request,
@@ -2498,6 +2828,25 @@ async def table_view_data(
             is_view=is_view,
             table_insert_ui=table_insert_ui,
             table_alter_ui=table_alter_ui,
+            execute_sql_ui=await _execute_sql_ui(
+                datasette,
+                request,
+                database_name,
+                filter_where=filter_where_sql,
+                filter_params=from_sql_params,
+                db=db,
+                table_name=table_name,
+                use_rowid=use_rowid,
+                filter_description=filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+            ),
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
@@ -2528,10 +2877,12 @@ async def _next_value_and_url(
         if (sort or sort_desc) and not is_view:
             try:
                 prefix = rows[-2][sort or sort_desc]
-            except IndexError:
+            except (IndexError, KeyError):
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
+                # Tables with no primary key paginate on rowid
+                lookup_pks = pks or ["rowid"]
                 prefix_where_clause = " and ".join(
-                    f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(pks)
+                    f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(lookup_pks)
                 )
                 prefix_lookup_sql = (
                     f"select {escape_sqlite(sort or sort_desc)} "
@@ -2540,15 +2891,12 @@ async def _next_value_and_url(
                 prefix = (
                     await db.execute(
                         prefix_lookup_sql,
-                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(pks)}},
+                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(lookup_pks)}},
                     )
                 ).single_value()
             if isinstance(prefix, dict) and "value" in prefix:
                 prefix = prefix["value"]
-            if prefix is None:
-                prefix = "$null"
-            else:
-                prefix = tilde_encode(str(prefix))
+            prefix = _encode_sort_value(prefix)
             next_value = f"{prefix},{next_value}"
             added_args = {"_next": next_value}
             if sort:
@@ -2558,6 +2906,7 @@ async def _next_value_and_url(
         else:
             added_args = {"_next": next_value}
         next_url = datasette.absolute_url(
-            request, datasette.urls.path(path_with_replaced_args(request, added_args))
+            request,
+            datasette.urls.modify(request, replace=added_args),
         )
     return next_value, next_url

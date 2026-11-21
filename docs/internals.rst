@@ -53,7 +53,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
 
 ``.max_post_body_bytes`` - integer
-    The maximum number of bytes ``await request.post_body()`` will read into memory, or ``0`` for no limit. Set from the :ref:`setting_max_post_body_bytes` setting (default 2MB) for requests created by Datasette. Can be passed to the ``Request`` constructor as a keyword argument.
+    The maximum number of bytes ``await request.post_body()`` will read into memory, or ``0`` for no limit. Set from the :ref:`setting_max_post_body_bytes` setting (default 10MB) for requests created by Datasette. Can be passed to the ``Request`` constructor as a keyword argument.
 
 The object also has the following awaitable methods:
 
@@ -115,11 +115,11 @@ The object also has the following awaitable methods:
 ``await request.post_body(max_bytes=None)`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
 
-    The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 2MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
+    The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 10MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
 
 And a class method that can be used to create fake request objects for use in tests:
 
-``fake(path_with_query_string, method="GET", scheme="http", url_vars=None)``
+``fake(path_with_query_string, *, method="GET", scheme="http", url_vars=None)``
     Returns a ``Request`` instance for the specified path and method. For example:
 
     .. code-block:: python
@@ -149,7 +149,7 @@ And a class method that can be used to create fake request objects for use in te
 The MultiParams class
 ---------------------
 
-``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values.
+``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values. The class can be imported using ``from datasette.utils import MultiParams``.
 
 Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
 
@@ -259,7 +259,7 @@ Response class
 
 The ``Response`` class can be returned from view functions that have been registered using the :ref:`plugin_register_routes` hook.
 
-The ``Response()`` constructor takes the following arguments:
+The ``Response()`` constructor takes the following arguments. ``body`` can be passed positionally; ``status``, ``headers`` and ``content_type`` are keyword-only:
 
 ``body`` - string
     The body of the response.
@@ -307,6 +307,51 @@ Each of these responses will use the correct corresponding content-type - ``text
 Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
 
 ``Response.error(messages, status=400)`` returns a JSON error in the :ref:`standard Datasette error format <json_api_errors>`. ``messages`` can be a single string or a list of strings. Use this for JSON-only endpoints; if your error should content-negotiate between JSON and HTML, raise ``Forbidden``, ``NotFound``, ``BadRequest`` or ``DatasetteError`` instead and Datasette's error handling will build the appropriate response.
+
+.. _internals_response_stream:
+
+Streaming responses with Response.stream()
+------------------------------------------
+
+Use ``Response.stream(body)`` to send a response a piece at a time, without first building all of it in memory. This is useful for large exports, and for responses that take a long time to generate.
+
+``body`` is an async iterator - usually an async generator - that yields strings or bytes. Strings are encoded as UTF-8.
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+
+    async def all_rows(datasette, request):
+        db = datasette.get_database()
+
+        async def body():
+            last_id = 0
+            while True:
+                rows = (
+                    await db.execute(
+                        "select id, name from items where id > ? order by id limit 100",
+                        [last_id],
+                    )
+                ).rows
+                if not rows:
+                    break
+                for row in rows:
+                    yield f"{row['id']}\t{row['name']}\n"
+                last_id = rows[-1]["id"]
+
+        return Response.stream(
+            body(),
+            content_type="text/tab-separated-values; charset=utf-8",
+        )
+
+``Response.stream()`` also accepts the optional ``status=`` and ``headers=`` arguments. ``content_type=`` defaults to ``text/plain; charset=utf-8``. ``response.set_cookie()`` works as it does for any other response.
+
+Three things to keep in mind when streaming:
+
+- The status and headers are sent before the first chunk, so they cannot depend on anything the iterator works out later. Code that might fail in a way the client should see as an error - checking permissions, validating arguments, running the first query - should run in the view function before it returns the response, where raising an exception still produces a regular error page.
+- If the iterator raises an exception part way through, Datasette cannot send an error page because the response has already started. The exception is passed on to the server, which drops the connection without completing the response, so the client sees a failed request instead of a truncated response that looks complete.
+- If the client disconnects, Datasette closes the iterator. For an async generator this runs any ``finally:`` blocks, which is the place to release resources.
 
 .. _internals_response_asgi_send:
 
@@ -422,8 +467,8 @@ The dictionary keys are the action names - e.g. ``view-instance`` - and the valu
 
 .. _datasette_plugin_config:
 
-.plugin_config(plugin_name, database=None, table=None)
-------------------------------------------------------
+.plugin_config(plugin_name, \*, database=None, table=None)
+----------------------------------------------------------
 
 ``plugin_name`` - string
     The name of the plugin to look up configuration for. Usually this is something similar to ``datasette-cluster-map``.
@@ -442,8 +487,8 @@ If the plugin is not configured the return value will be ``None``.
 
 .. _datasette_render_template:
 
-await .render_template(template, context=None, request=None)
-------------------------------------------------------------
+await .render_template(template, context=None, \*, request=None)
+----------------------------------------------------------------
 
 ``template`` - string, list of strings or jinja2.Template
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.
@@ -1315,8 +1360,8 @@ Removes the column type assignment for the specified column.
 
 .. _datasette_add_database:
 
-.add_database(db, name=None, route=None)
-----------------------------------------
+.add_database(db, name=None, \*, route=None)
+--------------------------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
@@ -1359,8 +1404,8 @@ Use ``is_mutable=False`` to add an immutable database.
 
 .. _datasette_add_memory_database:
 
-.add_memory_database(memory_name, name=None, route=None)
---------------------------------------------------------
+.add_memory_database(memory_name, name=None, \*, route=None)
+------------------------------------------------------------
 
 Adds a shared in-memory database with the specified name:
 
@@ -1531,7 +1576,9 @@ For example:
 
 .. code-block:: python
 
-    downloads_are_allowed = datasette.setting("allow_download")
+    downloads_are_allowed = datasette.setting(
+        "default_allow_download"
+    )
 
 .. _datasette_resolve_database:
 
@@ -1745,10 +1792,10 @@ datasette.urls
 
 The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`setting_base_url` configuration setting that might be in effect.
 
-``datasette.urls.instance(format=None)``
+``datasette.urls.instance(*, format=None)``
     Returns the URL to the Datasette instance root page. This is usually ``"/"``.
 
-``datasette.urls.path(path, format=None)``
+``datasette.urls.path(path, *, format=None)``
     Takes a path and returns the full path, taking ``base_url`` into account.
 
     For example, ``datasette.urls.path("-/logout")`` will return the path to the logout page, which will be ``"/-/logout"`` by default or ``/prefix-path/-/logout`` if ``base_url`` is set to ``/prefix-path/``
@@ -1764,17 +1811,72 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
-``datasette.urls.static(path)``
-    Returns the URL of one of Datasette's default static assets, for example ``"/-/static/app.css"``
-
-``datasette.urls.database(database_name, format=None)``
+``datasette.urls.database(database_name, *, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
-``datasette.urls.table(database_name, table_name, format=None)``
+``datasette.urls.table(database_name, table_name, *, format=None)``
     Returns the URL to a table page, for example ``"/fixtures/facetable"``
 
-``datasette.urls.query(database_name, query_name, format=None)``
+``datasette.urls.query(database_name, query_name, *, format=None)``
     Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
+
+``datasette.urls.row(database_name, table_name, row_path, *, format=None)``
+    Returns the URL to a row page, for example ``"/fixtures/facetable/1"``
+
+    ``row_path`` should be a list or tuple of the primary key values for the row, in the order of the table's primary key columns. Datasette will :ref:`tilde-encode <internals_tilde_encoding>` each value and join them with commas. For a table without a primary key, pass the ``rowid``.
+
+    .. code-block:: python
+
+        datasette.urls.row("fixtures", "facetable", [1])
+        # "/fixtures/facetable/1"
+        datasette.urls.row(
+            "fixtures", "compound_primary_key", ["a/b", "c"]
+        )
+        # "/fixtures/compound_primary_key/a~2Fb,c"
+
+    ``row_path`` can also be a string. Strings are used as they are, without any encoding, so they must already be tilde-encoded.
+
+``datasette.urls.row_blob(database_name, table_name, row_path, column)``
+    Returns the URL that serves the binary content of a single ``BLOB`` column for a row, for example ``"/fixtures/binary_data/1.blob?_blob_column=data"``
+
+    ``row_path`` accepts the same values as ``datasette.urls.row()``. The column name is URL-encoded for you.
+
+.. _internals_datasette_urls_modify:
+
+``datasette.urls.modify(target, *, add=None, replace=None, remove=None, format=None)``
+    Returns a modified copy of a URL. Use this to build links that change the query string of the current page, such as sort, filter and pagination links.
+
+    ``target`` is either the current :ref:`request <internals_request>` or a path string, which can include a query string. A request uses the path and query string of that request, with any ``base_url`` prefix handled for you. A string should be a path without the ``base_url`` prefix, or a ``PrefixedUrlString`` returned by another ``datasette.urls`` method.
+
+    The changes are applied in this order:
+
+    - ``remove`` - a key, or a list or set of keys and ``(key, value)`` tuples, or a ``{key: value}`` dictionary. A key removes every value for that key. A key and value pair removes only that value, leaving other values for the same key in place.
+    - ``replace`` - a dictionary or list of ``(key, value)`` tuples. Any existing values for each key are dropped and the new value is used in their place. A value of ``None`` removes the key.
+    - ``add`` - a dictionary or list of ``(key, value)`` tuples. These are added to the end of the query string, keeping any existing values for the same key.
+
+    In ``add`` and ``replace`` a value can be a list, which sets several values for that key. Query string arguments with blank values, such as ``?name=``, are preserved. Existing arguments are left exactly as they were unless something is removed or replaced, in which case the whole query string is re-encoded.
+
+    ``format`` works like the ``format=`` argument to the other methods. When ``target`` is a request for a page such as ``/fixtures/facetable.json`` the existing ``.json`` extension is replaced. Pass ``format=False`` to remove the extension from a request without adding a new one, which gives the path to the HTML version of the page.
+
+    .. code-block:: python
+
+        # request is for /fixtures/facetable?_sort=state&_facet=state&_next=10
+        datasette.urls.modify(
+            request, replace={"_sort_desc": "city"}, remove="_sort"
+        )
+        # "/fixtures/facetable?_facet=state&_next=10&_sort_desc=city"
+        datasette.urls.modify(
+            request,
+            add={"_facet": "city"},
+            remove=["_next", ("_facet", "state")],
+        )
+        # "/fixtures/facetable?_sort=state&_facet=city"
+        datasette.urls.modify(
+            "/fixtures/facetable?_size=10", add={"_labels": "on"}
+        )
+        # "/fixtures/facetable?_size=10&_labels=on"
+
+    The same operations are available for a query string on its own as ``datasette.utils.modify_query_string(query_string, add=None, replace=None, remove=None)``.
 
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
 
@@ -1784,6 +1886,8 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.database("fixtures") }}">Fixtures database</a>
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
+    <a href="{{ urls.row("fixtures", "facetable", [1]) }}">facetable row 1</a>
+    <a href="{{ urls.modify(request, replace={"_size": 50}, remove="_next") }}">50 rows per page</a>
 
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
@@ -2178,8 +2282,8 @@ The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.cal
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10, transaction=True, time_limit_ms=2000)
-----------------------------------------------------------------------------------------------------------------------------------------------
+await db.execute_write(sql, params=None, \*, block=True, request=None, return_all=False, returning_limit=10, transaction=True, time_limit_ms=2000)
+--------------------------------------------------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -2227,8 +2331,8 @@ read queries. Changing that setting does not change the default write limit.
 
 .. _database_execute_write_script:
 
-await db.execute_write_script(sql, block=True)
-----------------------------------------------
+await db.execute_write_script(sql, \*, block=True)
+--------------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
 
@@ -2236,8 +2340,8 @@ Each call to ``execute_write_script()`` will be executed inside a transaction.
 
 .. _database_execute_write_many:
 
-await db.execute_write_many(sql, params_seq, block=True)
---------------------------------------------------------
+await db.execute_write_many(sql, params_seq, \*, block=True)
+------------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
 
@@ -2252,8 +2356,8 @@ Each call to ``execute_write_many()`` will be executed inside a transaction.
 
 .. _database_execute_write_fn:
 
-await db.execute_write_fn(fn, block=True, transaction=True)
------------------------------------------------------------
+await db.execute_write_fn(fn, \*, block=True, transaction=True)
+---------------------------------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
@@ -2784,7 +2888,7 @@ You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this
     export DATASETTE_INTERNAL=/path/to/internal.db
     datasette mydatabase.db
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. The ``hidden`` column on ``catalog_tables`` is ``1`` for :ref:`hidden tables <DatabaseView_hidden>`. These tables should not be considered a stable API - they may change between Datasette releases.
 
 Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
@@ -2832,6 +2936,7 @@ The internal database schema is as follows:
         table_name TEXT,
         rootpage INTEGER,
         sql TEXT,
+        hidden INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );
@@ -2961,6 +3066,10 @@ If the metadata cannot be parsed as either JSON or YAML the function will raise 
 
 .. autofunction:: datasette.utils.parse_metadata
 
+.. _internals_utils_BadMetadataError:
+
+.. autoclass:: datasette.utils.BadMetadataError
+
 .. _internals_utils_await_me_maybe:
 
 await_me_maybe(value)
@@ -3044,6 +3153,129 @@ Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_
 
 .. autofunction:: datasette.utils.async_call_with_supported_arguments
 
+.. _internals_utils_escape_sqlite:
+
+escape_sqlite(s)
+----------------
+
+Use this to safely include a table or column name in a SQL query. Values should still be passed as query parameters - this function is only for identifiers.
+
+.. code-block:: python
+
+    from datasette.utils import escape_sqlite
+
+    sql = "select * from {} where {} = :value".format(
+        escape_sqlite(table), escape_sqlite(column)
+    )
+
+.. autofunction:: datasette.utils.escape_sqlite
+
+.. _internals_utils_escape_fts:
+
+escape_fts(query)
+-----------------
+
+Escapes a search string provided by a user for use with SQLite full-text search. The same logic is available to SQL queries as the ``escape_fts()`` SQL function, see :ref:`full_text_search_custom_sql`.
+
+.. autofunction:: datasette.utils.escape_fts
+
+.. _internals_utils_to_css_class:
+
+to_css_class(s)
+---------------
+
+Datasette uses this function to derive the CSS classes and custom template names for databases, tables and columns, as described in :ref:`customization`.
+
+.. autofunction:: datasette.utils.to_css_class
+
+.. _internals_utils_modify_query_string:
+
+modify_query_string(query_string, add=None, replace=None, remove=None)
+----------------------------------------------------------------------
+
+Add, replace or remove arguments in a query string. :ref:`datasette.urls.modify() <internals_datasette_urls>` offers the same operations for a full path or a request.
+
+.. code-block:: python
+
+    from datasette.utils import modify_query_string
+
+    modify_query_string(
+        "_size=10&_next=20",
+        replace={"_size": 50},
+        remove="_next",
+    )
+    # "_size=50"
+
+.. autofunction:: datasette.utils.modify_query_string
+
+.. _internals_utils_actor_matches_allow:
+
+actor_matches_allow(actor, allow)
+---------------------------------
+
+Checks an actor against an ``"allow"`` block. See :ref:`authentication_actor_matches_allow`. This can also be imported using ``from datasette import actor_matches_allow``.
+
+.. autofunction:: datasette.utils.actor_matches_allow
+
+.. _internals_utils_add_cors_headers:
+
+add_cors_headers(headers)
+-------------------------
+
+Plugins that return their own JSON responses can use this to send the same headers as Datasette's ``--cors`` option, listed in :ref:`json_api_cors`.
+
+.. code-block:: python
+
+    from datasette import Response
+    from datasette.utils import add_cors_headers
+
+
+    async def my_view(request):
+        headers = {}
+        add_cors_headers(headers)
+        return Response.json({"ok": True}, headers=headers)
+
+.. autofunction:: datasette.utils.add_cors_headers
+
+.. _internals_utils_StartupError:
+
+StartupError
+------------
+
+.. autoclass:: datasette.utils.StartupError
+
+.. _internals_utils_PrefixedUrlString:
+
+PrefixedUrlString
+-----------------
+
+.. autoclass:: datasette.utils.PrefixedUrlString
+
+.. _internals_utils_PaginatedResources:
+
+PaginatedResources
+------------------
+
+.. autoclass:: datasette.utils.PaginatedResources
+
+.. _internals_utils_sqlite3:
+
+sqlite3
+-------
+
+``datasette.utils.sqlite3`` is the SQLite module that Datasette itself is using. This is `pysqlite3 <https://github.com/coleifer/pysqlite3>`__ if that package is installed, otherwise it is the ``sqlite3`` module from the Python standard library.
+
+Plugins should import this in place of the standard library module, so that their connections and exception handling use the same SQLite library as Datasette:
+
+.. code-block:: python
+
+    from datasette.utils import sqlite3
+
+    try:
+        conn.execute(sql)
+    except sqlite3.OperationalError as ex:
+        ...
+
 .. _internals_tracer:
 
 JSON encoding
@@ -3060,7 +3292,7 @@ Running Datasette with ``--setting trace_debug 1`` enables trace debug output, w
 
 You can see an example of this at the bottom of `latest.datasette.io/fixtures/facetable?_trace=1 <https://latest.datasette.io/fixtures/facetable?_trace=1>`__. The JSON output shows full details of every SQL query that was executed to generate the page.
 
-The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information. You can see `a demo of that here <https://latest-with-plugins.datasette.io/github/commits?_trace=1>`__.
+The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information.
 
 You can add your own custom traces to the JSON output using the ``trace()`` context manager. This takes a string that identifies the type of trace being recorded, and records any keyword arguments as additional JSON keys on the resulting trace object.
 

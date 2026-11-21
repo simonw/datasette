@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import contextvars
+import hashlib
 import inspect
 import os
 import queue
@@ -16,7 +17,6 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
-from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
     linked_root_span_kwargs,
@@ -58,7 +58,6 @@ from .utils import (
     escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
-    md5_not_usedforsecurity,
     sqlite3,
     sqlite_timelimit,
     table_column_details,
@@ -160,7 +159,9 @@ class Database:
     def color(self):
         if self.hash:
             return self.hash[:6]
-        return md5_not_usedforsecurity(self.name)[:6]
+        return hashlib.md5(self.name.encode("utf8"), usedforsecurity=False).hexdigest()[
+            :6
+        ]
 
     def suggest_name(self):
         if self.is_temp_disk:
@@ -282,6 +283,7 @@ class Database:
         self,
         sql,
         params=None,
+        *,
         block=True,
         request=None,
         return_all=False,
@@ -328,7 +330,7 @@ class Database:
                     )
         return results
 
-    async def execute_write_script(self, sql, block=True, request=None):
+    async def execute_write_script(self, sql, *, block=True, request=None):
         self._check_not_closed()
 
         def _inner(conn):
@@ -349,7 +351,7 @@ class Database:
                     )
         return results
 
-    async def execute_write_many(self, sql, params_seq, block=True, request=None):
+    async def execute_write_many(self, sql, params_seq, *, block=True, request=None):
         self._check_not_closed()
 
         def _inner(conn):
@@ -428,7 +430,7 @@ class Database:
 
         return await self.execute_isolated_fn(_analyze_sql)
 
-    async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
+    async def execute_write_fn(self, fn, *, block=True, transaction=True, request=None):
         """Run `fn(conn)` on the write connection, traced as a `db.query` span.
 
         The SQL-string write methods call `_execute_write_fn()` directly to
@@ -717,6 +719,7 @@ class Database:
         self,
         sql,
         params=None,
+        *,
         truncate=False,
         custom_time_limit=None,
         page_size=None,
@@ -740,6 +743,7 @@ class Database:
                 record_exception=False,
                 set_status_on_exception=False,
             ) as execute_span:
+                cursor = None
                 try:
                     with sqlite_timelimit(conn, time_limit_ms):
                         try:
@@ -756,6 +760,12 @@ class Database:
                                 rows = cursor.fetchall()
                                 truncated = False
                         except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                            # The traceback keeps this frame, and so the cursor,
+                            # alive until the garbage collector runs. An open
+                            # cursor stops SQLite from really closing the
+                            # connection, so release it now.
+                            if cursor is not None:
+                                cursor.close()
                             if e.args == ("interrupted",):
                                 raise QueryInterrupted(e, sql, params)
                             if log_sql_errors:
@@ -833,7 +843,8 @@ class Database:
             return self.cached_hash
         else:
             p = Path(self.path)
-            self.cached_hash = inspect_hash(p)
+            with p.open("rb") as fp:
+                self.cached_hash = hashlib.file_digest(fp, "sha256").hexdigest()
             return self.cached_hash
 
     @property

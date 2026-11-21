@@ -9,7 +9,8 @@ import pytest
 
 @pytest.mark.serial
 def test_serve_localhost_http(ds_localhost_http_server):
-    response = httpx2.get("http://localhost:8041/_memory.json")
+    _, port = ds_localhost_http_server
+    response = httpx2.get(f"http://localhost:{port}/_memory.json")
     assert {
         "database": "_memory",
         "path": "/_memory",

@@ -56,7 +56,6 @@ def _headers(token):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["read", "read_row", "rename"])
 async def test_trailing_lf_table_permissions(tmp_path, operation):
     # SQLite treats "secret" and "secret\n" as different table names. Permission
@@ -167,7 +166,6 @@ BASE64_WRITE_API_VALUE = {"$base64": True, "encoded": "AAEC/f7/"}
 BASE64_WRITE_API_LITERAL = '{"$base64": true, "encoded": "AAEC/f7/"}'
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("use_fallback", (False, True))
 @pytest.mark.parametrize(
     "operation", ("insert", "upsert", "update", "delete", "create", "create_uppercase")
@@ -223,7 +221,6 @@ async def test_structured_writes_require_ordinary_tables(
     assert await db.execute_fn(lambda conn: list(conn.iterdump())) == before
 
 
-@pytest.mark.asyncio
 async def test_structured_writes_to_content_table_maintain_fts(ds_write):
     db = ds_write.get_database("data")
     await db.execute_write_fn(
@@ -243,7 +240,6 @@ async def test_structured_writes_to_content_table_maintain_fts(ds_write):
     assert [row[0] for row in matches.rows] == [1]
 
 
-@pytest.mark.asyncio
 async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -286,7 +282,6 @@ async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_writ
     ]
 
 
-@pytest.mark.asyncio
 async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
     token = write_token(ds_write)
     db = ds_write.get_database("data")
@@ -369,7 +364,6 @@ async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
     ]
 
 
-@pytest.mark.asyncio
 async def test_api_explorer_upsert_example_json(ds_write):
     response = await ds_write.client.get("/-/api", actor={"id": "root"})
     assert response.status_code == 200
@@ -384,7 +378,6 @@ async def test_api_explorer_upsert_example_json(ds_write):
     assert '"age": "<age>"' in upsert_chunk
 
 
-@pytest.mark.asyncio
 async def test_api_explorer_upsert_example_json_rowid_table(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
     conn = sqlite3.connect(db_path)
@@ -404,7 +397,6 @@ async def test_api_explorer_upsert_example_json_rowid_table(tmp_path_factory):
     assert '"score": "<score>"' in upsert_chunk
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "content_type",
     (
@@ -438,7 +430,6 @@ async def test_insert_row(ds_write, content_type):
     assert not event.replace
 
 
-@pytest.mark.asyncio
 async def test_insert_row_alter(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -459,7 +450,6 @@ async def test_insert_row_alter(ds_write):
     assert "extra" in event.after_schema
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("return_rows", (True, False))
 async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
@@ -494,7 +484,6 @@ async def test_insert_rows(ds_write, return_rows):
         assert response.json()["rows"] == actual_rows
 
 
-@pytest.mark.asyncio
 async def test_insert_rows_post_body_too_large(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
     conn = sqlite3.connect(db_path)
@@ -522,7 +511,6 @@ async def test_insert_rows_post_body_too_large(tmp_path_factory):
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,input,special_case,expected_status,expected_errors",
     (
@@ -769,7 +757,6 @@ async def test_insert_or_upsert_row_errors(
     assert before_count == after_count
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("allowed", (True, False))
 async def test_upsert_permissions_per_table(ds_write, allowed):
     # https://github.com/simonw/datasette/issues/2262
@@ -804,7 +791,6 @@ async def test_upsert_permissions_per_table(ds_write, allowed):
         assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "ignore,replace,expected_rows",
     (
@@ -865,7 +851,6 @@ async def test_insert_ignore_replace(
         assert response.json()["rows"] == expected_rows
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "initial,input,expected_rows",
     (
@@ -968,7 +953,6 @@ async def _insert_row(ds):
     return insert_response.json()["rows"][0]["id"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table"))
 async def test_delete_row_errors(ds_write, scenario):
     if scenario == "no_token":
@@ -997,7 +981,6 @@ async def test_delete_row_errors(ds_write, scenario):
     assert len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table,row_for_create,pks,delete_path",
     (
@@ -1062,7 +1045,6 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     ).json() == [0]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario", ("no_token", "no_perm", "bad_table", "cannot_alter")
 )
@@ -1101,7 +1083,6 @@ async def test_update_row_check_permission(ds_write, scenario):
     )
 
 
-@pytest.mark.asyncio
 async def test_update_row_invalid_key(ds_write):
     token = write_token(ds_write)
 
@@ -1122,7 +1103,6 @@ async def test_update_row_invalid_key(ds_write):
     }
 
 
-@pytest.mark.asyncio
 async def test_update_row_alter(ds_write):
     token = write_token(ds_write, permissions=["ur", "at"])
     pk = await _insert_row(ds_write)
@@ -1136,7 +1116,6 @@ async def test_update_row_alter(ds_write):
     assert response.json() == {"ok": True}
 
 
-@pytest.mark.asyncio
 async def test_alter_table_operations(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1240,7 +1219,6 @@ async def test_alter_table_operations(ds_write):
     assert event.after_schema == data["schema"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "default_expr,minimum_value,expected_schema",
     (
@@ -1297,7 +1275,6 @@ async def test_alter_table_integer_default_expr(
     assert row[1] == "integer"
 
 
-@pytest.mark.asyncio
 async def test_alter_table_rename_table(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1349,7 +1326,6 @@ async def test_alter_table_rename_table(ds_write):
     assert rename_events[0].new_table == "documents"
 
 
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_operations(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1423,7 +1399,6 @@ async def test_alter_table_foreign_key_operations(ds_write):
     assert_schema_not_contains('"owner_id" INTEGER REFERENCES', data["schema"])
 
 
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write):
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1443,7 +1418,6 @@ async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write)
     )
 
 
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1469,7 +1443,6 @@ async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_w
     )
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_suggestions(ds_write):
     token = write_token(ds_write, permissions=["alter-table", "view-table"])
     db = ds_write.get_database("data")
@@ -1524,7 +1497,6 @@ async def test_foreign_key_suggestions(ds_write):
     assert columns["score"]["suggestions"] == []
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_suggestions_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.get(
@@ -1535,7 +1507,6 @@ async def test_foreign_key_suggestions_permission_denied(ds_write):
     assert response.json() == error_body(["Permission denied: need alter-table"], 403)
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
     token = write_token(ds_write, permissions=["alter-table", "view-table"])
     db = ds_write.get_database("data")
@@ -1566,7 +1537,6 @@ async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
     assert columns["age"]["suggestions"] == []
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_targets(ds_write):
     token = write_token(ds_write, permissions=["create-table", "view-table"])
     db = ds_write.get_database("data")
@@ -1636,7 +1606,6 @@ async def test_foreign_key_targets(ds_write):
     )
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_targets_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.get(
@@ -1647,7 +1616,6 @@ async def test_foreign_key_targets_permission_denied(ds_write):
     assert response.json() == error_body(["Permission denied: need create-table"], 403)
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_targets_allowed_for_alter_table(ds_write):
     token = write_token(ds_write, permissions=["at"])
     response = await ds_write.client.get(
@@ -1658,7 +1626,6 @@ async def test_foreign_key_targets_allowed_for_alter_table(ds_write):
     assert response.json()["ok"] is True
 
 
-@pytest.mark.asyncio
 async def test_alter_table_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.post(
@@ -1670,7 +1637,6 @@ async def test_alter_table_permission_denied(ds_write):
     assert response.json() == error_body(["Permission denied: need alter-table"], 403)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "body,expected_error",
     (
@@ -1737,7 +1703,6 @@ async def test_alter_table_validation_errors(ds_write, body, expected_error):
     assert response.json()["errors"] == [expected_error]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_form_parameter_called_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1775,7 +1740,6 @@ async def test_execute_write_form_parameter_called_sql():
     ] == "Updated"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input,expected_errors",
     (
@@ -1836,7 +1800,6 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
         assert row[k] == v
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario", ("no_token", "no_perm", "bad_table", "has_perm", "immutable")
 )
@@ -1901,7 +1864,6 @@ async def test_drop_table(ds_write, scenario):
         assert (await ds_write.client.get("/data/docs")).status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_drop_table_cleans_up_fts(ds_write):
     db = ds_write.get_database("data")
 
@@ -1937,7 +1899,6 @@ async def test_drop_table_cleans_up_fts(ds_write):
     ] == []
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input,expected_status,expected_response,expected_events",
     (
@@ -2394,7 +2355,6 @@ async def test_create_table(
     assert [e.name for e in events] == expected_events
 
 
-@pytest.mark.asyncio
 async def test_create_table_with_foreign_key(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -2435,7 +2395,6 @@ async def test_create_table_with_foreign_key(ds_write):
     )
 
 
-@pytest.mark.asyncio
 async def test_create_table_with_column_constraints(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -2489,7 +2448,6 @@ async def test_create_table_with_column_constraints(ds_write):
     assert columns[4]["dflt_value"] == "'hello)'"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "default_expr,minimum_value,expected_schema",
     (
@@ -2544,7 +2502,6 @@ async def test_create_table_integer_default_expr(
     assert row[1] == "integer"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "column,expected_error",
     (
@@ -2595,7 +2552,6 @@ async def test_create_table_column_validation(ds_write, column, expected_error):
         )
 
 
-@pytest.mark.asyncio
 async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -2635,7 +2591,6 @@ async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "permissions,body,expected_status,expected_errors",
     (
@@ -2686,7 +2641,6 @@ async def test_create_table_permissions(
         assert data["errors"] == expected_errors
 
 
-@pytest.mark.asyncio
 @pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2356")
 @pytest.mark.parametrize(
     "input,expected_rows_after",
@@ -2757,7 +2711,6 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
     assert event_names == ["insert-rows"]
 
 
-@pytest.mark.asyncio
 async def test_create_table_error_if_pk_changed(ds_write):
     token = write_token(ds_write)
     first_response = await ds_write.client.post(
@@ -2787,7 +2740,6 @@ async def test_create_table_error_if_pk_changed(ds_write):
     )
 
 
-@pytest.mark.asyncio
 async def test_create_table_error_rows_twice_with_duplicates(ds_write):
     # Error if you don't send ignore: True or replace: True
     token = write_token(ds_write)
@@ -2813,7 +2765,6 @@ async def test_create_table_error_rows_twice_with_duplicates(ds_write):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -2838,7 +2789,6 @@ async def test_method_not_allowed(ds_write, path):
     }
 
 
-@pytest.mark.asyncio
 async def test_create_uses_alter_by_default_for_new_table(ds_write):
     ds_write._tracked_events = []
     token = write_token(ds_write)
@@ -2864,7 +2814,6 @@ async def test_create_uses_alter_by_default_for_new_table(ds_write):
     assert event_names == ["create-table", "insert-rows"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("has_alter_permission", (True, False))
 async def test_create_using_alter_against_existing_table(
     ds_write, has_alter_permission
@@ -2922,7 +2871,6 @@ async def test_create_using_alter_against_existing_table(
         assert insert_rows_event.num_rows == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("denied_action", "request_body"),
     (
@@ -3006,7 +2954,6 @@ async def test_create_table_existing_table_respects_table_level_denial(
     assert await db.table_columns("salaries") == ["id", "note"]
 
 
-@pytest.mark.asyncio
 async def test_create_table_respects_predeclared_table_level_denial():
     ds = Datasette(
         memory=True,

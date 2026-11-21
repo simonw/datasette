@@ -49,7 +49,6 @@ async def _drive_lifespan_startup(app):
     return messages_sent
 
 
-@pytest.mark.asyncio
 async def test_tasks_registered_in_startup_hook_run_after_lifespan_startup():
     # Two tasks registered by one plugin's startup hook - order preserved,
     # both running after lifespan startup completes, and no HTTP request
@@ -97,7 +96,6 @@ async def test_tasks_registered_in_startup_hook_run_after_lifespan_startup():
         await ds._background_tasks.cancel_all(grace=1.0)
 
 
-@pytest.mark.asyncio
 async def test_launch_waits_for_every_startup_hook_before_running_any_task():
     # PluginA registers a task from its startup hook; PluginB does the
     # same from ITS startup hook, which runs after PluginA's (forced with
@@ -159,7 +157,6 @@ async def test_launch_waits_for_every_startup_hook_before_running_any_task():
         pm.unregister(name="plugin_b")
 
 
-@pytest.mark.asyncio
 async def test_concurrent_first_requests_launch_background_tasks_exactly_once():
     launch_count = {"n": 0}
 
@@ -197,7 +194,6 @@ async def test_concurrent_first_requests_launch_background_tasks_exactly_once():
         pm.unregister(name="counting_task_plugin")
 
 
-@pytest.mark.asyncio
 async def test_post_launch_registration_starts_immediately_and_cancel_works():
     ds = Datasette(memory=True)
     await ds.start_background_tasks()  # nothing registered yet, but launched
@@ -224,7 +220,6 @@ async def test_post_launch_registration_starts_immediately_and_cancel_works():
     assert handle.state == "cancelled"
 
 
-@pytest.mark.asyncio
 async def test_pre_launch_registration_starts_as_registered():
     ds = Datasette(memory=True)
 
@@ -239,7 +234,6 @@ async def test_pre_launch_registration_starts_as_registered():
     assert handle not in ds._background_tasks.tasks()
 
 
-@pytest.mark.asyncio
 async def test_crashing_task_logs_traceback_and_state_is_crashed(caplog):
     ds = Datasette(memory=True)
     await ds.start_background_tasks()
@@ -297,7 +291,6 @@ def test_name_collisions_get_suffixed_and_explicit_names_are_respected():
     assert h_default.name == noop.__qualname__
 
 
-@pytest.mark.asyncio
 async def test_start_background_tasks_on_bare_datasette():
     # The headless-CLI path (datasette-rss's `fetch --due` shape): no
     # server, no lifespan, no first HTTP request - just an explicit call.
@@ -326,7 +319,6 @@ async def test_start_background_tasks_on_bare_datasette():
     assert handle.state == "completed"
 
 
-@pytest.mark.asyncio
 async def test_cancel_all_cancels_running_tasks_and_leaves_completed_alone():
     ds = Datasette(memory=True)
     await ds.start_background_tasks()
@@ -348,7 +340,6 @@ async def test_cancel_all_cancels_running_tasks_and_leaves_completed_alone():
     assert quick_handle.state == "completed"
 
 
-@pytest.mark.asyncio
 async def test_cancel_all_logs_stragglers_that_outlive_the_grace_period(caplog):
     ds = Datasette(memory=True)
     await ds.start_background_tasks()

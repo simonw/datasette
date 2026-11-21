@@ -1543,6 +1543,22 @@ UNSTABLE_API_MESSAGE = (
 )
 
 
+def request_wants_json(request):
+    """
+    True if errors for this request should use the JSON error format: the
+    path ends in .json, or the Accept header mentions application/json, or
+    the request body was sent as application/json (with or without a
+    charset parameter).
+    """
+    path = request.path.split("?")[0]
+    if path.endswith(".json"):
+        return True
+    if "application/json" in (request.headers.get("accept") or ""):
+        return True
+    content_type = (request.headers.get("content-type") or "").split(";")[0]
+    return content_type.strip().lower() == "application/json"
+
+
 def error_body(messages, status):
     """
     The canonical JSON error body used by every Datasette JSON error response:

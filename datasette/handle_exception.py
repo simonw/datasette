@@ -5,7 +5,7 @@ from markupsafe import Markup
 
 from datasette import Response, hookimpl
 
-from .utils import add_cors_headers, error_body
+from .utils import add_cors_headers, error_body, request_wants_json
 from .utils.asgi import (
     Base400,
 )
@@ -61,11 +61,7 @@ def handle_exception(datasette, request, exception):
             return Response.text(
                 plain_message or message, status=status, headers=headers
             )
-        if (
-            path.endswith(".json")
-            or "application/json" in (request.headers.get("accept") or "")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             body = dict(info)
             body.update(error_body(plain_message or message, status))
             return Response.json(body, status=status, headers=headers)

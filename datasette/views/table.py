@@ -41,6 +41,7 @@ from datasette.utils import (
     make_slot_function,
     path_from_row_pks,
     request_route_path,
+    request_wants_json,
     sqlite3,
     tilde_decode,
     tilde_encode,
@@ -1941,7 +1942,9 @@ async def table_view_traced(datasette, request):
         else:
             raise
 
-    if request.method == "POST":
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        if request_wants_json(request):
+            return Response.error("Method not allowed", 405)
         return Response.text("Method not allowed", status=405)
 
     format_ = request.url_vars.get("format") or "html"
@@ -2131,7 +2134,7 @@ async def table_view_traced(datasette, request):
             headers=headers,
         )
     else:
-        assert False, f"Invalid format: {format_}"
+        raise NotFound(f"Invalid format: {format_}")
     if next_url and format_ != "html":
         r.headers["link"] = f'<{next_url}>; rel="next"'
     return r

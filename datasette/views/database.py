@@ -1164,7 +1164,7 @@ class QueryView(View):
                 headers=headers,
             )
         else:
-            assert False, f"Invalid format: {format_}"
+            raise NotFound(f"Invalid format: {format_}")
         if datasette.cors:
             add_cors_headers(r.headers)
         if stored_query_write and format_ == "html":

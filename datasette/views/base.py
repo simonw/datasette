@@ -6,6 +6,7 @@ from datasette.renderer import RowStream
 from datasette.utils import (
     add_cors_headers,
     call_with_supported_arguments,
+    request_wants_json,
 )
 from datasette.utils.asgi import (
     BadRequest,
@@ -72,10 +73,7 @@ class View:
         return response
 
     async def method_not_allowed(self, request):
-        if (
-            request.path.endswith(".json")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
@@ -111,10 +109,7 @@ class BaseView:
         return response
 
     async def method_not_allowed(self, request):
-        if (
-            request.path.endswith(".json")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)

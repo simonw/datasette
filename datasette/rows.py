@@ -49,8 +49,11 @@ class TypeCategory(str, Enum):
         return self.value
 
 
-# Declared SQLite types that are recognized by name. The name is the declared
-# type with any (length) removed, in upper case.
+# SQLite has none of these types. It accepts any name as a declared type and
+# only stores integers, floats, text and blobs. These are the names that are
+# conventionally used to say what a column is meant to hold, so they are
+# recognized here. The name is the declared type with any (length) removed,
+# in upper case. Anything else falls back to SQLite's type affinity rules.
 _SQLITE_NAMED_CATEGORIES: dict[str, TypeCategory] = {
     "BOOL": TypeCategory.BOOLEAN,
     "BOOLEAN": TypeCategory.BOOLEAN,
@@ -59,9 +62,7 @@ _SQLITE_NAMED_CATEGORIES: dict[str, TypeCategory] = {
     "DATETIME": TypeCategory.DATETIME,
     "TIMESTAMP": TypeCategory.DATETIME,
     "JSON": TypeCategory.JSON,
-    "JSONB": TypeCategory.JSON,
-    "UUID": TypeCategory.UUID,
-    "GUID": TypeCategory.UUID,
+    # SQLite does not store exact decimals: these hold integers or floats
     "DECIMAL": TypeCategory.DECIMAL,
     "NUMERIC": TypeCategory.DECIMAL,
 }

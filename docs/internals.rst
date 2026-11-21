@@ -2352,7 +2352,7 @@ DatabaseType
 
 The type describes the column, not the values in it. SQLite will store a string in a column declared as ``INTEGER``, and a column declared as ``DATETIME`` usually holds strings. For SQLite the values in a row are always a string, integer, float, bytes or ``None``.
 
-``DatabaseType.from_sqlite(declared_type)`` returns the type for a SQLite column declaration. It recognizes ``BOOLEAN``, ``DATE``, ``TIME``, ``DATETIME``, ``TIMESTAMP``, ``JSON``, ``UUID``, ``DECIMAL`` and ``NUMERIC`` by name and otherwise follows SQLite's `type affinity rules <https://www.sqlite.org/datatype3.html#determination_of_column_affinity>`__.
+``DatabaseType.from_sqlite(declared_type)`` returns the type for a SQLite column declaration. SQLite accepts any name as a declared type and has no date, boolean, JSON or decimal types of its own, so the category is based on what the name conventionally means. ``BOOL``, ``BOOLEAN``, ``DATE``, ``TIME``, ``DATETIME``, ``TIMESTAMP``, ``JSON``, ``DECIMAL`` and ``NUMERIC`` are recognized by name. A column declared as ``DECIMAL`` or ``NUMERIC`` has the ``decimal`` category, but SQLite stores its values as integers or floats, not as exact decimals. Any other name follows SQLite's `type affinity rules <https://www.sqlite.org/datatype3.html#determination_of_column_affinity>`__ to give ``integer``, ``text``, ``binary`` or ``float``, and is ``other`` if none of those rules match. The ``uuid`` and ``array`` categories are never used for SQLite.
 
 .. _database_execute_fn:
 

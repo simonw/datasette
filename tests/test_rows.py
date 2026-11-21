@@ -189,7 +189,13 @@ def test_column_is_immutable():
         ("DATETIME", "DATETIME", TypeCategory.DATETIME),
         ("timestamp", "timestamp", TypeCategory.DATETIME),
         ("JSON", "JSON", TypeCategory.JSON),
-        ("UUID", "UUID", TypeCategory.UUID),
+        ("bool", "bool", TypeCategory.BOOLEAN),
+        # Names with no established meaning in SQLite are not guessed at
+        ("UUID", "UUID", TypeCategory.OTHER),
+        ("GUID", "GUID", TypeCategory.OTHER),
+        ("JSONB", "JSONB", TypeCategory.OTHER),
+        # SQLite's affinity rules apply to everything else: POINT contains INT
+        ("POINT", "POINT", TypeCategory.INTEGER),
         (" TEXT ", "TEXT", TypeCategory.TEXT),
         ("GEOMETRY", "GEOMETRY", TypeCategory.OTHER),
     ),

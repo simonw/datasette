@@ -8,6 +8,7 @@ from datasette import Column, Columns, DatabaseType, ForeignKey, Row, TypeCatego
 from datasette.app import Datasette
 from datasette.database import Results
 from datasette.utils import CustomJSONEncoder
+from datasette.utils.sqlite import supports_returning
 
 
 @pytest.fixture
@@ -311,6 +312,9 @@ async def test_db_execute_returns_rows():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not supports_returning(), reason="SQLite does not support RETURNING"
+)
 async def test_db_execute_write_returning_rows():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_db_execute_write_returning_rows")

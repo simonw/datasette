@@ -786,8 +786,8 @@ Example:
 await .check_visibility(actor, action, resource=None)
 -----------------------------------------------------
 
-``actor`` - dictionary
-    The authenticated actor. This is usually ``request.actor``.
+``actor`` - dictionary or None
+    The authenticated actor, or ``None`` for an anonymous request. This is usually ``request.actor``.
 
 ``action`` - string
     The name of the action that is being permission checked.

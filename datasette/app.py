@@ -1763,7 +1763,7 @@ class Datasette:
 
     async def check_visibility(
         self,
-        actor: dict,
+        actor: dict | None,
         action: str,
         resource: Resource | None = None,
     ):

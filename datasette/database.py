@@ -22,10 +22,8 @@ from opentelemetry.trace import Status, StatusCode
 from .rows import (
     Column,
     Columns,
-    DatabaseType,
     ForeignKey,
     Row,
-    TypeCategory,
     rows_with_columns,
 )
 from .telemetry import (
@@ -1311,7 +1309,8 @@ def describe_columns(
     described = {
         column.name: Column(
             name=column.name,
-            type=DatabaseType.from_sqlite(column.type),
+            # SQLite reports a column declared without a type as ""
+            type=column.type or None,
             table=table,
             foreign_key=foreign_keys_by_column.get(column.name),
         )
@@ -1327,7 +1326,7 @@ def describe_columns(
                 # The implicit rowid of a table that has no column of that name
                 column = Column(
                     name=name,
-                    type=DatabaseType("INTEGER", TypeCategory.INTEGER),
+                    type="INTEGER",
                     table=table,
                 )
             else:

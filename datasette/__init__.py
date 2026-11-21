@@ -5,10 +5,8 @@ from datasette.background_tasks import BackgroundTask, BackgroundTaskSupervisor 
 from datasette.rows import (  # noqa
     Column,
     Columns,
-    DatabaseType,
     ForeignKey,
     Row,
-    TypeCategory,
 )
 from datasette.tokens import TokenHandler, TokenInvalid, TokenRestrictions  # noqa
 from datasette.utils.asgi import (  # noqa

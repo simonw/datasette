@@ -3,11 +3,10 @@ The objects Datasette uses to represent the results of a query.
 
 A :class:`Row` is one row of results. Every row belonging to the same set
 of results shares a single :class:`Columns` object, which describes each
-:class:`Column` - its name and, where the database can tell us, its
-:class:`DatabaseType`, the table it came from and the foreign key it holds.
+:class:`Column` - its name and, where the database can tell us, its declared
+type, the table it came from and the foreign key it holds.
 
-Nothing in this module knows about SQLite apart from
-:meth:`DatabaseType.from_sqlite`. A database backend produces a tuple of
+Nothing in this module knows about SQLite. A database produces a tuple of
 values for each row plus a description of the columns, and Datasette builds
 these objects from that.
 """
@@ -16,105 +15,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from enum import Enum
 from types import MappingProxyType
 from typing import Any, overload
 
 _NO_LABELS: Mapping[str, Any] = MappingProxyType({})
-
-
-class TypeCategory(str, Enum):
-    """
-    A portable description of the kind of data a column is declared to hold.
-
-    These are the same across database backends, so code can ask "is this a
-    datetime column?" without knowing which database the column lives in.
-    """
-
-    TEXT = "text"
-    INTEGER = "integer"
-    FLOAT = "float"
-    DECIMAL = "decimal"
-    BOOLEAN = "boolean"
-    BINARY = "binary"
-    JSON = "json"
-    DATE = "date"
-    TIME = "time"
-    DATETIME = "datetime"
-    UUID = "uuid"
-    ARRAY = "array"
-    OTHER = "other"
-
-    def __str__(self) -> str:
-        return self.value
-
-
-# SQLite has none of these types. It accepts any name as a declared type and
-# only stores integers, floats, text and blobs. These are the names that are
-# conventionally used to say what a column is meant to hold, so they are
-# recognized here. The name is the declared type with any (length) removed,
-# in upper case. Anything else falls back to SQLite's type affinity rules.
-_SQLITE_NAMED_CATEGORIES: dict[str, TypeCategory] = {
-    "BOOL": TypeCategory.BOOLEAN,
-    "BOOLEAN": TypeCategory.BOOLEAN,
-    "DATE": TypeCategory.DATE,
-    "TIME": TypeCategory.TIME,
-    "DATETIME": TypeCategory.DATETIME,
-    "TIMESTAMP": TypeCategory.DATETIME,
-    "JSON": TypeCategory.JSON,
-    # SQLite does not store exact decimals: these hold integers or floats
-    "DECIMAL": TypeCategory.DECIMAL,
-    "NUMERIC": TypeCategory.DECIMAL,
-}
-
-
-@dataclass(frozen=True, slots=True)
-class DatabaseType:
-    """
-    The type a database declares for a column.
-
-    ``name`` is the type exactly as the database describes it, for example
-    ``varchar(30)`` or ``timestamptz``. ``category`` is the portable
-    :class:`TypeCategory` it belongs to.
-
-    This describes the column, not the value. SQLite in particular will
-    store a string in a column declared as ``INTEGER``.
-    """
-
-    name: str
-    category: TypeCategory
-
-    @classmethod
-    def from_sqlite(cls, declared_type: str | None) -> DatabaseType | None:
-        """
-        Returns the type for a SQLite column declared as ``declared_type``, or
-        ``None`` if the column was declared without a type.
-        """
-        if declared_type is None:
-            return None
-        name = declared_type.strip()
-        if not name:
-            return None
-        normalized = name.upper()
-        base = normalized.split("(")[0].strip()
-        category = _SQLITE_NAMED_CATEGORIES.get(base)
-        if category is None:
-            # Otherwise follow SQLite's own type affinity rules:
-            # https://www.sqlite.org/datatype3.html#determination_of_column_affinity
-            if "INT" in normalized:
-                category = TypeCategory.INTEGER
-            elif any(token in normalized for token in ("CHAR", "CLOB", "TEXT")):
-                category = TypeCategory.TEXT
-            elif "BLOB" in normalized:
-                category = TypeCategory.BINARY
-            elif any(
-                token in normalized
-                for token in ("REAL", "FLOA", "DOUB")  # codespell:ignore doub
-            ):
-                category = TypeCategory.FLOAT
-            else:
-                category = TypeCategory.OTHER
-        return cls(name=name, category=category)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,10 +42,13 @@ class Column:
     Only ``name`` is always available. The other attributes are ``None``
     when the database cannot tell Datasette about them, which is the case
     for the columns of an arbitrary SQL query against SQLite.
+
+    ``type`` is the type the column was declared with, exactly as the
+    database reports it, for example ``INTEGER`` or ``varchar(30)``.
     """
 
     name: str
-    type: DatabaseType | None = None
+    type: str | None = None
     table: str | None = None
     foreign_key: ForeignKey | None = None
 

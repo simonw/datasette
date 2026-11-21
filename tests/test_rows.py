@@ -4,7 +4,7 @@ import pickle
 
 import pytest
 
-from datasette import Column, Columns, DatabaseType, ForeignKey, Row, TypeCategory
+from datasette import Column, Columns, ForeignKey, Row
 from datasette.app import Datasette
 from datasette.database import Results
 from datasette.rows import label_rows
@@ -186,51 +186,6 @@ def test_column_is_immutable():
         column.name = "other"
 
 
-@pytest.mark.parametrize(
-    "declared,expected_name,expected_category",
-    (
-        ("INTEGER", "INTEGER", TypeCategory.INTEGER),
-        ("int", "int", TypeCategory.INTEGER),
-        ("BIGINT", "BIGINT", TypeCategory.INTEGER),
-        ("TEXT", "TEXT", TypeCategory.TEXT),
-        ("varchar(30)", "varchar(30)", TypeCategory.TEXT),
-        ("BLOB", "BLOB", TypeCategory.BINARY),
-        ("REAL", "REAL", TypeCategory.FLOAT),
-        ("FLOAT", "FLOAT", TypeCategory.FLOAT),
-        ("DOUBLE PRECISION", "DOUBLE PRECISION", TypeCategory.FLOAT),
-        ("NUMERIC", "NUMERIC", TypeCategory.DECIMAL),
-        ("DECIMAL(10, 2)", "DECIMAL(10, 2)", TypeCategory.DECIMAL),
-        ("BOOLEAN", "BOOLEAN", TypeCategory.BOOLEAN),
-        ("DATE", "DATE", TypeCategory.DATE),
-        ("TIME", "TIME", TypeCategory.TIME),
-        ("DATETIME", "DATETIME", TypeCategory.DATETIME),
-        ("timestamp", "timestamp", TypeCategory.DATETIME),
-        ("JSON", "JSON", TypeCategory.JSON),
-        ("bool", "bool", TypeCategory.BOOLEAN),
-        # Names with no established meaning in SQLite are not guessed at
-        ("UUID", "UUID", TypeCategory.OTHER),
-        ("GUID", "GUID", TypeCategory.OTHER),
-        ("JSONB", "JSONB", TypeCategory.OTHER),
-        # SQLite's affinity rules apply to everything else: POINT contains INT
-        ("POINT", "POINT", TypeCategory.INTEGER),
-        (" TEXT ", "TEXT", TypeCategory.TEXT),
-        ("GEOMETRY", "GEOMETRY", TypeCategory.OTHER),
-    ),
-)
-def test_database_type_from_sqlite(declared, expected_name, expected_category):
-    type_ = DatabaseType.from_sqlite(declared)
-    assert type_.name == expected_name
-    assert type_.category is expected_category
-    # Categories compare equal to their string values
-    assert type_.category == expected_category.value
-    assert str(type_.category) == expected_category.value
-
-
-@pytest.mark.parametrize("declared", (None, "", "  "))
-def test_database_type_from_sqlite_no_declared_type(declared):
-    assert DatabaseType.from_sqlite(declared) is None
-
-
 def test_results_wrap_tuples_in_rows():
     results = Results([(1, "a"), (2, "b")], False, (("id",), ("name",)))
     assert isinstance(results.columns, Columns)
@@ -267,14 +222,12 @@ def test_label_rows():
 
 def test_results_with_columns():
     results = Results([(1, "a")], False, (("id",), ("name",)))
-    columns = Columns(
-        [Column("id", type=DatabaseType("INTEGER", TypeCategory.INTEGER)), "name"]
-    )
+    columns = Columns([Column("id", type="INTEGER"), "name"])
     typed = results.with_columns(columns)
     assert typed.columns is columns
     assert typed.rows[0].columns is columns
     assert typed.rows[0] == results.rows[0]
-    assert typed.rows[0].columns["id"].type.category == "integer"
+    assert typed.rows[0].columns["id"].type == "INTEGER"
     # The original results are unchanged
     assert results.columns["id"].type is None
     with pytest.raises(ValueError):
@@ -330,14 +283,15 @@ async def ds_with_dogs():
         create table breeds (id integer primary key, weight real, height real);
         insert into breeds values (3, 30.5, 55.0);
         create table dogs (
-            -- Upper case, because SQLite before 3.37 reports a declared type
-            -- of "integer" as written and later versions report "INTEGER"
+            -- Types that are asserted on are in upper case, because older
+            -- versions of SQLite report a declared type of "integer" as
+            -- written and newer versions report "INTEGER"
             id INTEGER primary key,
             name varchar(30),
             born DATE,
             owner_id integer references owners(id),
             breed integer references breeds,
-            photo blob,
+            photo BLOB,
             anything
         );
         insert into dogs values (1, 'Cleo', '2020-01-01', 1, 3, null, 3);
@@ -364,10 +318,11 @@ async def test_describe_columns(ds_with_dogs):
         "anything",
     )
     assert all(column.table == "dogs" for column in columns)
-    assert columns["id"].type == DatabaseType("INTEGER", TypeCategory.INTEGER)
-    assert columns["name"].type == DatabaseType("varchar(30)", TypeCategory.TEXT)
-    assert columns["born"].type == DatabaseType("DATE", TypeCategory.DATE)
-    assert columns["photo"].type.category == "binary"
+    # The type is the declared type, exactly as SQLite reports it
+    assert columns["id"].type == "INTEGER"
+    assert columns["name"].type == "varchar(30)"
+    assert columns["born"].type == "DATE"
+    assert columns["photo"].type == "BLOB"
     # A column declared without a type has none
     assert columns["anything"].type is None
     assert columns["owner_id"].foreign_key == ForeignKey("owners", "id")
@@ -381,7 +336,7 @@ async def test_describe_columns_for_names(ds_with_dogs):
     db = ds_with_dogs.get_database("row_types")
     columns = await db.describe_columns("no_pk", ["rowid", "owner_id", "nope"])
     assert columns.names == ("rowid", "owner_id", "nope")
-    assert columns["rowid"].type == DatabaseType("INTEGER", TypeCategory.INTEGER)
+    assert columns["rowid"].type == "INTEGER"
     assert columns["rowid"].table == "no_pk"
     assert columns["owner_id"].foreign_key == ForeignKey("owners", "id")
     assert columns["nope"] == Column("nope")
@@ -499,7 +454,7 @@ async def test_render_cell_row_columns_are_described(
         "anything",
     )
     if typed:
-        assert row.columns["born"].type == DatabaseType("DATE", TypeCategory.DATE)
+        assert row.columns["born"].type == "DATE"
         assert row.columns["owner_id"].foreign_key == ForeignKey("owners", "id")
         assert row.columns["id"].table == "dogs"
     else:

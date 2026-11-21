@@ -2328,33 +2328,16 @@ Each ``Column`` has the following attributes. Only ``name`` is always available.
 ``column.name`` - string
     The name of the column.
 
-``column.type`` - ``DatabaseType`` or None
-    The type the database declares for the column, see below. ``None`` if the column was declared without a type.
+``column.type`` - string or None
+    The type the column was declared with, exactly as the database reports it, for example ``INTEGER`` or ``varchar(30)``. ``None`` if the column was declared without a type.
+
+    This is separate from the :ref:`column types <datasette_column_types>` that Datasette itself can assign to a column. It describes the column, not the values in it: SQLite will store a string in a column declared as ``INTEGER``. SQLite accepts any name as a declared type, and the capitalization of the string can differ between SQLite versions, with older versions reporting ``integer`` where newer versions report ``INTEGER``.
 
 ``column.table`` - string or None
     The name of the table or view the column belongs to.
 
 ``column.foreign_key`` - ``ForeignKey`` or None
     If the column is a foreign key, an object with ``.table`` and ``.column`` attributes for the table and column that it refers to. ``.column`` is ``None`` for a foreign key that was declared without naming a column, which refers to the primary key of that table.
-
-.. _internals_row_types:
-
-DatabaseType
-~~~~~~~~~~~~
-
-``datasette.DatabaseType`` describes the type a database declares for a column. This is separate from the :ref:`column types <datasette_column_types>` that Datasette itself can assign to a column.
-
-``type.name`` - string
-    The type exactly as the database describes it, for example ``INTEGER`` or ``varchar(30)``. Compare ``type.category`` in preference to this: the name can vary in capitalization, and older versions of SQLite report a type declared as ``integer`` in lower case where newer versions report ``INTEGER``.
-
-``type.category`` - ``datasette.TypeCategory``
-    One of a fixed list of categories that are the same for every database: ``text``, ``integer``, ``float``, ``decimal``, ``boolean``, ``binary``, ``json``, ``date``, ``time``, ``datetime``, ``uuid``, ``array`` or ``other``. These can be compared with strings, so ``column.type.category == "datetime"`` works, or with members of the enum such as ``TypeCategory.DATETIME``.
-
-    This list covers every database Datasette may support in the future, not just SQLite. ``uuid`` and ``array`` are for databases that have those types. A SQLite column never has either category.
-
-The type describes the column, not the values in it. SQLite will store a string in a column declared as ``INTEGER``, and a column declared as ``DATETIME`` usually holds strings. For SQLite the values in a row are always a string, integer, float, bytes or ``None``.
-
-``DatabaseType.from_sqlite(declared_type)`` returns the type for a SQLite column declaration. SQLite accepts any name as a declared type and has no date, boolean, JSON or decimal types of its own, so the category is based on what the name conventionally means. ``BOOL``, ``BOOLEAN``, ``DATE``, ``TIME``, ``DATETIME``, ``TIMESTAMP``, ``JSON``, ``DECIMAL`` and ``NUMERIC`` are recognized by name. A column declared as ``DECIMAL`` or ``NUMERIC`` has the ``decimal`` category, but SQLite stores its values as integers or floats, not as exact decimals. Any other name follows SQLite's `type affinity rules <https://www.sqlite.org/datatype3.html#determination_of_column_affinity>`__ to give ``integer``, ``text``, ``binary`` or ``float``, and is ``other`` if none of those rules match.
 
 .. _database_execute_fn:
 

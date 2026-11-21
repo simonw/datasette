@@ -5,7 +5,6 @@ from datasette.background_tasks import BackgroundTask, BackgroundTaskSupervisor 
 from datasette.rows import (  # noqa
     Column,
     Columns,
-    ForeignKey,
     Row,
 )
 from datasette.tokens import TokenHandler, TokenInvalid, TokenRestrictions  # noqa

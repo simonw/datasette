@@ -162,6 +162,36 @@ names = results.columns.names
 
 The `columns` argument passed to output renderers is unchanged. It is still a list of strings.
 
+(upgrade_guide_v1_table_column_details)=
+#### `db.table_column_details()` returns `datasette.Column` objects
+
+{ref}`db.table_column_details(table) <database_table_column_details>` previously returned a list of `datasette.utils.Column` named tuples. It now returns a {ref}`Columns <internals_row_columns>` object containing `datasette.Column` objects, the same class that describes the columns of a row. `datasette.utils.Column` has been removed.
+
+Reading `column.name`, `column.type`, `column.notnull`, `column.default_value` and `column.hidden` works as before. These have changed:
+
+- **`is_pk` is now `pk_position`.** It holds the position of the column in the primary key, starting at 1, or 0 if the column is not part of it.
+- **`type` is `None` for a column declared without a type.** It was previously an empty string.
+- **`cid` has been removed.** Use the position of the column in the result, for example with `enumerate()`.
+- **Columns are no longer tuples.** They cannot be unpacked or indexed by position.
+
+```python
+columns = await db.table_column_details("dogs")
+
+# Before
+pks = [column.name for column in columns if column.is_pk]
+for cid, name, type_, *rest in columns:
+    print(cid, name, type_.upper())
+
+# After
+pks = [
+    column.name for column in columns if column.pk_position
+]
+for cid, column in enumerate(columns):
+    print(cid, column.name, (column.type or "").upper())
+```
+
+The value returned is no longer a list. It can be looped over and indexed in the same way, and `columns["name"]` now looks up a column by name.
+
 (upgrade_guide_v1_render_cell)=
 #### `render_cell()` is always passed the stored value
 

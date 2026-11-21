@@ -13,7 +13,7 @@ from jinja2.filters import do_filesizeformat
 
 from datasette import tracer
 from datasette.column_types import SQLiteType
-from datasette.database import QueryInterrupted, describe_columns
+from datasette.database import QueryInterrupted, columns_for_results
 from datasette.events import (
     AlterTableEvent,
     DropTableEvent,
@@ -790,7 +790,7 @@ async def display_columns_and_rows(
             type_ = "integer"
             notnull = 0
         else:
-            type_ = column_details[r[0]].type
+            type_ = column_details[r[0]].type or ""
             notnull = column_details[r[0]].notnull
         col_dict = {
             "name": r[0],
@@ -1027,7 +1027,7 @@ async def display_columns_and_rows(
                 "name": pks[0],
                 "sortable": pks[0] in sortable_columns,
                 "is_pk": True,
-                "type": column_details[pks[0]].type,
+                "type": column_details[pks[0]].type or "",
                 "notnull": column_details[pks[0]].notnull,
             }
         else:
@@ -2563,12 +2563,10 @@ async def table_view_data(
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-    # Describe the columns using the types and foreign keys of the table
+    # Describe the columns of the results using the details of the table
     column_details, foreign_keys = await db._column_details_and_foreign_keys(table_name)
     results = results.with_columns(
-        describe_columns(
-            table_name, column_details, foreign_keys, results.columns.names
-        )
+        columns_for_results(column_details, results.columns.names)
     )
     columns = list(results.columns.names)
     rows = list(results.rows)

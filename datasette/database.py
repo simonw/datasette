@@ -22,7 +22,6 @@ from opentelemetry.trace import Status, StatusCode
 from .rows import (
     Column,
     Columns,
-    ForeignKey,
     Row,
     rows_with_columns,
 )
@@ -59,7 +58,6 @@ from .telemetry_registry import (
     TRUNCATED,
 )
 from .tracer import trace
-from .utils import Column as ColumnDetails
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -943,7 +941,7 @@ class Database:
 
         return await self.execute_fn(_table_columns)
 
-    async def table_column_details(self, table):
+    async def table_column_details(self, table: str) -> Columns:
         def _table_column_details(conn):
             return table_column_details(conn, table)
 
@@ -951,8 +949,8 @@ class Database:
 
     async def _column_details_and_foreign_keys(
         self, table: str
-    ) -> tuple[list[ColumnDetails], list[dict[str, Any]]]:
-        "Fetches what describe_columns() needs with one trip to the database"
+    ) -> tuple[Columns, list[dict[str, Any]]]:
+        "table_column_details() and foreign_keys_for_table() in one trip"
 
         def _fetch(conn):
             return (
@@ -961,20 +959,6 @@ class Database:
             )
 
         return await self.execute_fn(_fetch)
-
-    async def describe_columns(
-        self, table: str, names: Iterable[str] | None = None
-    ) -> Columns:
-        """
-        Returns a ``Columns`` object describing the columns of a table or
-        view: their declared types and the foreign keys they hold.
-
-        Pass ``names`` to describe those columns in that order, as returned
-        by a query against the table. A name that is not a column of the
-        table is included without a type.
-        """
-        details, foreign_keys = await self._column_details_and_foreign_keys(table)
-        return describe_columns(table, details, foreign_keys, names)
 
     async def primary_keys(self, table):
         def _primary_keys(conn):
@@ -1294,45 +1278,22 @@ class ExecuteWriteResult:
         return rows
 
 
-def describe_columns(
-    table: str,
-    details: Iterable[ColumnDetails],
-    foreign_keys: Iterable[dict[str, Any]],
-    names: Iterable[str] | None = None,
-) -> Columns:
+def columns_for_results(table_columns: Columns, names: Iterable[str]) -> Columns:
     """
-    Builds the ``Columns`` for a SQLite table from the output of
-    table_column_details() and get_outbound_foreign_keys().
+    Returns the ``Columns`` for the results of a query that selected ``names``
+    from a table, given the ``table_columns`` describing that table.
+
+    A name that is not a column of the table is included with no details.
     """
-    foreign_keys_by_column = {
-        fk["column"]: ForeignKey(table=fk["other_table"], column=fk["other_column"])
-        for fk in foreign_keys
-    }
-    described = {
-        column.name: Column(
-            name=column.name,
-            # SQLite reports a column declared without a type as ""
-            type=column.type or None,
-            table=table,
-            foreign_key=foreign_keys_by_column.get(column.name),
-        )
-        for column in details
-    }
-    if names is None:
-        return Columns(described.values())
     columns = []
     for name in names:
-        column = described.get(name)
-        if column is None:
-            if name == "rowid" and described:
-                # The implicit rowid of a table that has no column of that name
-                column = Column(
-                    name=name,
-                    type="INTEGER",
-                    table=table,
-                )
-            else:
-                column = Column(name)
+        if name in table_columns:
+            column = table_columns[name]
+        elif name == "rowid" and len(table_columns):
+            # The implicit rowid of a table that has no column of that name
+            column = Column(name=name, type="INTEGER")
+        else:
+            column = Column(name)
         columns.append(column)
     return Columns(columns)
 
@@ -1373,7 +1334,7 @@ class Results:
     def with_columns(self, columns: Columns | Iterable[str | Column]) -> "Results":
         """
         Returns a copy of these results described by a different ``Columns``
-        object, for example one that adds types to the columns.
+        object, for example one that adds the details of a table's columns.
         """
         if not isinstance(columns, Columns):
             columns = Columns(columns)

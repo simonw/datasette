@@ -2248,7 +2248,7 @@ The ``Results`` object also has the following properties and methods:
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
 
 ``.with_columns(columns)`` - ``Results``
-    Returns a copy of these results that uses a different :ref:`Columns <internals_row_columns>` object, for example one from :ref:`db.describe_columns() <database_describe_columns>` that adds types to the columns.
+    Returns a copy of these results that uses a different :ref:`Columns <internals_row_columns>` object. Datasette uses this on table and row pages to attach the details of the table's columns to the rows.
 
 ``.dicts()`` - list of ``dict``
     This method returns a list of Python dictionaries, one for each row.
@@ -2308,7 +2308,7 @@ Rows are immutable, and two rows are equal if they have the same values and the 
 Columns and Column
 ~~~~~~~~~~~~~~~~~~
 
-``datasette.Columns`` is an immutable sequence of ``datasette.Column`` objects, one for each column in a set of results.
+``datasette.Columns`` is an immutable sequence of ``datasette.Column`` objects. It is used for the columns in a set of results, and :ref:`db.table_column_details() <database_table_column_details>` returns one describing the columns of a table.
 
 .. code-block:: python
 
@@ -2323,7 +2323,7 @@ Columns and Column
 ``columns.names`` - tuple of strings
     The names of the columns.
 
-Each ``Column`` has the following attributes. Only ``name`` is always available. The others are ``None`` if the database cannot describe the column, which is the case for the columns of an arbitrary SQL query against SQLite. Datasette fills them in on table and row pages.
+Each ``Column`` has the following attributes. Only ``name`` is always available. The others describe a column of a table, and are ``None`` for the columns of an arbitrary SQL query. Datasette fills them in on table and row pages.
 
 ``column.name`` - string
     The name of the column.
@@ -2333,11 +2333,17 @@ Each ``Column`` has the following attributes. Only ``name`` is always available.
 
     This is separate from the :ref:`column types <datasette_column_types>` that Datasette itself can assign to a column. It describes the column, not the values in it: SQLite will store a string in a column declared as ``INTEGER``. SQLite accepts any name as a declared type, and the capitalization of the string can differ between SQLite versions, with older versions reporting ``integer`` where newer versions report ``INTEGER``.
 
-``column.table`` - string or None
-    The name of the table or view the column belongs to.
+``column.notnull`` - integer or None
+    ``1`` if the column has a ``NOT NULL`` constraint, otherwise ``0``.
 
-``column.foreign_key`` - ``ForeignKey`` or None
-    If the column is a foreign key, an object with ``.table`` and ``.column`` attributes for the table and column that it refers to. ``.column`` is ``None`` for a foreign key that was declared without naming a column, which refers to the primary key of that table.
+``column.default_value`` - string or None
+    The default value for the column, as a SQL expression. ``None`` if it has no default.
+
+``column.pk_position`` - integer or None
+    The position of the column in the primary key of its table, starting at ``1``, or ``0`` if it is not part of the primary key. A table with a compound primary key has columns with positions ``1``, ``2`` and so on.
+
+``column.hidden`` - integer or None
+    ``0`` for a normal column, ``1`` for a hidden column of a virtual table, ``2`` or ``3`` for a generated column. This is the value SQLite reports. It is always ``0`` on versions of SQLite before 3.26.
 
 .. _database_execute_fn:
 
@@ -2600,13 +2606,10 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.table_columns(table)`` - list of strings
     Names of columns in a specific table.
 
-``await db.table_column_details(table)`` - list of named tuples
-    Full details of the columns in a specific table. Each column is represented by a ``Column`` named tuple with fields ``cid`` (integer representing the column position), ``name`` (string), ``type`` (string, e.g. ``REAL`` or ``VARCHAR(30)``), ``notnull`` (integer 1 or 0), ``default_value`` (string or None), ``is_pk`` (integer 1 or 0).
+.. _database_table_column_details:
 
-.. _database_describe_columns:
-
-``await db.describe_columns(table, names=None)`` - :ref:`Columns <internals_row_columns>`
-    Describes the columns of a table or view as ``datasette.Column`` objects, with their declared types and the foreign keys they hold. Pass ``names`` to describe just those columns, in that order - a name that is not a column of the table is included without a type. Use this with ``results.with_columns()`` to add types to the results of a query against a table.
+``await db.table_column_details(table)`` - :ref:`Columns <internals_row_columns>`
+    Full details of the columns in a specific table or view, as a ``Columns`` object containing a ``datasette.Column`` for each one. Each has ``name``, ``type``, ``notnull``, ``default_value``, ``pk_position`` and ``hidden`` attributes, described in :ref:`internals_row_columns`. ``columns["name"]`` looks up a column by name.
 
 ``await db.primary_keys(table)`` - list of strings
     Names of the columns that are part of the primary key for this table.

@@ -71,7 +71,7 @@ def _preferred_where_column(table, columns):
 
 
 def _auto_incrementing_primary_key(columns):
-    primary_keys = [column for column in columns if column.is_pk]
+    primary_keys = [column for column in columns if column.pk_position]
     if len(primary_keys) != 1:
         return None
     primary_key = primary_keys[0]

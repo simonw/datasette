@@ -537,7 +537,7 @@ Where Datasette has resolved a foreign key to the label of the row it refers to,
         if label is not None:
             return f"{label} (#{value})"
 
-``row.columns[column]`` is a :ref:`Column <internals_row_columns>` describing the column. On table and row pages this includes its declared ``.type`` and any ``.foreign_key``.
+``row.columns[column]`` is a :ref:`Column <internals_row_columns>` describing the column. On table and row pages this includes details of the column in its table, such as its declared ``.type`` and whether it is ``.notnull``.
 
 Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
 

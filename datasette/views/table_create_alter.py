@@ -220,8 +220,8 @@ def _foreign_key_suggestion_metadata(conn, table_name):
         if candidate_table == table_name or candidate_table in hidden_tables:
             continue
         columns = [column for column in table_column_details(conn, candidate_table)]
-        pks = [column for column in columns if column.is_pk and not column.hidden]
-        pks.sort(key=lambda column: column.is_pk)
+        pks = [column for column in columns if column.pk_position and not column.hidden]
+        pks.sort(key=lambda column: column.pk_position)
         if len(pks) != 1:
             continue
         pk = pks[0]

@@ -3,8 +3,8 @@ The objects Datasette uses to represent the results of a query.
 
 A :class:`Row` is one row of results. Every row belonging to the same set
 of results shares a single :class:`Columns` object, which describes each
-:class:`Column` - its name and, where the database can tell us, its declared
-type, the table it came from and the foreign key it holds.
+:class:`Column` - its name and, where it is a column of a table, details
+such as the type it was declared with.
 
 Nothing in this module knows about SQLite. A database produces a tuple of
 values for each row plus a description of the columns, and Datasette builds
@@ -22,35 +22,31 @@ _NO_LABELS: Mapping[str, Any] = MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
-class ForeignKey:
-    """
-    The table and column that a foreign key column refers to.
-
-    ``column`` is ``None`` if the foreign key was declared without naming a
-    column, in which case it refers to the primary key of the other table.
-    """
-
-    table: str
-    column: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class Column:
     """
-    A column in a set of results.
+    A column, either in a table or in a set of results.
 
-    Only ``name`` is always available. The other attributes are ``None``
-    when the database cannot tell Datasette about them, which is the case
-    for the columns of an arbitrary SQL query against SQLite.
+    Only ``name`` is always available. The other attributes describe a column
+    of a table. They are ``None`` when Datasette does not know them, which is
+    the case for the columns of an arbitrary SQL query.
 
-    ``type`` is the type the column was declared with, exactly as the
-    database reports it, for example ``INTEGER`` or ``varchar(30)``.
+    - ``type``: the type the column was declared with, exactly as the database
+      reports it, for example ``INTEGER`` or ``varchar(30)``. ``None`` if it
+      was declared without a type.
+    - ``notnull``: 1 if the column has a ``NOT NULL`` constraint, otherwise 0.
+    - ``default_value``: the default for the column as a SQL expression.
+    - ``pk_position``: the position of the column in the primary key of its
+      table, starting at 1, or 0 if it is not part of the primary key.
+    - ``hidden``: 0 for a normal column, 1 for a hidden column of a virtual
+      table, 2 or 3 for a generated column.
     """
 
     name: str
     type: str | None = None
-    table: str | None = None
-    foreign_key: ForeignKey | None = None
+    notnull: int | None = None
+    default_value: str | None = None
+    pk_position: int | None = None
+    hidden: int | None = None
 
 
 class Columns:

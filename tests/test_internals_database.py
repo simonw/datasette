@@ -3,6 +3,7 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
+import dataclasses
 import gc
 import threading
 import uuid
@@ -22,8 +23,7 @@ from datasette.database import (
     Results,
     _deliver_write_result,
 )
-from datasette.rows import Row
-from datasette.utils import Column
+from datasette.rows import Column, Columns, Row
 from datasette.utils.sqlite import (
     sqlite3,
     sqlite_derived_table_dependencies,
@@ -215,102 +215,91 @@ async def test_table_columns(db, table, expected):
             "facetable",
             [
                 Column(
-                    cid=0,
                     name="pk",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=1,
+                    pk_position=1,
                     hidden=0,
                 ),
                 Column(
-                    cid=1,
                     name="created",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=2,
                     name="planet_int",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=3,
                     name="on_earth",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=4,
                     name="state",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=5,
                     name="_city_id",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=6,
                     name="_neighborhood",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=7,
                     name="tags",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=8,
                     name="complex_array",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=9,
                     name="distinct_some_null",
-                    type="",
+                    type=None,
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=10,
                     name="n",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
             ],
@@ -319,66 +308,59 @@ async def test_table_columns(db, table, expected):
             "sortable",
             [
                 Column(
-                    cid=0,
                     name="pk1",
                     type="varchar(30)",
                     notnull=0,
                     default_value=None,
-                    is_pk=1,
+                    pk_position=1,
                     hidden=0,
                 ),
                 Column(
-                    cid=1,
                     name="pk2",
                     type="varchar(30)",
                     notnull=0,
                     default_value=None,
-                    is_pk=2,
+                    pk_position=2,
                     hidden=0,
                 ),
                 Column(
-                    cid=2,
                     name="content",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=3,
                     name="sortable",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=4,
                     name="sortable_with_nulls",
                     type="real",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=5,
                     name="sortable_with_nulls_2",
                     type="real",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
                 Column(
-                    cid=6,
                     name="text",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
+                    pk_position=0,
                     hidden=0,
                 ),
             ],
@@ -389,11 +371,10 @@ async def test_table_column_details(db, table, expected):
     columns = await db.table_column_details(table)
     # Convert "type" to lowercase before comparison
     # https://github.com/simonw/datasette/issues/1647
+    assert isinstance(columns, Columns)
     compare_columns = [
-        Column(
-            c.cid, c.name, c.type.lower(), c.notnull, c.default_value, c.is_pk, c.hidden
-        )
-        for c in columns
+        dataclasses.replace(column, type=column.type and column.type.lower())
+        for column in columns
     ]
     assert compare_columns == expected
 

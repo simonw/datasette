@@ -13,6 +13,7 @@ import pytest
 
 from datasette import utils
 from datasette.app import Datasette
+from datasette.rows import Row
 from datasette.utils.sqlite import (
     sqlite3,
     sqlite_derived_table_dependencies,
@@ -83,13 +84,18 @@ def test_modify_query_string(query_string, kwargs, expected):
         ({"A": "f,o", "B": "bar"}, ["A", "B"], "f~2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
-            utils.CustomRow(
-                ["searchable_id", "tag"],
-                [
-                    ("searchable_id", {"value": 1, "label": "1"}),
-                    ("tag", {"value": "feline", "label": "feline"}),
-                ],
+            Row.from_dict(
+                {"searchable_id": 1, "tag": "feline"}, labels={"tag": "Feline"}
             ),
+            ["searchable_id", "tag"],
+            "1,feline",
+        ),
+        (
+            # Rows as represented in JSON, with expanded foreign key labels
+            {
+                "searchable_id": {"value": 1, "label": "1"},
+                "tag": {"value": "feline", "label": "feline"},
+            },
             ["searchable_id", "tag"],
             "1,feline",
         ),

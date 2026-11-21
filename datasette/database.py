@@ -17,6 +17,16 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
+from .rows import (
+    Column,
+    Columns,
+    DatabaseType,
+    ForeignKey,
+    Row,
+    TypeCategory,
+    label_rows,
+    rows_with_columns,
+)
 from .telemetry import (
     callback_name,
     linked_root_span_kwargs,
@@ -748,6 +758,9 @@ class Database:
                     with sqlite_timelimit(conn, time_limit_ms):
                         try:
                             cursor = conn.cursor()
+                            # Fetch plain tuples, which become datasette.Row
+                            # objects when the Results object is constructed
+                            cursor.row_factory = None
                             cursor.execute(sql, params if params is not None else {})
                             max_returned_rows = self.ds.max_returned_rows
                             if max_returned_rows == page_size:
@@ -935,6 +948,29 @@ class Database:
             return table_column_details(conn, table)
 
         return await self.execute_fn(_table_column_details)
+
+    async def _column_details_and_foreign_keys(self, table):
+        "Fetches what describe_columns() needs with one trip to the database"
+
+        def _fetch(conn):
+            return (
+                table_column_details(conn, table),
+                get_outbound_foreign_keys(conn, table),
+            )
+
+        return await self.execute_fn(_fetch)
+
+    async def describe_columns(self, table, names=None):
+        """
+        Returns a ``Columns`` object describing the columns of a table or
+        view: their declared types and the foreign keys they hold.
+
+        Pass ``names`` to describe those columns in that order, as returned
+        by a query against the table. A name that is not a column of the
+        table is included without a type.
+        """
+        details, foreign_keys = await self._column_details_and_foreign_keys(table)
+        return describe_columns(table, details, foreign_keys, names)
 
     async def primary_keys(self, table):
         def _primary_keys(conn):
@@ -1241,6 +1277,9 @@ class ExecuteWriteResult:
             cursor.close()
         if description is not None and not return_all and truncated:
             rowcount = -1
+        if rows:
+            columns = Columns(d[0] for d in description)
+            rows = [Row(tuple(row), columns) for row in rows]
         return cls(rowcount, lastrowid, description, rows, truncated)
 
     def fetchall(self):
@@ -1249,15 +1288,94 @@ class ExecuteWriteResult:
         return rows
 
 
+def describe_columns(table, details, foreign_keys, names=None):
+    """
+    Builds the ``Columns`` for a SQLite table from the output of
+    table_column_details() and get_outbound_foreign_keys().
+    """
+    foreign_keys_by_column = {
+        fk["column"]: ForeignKey(table=fk["other_table"], column=fk["other_column"])
+        for fk in foreign_keys
+    }
+    described = {
+        column.name: Column(
+            name=column.name,
+            type=DatabaseType.from_sqlite(column.type),
+            table=table,
+            foreign_key=foreign_keys_by_column.get(column.name),
+        )
+        for column in details
+    }
+    if names is None:
+        return Columns(described.values())
+    columns = []
+    for name in names:
+        column = described.get(name)
+        if column is None:
+            if name == "rowid" and described:
+                # The implicit rowid of a table that has no column of that name
+                column = Column(
+                    name=name,
+                    type=DatabaseType("INTEGER", TypeCategory.INTEGER),
+                    table=table,
+                )
+            else:
+                column = Column(name)
+        columns.append(column)
+    return Columns(columns)
+
+
 class Results:
-    def __init__(self, rows, truncated, description):
-        self.rows = rows
+    """
+    The results of a query: a list of :class:`datasette.Row` objects in
+    ``.rows``, plus ``.columns`` describing the columns they share.
+    """
+
+    def __init__(self, rows, truncated, description, columns=None):
+        if columns is None:
+            columns = Columns(d[0] for d in description or ())
+        self.columns = columns
         self.truncated = truncated
         self.description = description
+        if rows and rows[0].__class__ is tuple:
+            # The common case: tuples straight from the database
+            self.rows = [Row(row, columns) for row in rows]
+        elif rows and rows[0].__class__ is Row:
+            self.rows = list(rows)
+        else:
+            self.rows = [
+                row if isinstance(row, Row) else Row(tuple(row), columns)
+                for row in rows
+            ]
 
-    @property
-    def columns(self):
-        return [d[0] for d in self.description]
+    def with_columns(self, columns):
+        """
+        Returns a copy of these results described by a different ``Columns``
+        object, for example one that adds types to the columns.
+        """
+        if not isinstance(columns, Columns):
+            columns = Columns(columns)
+        return Results(
+            rows_with_columns(self.rows, columns),
+            self.truncated,
+            self.description,
+            columns,
+        )
+
+    def with_labels(self, labels):
+        """
+        Returns a copy of these results with labels attached to the rows.
+
+        ``labels`` is ``{column_name: {value: label}}``. A row gets a label
+        for a column if its value in that column is a key in the dictionary
+        for that column.
+        """
+        return Results(
+            label_rows(self.rows, labels),
+            self.truncated,
+            self.description,
+            self.columns,
+        )
 
     def first(self):
         if self.rows:

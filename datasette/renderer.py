@@ -1,5 +1,6 @@
 import json
 
+from datasette.rows import Row
 from datasette.utils import (
     CustomJSONEncoder,
     error_body,
@@ -72,6 +73,31 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
+def row_as_dict(row, values=None):
+    """
+    Return a row as the dictionary used to represent it in JSON.
+
+    A foreign key value that has been expanded to a label, available in
+    ``row.labels``, becomes ``{"value": value, "label": label}``.
+
+    Pass ``values`` to use a different ``{column: value}`` dictionary in
+    place of the values from the row itself.
+    """
+    row_dict = _dict(row) if values is None else values
+    labels = getattr(row, "labels", None)
+    if labels:
+        for column, label in labels.items():
+            row_dict[column] = {"value": row_dict[column], "label": label}
+    return row_dict
+
+
+def _dict(row):
+    "dict(row), but faster for a Row"
+    if row.__class__ is Row:
+        return dict(zip(row.columns.names, row))
+    return dict(row)
+
+
 async def apply_column_type_transforms(datasette, database, table, rows):
     """
     Return rows as dictionaries, with transform_value() applied for any
@@ -80,13 +106,13 @@ async def apply_column_type_transforms(datasette, database, table, rows):
     ct_map = await datasette.get_column_types(database, table)
     transformed_rows = []
     for row in rows:
-        row_dict = dict(row)
+        row_dict = _dict(row)
         for col_name, ct in ct_map.items():
             if col_name in row_dict:
                 row_dict[col_name] = await ct.transform_value(
                     row_dict[col_name], datasette
                 )
-        transformed_rows.append(row_dict)
+        transformed_rows.append(row_as_dict(row, row_dict))
     return transformed_rows
 
 

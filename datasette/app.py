@@ -2343,9 +2343,12 @@ ORDER BY allowed.parent, allowed.child
             log_sql_errors=log_sql_errors,
         )
 
-    async def expand_foreign_keys(self, actor, database, table, column, values):
-        """Returns dict mapping (column, value) -> label"""
-        labeled_fks = {}
+    async def _foreign_key_target(self, actor, database, table, column):
+        """
+        Returns ``(other_table, other_column)`` for the row that the foreign
+        key in ``column`` refers to, or ``None`` if there is no foreign key
+        there that this actor can follow.
+        """
         db = self.databases[database]
         foreign_keys = await db.foreign_keys_for_table(table)
         # Find the foreign_key for this column
@@ -2358,7 +2361,7 @@ ORDER BY allowed.parent, allowed.child
             None,
         )
         if fk is None:
-            return {}
+            return None
         # Ensure user has permission to view the referenced table
         from datasette.resources import TableResource
 
@@ -2373,13 +2376,13 @@ ORDER BY allowed.parent, allowed.child
         if target_table is None:
             # SQLite accepts a foreign key to a table that does not exist, and
             # linking to it would only lead to a 404
-            return {}
+            return None
         other_table = target_table[0]
         other_column = fk["other_column"]
         if other_column is None:
             other_pks = await db.primary_keys(other_table)
             if len(other_pks) != 1:
-                return {}
+                return None
             other_column = other_pks[0]
         visible, _ = await self.check_visibility(
             actor,
@@ -2387,11 +2390,30 @@ ORDER BY allowed.parent, allowed.child
             resource=TableResource(database=database, table=other_table),
         )
         if not visible:
-            return {}
+            return None
+        return other_table, other_column
+
+    async def foreign_key_labels(self, actor, database, table, column, values):
+        """
+        Looks up labels for the rows that the foreign key in ``column`` refers to.
+
+        Returns ``None`` if the column is not a foreign key this actor can
+        follow. Otherwise returns ``(other_table, labels)``. ``labels`` is a
+        ``{value: label}`` dictionary for each of the ``values`` that matched
+        a row, or ``None`` if the other table has no label column.
+        """
+        target = await self._foreign_key_target(actor, database, table, column)
+        if target is None:
+            return None
+        other_table, other_column = target
+        db = self.databases[database]
         label_column = await db.label_column_for_table(other_table)
         if not label_column:
-            return {(fk["column"], value): str(value) for value in values}
-        labeled_fks = {}
+            return other_table, None
+        labels = {}
+        distinct_values = list({value for value in values if value is not None})
+        if not distinct_values:
+            return other_table, labels
         sql = """
             select {other_column}, {label_column}
             from {other_table}
@@ -2400,16 +2422,27 @@ ORDER BY allowed.parent, allowed.child
             other_column=escape_sqlite(other_column),
             label_column=escape_sqlite(label_column),
             other_table=escape_sqlite(other_table),
-            placeholders=", ".join(["?"] * len(set(values))),
+            placeholders=", ".join(["?"] * len(distinct_values)),
         )
         try:
-            results = await self.execute(database, sql, list(set(values)))
+            results = await self.execute(database, sql, distinct_values)
         except QueryInterrupted:
             pass
         else:
-            for id, value in results:
-                labeled_fks[(fk["column"], id)] = value
-        return labeled_fks
+            for id, label in results:
+                labels[id] = label
+        return other_table, labels
+
+    async def expand_foreign_keys(self, actor, database, table, column, values):
+        """Returns dict mapping (column, value) -> label"""
+        expanded = await self.foreign_key_labels(actor, database, table, column, values)
+        if expanded is None:
+            return {}
+        _, labels = expanded
+        if labels is None:
+            # No label column, so each value is its own label
+            return {(column, value): str(value) for value in values}
+        return {(column, value): label for value, label in labels.items()}
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
@@ -2695,7 +2728,7 @@ ORDER BY allowed.parent, allowed.child
         context_class = type(context) if isinstance(context, Context) else None
         if dataclasses.is_dataclass(context):
             # Shallow conversion - asdict() would deep-copy values, which
-            # is wasteful and fails on values like sqlite3.Row
+            # is wasteful for values such as lists of rows
             context = {
                 f.name: getattr(context, f.name) for f in dataclasses.fields(context)
             }

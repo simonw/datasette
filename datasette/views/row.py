@@ -13,9 +13,9 @@ from datasette.events import DeleteRowEvent, UpdateRowEvent
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.plugins import pm
 from datasette.resources import TableResource
+from datasette.rows import label_rows
 from datasette.utils import (
     CustomJSONEncoder,
-    CustomRow,
     InvalidSql,
     WriteJsonValueError,
     add_cors_headers,
@@ -404,7 +404,11 @@ class RowView(BaseView):
         results = await resolved.db.execute(
             resolved.sql, resolved.params, truncate=True
         )
-        columns = [r[0] for r in results.description]
+        # Describe the columns using the types and foreign keys of the table
+        results = results.with_columns(
+            await resolved.db.describe_columns(resolved.table, results.columns.names)
+        )
+        columns = list(results.columns.names)
         rows = list(results.rows)
         if not rows:
             raise NotFound(f"Record not found: {pk_values}")
@@ -413,62 +417,47 @@ class RowView(BaseView):
 
         async def template_data():
             is_table = await db.table_exists(table)
-            # Reorder columns so primary keys come first
+            # Primary keys are displayed first. The rows themselves keep the
+            # order their values came back from the database in.
             pk_set = set(pks)
             pk_cols = [d for d in results.description if d[0] in pk_set]
             non_pk_cols = [d for d in results.description if d[0] not in pk_set]
-            reordered_description = pk_cols + non_pk_cols
-            reordered_columns = [d[0] for d in reordered_description]
+            display_description = pk_cols + non_pk_cols
 
-            # Reorder row data to match
-            reordered_rows = []
-            for row in rows:
-                new_row = CustomRow(reordered_columns)
-                for col in reordered_columns:
-                    new_row[col] = row[col]
-                reordered_rows.append(new_row)
-
-            # Expand foreign key columns into dicts so display_columns_and_rows
-            # renders them as hyperlinks, matching the table view behavior
-            expanded_rows = reordered_rows
+            # Look up labels for foreign key columns, so that
+            # display_columns_and_rows renders them as hyperlinks
+            labels = {}
+            foreign_key_links = {}
             for fk in await db.foreign_keys_for_table(table):
                 column = fk["column"]
-                if column not in reordered_columns:
+                if column not in columns:
                     continue
-                column_index = reordered_columns.index(column)
-                values = [row[column_index] for row in expanded_rows]
-                expanded_labels = await self.ds.expand_foreign_keys(
-                    request.actor, database, table, column, values
+                expanded = await self.ds.foreign_key_labels(
+                    request.actor,
+                    database,
+                    table,
+                    column,
+                    [row[column] for row in rows],
                 )
-                if expanded_labels:
-                    new_rows = []
-                    for row in expanded_rows:
-                        new_row = CustomRow(reordered_columns)
-                        for col in reordered_columns:
-                            value = row[col]
-                            if (
-                                col == column
-                                and (col, value) in expanded_labels
-                                and value is not None
-                            ):
-                                new_row[col] = {
-                                    "value": value,
-                                    "label": expanded_labels[(col, value)],
-                                }
-                            else:
-                                new_row[col] = value
-                        new_rows.append(new_row)
-                    expanded_rows = new_rows
+                if expanded is None:
+                    continue
+                other_table, column_labels = expanded
+                if column_labels is None:
+                    foreign_key_links[column] = other_table
+                else:
+                    labels[column] = column_labels
+            labeled_rows = label_rows(rows, labels)
 
             display_columns, display_rows = await display_columns_and_rows(
                 self.ds,
                 database,
                 table,
-                reordered_description,
-                expanded_rows,
+                display_description,
+                labeled_rows,
                 link_column=False,
                 truncate_cells=0,
                 request=request,
+                foreign_key_links=foreign_key_links,
             )
             for column in display_columns:
                 column["sortable"] = False
@@ -484,7 +473,7 @@ class RowView(BaseView):
             label_column = await db.label_column_for_table(table) if is_table else None
             row_path = path_from_row_pks(rows[0], pks, False)
             pk_path = path_from_row_pks(rows[0], pks, False, False)
-            row_label = row_label_from_label_column(expanded_rows[0], label_column)
+            row_label = row_label_from_label_column(labeled_rows[0], label_column)
             for display_row in display_rows:
                 display_row.pk_path = pk_path
                 display_row.row_path = row_path
@@ -541,7 +530,7 @@ class RowView(BaseView):
                 request=request,
                 database=database,
                 table=table,
-                row=rows[0],
+                row=labeled_rows[0],
             ):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
@@ -549,7 +538,7 @@ class RowView(BaseView):
 
             return {
                 "private": private,
-                "columns": reordered_columns,
+                "columns": [d[0] for d in display_description],
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values, actor=request.actor
                 ),
@@ -579,7 +568,7 @@ class RowView(BaseView):
                     request,
                     database=resolved.db.name,
                     table=resolved.table,
-                    row=rows[0],
+                    row=labeled_rows[0],
                 ),
                 "metadata": {},
             }

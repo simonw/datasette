@@ -22,6 +22,7 @@ from datasette.database import (
     Results,
     _deliver_write_result,
 )
+from datasette.rows import Row
 from datasette.utils import Column
 from datasette.utils.sqlite import (
     sqlite3,
@@ -73,7 +74,8 @@ async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")
     row = results.first()
-    assert isinstance(row, sqlite3.Row)
+    assert isinstance(row, Row)
+    assert row.columns is results.columns
 
 
 @pytest.mark.parametrize("expected", (True, False))

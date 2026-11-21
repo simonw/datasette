@@ -1651,6 +1651,10 @@ looks like:
 The column in the foreign key table that is used for the label can be specified
 in ``datasette.yaml`` - see :ref:`table_configuration_label_column`.
 
+A value is only expanded if a label was found for it. A foreign key that refers
+to a table with no label column is returned as the plain value, as is a value
+that does not match a row in the other table.
+
 .. _json_api_discover_alternate:
 
 Discovering the JSON for a page

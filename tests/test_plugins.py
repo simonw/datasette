@@ -635,7 +635,13 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
     # Lots of 'at 0x103a4a690' in here - replace those so we can do
     # an easy comparison
     body = at_memory_re.sub(" at 0xXXX", response.text)
-    assert json.loads(body) == {
+    data = json.loads(body)
+    # rows is a list of datasette.Row objects
+    rows = data.pop("rows")
+    assert len(rows) == 15
+    assert rows[0].startswith("<Row: pk=1, created='2019-01-14 08:00:00', ")
+    assert all(row.startswith("<Row: pk=") for row in rows)
+    assert data == {
         "datasette": "<datasette.app.Datasette object at 0xXXX>",
         "columns": [
             "pk",
@@ -649,23 +655,6 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
             "complex_array",
             "distinct_some_null",
             "n",
-        ],
-        "rows": [
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
-            "<sqlite3.Row object at 0xXXX>",
         ],
         "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 51",
         "query_name": None,

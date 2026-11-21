@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections.abc import Iterable, Sequence
 from typing import Any
 
 from datasette.permissions import PermissionSQL
 from datasette.plugins import pm
+from datasette.rows import Row
 from datasette.utils import await_me_maybe
 
 # Sentinel object to indicate permission checks should be skipped
@@ -153,7 +153,7 @@ async def resolve_permissions_from_catalog(
       - candidate_sql SELECTs: parent TEXT, child TEXT
         (Use child=NULL for parent-scoped actions like "execute-sql".)
       - *db* exposes: rows = await db.execute(sql, params)
-        where rows is an iterable of sqlite3.Row
+        where rows is an iterable of datasette.Row
       - plugins: hook results handled by await_me_maybe - can be sync/async,
         single PermissionSQL, list, or callable returning PermissionSQL
       - actor is the actor dict (or None), made available as :actor (JSON), :actor_id, and :action
@@ -388,7 +388,7 @@ async def resolve_permissions_from_catalog(
         ORDER BY c.parent, c.child
         """
 
-    rows_iter: Iterable[sqlite3.Row] = await db.execute(
+    rows_iter: Iterable[Row] = await db.execute(
         sql,
         {**all_params, "implicit_deny": 1 if implicit_deny else 0},
     )

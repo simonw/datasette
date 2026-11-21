@@ -2360,7 +2360,7 @@ DatabaseType
 ``datasette.DatabaseType`` describes the type a database declares for a column. This is separate from the :ref:`column types <datasette_column_types>` that Datasette itself can assign to a column.
 
 ``type.name`` - string
-    The type exactly as the database describes it, for example ``INTEGER`` or ``varchar(30)``.
+    The type exactly as the database describes it, for example ``INTEGER`` or ``varchar(30)``. Compare ``type.category`` in preference to this: the name can vary in capitalization, and older versions of SQLite report a type declared as ``integer`` in lower case where newer versions report ``INTEGER``.
 
 ``type.category`` - ``datasette.TypeCategory``
     One of a fixed list of categories that are the same for every database: ``text``, ``integer``, ``float``, ``decimal``, ``boolean``, ``binary``, ``json``, ``date``, ``time``, ``datetime``, ``uuid``, ``array`` or ``other``. These can be compared with strings, so ``column.type.category == "datetime"`` works, or with members of the enum such as ``TypeCategory.DATETIME``.

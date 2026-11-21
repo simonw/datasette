@@ -338,7 +338,9 @@ async def ds_with_dogs():
         create table breeds (id integer primary key, weight real, height real);
         insert into breeds values (3, 30.5, 55.0);
         create table dogs (
-            id integer primary key,
+            -- Upper case, because SQLite before 3.37 reports a declared type
+            -- of "integer" as written and later versions report "INTEGER"
+            id INTEGER primary key,
             name varchar(30),
             born DATE,
             owner_id integer references owners(id),

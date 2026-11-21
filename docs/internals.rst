@@ -2358,6 +2358,8 @@ Example usage:
 
     version = await db.execute_fn(get_version)
 
+Rows fetched from this connection are :ref:`Row <internals_row>` objects, the same as those returned by ``db.execute()``.
+
 The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. _database_execute_write:
@@ -2442,6 +2444,8 @@ await db.execute_write_fn(fn, \*, block=True, transaction=True)
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
+
+Rows fetched from this connection are :ref:`Row <internals_row>` objects.
 
 Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
@@ -2530,7 +2534,7 @@ await db.execute_isolated_fn(fn)
 
 This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method.
 
-The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection.
+The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection, and Datasette does not configure it in any other way. Rows fetched from it are plain tuples, not :ref:`Row <internals_row>` objects.
 
 This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
 

@@ -51,6 +51,7 @@ from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
+from .rows import connection_row_factory
 from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
@@ -1613,7 +1614,7 @@ class Datasette:
         return url + separator + urllib.parse.urlencode({"_hash": hash_value})
 
     def _prepare_connection(self, conn, database):
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = connection_row_factory()
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         if self.sqlite_extensions and database != INTERNAL_DB_NAME:
             # Extension loading is only enabled for as long as it takes to

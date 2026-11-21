@@ -103,6 +103,8 @@ The dictionary returned by `register_output_renderer()` itself must use the `"re
 
 The rows returned by {ref}`db.execute() <database_execute>` are now {ref}`datasette.Row <internals_row>` objects. They were previously `sqlite3.Row` objects. The rows passed to the `render_cell()`, `row_actions()` and `top_row()` plugin hooks and to output renderers are `datasette.Row` objects too.
 
+The same is true for rows your own code fetches from the connection passed to a {ref}`db.execute_fn() <database_execute_fn>` or {ref}`db.execute_write_fn() <database_execute_write_fn>` function.
+
 `Row` is not tied to SQLite, so that Datasette can support other databases in the future.
 
 Most code does not need to change. These all work as before:
@@ -139,7 +141,7 @@ Check your code for the following, each of which behaves differently:
 
   You can also check `"optional_column" in row.columns`.
 
-Functions passed to {ref}`db.execute_fn() <database_execute_fn>` and {ref}`db.execute_write_fn() <database_execute_write_fn>` are given a SQLite connection and run their own queries, so the rows they fetch are still `sqlite3.Row` objects.
+The connection passed to a {ref}`db.execute_isolated_fn() <database_execute_isolated_fn>` function is not configured by Datasette, so its rows are plain tuples. That has not changed.
 
 (upgrade_guide_v1_results_columns)=
 #### `results.columns` is no longer a list of strings

@@ -13,7 +13,7 @@ these objects from that.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, overload
@@ -278,3 +278,28 @@ def label_rows(
                 continue
         labeled.append(Row(row._values, row._columns, {**row.labels, **row_labels}))
     return labeled
+
+
+def connection_row_factory() -> Callable[[Any, tuple[Any, ...]], Row]:
+    """
+    Returns a ``row_factory`` for a SQLite connection that builds
+    :class:`Row` objects, sharing one :class:`Columns` between the rows of
+    each query.
+
+    Each connection needs its own factory, because the factory remembers the
+    columns of the query that connection is currently reading.
+    """
+    last_description = None
+    last_columns = Columns()
+
+    def row_factory(cursor: Any, values: tuple[Any, ...]) -> Row:
+        nonlocal last_description, last_columns
+        # cursor.description is the same object for every row of a query,
+        # and a new object each time the cursor executes something else
+        description = cursor.description
+        if description is not last_description:
+            last_columns = Columns([d[0] for d in description])
+            last_description = description
+        return Row(values, last_columns)
+
+    return row_factory

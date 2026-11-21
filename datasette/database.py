@@ -1281,7 +1281,9 @@ class ExecuteWriteResult:
             cursor.close()
         if description is not None and not return_all and truncated:
             rowcount = -1
-        if rows:
+        if rows and not isinstance(rows[0], Row):
+            # Connections Datasette opens return Row objects already, but a
+            # plugin may have set a different row_factory on this one
             columns = Columns(d[0] for d in description)
             rows = [Row(tuple(row), columns) for row in rows]
         return cls(rowcount, lastrowid, description, rows, truncated)

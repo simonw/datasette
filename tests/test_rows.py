@@ -1,6 +1,7 @@
 import copy
 import json
 import pickle
+import sqlite3
 
 import pytest
 
@@ -545,3 +546,59 @@ async def test_labels_in_json_and_csv(ds_with_dogs):
         "1,1,Natalie,3",
         "2,99,,3",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ("execute_fn", "execute_write_fn"))
+async def test_raw_connections_return_rows(method):
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database(f"test_raw_connections_{method}")
+    await db.execute_write_script("""
+        create table dogs (id integer primary key, name text);
+        insert into dogs values (1, 'Cleo'), (2, 'Pancakes');
+        """)
+
+    def fetch(conn):
+        return conn.execute("select id, name from dogs order by id").fetchall()
+
+    rows = await getattr(db, method)(fetch)
+    assert all(type(row) is Row for row in rows)
+    assert rows[0]["name"] == "Cleo"
+    assert rows[1][0] == 2
+    assert rows[0].keys() == ["id", "name"]
+    # The rows of one query share their columns
+    assert rows[0].columns is rows[1].columns
+
+    def reuse_cursor(conn):
+        cursor = conn.cursor()
+        first = cursor.execute("select 1 as a").fetchone()
+        second = cursor.execute("select 2 as b, 3 as c").fetchone()
+        return first, second
+
+    first, second = await getattr(db, method)(reuse_cursor)
+    assert first.keys() == ["a"]
+    assert second.keys() == ["b", "c"]
+    assert dict(second) == {"b": 2, "c": 3}
+
+    def interleave(conn):
+        ids = conn.execute("select id from dogs order by id")
+        names = conn.execute("select name from dogs order by id")
+        return [(ids.fetchone(), names.fetchone()) for _ in range(2)]
+
+    pairs = await getattr(db, method)(interleave)
+    assert [(dict(id_), dict(name)) for id_, name in pairs] == [
+        ({"id": 1}, {"name": "Cleo"}),
+        ({"id": 2}, {"name": "Pancakes"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_isolated_fn_connection_is_not_configured(tmp_path):
+    path = str(tmp_path / "isolated.db")
+    sqlite3.connect(path).execute("vacuum")
+    ds = Datasette([path])
+    db = ds.get_database("isolated")
+    row = await db.execute_isolated_fn(
+        lambda conn: conn.execute("select 1 as a").fetchone()
+    )
+    assert type(row) is tuple

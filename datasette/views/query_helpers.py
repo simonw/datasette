@@ -430,6 +430,16 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
     }
 
 
+def _analysis_template_data(analysis_data):
+    # "ok" and "parameters" are for the JSON analysis endpoint, the
+    # templates use analysis_error instead
+    return {
+        key: value
+        for key, value in analysis_data.items()
+        if key not in ("ok", "parameters")
+    }
+
+
 async def _query_create_form_context(
     datasette,
     request,
@@ -450,7 +460,7 @@ async def _query_create_form_context(
         "title": title,
         "description": description,
         "is_private": is_private,
-        **analysis_data,
+        **_analysis_template_data(analysis_data),
     }
 
 
@@ -479,7 +489,7 @@ async def _query_edit_form_context(
         "description": description or "",
         "is_private": is_private,
         "query_url": datasette.urls.table(db.name, existing.name),
-        **analysis_data,
+        **_analysis_template_data(analysis_data),
     }
 
 

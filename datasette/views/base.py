@@ -51,7 +51,6 @@ class ErrorContext(Context):
 
     documented_template = "error.html"
 
-    ok: bool = dataclasses.field(metadata={"help": "Always ``False``"})
     error: str = dataclasses.field(metadata={"help": "The error message"})
     status: int = dataclasses.field(
         metadata={"help": "The HTTP status code, for example ``404``"}

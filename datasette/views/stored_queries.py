@@ -36,7 +36,6 @@ class QueryListContext(Context):
 
     documented_template = "query_list.html"
 
-    ok: bool = field(metadata={"help": "Always ``True``"})
     database: str | None = field(
         metadata={
             "help": "Name of the database the list is for, or None for the list covering every database"
@@ -56,7 +55,6 @@ class QueryListContext(Context):
     next_url: str | None = field(
         metadata={"help": "URL of the next page of queries, or None"}
     )
-    limit: int = field(metadata={"help": "Maximum number of queries per page"})
     total: int = field(
         metadata={
             "help": "Number of queries matching the current search and filters, across all pages"
@@ -67,22 +65,9 @@ class QueryListContext(Context):
             "help": "Number of queries on earlier pages, used to display the position of this page"
         }
     )
-    show_private_note: bool = field(
-        metadata={"help": "True if any query on this page is private"}
-    )
-    show_trusted_note: bool = field(
-        metadata={
-            "help": "True if any query on this page is trusted, meaning it skips the permission checks for the SQL it runs"
-        }
-    )
     query_list_path: str = field(
         metadata={
             "help": "Path to this list without its query string, used as the action for the search form"
-        }
-    )
-    show_database: bool = field(
-        metadata={
-            "help": "True if the list covers every database, so each query should be shown with its database"
         }
     )
     facets: list[dict] = field(
@@ -132,10 +117,6 @@ class QueryCreateContext(Context):
     is_private: bool = field(
         metadata={"help": "True if the private checkbox should be checked"}
     )
-    ok: bool = field(metadata={"help": "True if the SQL was analyzed without an error"})
-    parameters: list[str] = field(
-        metadata={"help": "Names of the ``:named`` parameters found in the SQL"}
-    )
     analysis_error: str | None = field(
         metadata={
             "help": "Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None"
@@ -176,10 +157,6 @@ class QueryEditContext(Context):
         metadata={"help": "True if the private checkbox should be checked"}
     )
     query_url: str = field(metadata={"help": "URL of the page for the query"})
-    ok: bool = field(metadata={"help": "True if the SQL was analyzed without an error"})
-    parameters: list[str] = field(
-        metadata={"help": "Names of the ``:named`` parameters found in the SQL"}
-    )
     analysis_error: str | None = field(
         metadata={
             "help": "Error message if the SQL could not be analyzed, for example because it is not valid, otherwise None"
@@ -448,8 +425,6 @@ class QueryListView(BaseView):
             "next": page.next,
             "next_url": next_url,
             "limit": page.limit,
-            "show_private_note": any(query.is_private for query in page.queries),
-            "show_trusted_note": any(query.is_trusted for query in page.queries),
             "query_list_path": query_list_path,
             "show_database": database is None,
             "facets": facets,
@@ -468,6 +443,9 @@ class QueryListView(BaseView):
                     "queries": [stored_query_to_dict(query) for query in page.queries],
                 }
             )
+        # These are part of the JSON response but not the template context
+        for key in ("ok", "limit", "show_database"):
+            del data[key]
         data.update(
             {
                 "total": total,

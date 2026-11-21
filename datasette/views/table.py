@@ -130,9 +130,6 @@ class TableContext(Context):
     view_definition: str = from_extra()
 
     # Fields added by the view code
-    ok: bool = field(
-        metadata={"help": "True if the data for this page was retrieved without errors"}
-    )
     next: str = field(metadata={"help": "Pagination token for the next page, or None"})
     next_url: str = field(
         metadata={
@@ -2080,7 +2077,6 @@ async def table_view_traced(datasette, request):
             table=data["table"],
             table_definition=data["table_definition"],
             view_definition=data["view_definition"],
-            ok=data["ok"],
             next=data["next"],
             count_truncated=data["count_truncated"],
             rows=data["rows"],

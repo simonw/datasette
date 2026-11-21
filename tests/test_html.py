@@ -577,6 +577,15 @@ async def test_query_parameter_form_fields(ds_client):
     )
 
 
+async def test_query_parameter_form_labels_line_up_and_are_capped_at_half_width(ds_client):
+    # https://github.com/simonw/datasette/issues/1981
+    response = await ds_client.get("/fixtures/-/query?sql=select+:name")
+    assert response.status_code == 200
+    # The parameters section shares one grid across all rows, so labels line up:
+    assert "grid-template-columns: fit-content(50%)" in response.text
+    assert "grid-template-columns: subgrid" in response.text
+
+
 async def test_database_page_sql_parameter_refresh_markup(ds_client):
     response = await ds_client.get("/fixtures")
     assert response.status_code == 200

@@ -9,6 +9,7 @@ Changelog
 Unreleased
 ----------
 
+- Canned query (and custom SQL) parameter forms now give labels a shared column that grows to fit them, capped at half the width of the form, so labels line up with each other and long ones wrap instead of being squeezed into a narrow column. (:issue:`1981`)
 - **Backwards incompatible:** the homepage JSON at ``/.json`` now returns the same searchable catalog of tables, views and stored queries as the :ref:`HTML homepage <IndexView>`, and accepts the same ``?q=``, ``?database=`` and ``?page=`` parameters. It previously returned up to five tables for each database in a format left over from the old homepage design, ignored those parameters and could take several seconds for instances with thousands of tables. Each database in ``databases`` now has ``name``, ``private``, ``tables``, ``views``, ``url`` and ``size`` keys - ``url`` replaces ``path`` - and tables and views are listed in a new ``items`` key, paginated using ``next_url``. This endpoint is still marked as unstable. (:issue:`1674`)
 - **Backwards incompatible:** optional arguments to many of the :ref:`documented internal methods <internals>` are now keyword-only, so they can no longer be passed positionally. (:issue:`1822`) The affected signatures are:
 

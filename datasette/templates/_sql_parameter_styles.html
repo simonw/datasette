@@ -6,15 +6,24 @@ form.sql .sql-editor textarea#sql-editor {
     width: 100%;
 }
 form.sql .sql-parameters-section {
+    column-gap: 0.6rem;
+    display: grid;
+    /* Labels take as much width as they need (as a shared, aligned column
+       across every row) and never more than half of the form width - see #1981 */
+    grid-template-columns: fit-content(50%) minmax(16rem, 1fr) auto;
     max-width: 52rem;
+    row-gap: 0.65rem;
+}
+form.sql .sql-parameters-section > h2 {
+    grid-column: 1 / -1;
 }
 form.sql .sql-parameter-row {
     align-items: start;
-    column-gap: 0.6rem;
     display: grid;
-    grid-template-columns: minmax(8rem, 11rem) minmax(16rem, 1fr) auto;
-    margin: 0 0 0.65rem;
-    max-width: 52rem;
+    grid-column: 1 / -1;
+    /* Subgrid aligns the label, control and (when present) expand button
+       with the columns of the section, so rows line up with each other */
+    grid-template-columns: subgrid;
 }
 form.sql .sql-parameter-row label {
     overflow-wrap: anywhere;
@@ -24,6 +33,7 @@ form.sql .sql-parameter-row label {
 form.sql .sql-parameter-row input[data-parameter-control],
 form.sql .sql-parameter-row textarea[data-parameter-control] {
     box-sizing: border-box;
+    grid-column: 2;
     width: 100%;
 }
 form.sql .sql-parameter-row textarea[data-parameter-control] {
@@ -37,18 +47,28 @@ form.sql .sql-parameter-row textarea[data-parameter-control] {
 }
 form.sql.core button.sql-parameter-toggle[type=button] {
     font-size: 0.72rem;
+    grid-column: 3;
     height: 1.8rem;
     line-height: 1;
     margin: 0.25rem 0 0;
     padding: 0.25rem 0.45rem;
 }
 @media (max-width: 480px) {
-    form.sql .sql-parameter-row {
+    form.sql .sql-parameters-section {
         grid-template-columns: 1fr;
+        row-gap: 0.65rem;
+    }
+    form.sql .sql-parameter-row {
+        grid-template-columns: subgrid;
         row-gap: 0.25rem;
     }
     form.sql .sql-parameter-row label {
         padding-top: 0;
+    }
+    form.sql .sql-parameter-row input[data-parameter-control],
+    form.sql .sql-parameter-row textarea[data-parameter-control],
+    form.sql.core button.sql-parameter-toggle[type=button] {
+        grid-column: 1;
     }
     form.sql.core button.sql-parameter-toggle[type=button] {
         justify-self: start;

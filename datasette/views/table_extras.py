@@ -1,5 +1,5 @@
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 from datasette.column_types import SQLiteType
@@ -54,6 +54,8 @@ class TableExtraContext:
     run_sequential: object
     query_name: str | None = None
     scope: ExtraScope = ExtraScope.TABLE
+    # {column: other_table} for foreign keys to tables with no label column
+    foreign_key_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -574,6 +576,7 @@ class DisplayColumnsAndRowsProvider(Provider):
             truncate_cells=context.datasette.setting("truncate_cells_html"),
             sortable_columns=context.sortable_columns,
             request=context.request,
+            foreign_key_links=context.foreign_key_links,
         )
         return {
             "columns": display_columns,
@@ -614,7 +617,7 @@ class DisplayColumnsExtra(Extra):
 class DisplayRowsExtra(Extra):
     description = "Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys; table pages may also provide ``pk_path``, ``row_path`` and ``row_label`` attributes on each row object."
     scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
-    # Contains markupsafe/sqlite3.Row values - not JSON serializable
+    # Contains markupsafe values - not JSON serializable
     public = False
 
     async def resolve(self, context, display_columns_and_rows):

@@ -13,7 +13,7 @@ from jinja2.filters import do_filesizeformat
 
 from datasette import tracer
 from datasette.column_types import SQLiteType
-from datasette.database import QueryInterrupted
+from datasette.database import QueryInterrupted, describe_columns
 from datasette.events import (
     AlterTableEvent,
     DropTableEvent,
@@ -23,11 +23,11 @@ from datasette.events import (
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.filters import Filters
 from datasette.plugins import pm
-from datasette.renderer import apply_column_type_transforms
+from datasette.renderer import apply_column_type_transforms, row_as_dict
 from datasette.resources import DatabaseResource, TableResource
+from datasette.rows import label_rows
 from datasette.utils import (
     CustomJSONEncoder,
-    CustomRow,
     InvalidSql,
     WriteJsonValueError,
     add_cors_headers,
@@ -306,10 +306,11 @@ def row_label_from_label_column(row, label_column):
         return None
     try:
         value = row[label_column]
-    except (KeyError, IndexError):
+    except KeyError:
         return None
-    if isinstance(value, dict):
-        value = value.get("label")
+    # If the label column is itself a foreign key, use the label it resolved
+    # to. The row can also be a plain dictionary, which has no labels.
+    value = getattr(row, "labels", {}).get(label_column, value)
     if value is None or value == "":
         return None
     return str(value)
@@ -731,9 +732,20 @@ async def display_columns_and_rows(
     truncate_cells=0,
     sortable_columns=None,
     request=None,
+    foreign_key_links: dict[str, str] | None = None,
 ):
-    """Returns columns, rows for specified table - including fancy foreign key treatment"""
+    """
+    Returns columns, rows for specified table - including fancy foreign key treatment
+
+    Columns are displayed in the order given by description, which can differ
+    from the order of the values in each row.
+
+    A cell is shown as a link to the row it references if that row has a
+    label in row.labels, or if its column is in foreign_key_links - a
+    {column: other_table} dictionary of foreign keys to tables with no label.
+    """
     sortable_columns = sortable_columns or set()
+    foreign_key_links = foreign_key_links or {}
     db = datasette.databases[database_name]
     column_descriptions = dict(
         await datasette.get_internal_database().execute(
@@ -873,8 +885,9 @@ async def display_columns_and_rows(
                 }
             )
 
-        for value, column_dict in zip(row, columns):
+        for column_dict in columns:
             column = column_dict["name"]
+            value = row[column]
             if link_column and len(pks) == 1 and column == pks[0]:
                 # If there's a simple primary key, don't repeat the value as it's
                 # already shown in the link column.
@@ -913,6 +926,27 @@ async def display_columns_and_rows(
                         break
             if plugin_display_value:
                 display_value = plugin_display_value
+            elif column in row.labels or (
+                column in foreign_key_links and value is not None
+            ):
+                # It's a foreign key - display link to other row
+                fk_link_columns.add(column)
+                label = row.labels.get(column, value)
+                # The table we link to depends on the column
+                other_table = (
+                    foreign_key_links.get(column) or column_to_foreign_key_table[column]
+                )
+                link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
+                display_value = markupsafe.Markup(
+                    link_template.format(
+                        database=tilde_encode(database_name),
+                        base_url=base_url,
+                        table=tilde_encode(other_table),
+                        link_id=tilde_encode(str(value)),
+                        id=str(markupsafe.escape(value)),
+                        label=str(markupsafe.escape(label)) or "-",
+                    )
+                )
             elif isinstance(value, bytes):
                 formatted = do_filesizeformat(len(value))
                 if pks or has_rowid_column or request is None:
@@ -939,24 +973,6 @@ async def display_columns_and_rows(
                         (f' title="{formatted}"' if len(value) >= 1000 else ""),
                         len(value),
                         "" if len(value) == 1 else "s",
-                    )
-                )
-            elif isinstance(value, dict):
-                # It's an expanded foreign key - display link to other row
-                fk_link_columns.add(column)
-                label = value["label"]
-                value = value["value"]
-                # The table we link to depends on the column
-                other_table = column_to_foreign_key_table[column]
-                link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
-                display_value = markupsafe.Markup(
-                    link_template.format(
-                        database=tilde_encode(database_name),
-                        base_url=base_url,
-                        table=tilde_encode(other_table),
-                        link_id=tilde_encode(str(value)),
-                        id=str(markupsafe.escape(value)),
-                        label=str(markupsafe.escape(label)) or "-",
                     )
                 )
             elif value in ("", None):
@@ -2547,14 +2563,21 @@ async def table_view_data(
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-    columns = [r[0] for r in results.description]
+    # Describe the columns using the types and foreign keys of the table
+    column_details, foreign_keys = await db._column_details_and_foreign_keys(table_name)
+    results = results.with_columns(
+        describe_columns(
+            table_name, column_details, foreign_keys, results.columns.names
+        )
+    )
+    columns = list(results.columns.names)
     rows = list(results.rows)
 
     # Expand labeled columns if requested
     expanded_columns = []
     # List of (fk_dict, label_column-or-None) pairs for that table
     expandable_columns = []
-    for fk in await db.foreign_keys_for_table(table_name):
+    for fk in foreign_keys:
         label_column = await db.label_column_for_table(fk["other_table"])
         expandable_columns.append((fk, label_column))
 
@@ -2570,41 +2593,38 @@ async def table_view_data(
         # expand all columns with foreign keys
         columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
 
+    # Foreign key columns to link to the row they reference even though that
+    # row has no label to show, as {column: other_table}
+    foreign_key_links = {}
     if columns_to_expand:
-        expanded_labels = {}
+        # {column: {value: label}}
+        labels = {}
         for fk, _ in expandable_columns:
             column = fk["column"]
             if column not in columns_to_expand:
                 continue
             if column not in columns:
                 continue
-            expanded_columns.append(column)
             # Gather the values
             column_index = columns.index(column)
             values = [row[column_index] for row in rows]
-            # Expand them
-            expanded_labels.update(
-                await datasette.expand_foreign_keys(
-                    request.actor, database_name, table_name, column, values
-                )
+            # Look up their labels
+            expanded = await datasette.foreign_key_labels(
+                request.actor, database_name, table_name, column, values
             )
-        if expanded_labels:
-            # Rewrite the rows
-            new_rows = []
-            for row in rows:
-                new_row = CustomRow(columns)
-                # CustomRow/sqlite3.Row iterate over values, so .keys() is required
-                for column in row.keys():  # noqa: SIM118
-                    value = row[column]
-                    if (column, value) in expanded_labels and value is not None:
-                        new_row[column] = {
-                            "value": value,
-                            "label": expanded_labels[(column, value)],
-                        }
-                    else:
-                        new_row[column] = value
-                new_rows.append(new_row)
-            rows = new_rows
+            if expanded is None:
+                # Not a foreign key this actor can follow
+                expanded_columns.append(column)
+                continue
+            other_table, column_labels = expanded
+            if column_labels is None:
+                # The other table has no label column, so there is nothing
+                # to expand - but the value can still link to that row
+                foreign_key_links[column] = other_table
+                continue
+            expanded_columns.append(column)
+            labels[column] = column_labels
+        rows = label_rows(rows, labels)
 
     # Pagination next link
     next_value, next_url = await _next_value_and_url(
@@ -2676,6 +2696,7 @@ async def table_view_data(
         rows=rows,
         columns=columns,
         expanded_columns=expanded_columns,
+        foreign_key_links=foreign_key_links,
         results_description=results.description,
         table_columns=table_columns,
         pks=pks,
@@ -2722,7 +2743,7 @@ async def table_view_data(
         )
     else:
         # The JSON renderer applies those transforms itself
-        data["rows"] = [dict(row) for row in rows[:page_size]]
+        data["rows"] = [row_as_dict(row) for row in rows[:page_size]]
 
     if context_for_html_hack:
         data["count_truncated"] = count_is_truncated(
@@ -2868,7 +2889,7 @@ async def _next_value_and_url(
         if (sort or sort_desc) and not is_view:
             try:
                 prefix = rows[-2][sort or sort_desc]
-            except (IndexError, KeyError):
+            except KeyError:
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 # Tables with no primary key paginate on rowid
                 lookup_pks = pks or ["rowid"]
@@ -2885,8 +2906,6 @@ async def _next_value_and_url(
                         {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(lookup_pks)}},
                     )
                 ).single_value()
-            if isinstance(prefix, dict) and "value" in prefix:
-                prefix = prefix["value"]
             prefix = _encode_sort_value(prefix)
             next_value = f"{prefix},{next_value}"
             added_args = {"_next": next_value}

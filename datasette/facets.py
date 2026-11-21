@@ -176,11 +176,10 @@ class Facet:
 
     async def get_columns(self, sql, params=None):
         # Detect column names using the "limit 0" trick
-        return (
-            await self.ds.execute(
-                self.database, f"select * from ({sql}) limit 0", params or []
-            )
-        ).columns
+        results = await self.ds.execute(
+            self.database, f"select * from ({sql}) limit 0", params or []
+        )
+        return list(results.columns.names)
 
 
 class ColumnFacet(Facet):

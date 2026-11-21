@@ -18,7 +18,7 @@ import time
 import types
 import typing
 import urllib
-from collections import Counter, OrderedDict, namedtuple
+from collections import Counter, namedtuple
 from collections.abc import Iterable
 from contextlib import contextmanager
 from shutil import copytree
@@ -29,6 +29,7 @@ import markupsafe
 import mergedeep
 import yaml
 
+from ..rows import Row
 from ..version import __version__
 from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
@@ -380,7 +381,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
     Built-in types (text, numbers, lists, etc) are encoded the same as Python's built-in ``json`` module.
 
-    - ``sqlite3.Row`` becomes a tuple
+    - ``datasette.Row`` and ``sqlite3.Row`` become a tuple
     - ``sqlite3.Cursor`` becomes a list
 
     Binary blobs are encoded as an object, with the actual data base64-encoded,
@@ -395,7 +396,7 @@ class CustomJSONEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, sqlite3.Row):
+        if isinstance(obj, (Row, sqlite3.Row)):
             return tuple(obj)
         if isinstance(obj, sqlite3.Cursor):
             return list(obj)
@@ -1091,25 +1092,6 @@ def module_from_path(path, name):
     # plugins and how metadata/config .py files are evaluated
     exec(code, mod.__dict__)  # noqa: S102
     return mod
-
-
-class CustomRow(OrderedDict):
-    # Loose imitation of sqlite3.Row which offers
-    # both index-based AND key-based lookups
-    def __init__(self, columns, values=None):
-        self.columns = columns
-        if values:
-            self.update(values)
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return super().__getitem__(self.columns[key])
-        else:
-            return super().__getitem__(key)
-
-    def __iter__(self):
-        for column in self.columns:
-            yield self[column]
 
 
 def value_as_boolean(value):

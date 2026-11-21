@@ -63,6 +63,7 @@ def render_delimited(
             headings.append(f"{column}_label")
 
     def cells(row):
+        labels = getattr(row, "labels", {})
         for column, cell in zip(columns, row):
             if isinstance(cell, bytes):
                 cell = _blob_url(
@@ -81,10 +82,9 @@ def render_delimited(
             elif cell is None:
                 yield ""
                 yield ""
-            elif isinstance(cell, dict):
-                # {"value": ..., "label": ...}
-                yield cell["value"]
-                yield cell["label"]
+            elif column in labels:
+                yield cell
+                yield labels[column]
             else:
                 yield cell
                 yield ""

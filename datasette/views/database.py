@@ -847,7 +847,7 @@ class QueryView(View):
                 results = await datasette.execute(
                     database, sql, params_for_query, truncate=True, **extra_args
                 )
-                columns = results.columns
+                columns = list(results.columns.names)
                 rows = results.rows
             except QueryInterrupted as ex:
                 raise DatasetteError(

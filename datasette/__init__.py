@@ -2,6 +2,12 @@ from datasette.permissions import Permission  # noqa
 from datasette.version import __version_info__, __version__  # noqa
 from datasette.events import Event  # noqa
 from datasette.background_tasks import BackgroundTask, BackgroundTaskSupervisor  # noqa
+from datasette.rows import (  # noqa
+    Column,
+    Columns,
+    ForeignKey,
+    Row,
+)
 from datasette.tokens import TokenHandler, TokenInvalid, TokenRestrictions  # noqa
 from datasette.utils.asgi import (  # noqa
     Forbidden,

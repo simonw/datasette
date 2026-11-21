@@ -11,12 +11,21 @@ import threading
 import time
 import uuid
 from collections import namedtuple
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
+from .rows import (
+    Column,
+    Columns,
+    ForeignKey,
+    Row,
+    rows_with_columns,
+)
 from .telemetry import (
     callback_name,
     linked_root_span_kwargs,
@@ -50,6 +59,7 @@ from .telemetry_registry import (
     TRUNCATED,
 )
 from .tracer import trace
+from .utils import Column as ColumnDetails
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -748,6 +758,9 @@ class Database:
                     with sqlite_timelimit(conn, time_limit_ms):
                         try:
                             cursor = conn.cursor()
+                            # Fetch plain tuples, which become datasette.Row
+                            # objects when the Results object is constructed
+                            cursor.row_factory = None
                             cursor.execute(sql, params if params is not None else {})
                             max_returned_rows = self.ds.max_returned_rows
                             if max_returned_rows == page_size:
@@ -935,6 +948,33 @@ class Database:
             return table_column_details(conn, table)
 
         return await self.execute_fn(_table_column_details)
+
+    async def _column_details_and_foreign_keys(
+        self, table: str
+    ) -> tuple[list[ColumnDetails], list[dict[str, Any]]]:
+        "Fetches what describe_columns() needs with one trip to the database"
+
+        def _fetch(conn):
+            return (
+                table_column_details(conn, table),
+                get_outbound_foreign_keys(conn, table),
+            )
+
+        return await self.execute_fn(_fetch)
+
+    async def describe_columns(
+        self, table: str, names: Iterable[str] | None = None
+    ) -> Columns:
+        """
+        Returns a ``Columns`` object describing the columns of a table or
+        view: their declared types and the foreign keys they hold.
+
+        Pass ``names`` to describe those columns in that order, as returned
+        by a query against the table. A name that is not a column of the
+        table is included without a type.
+        """
+        details, foreign_keys = await self._column_details_and_foreign_keys(table)
+        return describe_columns(table, details, foreign_keys, names)
 
     async def primary_keys(self, table):
         def _primary_keys(conn):
@@ -1241,6 +1281,11 @@ class ExecuteWriteResult:
             cursor.close()
         if description is not None and not return_all and truncated:
             rowcount = -1
+        if rows and not isinstance(rows[0], Row):
+            # Connections Datasette opens return Row objects already, but a
+            # plugin may have set a different row_factory on this one
+            columns = Columns(d[0] for d in description)
+            rows = [Row(tuple(row), columns) for row in rows]
         return cls(rowcount, lastrowid, description, rows, truncated)
 
     def fetchall(self):
@@ -1249,33 +1294,113 @@ class ExecuteWriteResult:
         return rows
 
 
+def describe_columns(
+    table: str,
+    details: Iterable[ColumnDetails],
+    foreign_keys: Iterable[dict[str, Any]],
+    names: Iterable[str] | None = None,
+) -> Columns:
+    """
+    Builds the ``Columns`` for a SQLite table from the output of
+    table_column_details() and get_outbound_foreign_keys().
+    """
+    foreign_keys_by_column = {
+        fk["column"]: ForeignKey(table=fk["other_table"], column=fk["other_column"])
+        for fk in foreign_keys
+    }
+    described = {
+        column.name: Column(
+            name=column.name,
+            # SQLite reports a column declared without a type as ""
+            type=column.type or None,
+            table=table,
+            foreign_key=foreign_keys_by_column.get(column.name),
+        )
+        for column in details
+    }
+    if names is None:
+        return Columns(described.values())
+    columns = []
+    for name in names:
+        column = described.get(name)
+        if column is None:
+            if name == "rowid" and described:
+                # The implicit rowid of a table that has no column of that name
+                column = Column(
+                    name=name,
+                    type="INTEGER",
+                    table=table,
+                )
+            else:
+                column = Column(name)
+        columns.append(column)
+    return Columns(columns)
+
+
 class Results:
-    def __init__(self, rows, truncated, description):
-        self.rows = rows
+    """
+    The results of a query: a list of :class:`datasette.Row` objects in
+    ``.rows``, plus ``.columns`` describing the columns they share.
+    """
+
+    rows: list[Row]
+    columns: Columns
+    truncated: bool
+
+    def __init__(
+        self,
+        rows: Sequence[Row | Sequence[Any]],
+        truncated: bool,
+        description: Sequence[Sequence[Any]] | None,
+        columns: Columns | None = None,
+    ) -> None:
+        if columns is None:
+            columns = Columns(d[0] for d in description or ())
+        self.columns = columns
         self.truncated = truncated
         self.description = description
+        if rows and rows[0].__class__ is tuple:
+            # The common case: tuples straight from the database
+            self.rows = [Row(row, columns) for row in rows]
+        elif rows and rows[0].__class__ is Row:
+            self.rows = list(rows)  # type: ignore[arg-type]
+        else:
+            self.rows = [
+                row if isinstance(row, Row) else Row(tuple(row), columns)
+                for row in rows
+            ]
 
-    @property
-    def columns(self):
-        return [d[0] for d in self.description]
+    def with_columns(self, columns: Columns | Iterable[str | Column]) -> "Results":
+        """
+        Returns a copy of these results described by a different ``Columns``
+        object, for example one that adds types to the columns.
+        """
+        if not isinstance(columns, Columns):
+            columns = Columns(columns)
+        return Results(
+            rows_with_columns(self.rows, columns),
+            self.truncated,
+            self.description,
+            columns,
+        )
 
-    def first(self):
+    def first(self) -> Row | None:
         if self.rows:
             return self.rows[0]
         else:
             return None
 
-    def single_value(self):
+    def single_value(self) -> Any:
         if self.rows and 1 == len(self.rows) and 1 == len(self.rows[0]):
             return self.rows[0][0]
         else:
             raise MultipleValues
 
-    def dicts(self):
+    def dicts(self) -> list[dict[str, Any]]:
         return [dict(row) for row in self.rows]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Row]:
         return iter(self.rows)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.rows)

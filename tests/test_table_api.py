@@ -1290,7 +1290,7 @@ async def test_infinity(ds_client, querystring, expected_values):
 )
 async def test_infinity_with_array_shapes(ds_client, path, shape, expected):
     # remove_infinites() returns a plain list for a row containing infinity,
-    # so one response can mix those lists with sqlite3.Row objects
+    # so one response can mix those lists with Row objects
     response = await ds_client.get(f"{path}&_shape={shape}")
     assert response.status_code == 200
     data = response.json()
@@ -1699,8 +1699,7 @@ async def test_sort_ties_paginate_without_skips_or_repeats(create_table, sort_ar
     ),
 )
 async def test_sort_excluded_column_with_expanded_labels(ds_client, path):
-    # Expanding foreign key labels turns rows into CustomRow objects, which
-    # raise KeyError rather than IndexError for a missing sort column
+    # Rows raise KeyError for a missing sort column, with or without labels
     # https://github.com/simonw/datasette/issues/2974
     response = await ds_client.get(path)
     assert response.status_code == 200

@@ -2343,7 +2343,9 @@ ORDER BY allowed.parent, allowed.child
             log_sql_errors=log_sql_errors,
         )
 
-    async def _foreign_key_target(self, actor, database, table, column):
+    async def _foreign_key_target(
+        self, actor: dict | None, database: str, table: str, column: str
+    ) -> tuple[str, str] | None:
         """
         Returns ``(other_table, other_column)`` for the row that the foreign
         key in ``column`` refers to, or ``None`` if there is no foreign key
@@ -2393,7 +2395,14 @@ ORDER BY allowed.parent, allowed.child
             return None
         return other_table, other_column
 
-    async def foreign_key_labels(self, actor, database, table, column, values):
+    async def foreign_key_labels(
+        self,
+        actor: dict | None,
+        database: str,
+        table: str,
+        column: str,
+        values: Iterable[Any],
+    ) -> tuple[str, dict[Any, Any] | None] | None:
         """
         Looks up labels for the rows that the foreign key in ``column`` refers to.
 
@@ -2410,7 +2419,7 @@ ORDER BY allowed.parent, allowed.child
         label_column = await db.label_column_for_table(other_table)
         if not label_column:
             return other_table, None
-        labels = {}
+        labels: dict[Any, Any] = {}
         distinct_values = list({value for value in values if value is not None})
         if not distinct_values:
             return other_table, labels
@@ -2433,8 +2442,17 @@ ORDER BY allowed.parent, allowed.child
                 labels[id] = label
         return other_table, labels
 
-    async def expand_foreign_keys(self, actor, database, table, column, values):
+    async def expand_foreign_keys(
+        self,
+        actor: dict | None,
+        database: str,
+        table: str,
+        column: str,
+        values: Iterable[Any],
+    ) -> dict[tuple[str, Any], Any]:
         """Returns dict mapping (column, value) -> label"""
+        # values is used twice below, so it must not be a one-shot iterator
+        values = list(values)
         expanded = await self.foreign_key_labels(actor, database, table, column, values)
         if expanded is None:
             return {}

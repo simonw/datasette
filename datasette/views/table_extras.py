@@ -55,7 +55,7 @@ class TableExtraContext:
     query_name: str | None = None
     scope: ExtraScope = ExtraScope.TABLE
     # {column: other_table} for foreign keys to tables with no label column
-    foreign_key_links: dict = field(default_factory=dict)
+    foreign_key_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -731,7 +731,7 @@ async def display_columns_and_rows(
     truncate_cells=0,
     sortable_columns=None,
     request=None,
-    foreign_key_links=None,
+    foreign_key_links: dict[str, str] | None = None,
 ):
     """
     Returns columns, rows for specified table - including fancy foreign key treatment

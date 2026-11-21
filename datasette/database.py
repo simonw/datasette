@@ -11,7 +11,9 @@ import threading
 import time
 import uuid
 from collections import namedtuple
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
@@ -59,6 +61,7 @@ from .telemetry_registry import (
     TRUNCATED,
 )
 from .tracer import trace
+from .utils import Column as ColumnDetails
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -948,7 +951,9 @@ class Database:
 
         return await self.execute_fn(_table_column_details)
 
-    async def _column_details_and_foreign_keys(self, table):
+    async def _column_details_and_foreign_keys(
+        self, table: str
+    ) -> tuple[list[ColumnDetails], list[dict[str, Any]]]:
         "Fetches what describe_columns() needs with one trip to the database"
 
         def _fetch(conn):
@@ -959,7 +964,9 @@ class Database:
 
         return await self.execute_fn(_fetch)
 
-    async def describe_columns(self, table, names=None):
+    async def describe_columns(
+        self, table: str, names: Iterable[str] | None = None
+    ) -> Columns:
         """
         Returns a ``Columns`` object describing the columns of a table or
         view: their declared types and the foreign keys they hold.
@@ -1287,7 +1294,12 @@ class ExecuteWriteResult:
         return rows
 
 
-def describe_columns(table, details, foreign_keys, names=None):
+def describe_columns(
+    table: str,
+    details: Iterable[ColumnDetails],
+    foreign_keys: Iterable[dict[str, Any]],
+    names: Iterable[str] | None = None,
+) -> Columns:
     """
     Builds the ``Columns`` for a SQLite table from the output of
     table_column_details() and get_outbound_foreign_keys().
@@ -1330,7 +1342,17 @@ class Results:
     ``.rows``, plus ``.columns`` describing the columns they share.
     """
 
-    def __init__(self, rows, truncated, description, columns=None):
+    rows: list[Row]
+    columns: Columns
+    truncated: bool
+
+    def __init__(
+        self,
+        rows: Sequence[Row | Sequence[Any]],
+        truncated: bool,
+        description: Sequence[Sequence[Any]] | None,
+        columns: Columns | None = None,
+    ) -> None:
         if columns is None:
             columns = Columns(d[0] for d in description or ())
         self.columns = columns
@@ -1340,14 +1362,14 @@ class Results:
             # The common case: tuples straight from the database
             self.rows = [Row(row, columns) for row in rows]
         elif rows and rows[0].__class__ is Row:
-            self.rows = list(rows)
+            self.rows = list(rows)  # type: ignore[arg-type]
         else:
             self.rows = [
                 row if isinstance(row, Row) else Row(tuple(row), columns)
                 for row in rows
             ]
 
-    def with_columns(self, columns):
+    def with_columns(self, columns: Columns | Iterable[str | Column]) -> "Results":
         """
         Returns a copy of these results described by a different ``Columns``
         object, for example one that adds types to the columns.
@@ -1361,23 +1383,23 @@ class Results:
             columns,
         )
 
-    def first(self):
+    def first(self) -> Row | None:
         if self.rows:
             return self.rows[0]
         else:
             return None
 
-    def single_value(self):
+    def single_value(self) -> Any:
         if self.rows and 1 == len(self.rows) and 1 == len(self.rows[0]):
             return self.rows[0][0]
         else:
             raise MultipleValues
 
-    def dicts(self):
+    def dicts(self) -> list[dict[str, Any]]:
         return [dict(row) for row in self.rows]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Row]:
         return iter(self.rows)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.rows)

@@ -1,4 +1,6 @@
 import json
+from collections.abc import Mapping
+from typing import Any
 
 from datasette.rows import Row
 from datasette.utils import (
@@ -73,7 +75,9 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def row_as_dict(row, values=None):
+def row_as_dict(
+    row: Row | Mapping[str, Any], values: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Return a row as the dictionary used to represent it in JSON.
 
@@ -91,7 +95,7 @@ def row_as_dict(row, values=None):
     return row_dict
 
 
-def _dict(row):
+def _dict(row: Row | Mapping[str, Any]) -> dict[str, Any]:
     "dict(row), but faster for a Row"
     if row.__class__ is Row:
         return dict(zip(row.columns.names, row))

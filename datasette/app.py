@@ -44,6 +44,7 @@ from markupsafe import Markup, escape
 from . import stored_queries, write_sql
 from .background_tasks import BackgroundTask, BackgroundTaskSupervisor
 from .column_types import SQLiteType
+from .config_dir import database_files
 from .context_debug import build_context_debug, context_as_json
 from .csrf import CrossOriginProtectionMiddleware
 from .database import Database, QueryInterrupted
@@ -488,10 +489,7 @@ class Datasette:
             raise ValueError("files= must be a list of paths, not a string")
         self.files = tuple(files or []) + tuple(immutables or [])
         if config_dir:
-            db_files = []
-            for ext in ("db", "sqlite", "sqlite3"):
-                db_files.extend(config_dir.glob(f"*.{ext}"))
-            self.files += tuple(str(f) for f in db_files)
+            self.files += tuple(str(f) for f in database_files(config_dir))
         if (
             config_dir
             and (config_dir / "inspect-data.json").exists()

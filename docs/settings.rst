@@ -57,6 +57,47 @@ The files that can be included in this directory are as follows. All are optiona
 * ``plugins/`` - a directory containing plugins, see :ref:`writing_plugins_one_off`
 * ``static/`` - a directory containing static files - these will be served from ``/static/filename.txt``, see :ref:`customization_static_files`
 
+Database files are served in alphabetical order of their filenames.
+
+.. _config_dir_packaging:
+
+Packaging a configuration directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. warning::
+    This is an experimental prototype and is likely to change.
+
+A configuration directory can be built into a Python wheel that bundles its databases, configuration, metadata, templates, plugins and static files, along with a list of the plugins it depends on.
+
+Add a ``pyproject.toml`` file to the directory that uses the ``datasette.build`` build backend:
+
+.. code-block:: toml
+
+    [project]
+    name = "my-app"
+    version = "0.1"
+    dependencies = ["datasette", "datasette-cluster-map"]
+
+    [build-system]
+    requires = ["datasette"]
+    build-backend = "datasette.build"
+
+Then build it using ``uv build`` or ``python -m build``::
+
+    cd my-app
+    uv build
+
+This creates ``dist/my_app-0.1-py3-none-any.whl``. The wheel includes an ``inspect-data.json`` file generated during the build, so the databases in it are served as immutable.
+
+Install that wheel and run ``datasette`` with no arguments to serve it. Datasette and the listed dependencies are installed with it::
+
+    pip install dist/my_app-0.1-py3-none-any.whl
+    datasette
+
+Running ``datasette`` with no database files or directory serves the installed configuration directory. If more than one has been installed Datasette exits with an error that lists their paths.
+
+Editable installs are supported too. ``pip install -e .`` or ``uv run datasette`` in the directory serve the files in place, so the databases stay mutable and changes take effect when Datasette restarts.
+
 Settings
 --------
 

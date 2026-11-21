@@ -24,6 +24,7 @@ from .app import (
     Datasette,
     pm,
 )
+from .config_dir import database_files, installed_config_dirs
 from .inspect import inspect_tables
 from .utils import (
     ConnectionProblem,
@@ -619,6 +620,20 @@ def serve(
         )
     elif len(directories) == 1:
         kwargs["config_dir"] = pathlib.Path(directories[0])
+    elif not file_paths and not immutable:
+        # Nothing to serve was specified, so serve a configuration
+        # directory that was installed as a package, if there is one
+        installed = installed_config_dirs()
+        if len(installed) > 1:
+            raise click.ClickException(
+                "More than one configuration directory is installed, "
+                "pass the path to one of them:\n"
+                + "\n".join(
+                    f"  {name}: {path}" for name, path in sorted(installed.items())
+                )
+            )
+        elif installed:
+            kwargs["config_dir"] = next(iter(installed.values()))
 
     # Verify list of files, create if needed (and --create)
     for file in file_paths:
@@ -643,9 +658,8 @@ def serve(
     # Add config_dir databases if config_dir is set
     if "config_dir" in kwargs:
         config_dir = kwargs["config_dir"]
-        for ext in ("db", "sqlite", "sqlite3"):
-            for db_file in config_dir.glob(f"*.{ext}"):
-                all_db_files.append((str(db_file), db_file.resolve()))
+        for db_file in database_files(config_dir):
+            all_db_files.append((str(db_file), db_file.resolve()))
 
     # Check for duplicates
     seen = {}

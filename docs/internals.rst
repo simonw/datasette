@@ -2247,9 +2247,6 @@ The ``Results`` object also has the following properties and methods:
 ``.rows`` - list of :ref:`Row <internals_row>`
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
 
-``.with_labels(labels)`` - ``Results``
-    Returns a copy of these results with foreign key labels attached to the rows. ``labels`` is a ``{column_name: {value: label}}`` dictionary. Each row gets an entry in its ``row.labels`` for a column if its value in that column is a key in the dictionary for that column.
-
 ``.with_columns(columns)`` - ``Results``
     Returns a copy of these results that uses a different :ref:`Columns <internals_row_columns>` object, for example one from :ref:`db.describe_columns() <database_describe_columns>` that adds types to the columns.
 
@@ -2303,14 +2300,8 @@ Rows are immutable, and two rows are equal if they have the same values and the 
 
     A column is only included if a label was found, so ``"owner_id" in row.labels`` tells you whether that foreign key was resolved for this row. The dictionary is empty for rows returned by ``db.execute()``. Datasette adds labels on table and row pages, see :ref:`expand_foreign_keys`.
 
-``row.with_labels(labels)`` - ``Row``
-    Returns a copy of the row with ``labels``, a ``{column_name: label}`` dictionary.
-
-``row.with_columns(columns)`` - ``Row``
-    Returns a copy of the row that uses a different :ref:`Columns <internals_row_columns>` object.
-
 ``Row.from_dict(d, labels=None)`` - ``Row``
-    Builds a row from a ``{column_name: value}`` dictionary, which is useful in tests.
+    Builds a row from a ``{column_name: value}`` dictionary, with an optional ``{column_name: label}`` dictionary of labels. Use this to construct rows in the tests for a plugin.
 
 .. _internals_row_columns:
 
@@ -2331,12 +2322,6 @@ Columns and Column
 
 ``columns.names`` - tuple of strings
     The names of the columns.
-
-``columns.index(name)`` - integer
-    The position of the first column with that name. Raises ``ValueError`` if there is no such column.
-
-``columns.replace(columns)`` - ``Columns``
-    Returns a new ``Columns`` with some columns replaced. ``columns`` is a dictionary of ``Column`` objects keyed by the name of the column each one replaces.
 
 Each ``Column`` has the following attributes. Only ``name`` is always available. The others are ``None`` if the database cannot describe the column, which is the case for the columns of an arbitrary SQL query against SQLite. Datasette fills them in on table and row pages.
 

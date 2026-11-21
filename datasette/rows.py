@@ -211,21 +211,6 @@ class Columns:
     def __reduce__(self):
         return (Columns, (self._columns,))
 
-    def index(self, name):
-        "The position of the first column called ``name``"
-        try:
-            return self._index[name]
-        except KeyError:
-            raise ValueError(f"No column called {name!r}") from None
-
-    def replace(self, columns):
-        """
-        Returns a new ``Columns`` with some columns swapped for new ones.
-        ``columns`` is a dictionary of replacement :class:`Column` objects,
-        keyed by the name of the column each one replaces.
-        """
-        return Columns(columns.get(column.name, column) for column in self._columns)
-
 
 class Row:
     """
@@ -314,17 +299,6 @@ class Row:
         "A list of the column names, so that ``dict(row)`` works"
         return list(self._columns.names)
 
-    def with_labels(self, labels):
-        """
-        Returns a copy of this row with ``labels``, a dictionary mapping the
-        names of foreign key columns to the label of the row they refer to.
-        """
-        return Row(self._values, self._columns, labels)
-
-    def with_columns(self, columns):
-        "Returns a copy of this row that uses a different ``Columns`` object"
-        return rows_with_columns([self], columns)[0]
-
 
 def rows_with_columns(rows, columns):
     "Returns copies of ``rows`` that all use the ``columns`` object"
@@ -367,5 +341,5 @@ def label_rows(rows, labels):
             except (KeyError, TypeError):
                 # No label for this value, or the value is not hashable
                 continue
-        labeled.append(row.with_labels({**row.labels, **row_labels}))
+        labeled.append(Row(row._values, row._columns, {**row.labels, **row_labels}))
     return labeled

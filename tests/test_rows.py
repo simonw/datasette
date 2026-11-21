@@ -7,6 +7,7 @@ import pytest
 from datasette import Column, Columns, DatabaseType, ForeignKey, Row, TypeCategory
 from datasette.app import Datasette
 from datasette.database import Results
+from datasette.rows import label_rows
 from datasette.utils import CustomJSONEncoder
 from datasette.utils.sqlite import supports_returning
 
@@ -99,9 +100,7 @@ def test_row_labels():
     row = Row((1, 5), columns)
     assert row.labels == {}
     assert "owner_id" not in row.labels
-    labeled = row.with_labels({"owner_id": "Natalie"})
-    # The original row is unchanged
-    assert row.labels == {}
+    labeled = Row((1, 5), columns, {"owner_id": "Natalie"})
     assert labeled.labels == {"owner_id": "Natalie"}
     assert labeled.labels.get("id") is None
     # The value itself is always the stored value
@@ -111,7 +110,7 @@ def test_row_labels():
     assert labeled == row
     # The dictionary that was passed in is copied
     source = {"owner_id": "Natalie"}
-    labeled = row.with_labels(source)
+    labeled = Row((1, 5), columns, source)
     source["owner_id"] = "changed"
     assert labeled.labels == {"owner_id": "Natalie"}
 
@@ -122,22 +121,6 @@ def test_row_from_dict():
     assert row["owner_id"] == 5
     assert row.labels == {"owner_id": "Natalie"}
     assert row.columns.names == ("id", "owner_id")
-
-
-def test_row_with_columns(row):
-    columns = Columns(
-        [
-            Column("id", type=DatabaseType("INTEGER", TypeCategory.INTEGER)),
-            "name",
-            "owner_id",
-        ]
-    )
-    typed = row.with_columns(columns)
-    assert typed.columns is columns
-    assert typed == row
-    assert typed.columns["id"].type.category == "integer"
-    with pytest.raises(ValueError):
-        row.with_columns(Columns(["just_one"]))
 
 
 @pytest.mark.parametrize("duplicate", (pickle.dumps, copy.deepcopy))
@@ -171,27 +154,13 @@ def test_columns():
     assert "id" in columns
     assert "nope" not in columns
     assert Column("id") in columns
-    assert columns.index("owner_id") == 1
     with pytest.raises(KeyError):
         columns["nope"]
     with pytest.raises(IndexError):
         columns[2]
-    with pytest.raises(ValueError):
-        columns.index("nope")
     assert columns == Columns(["id", Column("owner_id", table="dogs", foreign_key=fk)])
     assert columns != Columns(["id", "owner_id"])
     assert repr(columns) == "<Columns: id, owner_id>"
-
-
-def test_columns_replace():
-    columns = Columns(["id", "name"])
-    typed = columns.replace(
-        {"name": Column("name", type=DatabaseType("TEXT", TypeCategory.TEXT))}
-    )
-    assert typed["name"].type.name == "TEXT"
-    assert typed["id"] is columns["id"]
-    # The original is unchanged
-    assert columns["name"].type is None
 
 
 def test_column_is_immutable():
@@ -252,41 +221,41 @@ def test_results_wrap_tuples_in_rows():
     assert len(results) == 2
 
 
-def test_results_with_labels():
+def test_label_rows():
     results = Results(
         [(1, 5, 7), (2, None, 8), (3, 99, 7)],
         True,
         (("id",), ("owner_id",), ("vet_id",)),
     )
-    labeled = results.with_labels(
-        {"owner_id": {5: "Natalie"}, "vet_id": {7: "Dr Paws"}, "nope": {1: "x"}}
+    labeled = label_rows(
+        results.rows,
+        {"owner_id": {5: "Natalie"}, "vet_id": {7: "Dr Paws"}, "nope": {1: "x"}},
     )
-    assert [dict(row.labels) for row in labeled.rows] == [
+    assert [dict(row.labels) for row in labeled] == [
         {"owner_id": "Natalie", "vet_id": "Dr Paws"},
         {},
         {"vet_id": "Dr Paws"},
     ]
-    assert labeled.truncated is True
-    assert labeled.columns is results.columns
-    # Values are untouched, and so are the original results
-    assert [tuple(row) for row in labeled.rows] == [
-        (1, 5, 7),
-        (2, None, 8),
-        (3, 99, 7),
-    ]
+    assert all(row.columns is results.columns for row in labeled)
+    # Values are untouched, and so are the original rows
+    assert [tuple(row) for row in labeled] == [(1, 5, 7), (2, None, 8), (3, 99, 7)]
     assert all(row.labels == {} for row in results.rows)
 
 
 def test_results_with_columns():
     results = Results([(1, "a")], False, (("id",), ("name",)))
-    columns = results.columns.replace(
-        {"id": Column("id", type=DatabaseType("INTEGER", TypeCategory.INTEGER))}
+    columns = Columns(
+        [Column("id", type=DatabaseType("INTEGER", TypeCategory.INTEGER)), "name"]
     )
     typed = results.with_columns(columns)
     assert typed.columns is columns
     assert typed.rows[0].columns is columns
     assert typed.rows[0] == results.rows[0]
+    assert typed.rows[0].columns["id"].type.category == "integer"
+    # The original results are unchanged
     assert results.columns["id"].type is None
+    with pytest.raises(ValueError):
+        results.with_columns(Columns(["just_one"]))
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,6 @@ from .rows import (
     ForeignKey,
     Row,
     TypeCategory,
-    label_rows,
     rows_with_columns,
 )
 from .telemetry import (
@@ -1360,21 +1359,6 @@ class Results:
             self.truncated,
             self.description,
             columns,
-        )
-
-    def with_labels(self, labels):
-        """
-        Returns a copy of these results with labels attached to the rows.
-
-        ``labels`` is ``{column_name: {value: label}}``. A row gets a label
-        for a column if its value in that column is a key in the dictionary
-        for that column.
-        """
-        return Results(
-            label_rows(self.rows, labels),
-            self.truncated,
-            self.description,
-            self.columns,
         )
 
     def first(self):

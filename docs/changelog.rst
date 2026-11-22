@@ -96,6 +96,7 @@ Bug fixes
 - The "View and edit SQL" link on the table page now links straight to ``/database/-/query``, instead of to a URL that redirects there.
 - ``?_context_json=1`` no longer returns a 500 error for pages such as ``/-/queries`` that have a value in their context which cannot be represented as JSON.
 - A read query that fails part way through now has its cursor closed immediately. On Python 3.11 the open cursor could keep a named in-memory database alive after its ``Datasette`` instance was closed.
+- Tables created using the :ref:`create table API <TableCreateView>` now have ``NOT NULL`` primary key columns, so they can no longer hold rows with a null primary key. This applies to text and compound primary keys, for tables created from ``columns`` and from example ``rows``. Inserting a row without a value for one of those keys now returns a 400 error. A single integer primary key is unchanged, since SQLite never allows it to be null. Thanks, `Pranav Mishra <https://github.com/PranavMishra28>`__. (:issue:`2807`, :pr:`2826`)
 - ``datasette publish`` and ``datasette package`` no longer fail on Windows when removing their temporary directory. (:issue:`1479`)
 - Datasette's test suite now runs on Windows in CI. (:issue:`1627`)
 - Fixed a bug where a custom SQL query or stored query returned one row more than :ref:`setting_max_returned_rows` if that setting was the same as :ref:`setting_default_page_size`. Thanks, `kokokoXUY <https://github.com/kokokoXUY>`__, who spotted this in :pr:`2963`.

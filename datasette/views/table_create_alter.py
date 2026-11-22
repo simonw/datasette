@@ -14,6 +14,7 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
+from sqlite_utils.utils import suggest_column_types
 
 from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
@@ -823,6 +824,25 @@ def _literal_default(db, value):
     return value
 
 
+def _not_null_primary_keys(pk_names, integer_columns):
+    """
+    Return the primary key columns that should be created as NOT NULL.
+
+    SQLite allows NULL in a primary key, and lets several rows share that NULL
+    key - see #2807. A single integer primary key is the exception: it is an
+    alias for the rowid and can never be NULL, so it needs no constraint.
+
+    ``integer_columns`` maps each column name to True if it is an integer
+    column. Names are matched case-insensitively because SQLite resolves
+    identifiers that way: pk "code" makes a column named "Code" the primary key.
+    """
+    folded = {name.lower() for name in pk_names}
+    matches = [name for name in integer_columns if name.lower() in folded]
+    if len(folded) == 1 and len(matches) == 1 and integer_columns[matches[0]]:
+        return []
+    return matches
+
+
 class TableCreateView(BaseView):
     name = "table-create"
 
@@ -936,31 +956,34 @@ class TableCreateView(BaseView):
             check_structured_write_table(conn, table_name, allow_missing=True)
             db_for_write = sqlite_utils.Database(conn)
             table = db_for_write[table_name]
+            pk_names = pks if pks else ([pk] if pk else [])
             if rows:
+                if not table.exists():
+                    # insert_all() would create the table from these rows, but
+                    # it checks not_null against the columns in its first batch
+                    # of rows. Create the table here instead, from every row.
+                    column_types = suggest_column_types(rows)
+                    not_null = _not_null_primary_keys(
+                        pk_names,
+                        {
+                            name: column_type is int
+                            for name, column_type in column_types.items()
+                        },
+                    )
+                    if not_null:
+                        table.create(column_types, pk=pks or pk, not_null=not_null)
                 table.insert_all(
                     rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
                 )
             else:
-                # Force primary key columns NOT NULL so the API cannot create
-                # NULL primary keys, which SQLite otherwise allows and which
-                # leaves rows that cannot be viewed, edited or deleted (see
-                # #2807). A single integer primary key aliases the rowid and is
-                # never NULL, so it needs no explicit constraint.
-                # Matched case-insensitively because SQLite resolves identifiers
-                # that way: pk "code" against a column named "Code" still creates
-                # that column as the primary key.
-                pk_names = {
-                    name.lower() for name in (pks if pks else ([pk] if pk else []))
-                }
-                if len(pk_names) == 1 and any(
-                    column.name.lower() in pk_names and column.type == "integer"
-                    for column in columns
-                ):
-                    pk_names = set()
+                pk_not_null = _not_null_primary_keys(
+                    pk_names,
+                    {column.name: column.type == "integer" for column in columns},
+                )
                 not_null = [
                     column.name
                     for column in columns
-                    if column.not_null or column.name.lower() in pk_names
+                    if column.not_null or column.name in pk_not_null
                 ]
                 defaults = {}
                 for column in columns:

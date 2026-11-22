@@ -2282,7 +2282,8 @@ async def test_drop_table_cleans_up_fts(ds_write):
                 "table_url": "http://localhost/data/five",
                 "table_api_url": "http://localhost/data/five.json",
                 "schema": (
-                    'CREATE TABLE "five" (\n   "type" TEXT,\n   "key" INTEGER,\n'
+                    'CREATE TABLE "five" (\n   "type" TEXT NOT NULL,\n'
+                    '   "key" INTEGER NOT NULL,\n'
                     '   "title" TEXT,\n   PRIMARY KEY ("type", "key")\n)'
                 ),
                 "row_count": 1,
@@ -2778,6 +2779,165 @@ async def test_create_table_primary_keys_are_not_null(ds_write):
     }
     assert columns["Id"]["pk"] == 1
     assert columns["Id"]["notnull"] == 0
+
+
+@pytest.mark.parametrize(
+    "body,expected_schema,expected_not_null",
+    (
+        pytest.param(
+            {"rows": [{"code": "a", "name": "A"}], "pk": "code"},
+            'CREATE TABLE "t" (\n   "code" TEXT PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"code": 1, "name": 0},
+            id="text_pk",
+        ),
+        pytest.param(
+            {"row": {"code": "a", "name": "A"}, "pk": "code"},
+            'CREATE TABLE "t" (\n   "code" TEXT PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"code": 1, "name": 0},
+            id="text_pk_single_row",
+        ),
+        pytest.param(
+            {"rows": [{"score": 1.5, "name": "A"}], "pk": "score"},
+            'CREATE TABLE "t" (\n   "score" REAL PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"score": 1, "name": 0},
+            id="float_pk",
+        ),
+        pytest.param(
+            {"rows": [{"a": "x", "b": 1, "name": "A"}], "pks": ["a", "b"]},
+            (
+                'CREATE TABLE "t" (\n   "a" TEXT NOT NULL,\n   "b" INTEGER NOT NULL,\n'
+                '   "name" TEXT,\n   PRIMARY KEY ("a", "b")\n)'
+            ),
+            {"a": 1, "b": 1, "name": 0},
+            id="compound_pk",
+        ),
+        pytest.param(
+            {"rows": [{"Code": "a", "name": "A"}], "pk": "code"},
+            'CREATE TABLE "t" (\n   "Code" TEXT PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"Code": 1, "name": 0},
+            id="pk_in_different_case",
+        ),
+        pytest.param(
+            {"rows": [{"name": "A", "code": "a"}, {"code": "b"}], "pk": "code"},
+            'CREATE TABLE "t" (\n   "name" TEXT,\n   "code" TEXT PRIMARY KEY NOT NULL\n)',
+            {"code": 1, "name": 0},
+            id="text_pk_not_first_column",
+        ),
+        # A single integer primary key can never be null, so is left alone
+        pytest.param(
+            {"rows": [{"id": 5, "name": "A"}], "pk": "id"},
+            'CREATE TABLE "t" (\n   "id" INTEGER PRIMARY KEY,\n   "name" TEXT\n)',
+            {"id": 0, "name": 0},
+            id="integer_pk",
+        ),
+        pytest.param(
+            {"rows": [{"id": 5, "name": "A"}], "pks": ["id"]},
+            'CREATE TABLE "t" (\n   "id" INTEGER PRIMARY KEY,\n   "name" TEXT\n)',
+            {"id": 0, "name": 0},
+            id="integer_pk_using_pks",
+        ),
+        # ... including the one that is added when no row has that key
+        pytest.param(
+            {"rows": [{"name": "A"}], "pk": "id"},
+            'CREATE TABLE "t" (\n   "id" INTEGER PRIMARY KEY,\n   "name" TEXT\n)',
+            {"id": 0, "name": 0},
+            id="integer_pk_not_in_rows",
+        ),
+        pytest.param(
+            {"rows": [{"name": "A"}]},
+            'CREATE TABLE "t" (\n   "name" TEXT\n)',
+            {"name": 0},
+            id="no_pk",
+        ),
+    ),
+)
+async def test_create_table_from_rows_primary_keys_are_not_null(
+    ds_write, body, expected_schema, expected_not_null
+):
+    # https://github.com/simonw/datasette/issues/2807
+    db = ds_write.get_database("data")
+    try:
+        response = await ds_write.client.post(
+            "/data/-/create",
+            json={"table": "t", **body},
+            headers=_headers(write_token(ds_write)),
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["schema"] == expected_schema
+        columns = (await db.execute("select * from pragma_table_info('t')")).dicts()
+        assert {
+            column["name"]: column["notnull"] for column in columns
+        } == expected_not_null
+        expected_count = len(body["rows"]) if "rows" in body else 1
+        assert (await db.execute("select count(*) from t")).single_value() == (
+            expected_count
+        )
+    finally:
+        await db.execute_write("drop table if exists t")
+
+
+@pytest.mark.parametrize(
+    "body,expected_error",
+    (
+        pytest.param(
+            {"rows": [{"code": "a", "name": "A"}, {"name": "B"}], "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="key_missing_from_row",
+        ),
+        pytest.param(
+            {"rows": [{"name": "A"}, {"code": "b", "name": "B"}], "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="key_missing_from_first_row",
+        ),
+        pytest.param(
+            {"rows": [{"code": "a"}, {"code": None}], "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="null_key",
+        ),
+        pytest.param(
+            {"row": {"code": None, "name": "A"}, "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="null_key_single_row",
+        ),
+        pytest.param(
+            {"rows": [{"a": "x", "b": None}, {"a": "y", "b": 2}], "pks": ["a", "b"]},
+            "NOT NULL constraint failed: t.b",
+            id="null_in_compound_key",
+        ),
+    ),
+)
+async def test_create_table_from_rows_rejects_null_primary_keys(
+    ds_write, body, expected_error
+):
+    # https://github.com/simonw/datasette/issues/2807
+    db = ds_write.get_database("data")
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={"table": "t", **body},
+        headers=_headers(write_token(ds_write)),
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["errors"] == [expected_error]
+    # The table should not have been created
+    assert not await db.table_exists("t")
+
+
+async def test_create_rows_for_existing_table_with_nullable_primary_key(ds_write):
+    # Only new tables get NOT NULL primary keys - an existing table is unchanged
+    db = ds_write.get_database("data")
+    await db.execute_write("create table nullable_pk (code text primary key, name)")
+    try:
+        response = await ds_write.client.post(
+            "/data/-/create",
+            json={"table": "nullable_pk", "rows": [{"name": "A"}], "pk": "code"},
+            headers=_headers(write_token(ds_write)),
+        )
+        assert response.status_code == 201, response.text
+        assert [
+            tuple(row) for row in await db.execute("select code, name from nullable_pk")
+        ] == [(None, "A")]
+    finally:
+        await db.execute_write("drop table nullable_pk")
 
 
 @pytest.mark.parametrize(

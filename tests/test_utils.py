@@ -551,6 +551,49 @@ def test_table_columns():
     conn.close()
 
 
+def test_introspection_sees_table_created_by_another_connection(tmp_path):
+    # A connection that has already loaded the schema must still see tables
+    # that are created afterwards by a different connection
+    # https://github.com/simonw/datasette/issues/2356
+    path = str(tmp_path / "data.db")
+    writer = sqlite3.connect(path)
+    writer.execute("create table docs (id integer primary key, title text)")
+    writer.commit()
+    reader = sqlite3.connect(path)
+    # Cause the reader to load and cache the schema
+    assert reader.execute("select count(*) from docs").fetchone()[0] == 0
+    writer.execute(
+        "create table notes (type text, key text, "
+        "doc_id integer references docs(id), primary key (type, key))"
+    )
+    writer.commit()
+    try:
+        assert utils.get_outbound_foreign_keys(reader, "notes") == [
+            {"column": "doc_id", "other_table": "docs", "other_column": "id"}
+        ]
+    finally:
+        reader.close()
+    # Fresh stale reader for each check, since any check refreshes the schema
+    for fn, expected in (
+        (utils.detect_primary_keys, ["type", "key"]),
+        (utils.table_columns, ["type", "key", "doc_id"]),
+    ):
+        writer.execute("drop table notes")
+        writer.commit()
+        reader = sqlite3.connect(path)
+        assert reader.execute("select count(*) from docs").fetchone()[0] == 0
+        writer.execute(
+            "create table notes (type text, key text, "
+            "doc_id integer references docs(id), primary key (type, key))"
+        )
+        writer.commit()
+        try:
+            assert fn(reader, "notes") == expected
+        finally:
+            reader.close()
+    writer.close()
+
+
 @pytest.mark.parametrize(
     "query,expected",
     [

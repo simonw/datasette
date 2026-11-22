@@ -819,7 +819,29 @@ def detect_primary_keys(conn, table):
     return [name for _, name in pks]
 
 
+def refresh_schema(conn):
+    """
+    Make sure this connection has noticed schema changes made by other connections.
+
+    SQLite answers several PRAGMAs from the connection's cached copy of the
+    schema without first checking that the cache is current. If another
+    connection has just created the table, they return no rows at all:
+
+    - ``PRAGMA table_info()`` and ``table_xinfo()`` in SQLite before 3.33.0
+    - ``PRAGMA foreign_key_list()`` and ``index_list()`` in every version
+      tested, up to 3.53
+
+    Running any ordinary query first makes SQLite compare schema versions and
+    reload the schema if needed. This was the cause of intermittent test
+    failures in https://github.com/simonw/datasette/issues/2356,
+    https://github.com/simonw/datasette/issues/1919 and
+    https://github.com/simonw/datasette/issues/2632
+    """
+    conn.execute("select 1 from sqlite_master limit 1").fetchall()
+
+
 def get_outbound_foreign_keys(conn, table):
+    refresh_schema(conn)
     infos = conn.execute(f"PRAGMA foreign_key_list({escape_sqlite(table)})").fetchall()
     fks = []
     for info in infos:
@@ -961,12 +983,10 @@ def _table_xinfo(conn, table):
     Returns a row for each column of a table or view, as
     (cid, name, type, notnull, default_value, pk_position, hidden)
     """
+    refresh_schema(conn)
     if supports_table_xinfo():
         # table_xinfo was added in 3.26.0
         return conn.execute(f"PRAGMA table_xinfo({escape_sqlite(table)});").fetchall()
-    # First trigger a query against sqlite_master to fix an intermittent
-    # test failure, see https://github.com/simonw/datasette/issues/2632
-    conn.execute("select 1 from sqlite_master limit 1").fetchall()
     # table_info does not report hidden, so treat it as 0 for all columns
     return [
         (*row, 0)

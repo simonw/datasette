@@ -2180,8 +2180,8 @@ Instances of the ``Database`` class can be used to execute queries against attac
 
 .. _database_constructor:
 
-Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None, is_temp_disk=False)
------------------------------------------------------------------------------------------------
+Database(ds, path=None, \*, is_mutable=True, is_memory=False, memory_name=None, mode=None, is_temp_disk=False)
+--------------------------------------------------------------------------------------------------------------
 
 The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
 
@@ -2202,6 +2202,9 @@ The arguments are as follows:
 ``memory_name`` - string or ``None``
     Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
 
+``mode`` - string or ``None``
+    The ``mode`` to use in the `SQLite URI <https://www.sqlite.org/uri.html>`__ when opening the file at ``path``. Use ``"rwc"`` to create the file if it does not exist yet. Every connection to the file is opened using this mode, including those used to run read queries. The default of ``None`` opens read connections as read-only, or as immutable if ``is_mutable`` is ``False``. This has no effect on in-memory databases.
+
 ``is_temp_disk`` - boolean
     Set this to ``True`` to create a temporary file-backed database. This creates a SQLite database in a temporary file on disk (using Python's ``tempfile.mkstemp()``) with WAL mode enabled for better concurrent read/write performance. The temporary file is automatically cleaned up when the database is closed or when the process exits.
 
@@ -2209,7 +2212,17 @@ The arguments are as follows:
 
     When ``is_temp_disk=True``, the ``path``, ``is_mutable``, and ``mode`` parameters are set automatically and should not be provided.
 
-The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
+The first argument is the ``datasette`` instance you are attaching to and the second is the ``path``. Every other argument is optional and must be passed as a keyword argument:
+
+.. code-block:: python
+
+    from datasette.database import Database
+
+    db = datasette.add_database(
+        Database(
+            datasette, "/path/to/data.db", is_mutable=False
+        )
+    )
 
 .. _database_hash:
 

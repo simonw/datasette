@@ -106,6 +106,7 @@ class Database:
         self,
         ds,
         path=None,
+        *,
         is_mutable=True,
         is_memory=False,
         memory_name=None,

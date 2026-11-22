@@ -26,6 +26,7 @@ Unreleased
   - ``datasette.execute(db_name, sql, params=None, *, ...)`` and ``db.execute(sql, params=None, *, ...)``
   - ``db.execute_write(sql, params=None, *, ...)``, ``db.execute_write_script(sql, *, ...)``, ``db.execute_write_many(sql, params_seq, *, ...)`` and ``db.execute_write_fn(fn, *, ...)``
   - ``datasette.get_database(name=None, *, route=None)``, ``datasette.add_database(db, name=None, *, route=None)`` and ``datasette.add_memory_database(memory_name, name=None, *, route=None)``
+  - ``Database(ds, path=None, *, ...)`` - every argument after ``path`` is keyword-only. The :ref:`documentation for this constructor <database_constructor>` previously left out its ``mode`` argument, so passing ``is_temp_disk`` by position following that documentation set ``mode`` instead. (:issue:`2942`)
   - ``datasette.plugin_config(plugin_name, *, database=None, table=None, fallback=True)``
   - ``datasette.set_actor_cookie(response, actor, *, expire_after=None)``
   - ``datasette.client.get(path, *, skip_permission_checks=False, **kwargs)`` and the other ``datasette.client`` methods.

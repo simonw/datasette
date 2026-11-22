@@ -1379,3 +1379,34 @@ async def test_execute_custom_time_limit_can_exceed_setting():
         await db.execute(sql, custom_time_limit=0)
     results = await db.execute(sql, custom_time_limit=30000)
     assert results.rows[0][0] == 300000
+
+
+def test_database_constructor_arguments_are_keyword_only(bare_ds, tmp_path):
+    path = str(tmp_path / "data.db")
+    sqlite3.connect(path).execute("vacuum")
+    # path can be passed by position
+    assert Database(bare_ds, path).path == path
+    # Everything after it has to be named. is_temp_disk used to be the
+    # seventh positional argument, after a mode= the documentation left out
+    with pytest.raises(TypeError):
+        Database(bare_ds, path, False)
+    with pytest.raises(TypeError):
+        Database(bare_ds, None, True, False, None, None, True)
+    db = Database(bare_ds, path, is_mutable=False)
+    assert db.is_mutable is False
+
+
+async def test_database_constructor_mode(bare_ds, tmp_path):
+    # mode="rwc" creates the file if it does not exist yet
+    path = tmp_path / "created.db"
+    assert not path.exists()
+    db = bare_ds.add_database(Database(bare_ds, str(path), mode="rwc"), name="created")
+    await db.execute_write("create table t (id integer primary key)")
+    assert path.exists()
+    assert await db.table_names() == ["t"]
+    # Without it, a file that does not exist cannot be opened
+    missing = bare_ds.add_database(
+        Database(bare_ds, str(tmp_path / "missing.db")), name="missing"
+    )
+    with pytest.raises(sqlite3.OperationalError):
+        await missing.execute("select 1")

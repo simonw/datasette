@@ -635,14 +635,7 @@ Use this instead of the browser's ``alert()`` function. Browsers embedded in oth
 
 Unlike the browser's ``alert()``, this does not pause the script that called it. Code that should run after the user has dismissed the dialog must ``await`` the promise.
 
-The dialog behaves like a native alert for keyboard and screen reader users:
-
-- It is a modal dialog with the ``alertdialog`` role, labelled by its message, so screen readers announce the message when the dialog opens.
-- The rest of the page cannot be reached with the keyboard or a screen reader while it is open.
-- Keyboard focus moves to the button, so Enter, Space or Escape dismiss the dialog.
-- Focus returns to the element that had it before the dialog opened.
-
-A message that is too long to fit on the screen scrolls, with the button still visible.
+Screen readers announce the message when the dialog opens. Keyboard focus moves to the button, then returns to where it was once the dialog is dismissed.
 
 An alert interrupts the user, so keep it for messages that have no better place. An error that relates to a form field or a dialog that is already open is better shown next to that field or inside that dialog.
 

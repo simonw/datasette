@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
-import sqlite3
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from datasette.permissions import PermissionSQL
 from datasette.plugins import pm
+from datasette.rows import Row
 from datasette.utils import await_me_maybe
 
 # Sentinel object to indicate permission checks should be skipped
@@ -15,7 +16,7 @@ SKIP_PERMISSION_CHECKS = object()
 
 async def gather_permission_sql_from_hooks(
     *, datasette, actor: dict | None, action: str
-) -> List[PermissionSQL] | object:
+) -> list[PermissionSQL] | object:
     """Collect PermissionSQL objects from the permission_resources_sql hook.
 
     Ensures that each returned PermissionSQL has a populated ``source``.
@@ -34,7 +35,7 @@ async def gather_permission_sql_from_hooks(
     hookimpls = hook_caller.get_hookimpls()
     hook_results = list(hook_caller(datasette=datasette, actor=actor, action=action))
 
-    collected: List[PermissionSQL] = []
+    collected: list[PermissionSQL] = []
     actor_json = json.dumps(actor) if actor is not None else None
     actor_id = actor.get("id") if isinstance(actor, dict) else None
 
@@ -71,7 +72,7 @@ def _iter_permission_sql_from_result(
     if isinstance(result, PermissionSQL):
         return [result]
     if isinstance(result, (list, tuple)):
-        collected: List[PermissionSQL] = []
+        collected: list[PermissionSQL] = []
         for item in result:
             collected.extend(_iter_permission_sql_from_result(item, action=action))
         return collected
@@ -90,7 +91,7 @@ def _iter_permission_sql_from_result(
 
 def build_rules_union(
     actor: dict | None, plugins: Sequence[PermissionSQL]
-) -> Tuple[str, Dict[str, Any]]:
+) -> tuple[str, dict[str, Any]]:
     """
     Compose plugin SQL into a UNION ALL.
 
@@ -102,10 +103,10 @@ def build_rules_union(
     The system reserves these parameter names: :actor, :actor_id, :action, :filter_parent
     Plugin parameters should be prefixed with a unique identifier (e.g., source name).
     """
-    parts: List[str] = []
+    parts: list[str] = []
     actor_json = json.dumps(actor) if actor else None
     actor_id = actor.get("id") if actor else None
-    params: Dict[str, Any] = {"actor": actor_json, "actor_id": actor_id}
+    params: dict[str, Any] = {"actor": actor_json, "actor_id": actor_id}
 
     for p in plugins:
         # No namespacing - just use plugin params as-is
@@ -141,10 +142,10 @@ async def resolve_permissions_from_catalog(
     plugins: Sequence[Any],
     action: str,
     candidate_sql: str,
-    candidate_params: Dict[str, Any] | None = None,
+    candidate_params: dict[str, Any] | None = None,
     *,
     implicit_deny: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Resolve permissions by embedding the provided *candidate_sql* in a CTE.
 
@@ -152,7 +153,7 @@ async def resolve_permissions_from_catalog(
       - candidate_sql SELECTs: parent TEXT, child TEXT
         (Use child=NULL for parent-scoped actions like "execute-sql".)
       - *db* exposes: rows = await db.execute(sql, params)
-        where rows is an iterable of sqlite3.Row
+        where rows is an iterable of datasette.Row
       - plugins: hook results handled by await_me_maybe - can be sync/async,
         single PermissionSQL, list, or callable returning PermissionSQL
       - actor is the actor dict (or None), made available as :actor (JSON), :actor_id, and :action
@@ -168,8 +169,8 @@ async def resolve_permissions_from_catalog(
       - parent, child, allow, reason, source_plugin, depth
       - resource (rendered "/parent/child" or "/parent" or "/")
     """
-    resolved_plugins: List[PermissionSQL] = []
-    restriction_sqls: List[str] = []
+    resolved_plugins: list[PermissionSQL] = []
+    restriction_sqls: list[str] = []
 
     for plugin in plugins:
         if callable(plugin) and not isinstance(plugin, PermissionSQL):
@@ -387,7 +388,7 @@ async def resolve_permissions_from_catalog(
         ORDER BY c.parent, c.child
         """
 
-    rows_iter: Iterable[sqlite3.Row] = await db.execute(
+    rows_iter: Iterable[Row] = await db.execute(
         sql,
         {**all_params, "implicit_deny": 1 if implicit_deny else 0},
     )
@@ -398,11 +399,11 @@ async def resolve_permissions_with_candidates(
     db,
     actor: dict | None,
     plugins: Sequence[Any],
-    candidates: List[Tuple[str, str | None]],
+    candidates: list[tuple[str, str | None]],
     action: str,
     *,
     implicit_deny: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Resolve permissions without any external candidate table by embedding
     the candidates as a UNION of parameterized SELECTs in a CTE.
@@ -411,8 +412,8 @@ async def resolve_permissions_with_candidates(
     actor: actor dict (or None), made available as :actor (JSON), :actor_id, and :action
     """
     # Build a small CTE for candidates.
-    cand_rows_sql: List[str] = []
-    cand_params: Dict[str, Any] = {}
+    cand_rows_sql: list[str] = []
+    cand_params: dict[str, Any] = {}
     for i, (parent, child) in enumerate(candidates):
         pkey = f"cand_p_{i}"
         ckey = f"cand_c_{i}"

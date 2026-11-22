@@ -1,10 +1,21 @@
+import json
+
 from datasette import hookimpl
 from datasette.utils.asgi import Response
-import json
 
 
 async def can_render(
-    datasette, columns, rows, sql, query_name, database, table, request, view_name
+    datasette,
+    columns,
+    rows,
+    sql,
+    query_name,
+    database,
+    table,
+    request,
+    path,
+    full_path,
+    view_name,
 ):
     # We stash this on datasette so the calling unit test can see it
     datasette._can_render_saw = {
@@ -16,23 +27,33 @@ async def can_render(
         "database": database,
         "table": table,
         "request": request,
+        "path": path,
+        "full_path": full_path,
         "view_name": view_name,
     }
-    if request.args.get("_no_can_render"):
-        return False
-    return True
+    return not request.args.get("_no_can_render")
 
 
 async def render_test_all_parameters(
-    datasette, columns, rows, sql, query_name, database, table, request, view_name, data
+    datasette,
+    columns,
+    rows,
+    sql,
+    query_name,
+    database,
+    table,
+    request,
+    path,
+    full_path,
+    view_name,
 ):
     headers = {}
     for custom_header in request.args.getlist("header"):
         key, value = custom_header.split(":")
         headers[key] = value
     result = await datasette.databases["fixtures"].execute("select 1 + 1")
-    return {
-        "body": json.dumps(
+    return Response(
+        json.dumps(
             {
                 "datasette": datasette,
                 "columns": columns,
@@ -42,24 +63,29 @@ async def render_test_all_parameters(
                 "database": database,
                 "table": table,
                 "request": request,
+                "path": path,
+                "full_path": full_path,
                 "view_name": view_name,
                 "1+1": result.first()[0],
             },
             default=repr,
         ),
-        "content_type": request.args.get("content_type", "text/plain"),
-        "status_code": int(request.args.get("status_code", 200)),
-        "headers": headers,
-    }
+        content_type=request.args.get("content_type", "text/plain"),
+        status=int(request.args.get("status_code", 200)),
+        headers=headers,
+    )
 
 
 def render_test_no_parameters():
-    return {"body": "Hello"}
+    return Response.text("Hello")
 
 
 async def render_response(request):
     if request.args.get("_broken"):
         return "this should break"
+    if request.args.get("_dict"):
+        # The pre-1.0 way of returning a response
+        return {"body": "Hello", "content_type": "text/plain"}
     return Response.json({"this_is": "json"})
 
 
@@ -71,6 +97,6 @@ def register_output_renderer(datasette):
             "render": render_test_all_parameters,
             "can_render": can_render,
         },
-        {"extension": "testnone", "callback": render_test_no_parameters},
+        {"extension": "testnone", "render": render_test_no_parameters},
         {"extension": "testresponse", "render": render_response},
     ]

@@ -1,9 +1,12 @@
-from click.testing import CliRunner
-from datasette import cli
-from unittest import mock
 import os
 import pathlib
+from unittest import mock
+
 import pytest
+from click.testing import CliRunner
+
+from datasette import cli
+from datasette.version import __version__
 
 
 class CaptureDockerfile:
@@ -17,12 +20,12 @@ COPY . /app
 WORKDIR /app
 
 ENV DATASETTE_SECRET 'sekrit'
-RUN pip install -U datasette
+RUN pip install -U datasette==VERSION
 RUN datasette inspect test.db --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --port $PORT
-""".strip()
+""".strip().replace("VERSION", __version__)
 
 
 @pytest.mark.serial
@@ -37,7 +40,7 @@ def test_package(mock_call, mock_which, tmp_path_factory):
     with open("test.db", "w") as fp:
         fp.write("data")
     result = runner.invoke(cli.cli, ["package", "test.db", "--secret", "sekrit"])
-    assert 0 == result.exit_code
+    assert result.exit_code == 0
     mock_call.assert_has_calls([mock.call(["docker", "build", "."])])
     assert EXPECTED_DOCKERFILE.format(port=8001) == capture.captured
 
@@ -55,5 +58,5 @@ def test_package_with_port(mock_call, mock_which, tmp_path_factory):
     result = runner.invoke(
         cli.cli, ["package", "test.db", "-p", "8080", "--secret", "sekrit"]
     )
-    assert 0 == result.exit_code
+    assert result.exit_code == 0
     assert EXPECTED_DOCKERFILE.format(port=8080) == capture.captured

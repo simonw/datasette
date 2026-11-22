@@ -1,31 +1,80 @@
 .. _csv_export:
 
-CSV export
-==========
+CSV and TSV export
+==================
 
-Any Datasette table, view or custom SQL query can be exported as CSV.
+Any Datasette table, view or custom SQL query can be exported as CSV or TSV.
 
-To obtain the CSV representation of the table you are looking, click the "this
-data as CSV" link.
+To export the table you are looking at, click the "Export data" button below
+the filters. The dialog that opens offers the data as TSV, as CSV and in
+different JSON shapes, using the current filters and sort order. Custom SQL
+query pages have the same button above their results, and each row page has
+one that offers that row as TSV, CSV or JSON.
 
-You can also use the advanced export form for more control over the resulting
-file, which looks like this and has the following options:
+The top of the dialog describes the filters and sort order that the export
+will use. Each format shows how many rows it returns: JSON formats return the
+rows on the current page, TSV and CSV return up to
+:ref:`setting_max_returned_rows` rows starting from the current page, and the
+**include all rows** option returns every matching row, starting from the
+first one. If you have moved
+past the first page the dialog says so, since the exports then start from
+that page. If the page did not count every row, the dialog counts them when
+it opens.
 
-.. image:: https://github.com/simonw/datasette-screenshots/blob/0.62/advanced-export.png?raw=true
-   :alt: Advanced export form. You can get the data in different JSON shapes, and CSV options are download file, expand labels and stream all rows.
+Each format in that dialog has four actions:
 
-* **download file** - instead of displaying CSV in your browser, this forces
-  your browser to download the CSV to your downloads directory.
+* **Copy** - copy the data itself to your clipboard.
+* **View** - open that format in your browser.
+* **Download** - save it as a file in your downloads directory.
+* **Copy URL** - copy the URL for that format, for use with other tools.
+
+Formats added by plugins can offer fewer of these. A binary format, such as a
+spreadsheet file, offers **Download** and **Copy URL**, and a format that opens
+a web page offers **View** and **Copy URL**. See
+:ref:`plugin_register_output_renderer`.
+
+The two copy actions use the browser clipboard, so they are only shown when
+Datasette is served over HTTPS or from ``localhost``.
+
+.. _csv_export_tsv:
+
+TSV for spreadsheets
+--------------------
+
+TSV (tab-separated values) is the quickest way to get data into Excel or
+Google Sheets: click **Copy** next to TSV, then paste into a spreadsheet and
+each value lands in its own cell. This is what those applications put on the
+clipboard themselves when you copy a range of cells.
+
+TSV uses the same quoting rules as Excel. A value that contains a tab, a line
+break or a double quote is wrapped in double quotes, with any double quotes
+inside it doubled, so ``say "hi"`` becomes ``"say ""hi"""``. Excel and Google
+Sheets turn those values back into the original text when you paste them.
+
+TSV is available at the same URLs as CSV, with ``.tsv`` in place of ``.csv``,
+and accepts the same options and URL parameters. If a plugin registers its own
+``tsv`` format using :ref:`plugin_register_output_renderer`, that plugin
+handles ``.tsv`` URLs instead.
+
+Options
+-------
+
+TSV and CSV share the following options. These are only offered for tables
+and views. Formats added by plugins that can
+:ref:`stream every row <plugin_register_output_renderer_streaming>` are listed
+alongside TSV and CSV, and these options apply to them as well:
 
 * **expand labels** - if your table has any foreign key references this option
-  will cause the CSV to gain additional ``COLUMN_NAME_label`` columns with a
+  will cause the export to gain additional ``COLUMN_NAME_label`` columns with a
   label for each foreign key derived from the linked table. `In this example
   <https://latest.datasette.io/fixtures/facetable.csv?_labels=on&_size=max>`_
   the ``city_id`` column is accompanied by a ``city_id_label`` column.
 
-* **stream all rows** - by default CSV files only contain the first
+* **include all rows** - by default TSV and CSV exports only contain the first
   :ref:`setting_max_returned_rows` records. This option will cause Datasette to
-  loop through every matching record and return them as a single CSV file.
+  loop through every matching record and return them as a single file,
+  starting from the first one even if you are on a later page. On the first
+  page it is only offered when there are more matching rows than that.
 
 You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
 
@@ -34,7 +83,8 @@ You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
 URL parameters
 --------------
 
-The following options can be used to customize the CSVs returned by Datasette.
+The following options can be used to customize the CSV and TSV files returned
+by Datasette.
 
 ``?_header=off``
     This removes the first row of the CSV file specifying the headings - only the row data will be returned.
@@ -43,20 +93,53 @@ The following options can be used to customize the CSVs returned by Datasette.
     Stream all matching records, not just the first page of results. See below.
 
 ``?_dl=on``
-    Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header.
+    Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header, or ``filename.tsv`` for TSV. This works for every other export format too.
 
 Streaming all records
 ---------------------
 
-The *stream all rows* option is designed to be as efficient as possible -
+The *include all rows* option is designed to be as efficient as possible -
 under the hood it takes advantage of Python 3 asyncio capabilities and
 Datasette's efficient :ref:`pagination <pagination>` to stream back the full
-CSV file.
+CSV or TSV file.
 
-Since databases can get pretty large, by default this option is capped at 100MB -
-if a table returns more than 100MB of data the last line of the CSV will be a
-truncation error message.
+Since databases can get pretty large, by default this option is capped at 100MB.
+If a table returns more than 100MB of data Datasette stops and drops the
+connection, so the download fails instead of saving a file that is silently
+missing rows. The same thing happens if an error occurs part of the way through.
 
-You can increase or remove this limit using the :ref:`setting_max_csv_mb` config
-setting. You can also disable the CSV export feature entirely using
-:ref:`setting_allow_csv_stream`.
+You can increase or remove this limit using the :ref:`setting_max_stream_mb` config
+setting. You can also disable the *include all rows* option entirely using
+:ref:`setting_default_allow_stream`.
+
+.. _csv_export_truncated:
+
+Truncated query results
+-----------------------
+
+Streaming is only available for tables and views. The results of a custom SQL
+query or a :ref:`stored query <stored_queries>` are cut short after
+:ref:`setting_max_returned_rows` rows, in every format.
+
+The CSV and TSV for a query have nowhere to say that rows were left out, so
+Datasette uses HTTP headers instead. Every export of a query, in CSV, TSV, JSON
+or a format added by a plugin, includes this header::
+
+    Datasette-Truncated: false
+
+If rows were left out it is ``true``, and a second header gives the number of
+rows that were returned, which is the limit that was applied::
+
+    Datasette-Truncated: true
+    Datasette-Max-Returned-Rows: 1000
+
+Code that fetches every row of a query in pages, using ``limit`` and
+``offset`` in the SQL, can check ``Datasette-Truncated`` to tell whether a
+page was cut short by the limit. These headers are included in the
+``Access-Control-Expose-Headers`` header when Datasette is run with
+:ref:`--cors <json_api_cors>`, so JavaScript running on other domains can read
+them.
+
+CSV and TSV are implemented as :ref:`output renderers <plugin_register_output_renderer>`
+that stream their rows. Plugins can add other formats that work the same way, see
+:ref:`plugin_register_output_renderer_streaming`.

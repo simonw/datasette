@@ -1,22 +1,20 @@
-import csv
-import hashlib
-import sys
+import asyncio
+import dataclasses
 
-from datasette.utils.asgi import Request
+from datasette.extras import extra_names_from_request
+from datasette.renderer import RowStream
 from datasette.utils import (
     add_cors_headers,
-    EscapeHtmlWriter,
-    InvalidSql,
-    LimitedWriter,
-    path_from_row_pks,
-    path_with_format,
-    sqlite3,
+    call_with_supported_arguments,
+    request_wants_json,
 )
 from datasette.utils.asgi import (
-    AsgiStream,
-    Response,
     BadRequest,
+    NotFound,
+    Response,
 )
+
+from . import Context
 
 
 class DatasetteError(Exception):
@@ -35,8 +33,34 @@ class DatasetteError(Exception):
         self.error_dict = error_dict or {}
         self.status = status
         self.message_is_html = message_is_html
-        # Plain text used for JSON error responses when message is HTML
+        # Plain text used for JSON and CSV error responses when message is HTML
         self.plain_message = plain_message
+
+
+@dataclasses.dataclass
+class ErrorContext(Context):
+    """
+    The page shown for an error, such as a 404 or a 500. Datasette looks for
+    a template named after the status code first, so ``404.html`` can be used
+    to customize just that error.
+
+    Error pages other than the 403 permission denied page are rendered
+    without most of the variables that are available on every page - only
+    ``urls`` and ``menu_links`` are provided. Errors raised by plugins can
+    include additional variables of their own.
+    """
+
+    documented_template = "error.html"
+
+    error: str = dataclasses.field(metadata={"help": "The error message"})
+    status: int = dataclasses.field(
+        metadata={"help": "The HTTP status code, for example ``404``"}
+    )
+    title: str | None = dataclasses.field(
+        metadata={
+            "help": "Title for the page, or None to use the default of ``Error`` followed by the status code"
+        }
+    )
 
 
 class View:
@@ -48,10 +72,7 @@ class View:
         return response
 
     async def method_not_allowed(self, request):
-        if (
-            request.path.endswith(".json")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
@@ -87,10 +108,7 @@ class BaseView:
         return response
 
     async def method_not_allowed(self, request):
-        if (
-            request.path.endswith(".json")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
@@ -124,38 +142,38 @@ class BaseView:
         return response
 
     async def render(self, templates, request, context=None):
+        """
+        Render the first of ``templates`` that exists. ``context`` is a
+        dictionary or a Context dataclass, which must declare a
+        ``select_templates`` field and, for views with a JSON alternate,
+        an ``alternate_url_json`` field.
+        """
         context = context or {}
         environment = self.ds.get_jinja_environment(request)
         template = environment.select_template(templates)
-        template_context = {
-            **context,
-            **{
-                "select_templates": [
-                    f"{'*' if template_name == template.name else ''}{template_name}"
-                    for template_name in templates
-                ],
-            },
+        extra_context = {
+            "select_templates": [
+                f"{'*' if template_name == template.name else ''}{template_name}"
+                for template_name in templates
+            ],
         }
         headers = {}
         if self.has_json_alternate:
             alternate_url_json = self.ds.absolute_url(
                 request,
-                self.ds.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format="json",
-                    )
-                ),
+                self.ds.urls.modify(request, format="json"),
             )
-            template_context["alternate_url_json"] = alternate_url_json
+            extra_context["alternate_url_json"] = alternate_url_json
             headers.update(
                 {
-                    "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                        alternate_url_json
-                    )
+                    "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
                 }
             )
+        if isinstance(context, Context):
+            # Stays a dataclass, so render_template() knows its class
+            template_context = dataclasses.replace(context, **extra_context)
+        else:
+            template_context = {**context, **extra_context}
         return Response.html(
             await self.ds.render_template(
                 template,
@@ -179,168 +197,168 @@ class BaseView:
         return view
 
 
-async def stream_csv(datasette, fetch_data, request, database):
-    kwargs = {}
-    stream = request.args.get("_stream")
-    # Do not calculate facets or counts:
-    extra_parameters = [
-        "{}=1".format(key)
-        for key in ("_nofacet", "_nocount")
-        if not request.args.get(key)
-    ]
-    if extra_parameters:
-        # Replace request object with a new one with modified scope
-        if not request.query_string:
-            new_query_string = "&".join(extra_parameters)
-        else:
-            new_query_string = request.query_string + "&" + "&".join(extra_parameters)
-        new_scope = dict(request.scope, query_string=new_query_string.encode("latin-1"))
-        receive = request.receive
-        request = Request(new_scope, receive)
-    if stream:
-        # Some quick soundness checks
-        if not datasette.setting("allow_csv_stream"):
-            raise BadRequest("CSV streaming is disabled")
-        if request.args.get("_next"):
-            raise BadRequest("_next not allowed for CSV streaming")
-        kwargs["_size"] = "max"
-    # Fetch the first page
+def page_for_renderer(datasette, request, format_, data):
+    """
+    The page= dictionary passed to an output renderer's render function.
+
+    This is everything the JSON for this page returns alongside its rows:
+    the keys that type of page always includes (such as next and next_url
+    for tables), the extras the renderer declared when it was registered
+    and any requested using ?_extra=. Extras that are not available for
+    this type of page are omitted.
+    """
+    names = set(datasette._renderer_extras.get(format_) or [])
+    names.update(extra_names_from_request(request))
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in ("ok", "rows")
+        # Row and query pages always have columns, but it is only an
+        # extra if it was asked for - see issue 2136
+        and (key != "columns" or "columns" in names)
+    }
+
+
+def tsv_export_path(datasette, request):
+    """Path to this page as TSV, or None if a plugin handles .tsv instead"""
+    from datasette.csv_renderer import render_tsv
+
+    if datasette.renderers.get("tsv", (None,))[0] is not render_tsv:
+        return None
+    # route_path is the path without base_url, set when base_url is not "/"
+    path = request.scope.get("route_path") or request.path
+    return datasette.urls.path(path, format="tsv")
+
+
+def stream_requested(datasette, request, format_):
+    """
+    True if this request should stream every row: it has ?_stream=1 and the
+    output renderer for this format can stream. Formats that cannot stream
+    ignore ?_stream=.
+    """
+    if not request.args.get("_stream"):
+        return False
+    if not datasette._renderer_can_stream.get(format_):
+        return False
+    if not datasette.setting("default_allow_stream"):
+        raise BadRequest("Streaming is disabled")
+    if request.args.get("_next"):
+        raise BadRequest("_next not allowed when streaming")
+    return True
+
+
+class StreamSizeExceeded(Exception):
+    pass
+
+
+async def _limit_stream_size(body, limit_mb):
+    limit_bytes = limit_mb * 1024 * 1024
+    sent = 0
     try:
-        response_or_template_contexts = await fetch_data(request)
-        if isinstance(response_or_template_contexts, Response):
-            return response_or_template_contexts
-        elif len(response_or_template_contexts) == 4:
-            data, _, _, _ = response_or_template_contexts
-        else:
-            data, _, _ = response_or_template_contexts
-    except (sqlite3.OperationalError, InvalidSql) as e:
-        raise DatasetteError(str(e), title="Invalid SQL", status=400)
+        async for chunk in body:
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8")
+            sent += len(chunk)
+            if sent > limit_bytes:
+                raise StreamSizeExceeded(
+                    f"Response is larger than the {limit_mb}MB max_stream_mb limit"
+                )
+            yield chunk
+    finally:
+        aclose = getattr(body, "aclose", None)
+        if aclose is not None:
+            await aclose()
 
-    except sqlite3.OperationalError as e:
-        raise DatasetteError(str(e))
 
-    except DatasetteError:
-        raise
+def _set_header_unless_present(response, name, value):
+    "Add a header, unless the output renderer has already set one with that name"
+    if not any(key.lower() == name.lower() for key in response.headers):
+        response.headers[name] = value
 
-    # Convert rows and columns to CSV
-    headings = data["columns"]
-    # if there are expanded_columns we need to add additional headings
-    expanded_columns = set(data.get("expanded_columns") or [])
-    if expanded_columns:
-        headings = []
-        for column in data["columns"]:
-            headings.append(column)
-            if column in expanded_columns:
-                headings.append(f"{column}_label")
 
-    content_type = "text/plain; charset=utf-8"
-    preamble = ""
-    postamble = ""
+async def render_with_output_renderer(
+    datasette,
+    request,
+    format_,
+    *,
+    data,
+    columns,
+    rows,
+    sql,
+    query_name,
+    database,
+    table,
+    view_name,
+    truncated,
+    error,
+    fetch_next_page=None,
+):
+    """
+    Call the output renderer registered for format_ and return its Response.
 
-    trace = request.args.get("_trace")
-    if trace:
-        content_type = "text/html; charset=utf-8"
-        preamble = (
-            "<html><head><title>CSV debug</title></head>"
-            '<body><textarea style="width: 90%; height: 70vh">'
+    fetch_next_page is an async function returning the next page of rows, or
+    None when there are no more. It is only used for a request that streams
+    every row, see stream_requested().
+    """
+    streaming = stream_requested(datasette, request, format_)
+    result = call_with_supported_arguments(
+        datasette.renderers[format_][0],
+        datasette=datasette,
+        columns=columns,
+        rows=rows,
+        row_stream=RowStream(rows, fetch_next_page if streaming else None),
+        sql=sql,
+        query_name=query_name,
+        database=database,
+        table=table,
+        request=request,
+        path=datasette.urls.modify(request, format=False).partition("?")[0],
+        full_path=datasette.urls.modify(request, format=False),
+        view_name=view_name,
+        truncated=truncated,
+        error=error,
+        page=page_for_renderer(datasette, request, format_, data),
+        # These will be deprecated in Datasette 1.0:
+        args=request.args,
+        data=data,
+    )
+    if asyncio.iscoroutine(result):
+        result = await result
+    if result is None:
+        raise NotFound("No data")
+    if not isinstance(result, Response):
+        raise TypeError(
+            f"Output renderer '{format_}' returned {type(result).__name__}: "
+            "render functions must return a datasette.Response object, "
+            "or None if they cannot render the data"
         )
-        postamble = "</textarea></body></html>"
+    response = result
 
-    async def stream_fn(r):
-        nonlocal data, trace
-        limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
-        if trace:
-            await limited_writer.write(preamble)
-            writer = csv.writer(EscapeHtmlWriter(limited_writer))
-        else:
-            writer = csv.writer(limited_writer)
-        first = True
-        next = None
-        while first or (next and stream):
-            try:
-                kwargs = {}
-                if next:
-                    kwargs["_next"] = next
-                if not first:
-                    data, _, _ = await fetch_data(request, **kwargs)
-                if first:
-                    if request.args.get("_header") != "off":
-                        await writer.writerow(headings)
-                    first = False
-                next = data.get("next")
-                for row in data["rows"]:
-                    if any(isinstance(r, bytes) for r in row):
-                        new_row = []
-                        for column, cell in zip(headings, row):
-                            if isinstance(cell, bytes):
-                                # If this is a table page, use .urls.row_blob()
-                                if data.get("table"):
-                                    pks = data.get("primary_keys") or []
-                                    cell = datasette.absolute_url(
-                                        request,
-                                        datasette.urls.row_blob(
-                                            database,
-                                            data["table"],
-                                            path_from_row_pks(row, pks, not pks),
-                                            column,
-                                        ),
-                                    )
-                                else:
-                                    # Otherwise generate URL for this query
-                                    url = datasette.absolute_url(
-                                        request,
-                                        path_with_format(
-                                            request=request,
-                                            format="blob",
-                                            extra_qs={
-                                                "_blob_column": column,
-                                                "_blob_hash": hashlib.sha256(
-                                                    cell
-                                                ).hexdigest(),
-                                            },
-                                            replace_format="csv",
-                                        ),
-                                    )
-                                    cell = url.replace("&_nocount=1", "").replace(
-                                        "&_nofacet=1", ""
-                                    )
-                            new_row.append(cell)
-                        row = new_row
-                    if not expanded_columns:
-                        # Simple path
-                        await writer.writerow(row)
-                    else:
-                        # Look for {"value": "label": } dicts and expand
-                        new_row = []
-                        for heading, cell in zip(data["columns"], row):
-                            if heading in expanded_columns:
-                                if cell is None:
-                                    new_row.extend(("", ""))
-                                else:
-                                    if not isinstance(cell, dict):
-                                        new_row.extend((cell, ""))
-                                    else:
-                                        new_row.append(cell["value"])
-                                        new_row.append(cell["label"])
-                            else:
-                                new_row.append(cell)
-                        await writer.writerow(new_row)
-            except Exception as ex:
-                sys.stderr.write("Caught this error: {}\n".format(ex))
-                sys.stderr.flush()
-                await r.write(str(ex))
-                return
-        await limited_writer.write(postamble)
-
-    headers = {}
-    if datasette.cors:
-        add_cors_headers(headers)
-    if request.args.get("_dl", None):
-        if not trace:
-            content_type = "text/csv; charset=utf-8"
-        disposition = 'attachment; filename="{}.csv"'.format(
-            request.url_vars.get("table", database)
+    # ?_dl=1 downloads the response as a file
+    if (
+        request.args.get("_dl")
+        and response.status == 200
+        and not any(key.lower() == "content-disposition" for key in response.headers)
+    ):
+        filename = request.url_vars.get("table", database)
+        response.headers["content-disposition"] = (
+            f'attachment; filename="{filename}.{format_}"'
         )
-        headers["content-disposition"] = disposition
 
-    return AsgiStream(stream_fn, headers=headers, content_type=content_type)
+    # Query results can be cut short at max_returned_rows. CSV and other
+    # formats have nowhere in the body to say so, so it goes in a header
+    if view_name == "query":
+        _set_header_unless_present(
+            response, "Datasette-Truncated", "true" if truncated else "false"
+        )
+        if truncated:
+            # The number of rows returned is the limit that was applied
+            _set_header_unless_present(
+                response, "Datasette-Max-Returned-Rows", str(len(rows))
+            )
+
+    # Streamed responses are limited in size
+    limit_mb = datasette.setting("max_stream_mb")
+    if limit_mb and hasattr(response.body, "__aiter__"):
+        response.body = _limit_stream_size(response.body, limit_mb)
+    return response

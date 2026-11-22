@@ -9,12 +9,29 @@ token-based asgi-csrf mechanism.
 
 from __future__ import annotations
 
+import dataclasses
 import secrets
 import urllib.parse
 
 from .utils.asgi import asgi_send
+from .views import Context
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+@dataclasses.dataclass
+class CsrfErrorContext(Context):
+    "The page shown when a form submission is rejected by Datasette's CSRF protection."
+
+    documented_template = "csrf_error.html"
+    documented_title = "CSRF error page"
+
+    reason: str = dataclasses.field(
+        metadata={
+            "help": "Technical explanation of why the request was rejected, intended for developers"
+        }
+    )
+
 
 DEFAULT_PORTS = {"http": 80, "https": 443, "ws": 80, "wss": 443}
 
@@ -40,12 +57,12 @@ def _origin_tuple(value):
     scheme = (parsed.scheme or "").lower()
     host = (parsed.hostname or "").lower()
     if not scheme or not host:
-        raise ValueError("missing scheme or host in {!r}".format(value))
+        raise ValueError(f"missing scheme or host in {value!r}")
     port = parsed.port  # may raise ValueError on bad ports
     if port is None:
         port = DEFAULT_PORTS.get(scheme)
     if port is None:
-        raise ValueError("unknown default port for scheme {!r}".format(scheme))
+        raise ValueError(f"unknown default port for scheme {scheme!r}")
     return scheme, host, port
 
 
@@ -125,9 +142,7 @@ class CrossOriginProtectionMiddleware:
                 return
             await self._forbid(
                 send,
-                "Sec-Fetch-Site was {!r}, expected 'same-origin' or 'none'".format(
-                    sec_fetch_site
-                ),
+                f"Sec-Fetch-Site was {sec_fetch_site!r}, expected 'same-origin' or 'none'",
             )
             return
 
@@ -141,11 +156,11 @@ class CrossOriginProtectionMiddleware:
         request_scheme = self._request_scheme(scope)
         try:
             origin_tuple = _origin_tuple(origin)
-            expected_tuple = _origin_tuple("{}://{}".format(request_scheme, host))
+            expected_tuple = _origin_tuple(f"{request_scheme}://{host}")
         except ValueError:
             await self._forbid(
                 send,
-                "Malformed Origin {!r} or Host {!r}".format(origin, host),
+                f"Malformed Origin {origin!r} or Host {host!r}",
             )
             return
 
@@ -155,7 +170,7 @@ class CrossOriginProtectionMiddleware:
 
         await self._forbid(
             send,
-            "Origin {!r} does not match Host {!r}".format(origin, host),
+            f"Origin {origin!r} does not match Host {host!r}",
         )
 
     def _request_scheme(self, scope):
@@ -163,7 +178,8 @@ class CrossOriginProtectionMiddleware:
             try:
                 if self.datasette.setting("force_https_urls"):
                     return "https"
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
+                # Settings may not be readable this early; fall back to the ASGI scheme
                 pass
         return scope.get("scheme") or "http"
 
@@ -171,7 +187,7 @@ class CrossOriginProtectionMiddleware:
         await asgi_send(
             send,
             content=await self.datasette.render_template(
-                "csrf_error.html", {"reason": reason}
+                "csrf_error.html", CsrfErrorContext(reason=reason)
             ),
             status=403,
             content_type="text/html; charset=utf-8",

@@ -8,18 +8,54 @@ The Datasette web application offers a number of different pages that can be acc
 
 .. _IndexView:
 
-Top-level index
-===============
+Homepage
+========
 
-The root page of any Datasette installation is an index page that lists all of the currently attached databases. Some examples:
+The root page of any Datasette installation is a homepage that helps people see at a glance what the instance contains, and jump to the data they want. For an example, see `latest.datasette.io <https://latest.datasette.io/>`_.
 
-* `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/>`_
-* `register-of-members-interests.datasettes.com <https://register-of-members-interests.datasettes.com/>`_
+The homepage shows:
 
-Add ``/.json`` to the end of the URL for the JSON version of the underlying data:
+- A search box, which is focused when the page loads. It searches table and view names, column names, table descriptions from :ref:`metadata <metadata>`, and the names, titles, descriptions and SQL of stored queries. Results update as you type; use the up and down arrow keys to highlight a result and Enter to open it. Pressing ``/`` in the empty search box opens the "Jump to" menu (see :ref:`JumpView`), as it does on every other page.
+- Any sections added by plugins using the :ref:`makeHomepageSections() <javascript_plugins_makeHomepageSections>` JavaScript plugin hook.
+- **Recently visited** tables, views, queries and databases. These are recorded in the browser's ``localStorage`` as you visit those pages, separately for each signed-in actor, and are never sent to the server. The same history provides the "Recent" list in the Jump to menu.
+- When more than one database is attached, a row of database buttons for filtering the list to a single database.
+- **Queries**: stored queries defined in configuration or by plugins, followed by your own saved queries, up to five in total, with a link to the full list at ``/-/queries``. Other people's saved queries appear only in search results.
+- **Tables and views** from every database in a single list, 30 to a page, with the most connected tables (linked to the most other tables by foreign keys) first. Each shows its row count, how many tables it links to, description, first few columns, and whether it has full-text search. :ref:`Hidden tables <DatabaseView_hidden>` are not included.
 
-* `fivethirtyeight.datasettes.com/.json <https://fivethirtyeight.datasettes.com/.json>`_
-* `register-of-members-interests.datasettes.com/.json <https://register-of-members-interests.datasettes.com/.json>`_
+While searching, everything except the results is hidden. Matching tables and views come first, followed by matching queries and then anything else plugins have added to the Jump to menu using the :ref:`plugin_hook_jump_items_sql` plugin hook, such as apps.
+
+The homepage accepts these query string parameters:
+
+``?q=``
+    Search for tables, views, columns and queries.
+``?database=``
+    Only show tables, views and queries from the named database.
+``?page=``
+    The page of tables and views to show, starting at 1.
+``?_fragment=results``
+    Return only the HTML for the summary line and search results, without the rest of the page. The search box uses this to update results as you type.
+
+Results only include tables, views and queries that the current actor has permission to see.
+
+Add ``/.json`` to the end of the URL for the JSON version of the same catalog, which accepts the same ``?q=``, ``?database=`` and ``?page=`` parameters:
+
+* `latest.datasette.io/.json <https://latest.datasette.io/.json>`_
+* `latest.datasette.io/.json?q=facet <https://latest.datasette.io/.json?q=facet>`_
+
+The JSON has these keys:
+
+``databases``, ``items``, ``queries``, ``q``, ``database_filter``, ``metadata``, ``private``
+    The same values as the variables of those names in the :ref:`index page template context <template_context>`, except that ``columns`` for each of the ``items`` is the complete list of column names with no ``more_columns`` key, and there are no ``color`` keys.
+``total``
+    The number of tables and views matching the search and database filter, across all pages.
+``queries_total``
+    The number of stored queries matching the search and database filter, which can be more than the number listed in ``queries``.
+``totals``
+    An object with ``databases``, ``tables`` and ``views`` counts. The table and view counts are those matching the search across every database, ignoring the database filter.
+``next_url``, ``previous_url``
+    Absolute URLs to the next and previous page of JSON, or ``null``. To fetch every table and view follow ``next_url`` until it is ``null``.
+
+This JSON is :ref:`not yet part of the stable API <json_api_stability>` and includes the ``"unstable"`` marker key.
 
 The index page can also be accessed at ``/-/``, useful for if the default index page has been replaced using an :ref:`index.html custom template <customization_custom_templates>`. The ``/-/`` page will always render the default Datasette ``index.html`` template.
 
@@ -32,12 +68,12 @@ Each database has a page listing the tables, views and stored queries available 
 
 Examples:
 
-* `fivethirtyeight.datasettes.com/fivethirtyeight <https://fivethirtyeight.datasettes.com/fivethirtyeight>`_
+* `latest.datasette.io/fixtures <https://latest.datasette.io/fixtures>`_
 * `datasette.io/global-power-plants <https://datasette.io/global-power-plants>`_
 
 The JSON version of this page provides programmatic access to the underlying data:
 
-* `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
+* `latest.datasette.io/fixtures.json <https://latest.datasette.io/fixtures.json>`_
 * `datasette.io/global-power-plants.json <https://datasette.io/global-power-plants.json>`_
 
 The returned object includes an ``"ok": true`` key alongside keys such as ``"database"``, ``"tables"``, ``"views"``, ``"queries"`` and ``"metadata"``.
@@ -99,6 +135,10 @@ The ``/-/queries`` page lists stored queries across every database visible to th
 
 These pages support search, pagination and filters for read-only or writable queries and private or public queries. Adding a ``.json`` extension to either URL returns the same list as JSON.
 
+They share the look of the :ref:`homepage <IndexView>`: the search box updates the list as you type, with the up and down arrow keys and Enter to pick a query, and a row of database buttons shows how many matching queries each database has. Each query shows its title, its database, a description or the start of its SQL, its inputs and its owner, tagged if it is yours, writes to the database, is private, or is a trusted query that is not from configuration.
+
+Add ``?_fragment=results`` to get just the summary line and the list as an HTML fragment, as used by the live search.
+
 .. _TableView:
 
 Table
@@ -110,13 +150,13 @@ The HTML interface is worth spending some time exploring. As with other pages, y
 
 The query string arguments are described in more detail here: :ref:`table_arguments`
 
-You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" link to see the SQL query that was used for the page and edit and re-submit it.
+You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" button to see the SQL query that was used for the page and edit and re-submit it.
 
 Some examples:
 
-* `../items <https://register-of-members-interests.datasettes.com/regmem/items>`_ lists all of the line-items registered by UK MPs as potential conflicts of interest. It demonstrates Datasette's support for :ref:`full_text_search`.
-* `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
-* `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://datasette.io/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://datasette.io/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
+* `../content/repos <https://datasette.io/content/repos>`_ lists the repositories that make up the Datasette ecosystem. It demonstrates Datasette's support for :ref:`full_text_search`.
+* `../fixtures/facetable <https://latest.datasette.io/fixtures/facetable>`_ is a small table from Datasette's test fixtures, useful for trying out sorting, filtering and :ref:`facets`.
+* `../global-power-plants?country_long=United+Kingdom <https://datasette.io/global-power-plants/global-power-plants?country_long=United+Kingdom>`_ is a filtered table page showing every power plant in the United Kingdom. It includes some default facets (configured using `its configuration <https://datasette.io/-/config>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
 
 .. _TableFragmentView:
 
@@ -137,15 +177,17 @@ Every row in every Datasette table has its own URL. This means individual record
 
 Table cells with extremely long text contents are truncated on the table view according to the :ref:`setting_truncate_cells_html` setting. If a cell has been truncated the full length version of that cell will be available on the row page.
 
-Rows which are the targets of foreign key references from other tables will show a link to a filtered search for all records that reference that row. Here's an example from the Registers of Members Interests database:
+Rows which are the targets of foreign key references from other tables will show a link to a filtered search for all records that reference that row. Here's an example from the fixtures database:
 
-`../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001>`_
+`../fixtures/facet_cities/1 <https://latest.datasette.io/fixtures/facet_cities/1>`_
 
 Note that this URL includes the encoded primary key of the record.
 
+The "Export data" button on a row page offers that row as TSV, CSV or JSON, to view, download or copy - see :ref:`csv_export`.
+
 Here's that same page as JSON:
 
-`../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json>`_
+`../fixtures/facet_cities/1.json <https://latest.datasette.io/fixtures/facet_cities/1.json>`_
 
 
 .. _pages_schemas:

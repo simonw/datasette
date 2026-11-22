@@ -1,0 +1,291 @@
+// Shared lifecycle for native modal dialogs.
+(() => {
+  let messageCount = 0;
+
+  function messageButton(label, className) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `modal-btn ${className}`;
+    button.textContent = label;
+    return button;
+  }
+
+  // The dialog behind alert() and confirm(): a message above a row of buttons.
+  // buttons(modal) returns those buttons, and the last one takes focus.
+  // Resolves to result() once the dialog has been closed.
+  function showMessage({ message, className = "", buttons, result }) {
+    return new Promise((resolve) => {
+      const modal = DatasetteModal.create();
+      const dialog = modal.dialog;
+      messageCount += 1;
+      const messageId = `modal-message-${messageCount}`;
+      dialog.className = `modal-confirm-dialog ${className}`.trim();
+      // Screen readers announce an alertdialog, and the message that names
+      // it, as soon as it opens
+      dialog.setAttribute("role", "alertdialog");
+      dialog.setAttribute("aria-labelledby", messageId);
+
+      const text = document.createElement("p");
+      text.className = "modal-confirm-message";
+      text.id = messageId;
+      text.textContent = message;
+
+      const footer = document.createElement("div");
+      footer.className = "modal-footer";
+      const footerButtons = buttons(modal);
+      footer.append(...footerButtons);
+      dialog.append(text, footer);
+
+      // Answer as soon as the dialog is closed. The native close event
+      // fires in a later task, by which time the user may have acted again.
+      const close = modal.close.bind(modal);
+      modal.close = (options) => {
+        close(options);
+        resolve(result());
+      };
+      document.body.appendChild(modal);
+      // Registered after the wrapper's own close listener, so focus has
+      // already been restored by the time the dialog is removed
+      dialog.addEventListener("close", () => {
+        modal.remove();
+        resolve(result());
+      });
+      modal.show({ initialFocus: footerButtons[footerButtons.length - 1] });
+    });
+  }
+
+  class DatasetteModal extends HTMLElement {
+    constructor() {
+      super();
+      this.beforeClose = null;
+      this._busy = false;
+      this._closeGuard = null;
+      this._restoreFocus = true;
+      this._returnFocusTo = null;
+      this._escapeCleanup = null;
+      this._escapeTimer = null;
+    }
+
+    static create() {
+      const modal = document.createElement("datasette-modal");
+      modal.appendChild(document.createElement("dialog"));
+      return modal;
+    }
+
+    // In-page replacement for window.alert(), which embedded browsers can
+    // dismiss without ever showing it. Resolves once the user dismisses it.
+    static alert({ message = "", okLabel = "OK" } = {}) {
+      return showMessage({
+        message,
+        className: "modal-alert-dialog",
+        result: () => undefined,
+        buttons: (modal) => {
+          const okButton = messageButton(
+            okLabel,
+            "modal-btn-primary modal-alert-ok",
+          );
+          okButton.addEventListener("click", () => modal.close());
+          return [okButton];
+        },
+      });
+    }
+
+    // In-page replacement for window.confirm(), for the same reason.
+    // Resolves to true if the user confirms.
+    static confirm({
+      message = "",
+      confirmLabel = "OK",
+      cancelLabel = "Cancel",
+      danger = false,
+    } = {}) {
+      let confirmed = false;
+      return showMessage({
+        message,
+        result: () => confirmed,
+        buttons: (modal) => {
+          const cancelButton = messageButton(
+            cancelLabel,
+            "modal-btn-ghost modal-confirm-cancel",
+          );
+          cancelButton.addEventListener("click", () =>
+            modal.requestClose("cancel"),
+          );
+          const confirmButton = messageButton(
+            confirmLabel,
+            `${danger ? "modal-btn-danger" : "modal-btn-primary"} modal-confirm-ok`,
+          );
+          confirmButton.addEventListener("click", () => {
+            confirmed = true;
+            modal.close();
+          });
+          return [cancelButton, confirmButton];
+        },
+      });
+    }
+
+    get dialog() {
+      return this.querySelector(":scope > dialog");
+    }
+
+    get busy() {
+      return this._busy;
+    }
+
+    set busy(value) {
+      this._busy = !!value;
+      if (this.dialog) {
+        this.dialog.setAttribute("aria-busy", String(this._busy));
+      }
+    }
+
+    connectedCallback() {
+      const dialog = this.dialog;
+      if (!dialog) return;
+      dialog.classList.add("datasette-modal");
+      this._listeners?.abort();
+      this._listeners = new AbortController();
+      const options = { signal: this._listeners.signal };
+      let backdropPointerDown = false;
+      const outside = (event) => {
+        const rect = dialog.getBoundingClientRect();
+        return (
+          event.target === dialog &&
+          (event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom)
+        );
+      };
+      dialog.addEventListener(
+        "pointerdown",
+        (event) => {
+          backdropPointerDown = outside(event);
+        },
+        options,
+      );
+      dialog.addEventListener(
+        "click",
+        (event) => {
+          if (backdropPointerDown && outside(event))
+            this.requestClose("backdrop");
+          backdropPointerDown = false;
+        },
+        options,
+      );
+      dialog.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Escape" || event.defaultPrevented) return;
+          // A nested native dialog or plugin picker gets first refusal.
+          if (event.target.closest("dialog") !== dialog) return;
+          event.preventDefault();
+          if (this.busy || this._escapeCleanup || this._escapeTimer !== null)
+            return;
+          // Safari can otherwise use this Escape press to cancel confirm() too.
+          // Only keyboard dismissals wait for keyup; native cancel events needn't.
+          const onKeyup = (up) => {
+            if (up.key !== "Escape") return;
+            this._escapeCleanup();
+            this._escapeCleanup = null;
+            this._escapeTimer = setTimeout(() => {
+              this._escapeTimer = null;
+              this.requestClose("escape");
+            }, 0);
+          };
+          this.ownerDocument.addEventListener("keyup", onKeyup, true);
+          this._escapeCleanup = () =>
+            this.ownerDocument.removeEventListener("keyup", onKeyup, true);
+        },
+        options,
+      );
+      dialog.addEventListener(
+        "cancel",
+        (event) => {
+          if (event.target !== dialog) return;
+          event.preventDefault();
+          if (!this._escapeCleanup && this._escapeTimer === null)
+            this.requestClose("escape");
+        },
+        options,
+      );
+      dialog.addEventListener(
+        "close",
+        (event) => {
+          if (event.target !== dialog || dialog.open) return;
+          this._clearPendingClose();
+          this.busy = false;
+          if (this._restoreFocus && this._returnFocusTo?.isConnected) {
+            // Menu actions may have become hidden while the dialog was open.
+            const details = this._returnFocusTo.closest("details:not([open])");
+            const target =
+              details?.querySelector("summary") || this._returnFocusTo;
+            target.focus({ preventScroll: true });
+          }
+          this._returnFocusTo = null;
+        },
+        options,
+      );
+    }
+
+    disconnectedCallback() {
+      this._listeners?.abort();
+      this._clearPendingClose();
+      this._returnFocusTo = null;
+      if (this.dialog?.open) this.dialog.close();
+      this.busy = false;
+    }
+
+    _clearPendingClose() {
+      this._escapeCleanup?.();
+      this._escapeCleanup = null;
+      clearTimeout(this._escapeTimer);
+      this._escapeTimer = null;
+      // Any beforeClose() promise still pending no longer applies
+      this._closeGuard = null;
+    }
+
+    show({ returnFocusTo, initialFocus } = {}) {
+      const dialog = this.dialog;
+      if (!dialog.open) {
+        this._clearPendingClose();
+        this._returnFocusTo = returnFocusTo || this.ownerDocument.activeElement;
+        this._restoreFocus = true;
+        dialog.showModal();
+      }
+      if (typeof initialFocus === "function") initialFocus();
+      else initialFocus?.focus();
+    }
+
+    requestClose(source = "cancel") {
+      // A beforeClose() promise is still deciding an earlier request
+      if (!this.dialog.open || this.busy || this._closeGuard) return false;
+      const allowed = this.beforeClose ? this.beforeClose(source) : true;
+      if (allowed === false) return false;
+      if (allowed && typeof allowed.then === "function") {
+        // An async guard: stay open now, close later unless it resolves false
+        const guard = (this._closeGuard = allowed);
+        const settle = (result) => {
+          if (this._closeGuard !== guard) return;
+          this._closeGuard = null;
+          if (result !== false && this.dialog.open && !this.busy) this.close();
+        };
+        guard.then(settle, (error) => {
+          settle(false);
+          throw error;
+        });
+        return false;
+      }
+      this.close();
+      return true;
+    }
+
+    close({ restoreFocus = true } = {}) {
+      this._clearPendingClose();
+      this._restoreFocus = restoreFocus;
+      this.dialog.close();
+    }
+  }
+
+  customElements.define("datasette-modal", DatasetteModal);
+  window.DatasetteModal = DatasetteModal;
+})();

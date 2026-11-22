@@ -203,6 +203,40 @@ Templates should be bundled for distribution using the same ``package_data`` mec
 
 You can also use wildcards here such as ``templates/*.html``. See `datasette-edit-schema <https://github.com/simonw/datasette-edit-schema>`__ for an example of this pattern.
 
+.. _writing_plugins_custom_templates_breadcrumbs:
+
+Adding breadcrumbs
+~~~~~~~~~~~~~~~~~~
+
+Plugin templates that extend ``base.html`` can use the ``crumbs.nav()`` macro to display breadcrumb links back to the Datasette homepage, and optionally to a database and a table. Override the ``crumbs`` block to specify which links to include:
+
+.. code-block:: html+jinja
+
+    {% extends "base.html" %}
+
+    {% block title %}Manage {{ table }}{% endblock %}
+
+    {% block crumbs %}
+    <!-- For home / database / table -->
+    {{ crumbs.nav(request=request, database=database, table=table) }}
+    <!-- For home / database -->
+    {{ crumbs.nav(request=request, database=database) }}
+    {% endblock %}
+
+    {% block content %}
+    <h1>Manage {{ table }}</h1>
+    {% endblock %}
+
+The macro accepts these arguments:
+
+* ``request``: the current request, used to check the actor's permissions.
+* ``database``: an optional database name, as a string
+* ``table``: an optional table name, as a string. If you pass ``table``, you must also pass ``database``.
+
+For a database-level plugin page, use ``{{ crumbs.nav(request=request, database=database) }}``. For a page with just a homepage link, use ``{{ crumbs.nav(request=request) }}``, which is also the default provided by ``base.html`` if you do not override the block.
+
+The table-level example renders links in the form ``home / database / table``. Each link is only included if the current actor has permission to view that resource.
+
 .. _writing_plugins_configuration:
 
 Writing plugins that accept configuration

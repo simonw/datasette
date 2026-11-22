@@ -1,8 +1,10 @@
+import json
+import textwrap
+
+from click.testing import CliRunner
+
 from datasette.cli import cli
 from datasette.plugins import pm
-from click.testing import CliRunner
-import textwrap
-import json
 
 
 def test_serve_with_get(tmp_path_factory):
@@ -14,7 +16,7 @@ def test_serve_with_get(tmp_path_factory):
 
         @hookimpl
         def startup(datasette):
-            with open("{}", "w") as fp:
+            with open({!r}, "w") as fp:
                 fp.write("hello")
     """.format(str(plugins_dir / "hello.txt")),
         ),
@@ -44,9 +46,58 @@ def test_serve_with_get(tmp_path_factory):
 
     # Annoyingly that new test plugin stays resident - we need
     # to manually unregister it to avoid conflict with other tests
-    to_unregister = [
+    to_unregister = next(
         p for p in pm.get_plugins() if p.__name__ == "init_for_serve_with_get.py"
-    ][0]
+    )
+    pm.unregister(to_unregister)
+
+
+def test_serve_with_get_does_not_launch_background_tasks(tmp_path_factory):
+    # --get must never launch background tasks, even though its request
+    # flows through the full ASGI stack (including the AsgiRunOnFirstRequest
+    # fallback that would otherwise launch them). The plugin's startup hook
+    # itself still runs (registration happens) - only the launch is
+    # suppressed, so the sentinel file the background task would write must
+    # never appear.
+    plugins_dir = tmp_path_factory.mktemp("plugins_for_get_background_tasks")
+    sentinel = plugins_dir / "sentinel.txt"
+    (plugins_dir / "bg_task_for_get.py").write_text(
+        textwrap.dedent(
+            f"""
+        from datasette import hookimpl
+
+        @hookimpl
+        def startup(datasette):
+            async def inner():
+                async def task(datasette):
+                    with open({str(sentinel)!r}, "w") as fp:
+                        fp.write("ran")
+
+                datasette.add_background_task(task, name="get-sentinel-task")
+
+            return inner
+    """,
+        ),
+        "utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--memory",
+            "--plugins-dir",
+            str(plugins_dir),
+            "--get",
+            "/_memory/-/query.json?sql=select+1",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert not sentinel.exists()
+
+    to_unregister = next(
+        p for p in pm.get_plugins() if p.__name__ == "bg_task_for_get.py"
+    )
     pm.unregister(to_unregister)
 
 
@@ -94,7 +145,7 @@ def test_serve_with_get_and_token():
             token,
         ],
     )
-    assert 0 == result2.exit_code, result2.output
+    assert result2.exit_code == 0, result2.output
     assert json.loads(result2.output) == {
         "ok": True,
         "actor": {"id": "root", "token": "dstok"},

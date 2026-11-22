@@ -1,10 +1,11 @@
 import asyncio
+import json
+import time
+import traceback
 from contextlib import contextmanager
 from contextvars import ContextVar
+
 from markupsafe import escape
-import time
-import json
-import traceback
 
 tracers = {}
 
@@ -132,23 +133,23 @@ class AsgiTracer:
                     "num_traces": len(traces),
                     "traces": traces,
                 }
-                try:
-                    content_type = [
+                content_type = next(
+                    (
                         v.decode("utf8")
                         for k, v in response_headers
                         if k.lower() == b"content-type"
-                    ][0]
-                except IndexError:
-                    content_type = ""
+                    ),
+                    "",
+                )
                 if "text/html" in content_type and b"</body>" in accumulated_body:
-                    extra = escape(json.dumps(trace_info, indent=2))
-                    extra_html = f"<pre>{extra}</pre></body>".encode("utf8")
+                    extra = escape(json.dumps(trace_info, indent=2, default=repr))
+                    extra_html = f"<pre>{extra}</pre></body>".encode()
                     accumulated_body = accumulated_body.replace(b"</body>", extra_html)
                 elif "json" in content_type and accumulated_body.startswith(b"{"):
                     data = json.loads(accumulated_body.decode("utf8"))
                     if "_trace" not in data:
                         data["_trace"] = trace_info
-                    accumulated_body = json.dumps(data).encode("utf8")
+                    accumulated_body = json.dumps(data, default=repr).encode("utf8")
                 await send({"type": "http.response.body", "body": accumulated_body})
 
         with capture_traces(traces):

@@ -1,6 +1,7 @@
-import pytest
+import sqlite3
 
 from datasette.utils import escape_sqlite
+from datasette.utils.internal_db import INTERNAL_DB_SCHEMA_SQL
 
 
 # ensure refresh_schemas() gets called before interacting with internal_db
@@ -9,7 +10,6 @@ async def ensure_internal(ds_client):
     return ds_client.ds.get_internal_database()
 
 
-@pytest.mark.asyncio
 async def test_internal_databases(ds_client):
     internal_db = await ensure_internal(ds_client)
     databases = await internal_db.execute("select * from catalog_databases")
@@ -17,16 +17,148 @@ async def test_internal_databases(ds_client):
     assert databases.rows[0]["database_name"] == "fixtures"
 
 
-@pytest.mark.asyncio
+async def test_internal_migrations_recorded(ds_client):
+    internal_db = await ensure_internal(ds_client)
+    migrations = await internal_db.execute("""
+        select migration_set, name
+        from _sqlite_migrations
+        order by id
+        """)
+    assert [tuple(row) for row in migrations.rows] == [
+        ("datasette_internal", "0001_initial"),
+        ("datasette_internal", "0002_catalog_tables_hidden"),
+    ]
+
+
+async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
+    from datasette.app import Datasette
+
+    internal_db_path = str(tmp_path / "internal.db")
+    conn = sqlite3.connect(internal_db_path)
+    conn.executescript(INTERNAL_DB_SCHEMA_SQL)
+    conn.execute(
+        "insert into metadata_instance (key, value) values (?, ?)",
+        ("legacy", "preserved"),
+    )
+    conn.commit()
+    conn.close()
+
+    ds = Datasette(internal=internal_db_path)
+    await ds.invoke_startup()
+    internal_db = ds.get_internal_database()
+
+    metadata = await internal_db.execute(
+        "select key, value from metadata_instance where key = 'legacy'"
+    )
+    assert [tuple(row) for row in metadata.rows] == [("legacy", "preserved")]
+    migrations = await internal_db.execute("""
+        select migration_set, name
+        from _sqlite_migrations
+        order by id
+        """)
+    assert [tuple(row) for row in migrations.rows] == [
+        ("datasette_internal", "0001_initial"),
+        ("datasette_internal", "0002_catalog_tables_hidden"),
+    ]
+
+    ds.close()
+
+
 async def test_internal_tables(ds_client):
     internal_db = await ensure_internal(ds_client)
     tables = await internal_db.execute("select * from catalog_tables")
     assert len(tables) > 5
     table = tables.rows[0]
-    assert set(table.keys()) == {"rootpage", "table_name", "database_name", "sql"}
+    assert set(table.keys()) == {
+        "rootpage",
+        "table_name",
+        "database_name",
+        "sql",
+        "hidden",
+    }
 
 
-@pytest.mark.asyncio
+async def test_internal_tables_hidden(tmp_path):
+    from datasette.app import Datasette
+
+    db_path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table visible (id integer primary key)")
+    conn.execute("create table hidden_by_config (id integer primary key)")
+    conn.commit()
+    conn.close()
+    ds = Datasette(
+        [db_path],
+        config={
+            "databases": {"data": {"tables": {"hidden_by_config": {"hidden": True}}}}
+        },
+    )
+    await ds.invoke_startup()
+    await ds.refresh_schemas(force=True)
+
+    async def hidden_values():
+        rows = await ds.get_internal_database().execute(
+            "select table_name, hidden from catalog_tables "
+            "where database_name = 'data' order by table_name"
+        )
+        return dict(tuple(row) for row in rows.rows)
+
+    assert await hidden_values() == {"hidden_by_config": 1, "visible": 0}
+
+    # Tables created at runtime are updated on the next schema refresh
+    await ds.get_database("data").execute_write(
+        "create virtual table docs_fts using fts5(body)"
+    )
+    await ds.refresh_schemas(force=True)
+    values = await hidden_values()
+    assert values["docs_fts"] == 0
+    assert values["docs_fts_data"] == 1
+    assert values["docs_fts_config"] == 1
+    assert values["visible"] == 0
+    ds.close()
+
+
+async def test_internal_tables_hidden_added_to_existing_internal_db(tmp_path):
+    from datasette.app import Datasette
+
+    db_path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table _private (id integer primary key)")
+    conn.commit()
+    conn.close()
+
+    # Internal database created before catalog_tables.hidden existed
+    internal_db_path = str(tmp_path / "internal.db")
+    conn = sqlite3.connect(internal_db_path)
+    conn.executescript(
+        INTERNAL_DB_SCHEMA_SQL.replace("hidden INTEGER NOT NULL DEFAULT 0,", "")
+    )
+    schema_version = (
+        sqlite3.connect(db_path).execute("PRAGMA schema_version").fetchone()[0]
+    )
+    conn.execute(
+        "insert into catalog_databases (database_name, path, is_memory, schema_version) "
+        "values ('data', ?, 0, ?)",
+        [db_path, schema_version],
+    )
+    conn.execute(
+        "insert into catalog_tables (database_name, table_name, rootpage, sql) "
+        "values ('data', '_private', 2, 'create table _private (id integer primary key)')"
+    )
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([db_path], internal=internal_db_path)
+    await ds.invoke_startup()
+    await ds.refresh_schemas(force=True)
+    rows = await ds.get_internal_database().execute(
+        "select table_name, hidden from catalog_tables where database_name = 'data'"
+    )
+    # The catalog is repopulated on startup even though the schema version matches
+    assert [tuple(row) for row in rows.rows] == [("_private", 1)]
+    ds.close()
+
+
 async def test_internal_views(ds_client):
     internal_db = await ensure_internal(ds_client)
     views = await internal_db.execute("select * from catalog_views")
@@ -35,7 +167,6 @@ async def test_internal_views(ds_client):
     assert set(view.keys()) == {"rootpage", "view_name", "database_name", "sql"}
 
 
-@pytest.mark.asyncio
 async def test_internal_indexes(ds_client):
     internal_db = await ensure_internal(ds_client)
     indexes = await internal_db.execute("select * from catalog_indexes")
@@ -52,7 +183,6 @@ async def test_internal_indexes(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_internal_foreign_keys(ds_client):
     internal_db = await ensure_internal(ds_client)
     foreign_keys = await internal_db.execute("select * from catalog_foreign_keys")
@@ -72,7 +202,6 @@ async def test_internal_foreign_keys(ds_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_internal_foreign_key_references(ds_client):
     internal_db = await ensure_internal(ds_client)
 
@@ -88,7 +217,7 @@ async def test_internal_foreign_key_references(ds_client):
             return {
                 row[1]
                 for row in conn.execute(
-                    "PRAGMA table_info({})".format(escape_sqlite(table_name))
+                    f"PRAGMA table_info({escape_sqlite(table_name)})"
                 ).fetchall()
             }
 
@@ -98,7 +227,7 @@ async def test_internal_foreign_key_references(ds_client):
                 for _, name in sorted(
                     (row[5], row[1])
                     for row in conn.execute(
-                        "PRAGMA table_info({})".format(escape_sqlite(table_name))
+                        f"PRAGMA table_info({escape_sqlite(table_name)})"
                     ).fetchall()
                     if row[5]
                 )
@@ -110,7 +239,7 @@ async def test_internal_foreign_key_references(ds_client):
 
         for table_name in table_names:
             foreign_key_rows = conn.execute(
-                "PRAGMA foreign_key_list({})".format(escape_sqlite(table_name))
+                f"PRAGMA foreign_key_list({escape_sqlite(table_name)})"
             ).fetchall()
             foreign_keys_by_id = {}
             for foreign_key in foreign_key_rows:
@@ -120,25 +249,16 @@ async def test_internal_foreign_key_references(ds_client):
                 foreign_key_rows.sort(key=lambda row: row[1])
                 other_table = foreign_key_rows[0][2]
                 other_columns = [row[4] for row in foreign_key_rows]
-                message = 'Column "{}.{}" references other table "{}" which does not exist'.format(
-                    table_name, foreign_key_rows[0][3], other_table
-                )
+                message = f'Column "{table_name}.{foreign_key_rows[0][3]}" references other table "{other_table}" which does not exist'
                 assert other_table in table_names, message + " (bad table)"
                 if all(other_column is None for other_column in other_columns):
                     other_columns = primary_keys_for_table(other_table)
-                length_message = 'Foreign key from "{}" to "{}" has {} columns but references {} columns'.format(
-                    table_name,
-                    other_table,
-                    len(foreign_key_rows),
-                    len(other_columns),
-                )
+                length_message = f'Foreign key from "{table_name}" to "{other_table}" has {len(foreign_key_rows)} columns but references {len(other_columns)} columns'
                 assert len(other_columns) == len(foreign_key_rows), length_message
 
                 for foreign_key, other_column in zip(foreign_key_rows, other_columns):
                     column = foreign_key[3]
-                    message = 'Column "{}.{}" references other column "{}.{}" which does not exist'.format(
-                        table_name, column, other_table, other_column
-                    )
+                    message = f'Column "{table_name}.{column}" references other column "{other_table}.{other_column}" which does not exist'
                     assert other_column in columns_by_table[other_table], (
                         message + " (bad column)"
                     )
@@ -146,7 +266,6 @@ async def test_internal_foreign_key_references(ds_client):
     await internal_db.execute_fn(inner)
 
 
-@pytest.mark.asyncio
 async def test_stale_catalog_entry_database_fix(tmp_path):
     """
     Test for https://github.com/simonw/datasette/issues/2605
@@ -194,11 +313,10 @@ async def test_stale_catalog_entry_database_fix(tmp_path):
     )
 
 
-@pytest.mark.asyncio
 async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path):
-    from datasette.app import Datasette
-
     import sqlite3
+
+    from datasette.app import Datasette
 
     internal_db_path = str(tmp_path / "internal.db")
     alpha_db_path = str(tmp_path / "alpha.db")
@@ -242,11 +360,10 @@ async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path
     ds2.close()
 
 
-@pytest.mark.asyncio
 async def test_orphan_stale_catalog_child_entries_removed(tmp_path):
-    from datasette.app import Datasette
-
     import sqlite3
+
+    from datasette.app import Datasette
 
     internal_db_path = str(tmp_path / "internal.db")
     alpha_db_path = str(tmp_path / "alpha.db")

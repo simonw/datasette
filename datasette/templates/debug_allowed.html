@@ -3,7 +3,6 @@
 {% block title %}Allowed Resources{% endblock %}
 
 {% block extra_head %}
-<script src="{{ static('json-format-highlight-1.0.1.js') }}"></script>
 {% include "_permission_ui_styles.html" %}
 {% include "_debug_common_functions.html" %}
 {% endblock %}
@@ -49,7 +48,7 @@
 
         <div class="form-section">
             <label for="page_size">Page size:</label>
-            <input type="number" id="page_size" name="_size" value="50" min="1" max="200" style="max-width: 100px;">
+            <input type="number" id="page_size" name="_size" value="50" min="1" max="200">
             <small>Number of results per page (max 200)</small>
         </div>
 
@@ -198,7 +197,7 @@ function displayResults(data) {
     }
 
     // Update raw JSON
-    document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
 }
 
 function displayError(data) {
@@ -208,7 +207,7 @@ function displayError(data) {
 
     resultsContent.innerHTML = `<div class="error-message">Error: ${escapeHtml(data.error || 'Unknown error')}</div>`;
 
-    document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+    document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
 }
 
 // Disable child input if parent is empty

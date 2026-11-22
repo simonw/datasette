@@ -1,50 +1,57 @@
-import asyncio
+import hashlib
 import itertools
 import json
+import time
 import urllib
 import urllib.parse
+from dataclasses import dataclass, field
 
 import markupsafe
+import sqlite_utils
+from jinja2.filters import do_filesizeformat
 
+from datasette import tracer
 from datasette.column_types import SQLiteType
-from datasette.extras import extra_names_from_request
-from datasette.plugins import pm
+from datasette.database import QueryInterrupted, columns_for_results
 from datasette.events import (
     AlterTableEvent,
     DropTableEvent,
     InsertRowsEvent,
     UpsertRowsEvent,
 )
-from datasette.database import QueryInterrupted
-from datasette import tracer
+from datasette.extras import ExtraScope, extra_names_from_request
+from datasette.filters import Filters, column_type_has_no_affinity
+from datasette.plugins import pm
+from datasette.renderer import apply_column_type_transforms, row_as_dict
 from datasette.resources import DatabaseResource, TableResource
+from datasette.rows import label_rows
 from datasette.utils import (
+    CustomJSONEncoder,
+    InvalidSql,
+    WriteJsonValueError,
     add_cors_headers,
     await_me_maybe,
-    call_with_supported_arguments,
-    CustomJSONEncoder,
-    CustomRow,
-    append_querystring,
     compound_keys_after_sql,
+    compound_keys_at_or_before_sql,
+    decode_key_path,
+    decode_key_value,
     decode_write_json_rows,
-    format_bytes,
-    make_slot_function,
-    tilde_encode,
+    encode_key_value,
     escape_sqlite,
     filters_should_redirect,
     is_url,
+    key_value_display,
+    make_slot_function,
     path_from_row_pks,
-    path_with_added_args,
-    path_with_format,
-    path_with_removed_args,
-    path_with_replaced_args,
+    request_route_path,
+    request_wants_json,
+    row_has_null_primary_key,
+    sqlite3,
+    tilde_encode,
     to_css_class,
     truncate_url,
-    urlsafe_components,
+    untyped_columns,
     value_as_boolean,
-    InvalidSql,
-    WriteJsonValueError,
-    sqlite3,
 )
 from datasette.utils.asgi import (
     BadRequest,
@@ -54,13 +61,16 @@ from datasette.utils.asgi import (
     Request,
     Response,
 )
-from datasette.filters import Filters
-import sqlite_utils
-from dataclasses import dataclass, field
+from datasette.utils.sqlite import check_structured_write_table
 
-from datasette.extras import ExtraScope
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    render_with_output_renderer,
+    stream_requested,
+    tsv_export_path,
+)
 from .database import QueryView
 from .table_create_alter import (
     ALTER_TABLE_COLUMN_TYPES,
@@ -111,6 +121,11 @@ class TableContext(Context):
     private: bool = from_extra()
     query: dict = from_extra()
     renderers: dict = from_extra()
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     set_column_type_ui: dict = from_extra()
     sorted_facet_results: list = from_extra()
     suggested_facets: list = from_extra()
@@ -119,9 +134,6 @@ class TableContext(Context):
     view_definition: str = from_extra()
 
     # Fields added by the view code
-    ok: bool = field(
-        metadata={"help": "True if the data for this page was retrieved without errors"}
-    )
     next: str = field(metadata={"help": "Pagination token for the next page, or None"})
     next_url: str = field(
         metadata={
@@ -146,36 +158,51 @@ class TableContext(Context):
     supports_search: bool = field(
         metadata={"help": "True if this table has full-text search configured"}
     )
+    search: str = field(
+        metadata={
+            "help": "The current full-text search from ``?_search=``, or an empty string"
+        }
+    )
     extra_wheres_for_ui: list = field(
         metadata={
             "help": "Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment."
+        }
+    )
+    clear_filters_url: str = field(
+        metadata={
+            "help": "URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved."
+        }
+    )
+    page_position: dict = field(
+        metadata={
+            "help": "On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page."
+        }
+    )
+    filter_description_en: str = field(
+        metadata={
+            "help": 'Human readable description of the filters, search and ``?_where=`` clauses applied to the table, for example ``where state = "CA"``, or an empty string if there are none.'
+        }
+    )
+    sort_description_en: str = field(
+        metadata={
+            "help": "Human readable description of the sort order, for example ``sorted by name descending``, or an empty string if no sort order was specified."
         }
     )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters and any ``?_next=`` pagination cursor while forcing ``_size=max``."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
     sort_desc: str = field(
         metadata={"help": "Column the page is sorted by in descending order, or None"}
-    )
-    append_querystring: callable = field(
-        metadata={
-            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
-        }
-    )
-    path_with_replaced_args: callable = field(
-        metadata={
-            "help": "Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument."
-        }
-    )
-    fix_path: callable = field(
-        metadata={
-            "help": "Function that applies the configured ``base_url`` prefix to a path."
-        }
     )
     settings: dict = field(
         metadata={
@@ -184,11 +211,6 @@ class TableContext(Context):
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for the JSON version of this page"}
-    )
-    datasette_allow_facet: str = field(
-        metadata={
-            "help": 'The string "true" or "false" reflecting the allow_facet setting'
-        }
     )
     is_sortable: bool = field(
         metadata={"help": "True if any of the displayed columns can be used to sort"}
@@ -215,12 +237,17 @@ class TableContext(Context):
     )
     table_page_data: dict = field(
         metadata={
-            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
+            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data, optional ``alterTable`` data and optional ``executeSql`` data with ``queryUrl`` and ``editorUrl`` keys, present if the current actor can execute custom SQL against this database. ``executeSql`` also has a ``columns`` list of every column in the table with its ``name`` and declared ``type``, and an optional ``filter`` key with the ``where`` clause, ``params`` and human readable ``description`` of the filters currently applied to the table."
         }
     )
     table_insert_ui: dict = field(
         metadata={
             "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
+        }
+    )
+    row_mutation_ui: bool = field(
+        metadata={
+            "help": "True if the current actor can edit or delete rows in this table, which enables the row edit/delete JavaScript UI"
         }
     )
     table_alter_ui: dict = field(
@@ -279,13 +306,14 @@ def row_label_from_label_column(row, label_column):
         return None
     try:
         value = row[label_column]
-    except (KeyError, IndexError):
+    except KeyError:
         return None
-    if isinstance(value, dict):
-        value = value.get("label")
+    # If the label column is itself a foreign key, use the label it resolved
+    # to. The row can also be a plain dictionary, which has no labels.
+    value = getattr(row, "labels", {}).get(label_column, value)
     if value is None or value == "":
         return None
-    return str(value)
+    return key_value_display(value)
 
 
 async def run_sequential(*args):
@@ -310,6 +338,9 @@ def _request_with_query_string(request, query_string):
     return Request(scope, request.receive)
 
 
+_ROW_KEY_SCOPE = "datasette.fragment_row_key"
+
+
 async def _fragment_request_for_row(request, resolved):
     row_path = request.args.get("_row")
     if not row_path:
@@ -319,7 +350,10 @@ async def _fragment_request_for_row(request, resolved):
 
     pks = await resolved.db.primary_keys(resolved.table)
     row_pks = pks or ["rowid"]
-    pk_values = urlsafe_components(row_path)
+    try:
+        pk_values = decode_key_path(row_path)
+    except ValueError:
+        raise BadRequest("Invalid _row")
     if len(pk_values) != len(row_pks):
         raise BadRequest("_row does not match the primary key for this table")
 
@@ -346,23 +380,23 @@ async def _fragment_request_for_row(request, resolved):
         }.union(row_pk_filter_keys)
     ]
     args.extend(
-        [(_exact_filter_key(pk), value) for pk, value in zip(row_pks, pk_values)]
-    )
-    args.extend(
         [
             ("_nocount", "1"),
             ("_nofacet", "1"),
             ("_nosuggest", "1"),
         ]
     )
-    return _request_with_query_string(request, urllib.parse.urlencode(args))
+    fragment_request = _request_with_query_string(request, urllib.parse.urlencode(args))
+    # ?column= filters only compare against text, which cannot select a row by
+    # a binary value or by a number in a column with no declared type. This is
+    # read by _table_filters(), which compares against the decoded values.
+    fragment_request.scope[_ROW_KEY_SCOPE] = dict(zip(row_pks, pk_values))
+    return fragment_request
 
 
-def _redirect(datasette, request, path, forward_querystring=True, remove_args=None):
+def _redirect(datasette, request, path, forward_querystring=True):
     if request.query_string and "?" not in path and forward_querystring:
         path = f"{path}?{request.query_string}"
-    if remove_args:
-        path = path_with_removed_args(request, remove_args, path=path)
     r = Response.redirect(path)
     r.headers["Link"] = f"<{path}>; rel=preload"
     if datasette.cors:
@@ -377,7 +411,15 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(path_with_added_args(request, redirect_params)),
+            datasette.urls.modify(
+                request,
+                add=[
+                    (key, value) for key, value in redirect_params if value is not None
+                ],
+                # The filter form also submits a blank ?_search= when unused
+                remove=[key for key, value in redirect_params if value is None]
+                + [("_search", "")],
+            ),
             forward_querystring=False,
         )
 
@@ -386,15 +428,10 @@ async def _redirect_if_needed(datasette, request, resolved):
         return _redirect(
             datasette,
             request,
-            datasette.urls.path(
-                path_with_added_args(
-                    request,
-                    {
-                        "_sort_desc": request.args.get("_sort"),
-                        "_sort_by_desc": None,
-                        "_sort": None,
-                    },
-                )
+            datasette.urls.modify(
+                request,
+                add={"_sort_desc": request.args.get("_sort")},
+                remove=["_sort_by_desc", "_sort"],
             ),
             forward_querystring=False,
         )
@@ -463,6 +500,7 @@ async def _table_page_data(
     is_view,
     table_insert_ui,
     table_alter_ui,
+    execute_sql_ui=None,
 ):
     data = {
         "database": database_name,
@@ -473,6 +511,8 @@ async def _table_page_data(
         data["insertRow"] = table_insert_ui
     if table_alter_ui:
         data["alterTable"] = table_alter_ui
+    if execute_sql_ui:
+        data["executeSql"] = execute_sql_ui
     if not is_view:
         foreign_keys = await _foreign_key_autocomplete_urls(
             datasette, request, db, database_name, table_name
@@ -506,7 +546,7 @@ async def _table_insert_ui(
     bulk_columns = []
     column_details = await db.table_column_details(table_name)
     for column in column_details:
-        if column.hidden:
+        if column.hidden or column.generated:
             continue
         is_pk = column.name in pks
         is_auto_pk = (
@@ -536,7 +576,7 @@ async def _table_insert_ui(
         columns.append(column_data)
 
     data = {
-        "path": "{}/-/insert".format(datasette.urls.table(database_name, table_name)),
+        "path": f"{datasette.urls.table(database_name, table_name)}/-/insert",
         "tableName": table_name,
         "columns": columns,
         "bulkColumns": bulk_columns,
@@ -544,9 +584,64 @@ async def _table_insert_ui(
         "maxInsertRows": datasette.setting("max_insert_rows"),
     }
     if can_update:
-        data["upsertPath"] = "{}/-/upsert".format(
-            datasette.urls.table(database_name, table_name)
+        data["upsertPath"] = (
+            f"{datasette.urls.table(database_name, table_name)}/-/upsert"
         )
+    return data
+
+
+async def _execute_sql_ui(
+    datasette,
+    request,
+    database_name,
+    filter_where=None,
+    filter_params=None,
+    filter_description=None,
+    db=None,
+    table_name=None,
+    use_rowid=False,
+):
+    # URLs JavaScript can use to run read-only SQL against this database, used
+    # by the column statistics dialog. Only provided if the actor is allowed
+    # to execute arbitrary SQL.
+    if not await datasette.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database=database_name),
+        actor=request.actor,
+    ):
+        return None
+    query_path = f"{datasette.urls.database(database_name)}/-/query"
+    data = {
+        "queryUrl": query_path + ".json",
+        "editorUrl": query_path,
+    }
+    if db is not None and table_name is not None:
+        # Every column with its declared type, including any hidden from the
+        # current page, so the column statistics dialog can switch between them
+        columns = [{"name": "rowid", "type": "integer"}] if use_rowid else []
+        columns.extend(
+            {"name": column.name, "type": (column.type or "").lower()}
+            for column in await db.table_column_details(table_name)
+            # Generated columns are included, since they can be queried
+            if not column.hidden
+        )
+        data["columns"] = columns
+    if filter_where:
+        # The where clause for the filters currently applied to the table,
+        # without pagination. Parameters keep their types (numeric filters
+        # such as __gt use numbers) so JavaScript can inline them as literals.
+        # Statistics can't faithfully reproduce a filter whose parameters
+        # can't be expressed in JSON, so the feature is disabled instead.
+        if not all(
+            value is None or isinstance(value, (str, int, float))
+            for value in (filter_params or {}).values()
+        ):
+            return None
+        data["filter"] = {
+            "where": filter_where,
+            "params": dict(filter_params or {}),
+            "description": filter_description or "",
+        }
     return data
 
 
@@ -579,7 +674,7 @@ async def _table_alter_ui(
         }
     columns = []
     for column in await db.table_column_details(table_name):
-        if column.hidden:
+        if column.hidden or column.generated:
             continue
         sqlite_type = SQLiteType.from_declared_type(column.type)
         column_type = column_types_map.get(column.name)
@@ -604,7 +699,7 @@ async def _table_alter_ui(
         columns.append(column_data)
 
     data = {
-        "path": "{}/-/alter".format(datasette.urls.table(database_name, table_name)),
+        "path": f"{datasette.urls.table(database_name, table_name)}/-/alter",
         "tableName": table_name,
         "columns": columns,
         "primaryKeys": pks,
@@ -630,9 +725,7 @@ async def _table_alter_ui(
         actor=request.actor,
     )
     if can_drop_table:
-        data["dropPath"] = "{}/-/drop".format(
-            datasette.urls.table(database_name, table_name)
-        )
+        data["dropPath"] = f"{datasette.urls.table(database_name, table_name)}/-/drop"
     return data
 
 
@@ -646,9 +739,20 @@ async def display_columns_and_rows(
     truncate_cells=0,
     sortable_columns=None,
     request=None,
+    foreign_key_links: dict[str, str] | None = None,
 ):
-    """Returns columns, rows for specified table - including fancy foreign key treatment"""
+    """
+    Returns columns, rows for specified table - including fancy foreign key treatment
+
+    Columns are displayed in the order given by description, which can differ
+    from the order of the values in each row.
+
+    A cell is shown as a link to the row it references if that row has a
+    label in row.labels, or if its column is in foreign_key_links - a
+    {column: other_table} dictionary of foreign keys to tables with no label.
+    """
     sortable_columns = sortable_columns or set()
+    foreign_key_links = foreign_key_links or {}
     db = datasette.databases[database_name]
     column_descriptions = dict(
         await datasette.get_internal_database().execute(
@@ -672,8 +776,9 @@ async def display_columns_and_rows(
         col.name: col for col in await db.table_column_details(table_name)
     }
     pks = await db.primary_keys(table_name)
+    has_rowid_column = any(d[0] == "rowid" for d in description)
     pks_for_display = pks
-    if not pks_for_display:
+    if not pks_for_display and not await db.view_exists(table_name):
         pks_for_display = ["rowid"]
     label_column = None
     if link_column:
@@ -692,7 +797,7 @@ async def display_columns_and_rows(
             type_ = "integer"
             notnull = 0
         else:
-            type_ = column_details[r[0]].type
+            type_ = column_details[r[0]].type or ""
             notnull = column_details[r[0]].notnull
         col_dict = {
             "name": r[0],
@@ -710,79 +815,89 @@ async def display_columns_and_rows(
             col_dict["column_type_config"] = ct.config
         columns.append(col_dict)
 
+    foreign_keys = await db.foreign_keys_for_table(table_name)
     column_to_foreign_key_table = {
-        fk["column"]: fk["other_table"]
-        for fk in await db.foreign_keys_for_table(table_name)
+        fk["column"]: fk["other_table"] for fk in foreign_keys
     }
+    # Foreign key columns that reference a column with no declared type, where
+    # the link to the other row has to say if its value is a number
+    typed_foreign_keys = set()
+    for fk in foreign_keys:
+        other_columns = await db.table_column_details(fk["other_table"])
+        if fk["other_column"] in untyped_columns(other_columns):
+            typed_foreign_keys.add(fk["column"])
 
+    typed_pks = untyped_columns(column_details.values())
     cell_rows = []
+    # Columns with at least one cell displayed as a link to a foreign key row
+    fk_link_columns = set()
     base_url = datasette.setting("base_url")
     for row in rows:
         cells = []
+        null_pk = row_has_null_primary_key(row, pks)
         # Unless we are a view, the first column is a link - either to the rowid
         # or to the simple or compound primary key
         if link_column:
             is_special_link_column = len(pks) != 1
-            pk_path = path_from_row_pks(row, pks, not pks, False)
-            row_path = path_from_row_pks(row, pks, not pks)
-            row_label = row_label_from_label_column(row, label_column)
-            row_action_label = pk_path
-            if row_label and row_label != pk_path:
-                row_action_label = "{} {}".format(pk_path, row_label)
-            table_path = datasette.urls.table(database_name, table_name)
-            row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                table_path=table_path,
-                flat_pks=str(markupsafe.escape(pk_path)),
-                flat_pks_quoted=row_path,
-            )
-            edit_icon = (
-                '<svg class="row-inline-action-icon" aria-hidden="true" '
-                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
-                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>'
-                '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>'
-                "</svg>"
-            )
-            delete_icon = (
-                '<svg class="row-inline-action-icon" aria-hidden="true" '
-                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
-                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                '<path d="M3 6h18"></path>'
-                '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
-                '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
-                '<path d="M10 11v6"></path>'
-                '<path d="M14 11v6"></path>'
-                "</svg>"
-            )
-            row_actions = []
-            if row_action_permissions.get("update-row"):
-                row_actions.append(
-                    '<button type="button" class="row-inline-action row-inline-action-edit" '
-                    'aria-label="Edit row {row_label}" title="Edit row" '
-                    'data-row-action="edit">'
-                    "{edit_icon}</button>".format(
-                        edit_icon=edit_icon,
-                        row_label=markupsafe.escape(row_action_label),
-                    )
+            pk_path = row_path = row_label = None
+            # A row with a null primary key cannot be uniquely identified,
+            # so it gets no link to a row page and no edit or delete buttons
+            row_link = "&nbsp;"
+            if not null_pk:
+                pk_path = path_from_row_pks(row, pks, not pks, False)
+                row_path = path_from_row_pks(row, pks, not pks, typed_columns=typed_pks)
+                row_label = row_label_from_label_column(row, label_column)
+                row_action_label = pk_path
+                if row_label and row_label != pk_path:
+                    row_action_label = f"{pk_path} {row_label}"
+                table_path = datasette.urls.table(database_name, table_name)
+                # An empty string primary key still needs something to click on
+                row_link_text = markupsafe.escape(pk_path) or (
+                    '<em class="row-link-empty">empty</em>'
                 )
-            if row_action_permissions.get("delete-row"):
-                row_actions.append(
-                    '<button type="button" class="row-inline-action row-inline-action-delete" '
-                    'aria-label="Delete row {row_label}" title="Delete row" '
-                    'data-row-action="delete">'
-                    "{delete_icon}</button>".format(
-                        delete_icon=delete_icon,
-                        row_label=markupsafe.escape(row_action_label),
-                    )
+                row_link = f'<a href="{table_path}/{row_path}">{row_link_text}</a>'
+                edit_icon = (
+                    '<svg class="row-inline-action-icon" aria-hidden="true" '
+                    'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                    'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>'
+                    '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>'
+                    "</svg>"
                 )
-            if row_actions:
-                row_link = (
-                    '<span class="row-link-with-actions">{row_link}'
-                    '<span class="row-inline-actions" aria-label="Row actions">'
-                    "{row_actions}</span></span>"
-                ).format(row_link=row_link, row_actions="".join(row_actions))
+                delete_icon = (
+                    '<svg class="row-inline-action-icon" aria-hidden="true" '
+                    'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                    'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                    '<path d="M3 6h18"></path>'
+                    '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
+                    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
+                    '<path d="M10 11v6"></path>'
+                    '<path d="M14 11v6"></path>'
+                    "</svg>"
+                )
+                row_actions = []
+                if row_action_permissions.get("update-row"):
+                    row_actions.append(
+                        '<button type="button" class="row-inline-action row-inline-action-edit" '
+                        f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
+                        'data-row-action="edit">'
+                        f"{edit_icon}</button>"
+                    )
+                if row_action_permissions.get("delete-row"):
+                    row_actions.append(
+                        '<button type="button" class="row-inline-action row-inline-action-delete" '
+                        f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '
+                        'data-row-action="delete">'
+                        f"{delete_icon}</button>"
+                    )
+                if row_actions:
+                    row_link = (
+                        '<span class="row-link-with-actions">{row_link}'
+                        '<span class="row-inline-actions" aria-label="Row actions">'
+                        "{row_actions}</span></span>"
+                    ).format(row_link=row_link, row_actions="".join(row_actions))
             cells.append(
                 {
                     "column": pks[0] if len(pks) == 1 else "Link",
@@ -793,8 +908,9 @@ async def display_columns_and_rows(
                 }
             )
 
-        for value, column_dict in zip(row, columns):
+        for column_dict in columns:
             column = column_dict["name"]
+            value = row[column]
             if link_column and len(pks) == 1 and column == pks[0]:
                 # If there's a simple primary key, don't repeat the value as it's
                 # already shown in the link column.
@@ -833,40 +949,57 @@ async def display_columns_and_rows(
                         break
             if plugin_display_value:
                 display_value = plugin_display_value
-            elif isinstance(value, bytes):
-                formatted = format_bytes(len(value))
-                display_value = markupsafe.Markup(
-                    '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
-                        datasette.urls.row_blob(
-                            database_name,
-                            table_name,
-                            path_from_row_pks(row, pks, not pks),
-                            column,
-                        ),
-                        (
-                            ' title="{}"'.format(formatted)
-                            if "bytes" not in formatted
-                            else ""
-                        ),
-                        len(value),
-                        "" if len(value) == 1 else "s",
-                    )
-                )
-            elif isinstance(value, dict):
-                # It's an expanded foreign key - display link to other row
-                label = value["label"]
-                value = value["value"]
+            elif column in row.labels or (
+                column in foreign_key_links and value is not None
+            ):
+                # It's a foreign key - display link to other row
+                fk_link_columns.add(column)
+                label = row.labels.get(column, value)
                 # The table we link to depends on the column
-                other_table = column_to_foreign_key_table[column]
+                other_table = (
+                    foreign_key_links.get(column) or column_to_foreign_key_table[column]
+                )
                 link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                 display_value = markupsafe.Markup(
                     link_template.format(
                         database=tilde_encode(database_name),
                         base_url=base_url,
                         table=tilde_encode(other_table),
-                        link_id=tilde_encode(str(value)),
-                        id=str(markupsafe.escape(value)),
+                        link_id=encode_key_value(value, column in typed_foreign_keys),
+                        # A reference to an empty string primary key still
+                        # needs something to click on
+                        id=str(markupsafe.escape(key_value_display(value)))
+                        or '<em class="row-link-empty">empty</em>',
                         label=str(markupsafe.escape(label)) or "-",
+                    )
+                )
+            elif isinstance(value, bytes):
+                formatted = do_filesizeformat(len(value))
+                if ((pks or has_rowid_column) and not null_pk) or request is None:
+                    blob_url = datasette.urls.row_blob(
+                        database_name,
+                        table_name,
+                        path_from_row_pks(row, pks, not pks, typed_columns=typed_pks),
+                        column,
+                    )
+                else:
+                    # Views usually have no rowid to link to a row by, and
+                    # neither do rows with a null primary key, so find the
+                    # blob by its content hash instead
+                    blob_url = datasette.urls.modify(
+                        request,
+                        format="blob",
+                        add={
+                            "_blob_column": column,
+                            "_blob_hash": hashlib.sha256(value).hexdigest(),
+                        },
+                    )
+                display_value = markupsafe.Markup(
+                    '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
+                        blob_url,
+                        (f' title="{formatted}"' if len(value) >= 1000 else ""),
+                        len(value),
+                        "" if len(value) == 1 else "s",
                     )
                 )
             elif value in ("", None):
@@ -907,6 +1040,9 @@ async def display_columns_and_rows(
         else:
             cell_rows.append(Row(cells))
 
+    for col_dict in columns:
+        col_dict["has_fks"] = col_dict["name"] in fk_link_columns
+
     if link_column:
         # Add the link column header.
         # If it's a simple primary key, we have to remove and re-add that column name at
@@ -916,9 +1052,9 @@ async def display_columns_and_rows(
             columns = [col for col in columns if col["name"] != pks[0]]
             first_column = {
                 "name": pks[0],
-                "sortable": len(pks) == 1,
+                "sortable": pks[0] in sortable_columns,
                 "is_pk": True,
-                "type": column_details[pks[0]].type,
+                "type": column_details[pks[0]].type or "",
                 "notnull": column_details[pks[0]].notnull,
             }
         else:
@@ -959,7 +1095,7 @@ class TableInsertView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _errors(["Invalid JSON: {}".format(e)])
+            return _errors([f"Invalid JSON: {e}"])
         if not isinstance(data, dict):
             return _errors(["JSON must be a dictionary"])
         keys = data.keys()
@@ -987,9 +1123,7 @@ class TableInsertView(BaseView):
         # Does this exceed max_insert_rows?
         max_insert_rows = self.ds.setting("max_insert_rows")
         if len(rows) > max_insert_rows:
-            return _errors(
-                ["Too many rows, maximum allowed is {}".format(max_insert_rows)]
-            )
+            return _errors([f"Too many rows, maximum allowed is {max_insert_rows}"])
 
         # Validate other parameters
         extras = {
@@ -1047,7 +1181,7 @@ class TableInsertView(BaseView):
         # Table must exist (may handle table creation in the future)
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):
-            return Response.error(["Table not found: {}".format(table_name)], 404)
+            return Response.error([f"Table not found: {table_name}"], 404)
 
         if upsert:
             # Must have insert-row AND upsert-row permissions
@@ -1143,6 +1277,7 @@ class TableInsertView(BaseView):
             row_pk_values_for_later = [tuple(row[pk] for pk in pks) for row in rows]
 
         def insert_or_upsert_rows(conn):
+            check_structured_write_table(conn, table_name)
             table = sqlite_utils.Database(conn)[table_name]
             kwargs = {}
             if upsert:
@@ -1154,14 +1289,35 @@ class TableInsertView(BaseView):
                 # Insert
                 kwargs = {"ignore": ignore, "replace": replace, "alter": alter}
             if should_return and not upsert:
+                try:
+                    conn.execute(
+                        f"select rowid from {escape_sqlite(table_name)} limit 0"
+                    )
+                    has_rowid = True
+                except sqlite3.OperationalError:
+                    # WITHOUT ROWID table
+                    has_rowid = False
+                if not has_rowid:
+                    # These always have a primary key, which can never be
+                    # null - so fetch the rows back using those values
+                    pk_values = {}
+                    for row in rows:
+                        table.insert(row, **kwargs)
+                        pk_values[tuple(row.get(pk) for pk in pks)] = None
+                    where = " and ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
+                    returned = []
+                    for values in pk_values:
+                        returned.extend(table.rows_where(where, values))
+                    return returned
                 rowids = []
-                method = table.upsert if upsert else table.insert
                 for row in rows:
-                    rowids.append(method(row, **kwargs).last_rowid)
+                    rowids.append(table.insert(row, **kwargs).last_rowid)
                 return list(
                     table.rows_where(
                         "rowid in ({})".format(",".join("?" for _ in rowids)),
                         rowids,
+                        # Tables without a primary key need the rowid returned
+                        select="rowid, *" if pks == ["rowid"] else "*",
                     )
                 )
             else:
@@ -1170,20 +1326,36 @@ class TableInsertView(BaseView):
 
         try:
             rows = await db.execute_write_fn(insert_or_upsert_rows, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)])
         result = {"ok": True}
+        # Only read back and disclose stored rows if the actor is also
+        # allowed to view this table - insert-row/update-row alone must
+        # not be usable to read data the actor cannot otherwise see.
+        if should_return and not await self.ds.allowed(
+            action="view-table",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        ):
+            should_return = False
         if should_return:
             if upsert:
                 # Fetch based on initial input IDs
                 where_clause = " OR ".join(
-                    ["({})".format(" AND ".join("{} = ?".format(pk) for pk in pks))]
+                    [
+                        "({})".format(
+                            " AND ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
+                        )
+                    ]
                     * len(row_pk_values_for_later)
                 )
                 args = list(itertools.chain.from_iterable(row_pk_values_for_later))
                 fetched_rows = await db.execute(
-                    "select {}* from [{}] where {}".format(
-                        "rowid, " if pks == ["rowid"] else "", table_name, where_clause
+                    "select {}* from {} where {}".format(
+                        "rowid, " if pks == ["rowid"] else "",
+                        escape_sqlite(table_name),
+                        where_clause,
                     ),
                     args,
                 )
@@ -1267,7 +1439,7 @@ class TableSetColumnTypeView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return Response.error(["Invalid JSON: {}".format(e)], 400)
+            return Response.error([f"Invalid JSON: {e}"], 400)
         except PayloadTooLarge as e:
             return Response.error([str(e)], 413)
 
@@ -1294,7 +1466,7 @@ class TableSetColumnTypeView(BaseView):
             database_name, table_name
         )
         if column not in column_details:
-            return Response.error(["Column not found: {}".format(column)], 400)
+            return Response.error([f"Column not found: {column}"], 400)
 
         column_type_data = data["column_type"]
         if column_type_data is None:
@@ -1335,7 +1507,7 @@ class TableSetColumnTypeView(BaseView):
             return Response.error(['"column_type.config" must be a dictionary'], 400)
 
         if column_type not in self.ds._column_types:
-            return Response.error(["Unknown column type: {}".format(column_type)], 400)
+            return Response.error([f"Unknown column type: {column_type}"], 400)
 
         try:
             await self.ds.set_column_type(
@@ -1373,7 +1545,7 @@ class TableDropView(BaseView):
         # Table must exist
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):
-            return Response.error(["Table not found: {}".format(table_name)], 404)
+            return Response.error([f"Table not found: {table_name}"], 404)
         if not await self.ds.allowed(
             action="drop-table",
             resource=TableResource(database=database_name, table=table_name),
@@ -1398,7 +1570,9 @@ class TableDropView(BaseView):
                     "database": database_name,
                     "table": table_name,
                     "row_count": (
-                        await db.execute("select count(*) from [{}]".format(table_name))
+                        await db.execute(
+                            f"select count(*) from {escape_sqlite(table_name)}"
+                        )
                     ).single_value(),
                     "message": 'Pass "confirm": true to confirm',
                 },
@@ -1407,7 +1581,9 @@ class TableDropView(BaseView):
 
         # Drop table
         def drop_table(conn):
-            sqlite_utils.Database(conn)[table_name].drop()
+            table = sqlite_utils.Database(conn)[table_name]
+            table.disable_fts()
+            table.drop()
 
         await db.execute_write_fn(drop_table, request=request)
         await self.ds.track_event(
@@ -1417,10 +1593,101 @@ class TableDropView(BaseView):
         )
         self.ds.add_message(
             request,
-            "Table {} dropped".format(table_name),
+            f"Table {table_name} dropped",
             self.ds.WARNING,
         )
         return Response.json({"ok": True}, status=200)
+
+
+class TableCountView(BaseView):
+    name = "table-count"
+
+    async def post(self, request):
+        try:
+            return await self.count(request)
+        except (NotFound, Forbidden, BadRequest, DatasetteError) as ex:
+            return Response.error(str(ex), status=ex.status)
+
+    async def count(self, request):
+        resolved = await self.ds.resolve_table(request)
+        visible, _private = await self.ds.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=resolved.db.name, table=resolved.table),
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
+        _, where_clauses, params, _, _ = await _table_filters(
+            self.ds, request, resolved.db.name, resolved.table
+        )
+        _next = request.args.get("_next")
+        if request.args.get("_count") == "before" and _next:
+            return await self.count_before(
+                request, resolved, _next, where_clauses, params
+            )
+        sql = f"select count(*) from {escape_sqlite(resolved.table)}"
+        if where_clauses:
+            sql += " where " + " and ".join(where_clauses)
+        try:
+            results = await resolved.db.execute(sql, params)
+        except QueryInterrupted:
+            return Response.error("Count query timed out", status=400)
+        except (sqlite3.OperationalError, InvalidSql) as ex:
+            return Response.error(str(ex), status=400)
+        return Response.json(
+            {"ok": True, "count": results.single_value()},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def count_before(self, request, resolved, _next, where_clauses, params):
+        """Count the filtered rows that come before a ?_next= cursor.
+
+        Used to show "Rows 51-100" on pages after the first, without slowing
+        down the page itself."""
+        db, table_name = resolved.db, resolved.table
+        if resolved.is_view:
+            # For views _next is a plain offset
+            try:
+                count = int(_next)
+            except ValueError:
+                return Response.error("Invalid _next", status=400)
+        else:
+            pks = await db.primary_keys(table_name)
+            use_rowid = not pks
+            table_metadata = await self.ds.table_config(db.name, table_name)
+            sortable_columns = await _sortable_columns_for_table(
+                self.ds, db.name, table_name, use_rowid
+            )
+            sort, sort_desc, _ = await _sort_order(
+                table_metadata, sortable_columns, request, ""
+            )
+            params = dict(params)
+            before_clause = _at_or_before_next_where_clause(
+                _next,
+                sort,
+                sort_desc,
+                pks,
+                use_rowid,
+                params,
+                has_null_keys=await _has_null_keys(db, table_name, pks, request),
+            )
+            if before_clause is None:
+                return Response.error("Invalid _next", status=400)
+            sql = "select count(*) from {} where {}".format(
+                escape_sqlite(table_name),
+                " and ".join(where_clauses + [before_clause]),
+            )
+            try:
+                results = await db.execute(sql, params)
+            except QueryInterrupted:
+                return Response.error("Count query timed out", status=400)
+            except (sqlite3.OperationalError, InvalidSql) as ex:
+                return Response.error(str(ex), status=400)
+            count = results.single_value()
+        return Response.json(
+            {"ok": True, "count": count},
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 class TableFragmentView(BaseView):
@@ -1448,9 +1715,6 @@ class TableFragmentView(BaseView):
             templates,
             dict(
                 data,
-                append_querystring=append_querystring,
-                path_with_replaced_args=path_with_replaced_args,
-                fix_path=self.ds.urls.path,
                 settings=self.ds.settings_dict(),
             ),
             request=request,
@@ -1477,32 +1741,28 @@ def _prefix_range_end(value):
 
 
 def _autocomplete_like(column):
-    return "{} like :like escape char(92)".format(escape_sqlite(column))
+    return f"{escape_sqlite(column)} like :like escape char(92)"
 
 
 def _autocomplete_prefix_like(column):
-    return "{} like :prefix escape char(92)".format(escape_sqlite(column))
+    return f"{escape_sqlite(column)} like :prefix escape char(92)"
 
 
 def _autocomplete_order_by(pks, label_column, exact_pk, label_matches_first=True):
     clauses = []
     if exact_pk:
         clauses.append(
-            "case when cast({} as text) = :q then 0 else 1 end".format(
-                escape_sqlite(pks[0])
-            )
+            f"case when cast({escape_sqlite(pks[0])} as text) = :q then 0 else 1 end"
         )
     if label_column:
         label_like = _autocomplete_like(label_column)
         if label_matches_first:
-            clauses.append("case when {} then 0 else 1 end".format(label_like))
+            clauses.append(f"case when {label_like} then 0 else 1 end")
         clauses.append(
-            "case when {} then length(cast({} as text)) end".format(
-                label_like, escape_sqlite(label_column)
-            )
+            f"case when {label_like} then length(cast({escape_sqlite(label_column)} as text)) end"
         )
     else:
-        clauses.append("length(cast({} as text))".format(escape_sqlite(pks[0])))
+        clauses.append(f"length(cast({escape_sqlite(pks[0])} as text))")
     clauses.extend(escape_sqlite(pk) for pk in pks)
     return ", ".join(clauses)
 
@@ -1517,10 +1777,19 @@ def _autocomplete_initial_order_by(pks):
     return ", ".join(order_by)
 
 
-def _autocomplete_response_rows(rows, pks, label_column):
+def _autocomplete_response_rows(rows, pks, label_column, typed_columns=()):
     response_rows = []
     for row in rows:
-        item = {"pks": {pk: row[pk] for pk in pks}}
+        item = {
+            "pks": {pk: row[pk] for pk in pks},
+            # The row's page is at /database/table/path - null if a null
+            # primary key means it does not have one
+            "path": (
+                None
+                if row_has_null_primary_key(row, pks)
+                else path_from_row_pks(row, pks, False, typed_columns=typed_columns)
+            ),
+        }
         if label_column:
             item["label"] = row[label_column]
         response_rows.append(item)
@@ -1569,8 +1838,8 @@ class TableAutocompleteView(BaseView):
             return Response.json({"ok": True, "rows": []})
         params = {
             "q": q,
-            "like": "%{}%".format(_escape_like(q)),
-            "prefix": "{}%".format(_escape_like(q)),
+            "like": f"%{_escape_like(q)}%",
+            "prefix": f"{_escape_like(q)}%",
         }
 
         like_columns = pks[:]
@@ -1584,22 +1853,20 @@ class TableAutocompleteView(BaseView):
             where_sql = "1 = 1"
             order_by = _autocomplete_initial_order_by(pks)
 
-        sql = """
+        sql = f"""
             select {select_sql}
-            from {table}
-            where {where}
+            from {escape_sqlite(table_name)}
+            where {where_sql}
             order by {order_by}
             limit 10
-        """.format(
-            select_sql=select_sql,
-            table=escape_sqlite(table_name),
-            where=where_sql,
-            order_by=order_by,
-        )
+        """
 
+        autocomplete_time_limit_ms = db.ds.capped_time_limit_ms(
+            AUTOCOMPLETE_TIME_LIMIT_MS
+        )
         try:
             results = await db.execute(
-                sql, params, custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS
+                sql, params, custom_time_limit=autocomplete_time_limit_ms
             )
         except QueryInterrupted:
             fallback_where = _autocomplete_prefix_like(pks[0])
@@ -1607,26 +1874,19 @@ class TableAutocompleteView(BaseView):
             if prefix_end:
                 params["prefix_end"] = prefix_end
                 first_pk = escape_sqlite(pks[0])
-                fallback_where = (
-                    "{first_pk} >= :q and {first_pk} < :prefix_end and {like}"
-                ).format(first_pk=first_pk, like=fallback_where)
-            fallback_sql = """
+                fallback_where = f"{first_pk} >= :q and {first_pk} < :prefix_end and {fallback_where}"
+            fallback_sql = f"""
                 select {select_sql}
-                from {table}
-                where {where}
-                order by {order_by}
+                from {escape_sqlite(table_name)}
+                where {fallback_where}
+                order by {_autocomplete_pk_order_by(pks)}
                 limit 10
-            """.format(
-                select_sql=select_sql,
-                table=escape_sqlite(table_name),
-                where=fallback_where,
-                order_by=_autocomplete_pk_order_by(pks),
-            )
+            """
             try:
                 results = await db.execute(
                     fallback_sql,
                     params,
-                    custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
+                    custom_time_limit=autocomplete_time_limit_ms,
                 )
             except QueryInterrupted:
                 return Response.json({"ok": True, "rows": []})
@@ -1634,7 +1894,12 @@ class TableAutocompleteView(BaseView):
         return Response.json(
             {
                 "ok": True,
-                "rows": _autocomplete_response_rows(results.rows, pks, label_column),
+                "rows": _autocomplete_response_rows(
+                    results.rows,
+                    pks,
+                    label_column,
+                    untyped_columns(await db.table_column_details(table_name)),
+                ),
             }
         )
 
@@ -1725,13 +1990,22 @@ async def table_view(datasette, request):
     if ttl is None or not ttl.isdigit():
         ttl = datasette.setting("default_cache_ttl")
 
+    private = getattr(request, "_datasette_private_response", False)
+
     if datasette.cache_headers and response.status == 200:
-        ttl = int(ttl)
-        if ttl == 0:
-            ttl_header = "no-cache"
+        if private:
+            # This response is only visible to the current actor (denied to
+            # anonymous requests), so it must never be stored by a shared
+            # cache/CDN - and ?_ttl= must not be able to override that.
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Vary"] = "Cookie"
         else:
-            ttl_header = f"max-age={ttl}"
-        response.headers["Cache-Control"] = ttl_header
+            ttl = int(ttl)
+            if ttl == 0:
+                ttl_header = "no-cache"
+            else:
+                ttl_header = f"max-age={ttl}"
+            response.headers["Cache-Control"] = ttl_header
 
     # Referrer policy
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -1755,7 +2029,9 @@ async def table_view_traced(datasette, request):
         else:
             raise
 
-    if request.method == "POST":
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        if request_wants_json(request):
+            return Response.error("Method not allowed", 405)
         return Response.text("Method not allowed", status=405)
 
     format_ = request.url_vars.get("format") or "html"
@@ -1767,83 +2043,83 @@ async def table_view_traced(datasette, request):
         context_for_html_hack = True
         default_labels = True
 
-    view_data = await table_view_data(
-        datasette,
-        request,
-        resolved,
-        extra_extras=extra_extras,
-        context_for_html_hack=context_for_html_hack,
-        default_labels=default_labels,
+    # ?_stream=1 for a format that can stream fetches the largest pages
+    stream = bool(
+        request.args.get("_stream") and datasette._renderer_can_stream.get(format_)
     )
-    if isinstance(view_data, Response):
-        return view_data
-    data, rows, columns, expanded_columns, sql, next_url = view_data
+    # ... until one of those pages takes too long
+    stream_small_pages = False
 
-    # Handle formats from plugins
-    if format_ == "csv":
-
-        async def fetch_data(request, _next=None):
-            (
-                data,
-                rows,
-                columns,
-                expanded_columns,
-                sql,
-                next_url,
-            ) = await table_view_data(
+    async def fetch_page(**kwargs):
+        nonlocal stream_small_pages
+        try:
+            return await table_view_data(
                 datasette,
                 request,
                 resolved,
-                extra_extras=extra_extras,
-                context_for_html_hack=context_for_html_hack,
-                default_labels=default_labels,
-                _next=_next,
+                stream=stream,
+                stream_small_pages=stream_small_pages,
+                **kwargs,
             )
-            data["rows"] = rows
-            data["table"] = resolved.table
-            data["columns"] = columns
-            data["expanded_columns"] = expanded_columns
-            return data, None, None
+        except QueryInterrupted:
+            # A page of max_returned_rows can exceed sql_time_limit_ms where
+            # a smaller page would not, for example for a view that is slow
+            # to compute. Fetch this page again, and every page after it,
+            # using the default page size. A ?_size= in the URL is a request
+            # for that exact size, so it gets the error instead.
+            if not stream or stream_small_pages or request.args.get("_size"):
+                raise
+            stream_small_pages = True
+            return await fetch_page(**kwargs)
 
-        return await stream_csv(datasette, fetch_data, request, resolved.db.name)
-    elif format_ in datasette.renderers.keys():
-        # Dispatch request to the correct output format renderer
-        # (CSV is not handled here due to streaming)
-        result = call_with_supported_arguments(
-            datasette.renderers[format_][0],
-            datasette=datasette,
+    start = time.perf_counter()
+    view_data = await fetch_page(
+        extra_extras=extra_extras,
+        context_for_html_hack=context_for_html_hack,
+        default_labels=default_labels,
+        renderer_extras=datasette._renderer_extras.get(format_),
+    )
+    if isinstance(view_data, Response):
+        return view_data
+    query_ms = (time.perf_counter() - start) * 1000
+    data, rows, columns, _expanded_columns, sql, next_url = view_data
+
+    # Handle formats from plugins
+    if format_ in datasette.renderers:
+        next_token = data["next"]
+
+        async def fetch_next_page():
+            # Used to stream every row, a page at a time
+            nonlocal next_token
+            if not next_token:
+                return None
+            page_data, page_rows, *_ = await fetch_page(
+                default_labels=default_labels,
+                _next=next_token,
+                rows_only=True,
+            )
+            next_token = page_data["next"]
+            return page_rows
+
+        r = await render_with_output_renderer(
+            datasette,
+            request,
+            format_,
+            data=data,
             columns=columns,
             rows=rows,
             sql=sql,
             query_name=None,
             database=resolved.db.name,
             table=resolved.table,
-            request=request,
             view_name="table",
             truncated=False,
             error=None,
-            # These will be deprecated in Datasette 1.0:
-            args=request.args,
-            data=data,
+            fetch_next_page=fetch_next_page,
         )
-        if asyncio.iscoroutine(result):
-            result = await result
-        if result is None:
-            raise NotFound("No data")
-        if isinstance(result, dict):
-            r = Response(
-                body=result.get("body"),
-                status=result.get("status_code") or 200,
-                content_type=result.get("content_type", "text/plain"),
-                headers=result.get("headers"),
-            )
-        elif isinstance(result, Response):
-            r = result
-            # if status_code is not None:
-            #     # Over-ride the status code
-            #     r.status = status_code
-        else:
-            assert False, f"{result} should be dict or Response"
+        if stream_requested(datasette, request, format_):
+            # Every row is in this response, so there is no next page
+            next_url = None
     elif format_ == "html":
         headers = {}
         templates = [
@@ -1854,19 +2130,11 @@ async def table_view_traced(datasette, request):
         template = environment.select_template(templates)
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            datasette.urls.modify(request, format="json"),
         )
         headers.update(
             {
-                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                    alternate_url_json
-                )
+                "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
             }
         )
         table_context = TableContext(
@@ -1886,6 +2154,8 @@ async def table_view_traced(datasette, request):
             filters=data["filters"],
             form_hidden_args=data["form_hidden_args"],
             human_description_en=data["human_description_en"],
+            filter_description_en=data["filter_description_en"],
+            sort_description_en=data["sort_description_en"],
             is_view=data["is_view"],
             metadata=data["metadata"],
             next_url=data["next_url"],
@@ -1893,39 +2163,37 @@ async def table_view_traced(datasette, request):
             private=data["private"],
             query=data["query"],
             renderers=data["renderers"],
+            renderer_options=datasette._renderer_options,
             set_column_type_ui=data["set_column_type_ui"],
             sorted_facet_results=data["sorted_facet_results"],
             suggested_facets=data["suggested_facets"],
             table=data["table"],
             table_definition=data["table_definition"],
             view_definition=data["view_definition"],
-            ok=data["ok"],
             next=data["next"],
             count_truncated=data["count_truncated"],
             rows=data["rows"],
             filter_columns=data["filter_columns"],
             supports_search=data["supports_search"],
+            search=data.get("search") or "",
             extra_wheres_for_ui=data["extra_wheres_for_ui"],
+            clear_filters_url=data["clear_filters_url"],
+            page_position=data["page_position"],
             url_csv=data["url_csv"],
             url_csv_path=data["url_csv_path"],
             url_csv_hidden_args=data["url_csv_hidden_args"],
+            url_tsv_path=data["url_tsv_path"],
             sort=data["sort"],
             sort_desc=data["sort_desc"],
-            append_querystring=append_querystring,
-            path_with_replaced_args=path_with_replaced_args,
-            fix_path=datasette.urls.path,
             settings=datasette.settings_dict(),
             alternate_url_json=alternate_url_json,
-            datasette_allow_facet=(
-                "true" if datasette.setting("allow_facet") else "false"
-            ),
             is_sortable=any(c["sortable"] for c in data["display_columns"]),
             allow_execute_sql=await datasette.allowed(
                 action="execute-sql",
                 resource=DatabaseResource(database=resolved.db.name),
                 actor=request.actor,
             ),
-            query_ms=1.2,
+            query_ms=query_ms,
             select_templates=[
                 f"{'*' if template_name == template.name else ''}{template_name}"
                 for template_name in templates
@@ -1940,6 +2208,7 @@ async def table_view_traced(datasette, request):
             table_page_data=data["table_page_data"],
             table_insert_ui=data["table_insert_ui"],
             table_alter_ui=data["table_alter_ui"],
+            row_mutation_ui=data["row_mutation_ui"],
         )
         r = Response.html(
             await datasette.render_template(
@@ -1951,10 +2220,319 @@ async def table_view_traced(datasette, request):
             headers=headers,
         )
     else:
-        assert False, "Invalid format: {}".format(format_)
-    if next_url:
+        raise NotFound(f"Invalid format: {format_}")
+    if next_url and format_ != "html":
         r.headers["link"] = f'<{next_url}>; rel="next"'
     return r
+
+
+def _decode_next_component(component):
+    try:
+        return decode_key_value(component)
+    except ValueError:
+        raise BadRequest("Invalid _next")
+
+
+def _parse_next(_next, sort, sort_desc):
+    """Split a ?_next= cursor into (sort_value, primary key components)."""
+    sort_value = None
+    components = _next.split(",")
+    # If a sort order is applied and there are multiple components,
+    # the first of these is the sort value
+    if (sort or sort_desc) and (len(components) > 1):
+        sort_value = _decode_next_component(components.pop(0))
+    return sort_value, [_decode_next_component(component) for component in components]
+
+
+async def _has_null_keys(db, table_name, pks, request=None):
+    """True if any row in the table has a null primary key value.
+
+    SQLite allows those in most tables that have a rowid, and allows several
+    rows to share one, so paginating past them needs rowid as a tie-breaker.
+
+    The answer is kept for the rest of the request, so that streaming every
+    page of a table only asks once - and sorts every page the same way."""
+    if request is None:
+        return await _has_null_keys_query(db, table_name, pks)
+    cache = request.scope.setdefault(_HAS_NULL_KEYS_SCOPE, {})
+    key = (db.name, table_name)
+    if key not in cache:
+        cache[key] = await _has_null_keys_query(db, table_name, pks)
+    return cache[key]
+
+
+_HAS_NULL_KEYS_SCOPE = "datasette.has_null_keys"
+
+
+async def _has_null_keys_query(db, table_name, pks):
+    details = {
+        column.name: column for column in await db.table_column_details(table_name)
+    }
+    nullable = [pk for pk in pks if pk in details and not details[pk].notnull]
+    if not nullable:
+        return False
+    if len(pks) == 1 and (details[pks[0]].type or "").upper() == "INTEGER":
+        # An integer primary key is the rowid, which is never null
+        return False
+    sql = "select 1 from {} where {} limit 1".format(
+        escape_sqlite(table_name),
+        " or ".join(f"{escape_sqlite(pk)} is null" for pk in nullable),
+    )
+    try:
+        # This is an index lookup for the first primary key column, but can be
+        # a scan for the others. Without an answer, assume there are none.
+        return bool(
+            (
+                await db.execute(sql, custom_time_limit=db.ds.capped_time_limit_ms(20))
+            ).first()
+        )
+    except (QueryInterrupted, sqlite3.OperationalError):
+        return False
+
+
+def _cursor_key_columns(components, pks):
+    """The columns a cursor's primary key components are values for, or None
+    if there are the wrong number of them.
+
+    A cursor for a row with a null primary key ends with the rowid of that
+    row, because the primary key does not identify it."""
+    if len(components) == len(pks):
+        return pks
+    if len(components) == len(pks) + 1 and None in components[:-1]:
+        return pks + ["rowid"]
+    return None
+
+
+def _null_aware_keys_sql(columns, values, params, before=False):
+    """Like compound_keys_after_sql() - or compound_keys_at_or_before_sql() if
+    before is true - for columns that sort ascending and can contain nulls,
+    which SQLite sorts before every other value. Adds the values to params."""
+
+    def clause(i):
+        column = "rowid" if columns[i] == "rowid" else escape_sqlite(columns[i])
+        last = i == len(columns) - 1
+        if values[i] is None:
+            if before:
+                return f"{column} is null" + ("" if last else f" and {clause(i + 1)}")
+            if last:
+                return f"{column} is not null"
+            return f"({column} is not null or ({column} is null and {clause(i + 1)}))"
+        key = f"p{len(params)}"
+        params[key] = values[i]
+        if before:
+            if last:
+                return f"({column} is null or {column} <= :{key})"
+            return (
+                f"({column} is null or {column} < :{key}"
+                f" or ({column} = :{key} and {clause(i + 1)}))"
+            )
+        if last:
+            return f"{column} > :{key}"
+        return f"({column} > :{key} or ({column} = :{key} and {clause(i + 1)}))"
+
+    return f"({clause(0)})"
+
+
+def _at_or_before_next_where_clause(
+    _next, sort, sort_desc, pks, use_rowid, params, has_null_keys=False
+):
+    """SQL clause selecting the rows up to and including a ?_next= cursor - the
+    rows on earlier pages. Returns None if the cursor is not valid.
+
+    This is the inverse of _next_where_clauses(), written out directly rather
+    than as "not (...)" so that SQLite can use an index range search on the
+    primary key (or on the sort column, if it is indexed)."""
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+    if use_rowid:
+        if len(components) != 1:
+            return None
+        pk_clause = f"rowid <= :p{len(params)}"
+        params[f"p{len(params)}"] = components[0]
+    else:
+        columns = _cursor_key_columns(components, pks)
+        if columns is None:
+            return None
+        if has_null_keys or None in components:
+            pk_clause = _null_aware_keys_sql(columns, components, params, before=True)
+        else:
+            param_len = len(params)
+            pk_clause = compound_keys_at_or_before_sql(pks, param_len)
+            for i, pk_value in enumerate(components):
+                params[f"p{param_len + i}"] = pk_value
+    if not (sort or sort_desc):
+        return pk_clause
+    # Rows are ordered by the sort column then the primary key. SQLite puts
+    # nulls first in ascending order and last in descending order.
+    column = escape_sqlite(sort or sort_desc)
+    if sort_value is None:
+        if sort:
+            # Only nulls come before, up to the cursor's primary key
+            return f"({column} is null and {pk_clause})"
+        # Every non-null value comes before the nulls
+        return f"({column} is not null or ({column} is null and {pk_clause}))"
+    p = f":p{len(params)}"
+    params[f"p{len(params)}"] = sort_value
+    if sort:
+        return (
+            f"({column} is null or {column} < {p}"
+            f" or ({column} = {p} and {pk_clause}))"
+        )
+    return f"({column} > {p} or ({column} = {p} and {pk_clause}))"
+
+
+def _next_where_clauses(
+    _next, sort, sort_desc, pks, use_rowid, params, has_null_keys=False
+):
+    """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
+
+    Adds the cursor's values to params and returns a list of where clauses."""
+    clauses = []
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+
+    # Figure out the SQL for next-based-on-primary-key first
+    next_by_pk_clauses = []
+    if use_rowid:
+        next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+        params[f"p{len(params)}"] = components[0]
+    else:
+        # Apply the tie-breaker based on primary keys
+        columns = _cursor_key_columns(components, pks)
+        if columns and (has_null_keys or None in components):
+            next_by_pk_clauses.append(_null_aware_keys_sql(columns, components, params))
+        elif columns:
+            param_len = len(params)
+            next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
+            for i, pk_value in enumerate(components):
+                params[f"p{param_len + i}"] = pk_value
+
+    # Now add the sort SQL, which may incorporate next_by_pk_clauses
+    if sort or sort_desc:
+        if sort_value is None:
+            if sort_desc:
+                # Just items where column is null ordered by pk
+                clauses.append(
+                    "({column} is null and {next_clauses})".format(
+                        column=escape_sqlite(sort_desc),
+                        next_clauses=" and ".join(next_by_pk_clauses),
+                    )
+                )
+            else:
+                clauses.append(
+                    "({column} is not null or ({column} is null and {next_clauses}))".format(
+                        column=escape_sqlite(sort),
+                        next_clauses=" and ".join(next_by_pk_clauses),
+                    )
+                )
+        else:
+            clauses.append(
+                "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
+                    column=escape_sqlite(sort or sort_desc),
+                    op=">" if sort else "<",
+                    p=len(params),
+                    extra_desc_only=(
+                        ""
+                        if sort
+                        else f" or {escape_sqlite(sort or sort_desc)} is null"
+                    ),
+                    next_clauses=" and ".join(next_by_pk_clauses),
+                )
+            )
+            params[f"p{len(params)}"] = sort_value
+    else:
+        clauses.extend(next_by_pk_clauses)
+    return clauses
+
+
+def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid):
+    """Context for the "you are not on the first page" strip, or None on page 1."""
+    _next = request.args.get("_next")
+    if not _next:
+        return None
+    position = {
+        "first_url": datasette.urls.modify(request, remove="_next"),
+        "count_before_url": datasette.urls.modify(
+            request_route_path(request).rstrip("/")
+            + "/-/count?"
+            + request.query_string,
+            add={"_count": "before"},
+        ),
+        "after_column": None,
+        "after_value": None,
+    }
+    if is_view:
+        return position
+    sort_value, components = _parse_next(_next, sort, sort_desc)
+    if (sort or sort_desc) and len(_next.split(",")) > 1:
+        position["after_column"] = sort or sort_desc
+        position["after_value"] = None if sort_value is None else str(sort_value)
+    else:
+        position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
+        position["after_value"] = ", ".join(
+            key_value_display(component) for component in components
+        )
+    return position
+
+
+async def _table_filters(datasette, request, database_name, table_name):
+    # Arguments that start with _ and don't contain a __ are
+    # special - things like ?_search= - and should not be
+    # treated as filters.
+    filter_args = []
+    for key in request.args:
+        if not (key.startswith("_") and "__" not in key):
+            for v in request.args.getlist(key):
+                filter_args.append((key, v))
+
+    # Build where clauses from query string arguments
+    filters = Filters(sorted(filter_args))
+    no_affinity_columns = set()
+    if filter_args:
+        # Expression columns in views (and untyped table columns) have no
+        # type affinity, so need numeric values to be handled differently
+        no_affinity_columns = {
+            column.name
+            for column in await datasette.get_database(
+                database_name
+            ).table_column_details(table_name)
+            if column_type_has_no_affinity(column.type)
+        }
+    where_clauses, params = filters.build_where_clauses(
+        table_name, no_affinity_columns=no_affinity_columns
+    )
+
+    # /-/fragment?_row= selects a single row by its primary key
+    for i, (pk, value) in enumerate(request.scope.get(_ROW_KEY_SCOPE, {}).items()):
+        if value is None:
+            where_clauses.append(f"{escape_sqlite(pk)} is null")
+        else:
+            where_clauses.append(f"{escape_sqlite(pk)} = :rowkey{i}")
+            params[f"rowkey{i}"] = value
+
+    # Execute filters_from_request plugin hooks - including the default
+    # ones that live in datasette/filters.py
+    extra_context_from_filters = {}
+    extra_human_descriptions = []
+
+    for hook in pm.hook.filters_from_request(
+        request=request,
+        table=table_name,
+        database=database_name,
+        datasette=datasette,
+    ):
+        filter_arguments = await await_me_maybe(hook)
+        if filter_arguments:
+            where_clauses.extend(filter_arguments.where_clauses)
+            params.update(filter_arguments.params)
+            extra_human_descriptions.extend(filter_arguments.human_descriptions)
+            extra_context_from_filters.update(filter_arguments.extra_context)
+
+    return (
+        filters,
+        where_clauses,
+        params,
+        extra_human_descriptions,
+        extra_context_from_filters,
+    )
 
 
 async def table_view_data(
@@ -1965,6 +2543,10 @@ async def table_view_data(
     context_for_html_hack=False,
     default_labels=False,
     _next=None,
+    renderer_extras=None,
+    rows_only=False,
+    stream=False,
+    stream_small_pages=False,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -1981,6 +2563,10 @@ async def table_view_data(
     )
     if not visible:
         raise Forbidden("You do not have permission to view this table")
+    # Record whether this response is private (visible to this actor only)
+    # so the outer table_view() can set appropriate Cache-Control headers,
+    # regardless of which output format ends up being rendered.
+    request._datasette_private_response = private
 
     # Redirect based on request.args, if necessary
     redirect_response = await _redirect_if_needed(datasette, request, resolved)
@@ -2007,6 +2593,11 @@ async def table_view_data(
 
     # rowid tables (no specified primary key) need a different SELECT
     use_rowid = not pks and not is_view
+    has_null_keys = (
+        not is_view
+        and not use_rowid
+        and await _has_null_keys(db, table_name, pks, request)
+    )
     order_by = ""
     if use_rowid:
         select_specified_columns = f"rowid, {select_specified_columns}"
@@ -2015,6 +2606,9 @@ async def table_view_data(
         order_by_pks = "rowid"
     else:
         order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
+        if has_null_keys:
+            # Rows that share a null primary key need a defined order
+            order_by_pks += ", rowid"
         order_by = order_by_pks
 
     if is_view:
@@ -2031,36 +2625,13 @@ async def table_view_data(
 
     table_metadata = await datasette.table_config(database_name, table_name)
 
-    # Arguments that start with _ and don't contain a __ are
-    # special - things like ?_search= - and should not be
-    # treated as filters.
-    filter_args = []
-    for key in request.args:
-        if not (key.startswith("_") and "__" not in key):
-            for v in request.args.getlist(key):
-                filter_args.append((key, v))
-
-    # Build where clauses from query string arguments
-    filters = Filters(sorted(filter_args))
-    where_clauses, params = filters.build_where_clauses(table_name)
-
-    # Execute filters_from_request plugin hooks - including the default
-    # ones that live in datasette/filters.py
-    extra_context_from_filters = {}
-    extra_human_descriptions = []
-
-    for hook in pm.hook.filters_from_request(
-        request=request,
-        table=table_name,
-        database=database_name,
-        datasette=datasette,
-    ):
-        filter_arguments = await await_me_maybe(hook)
-        if filter_arguments:
-            where_clauses.extend(filter_arguments.where_clauses)
-            params.update(filter_arguments.params)
-            extra_human_descriptions.extend(filter_arguments.human_descriptions)
-            extra_context_from_filters.update(filter_arguments.extra_context)
+    (
+        filters,
+        where_clauses,
+        params,
+        extra_human_descriptions,
+        extra_context_from_filters,
+    ) = await _table_filters(datasette, request, database_name, table_name)
 
     # Deal with custom sort orders
     sortable_columns = await _sortable_columns_for_table(
@@ -2079,6 +2650,8 @@ async def table_view_data(
     )
     # Copy of params so we can mutate them later:
     from_sql_params = dict(**params)
+    # The filter where clause before any pagination clauses are added
+    filter_where_sql = " and ".join(where_clauses)
 
     count_sql = f"select count(*) {from_sql}"
 
@@ -2087,72 +2660,26 @@ async def table_view_data(
 
     offset = ""
     if _next:
-        sort_value = None
         if is_view:
             # _next is an offset
             offset = f" offset {int(_next)}"
         else:
-            components = urlsafe_components(_next)
-            # If a sort order is applied and there are multiple components,
-            # the first of these is the sort value
-            if (sort or sort_desc) and (len(components) > 1):
-                sort_value = components[0]
-                # Special case for if non-urlencoded first token was $null
-                if _next.split(",")[0] == "$null":
-                    sort_value = None
-                components = components[1:]
+            where_clauses.extend(
+                _next_where_clauses(
+                    _next,
+                    sort,
+                    sort_desc,
+                    pks,
+                    use_rowid,
+                    params,
+                    has_null_keys=has_null_keys,
+                )
+            )
 
-            # Figure out the SQL for next-based-on-primary-key first
-            next_by_pk_clauses = []
-            if use_rowid:
-                next_by_pk_clauses.append(f"rowid > :p{len(params)}")
-                params[f"p{len(params)}"] = components[0]
-            else:
-                # Apply the tie-breaker based on primary keys
-                if len(components) == len(pks):
-                    param_len = len(params)
-                    next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
-                    for i, pk_value in enumerate(components):
-                        params[f"p{param_len + i}"] = pk_value
-
-            # Now add the sort SQL, which may incorporate next_by_pk_clauses
-            if sort or sort_desc:
-                if sort_value is None:
-                    if sort_desc:
-                        # Just items where column is null ordered by pk
-                        where_clauses.append(
-                            "({column} is null and {next_clauses})".format(
-                                column=escape_sqlite(sort_desc),
-                                next_clauses=" and ".join(next_by_pk_clauses),
-                            )
-                        )
-                    else:
-                        where_clauses.append(
-                            "({column} is not null or ({column} is null and {next_clauses}))".format(
-                                column=escape_sqlite(sort),
-                                next_clauses=" and ".join(next_by_pk_clauses),
-                            )
-                        )
-                else:
-                    where_clauses.append(
-                        "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
-                            column=escape_sqlite(sort or sort_desc),
-                            op=">" if sort else "<",
-                            p=len(params),
-                            extra_desc_only=(
-                                ""
-                                if sort
-                                else " or {column2} is null".format(
-                                    column2=escape_sqlite(sort or sort_desc)
-                                )
-                            ),
-                            next_clauses=" and ".join(next_by_pk_clauses),
-                        )
-                    )
-                    params[f"p{len(params)}"] = sort_value
-                order_by = f"{order_by}, {order_by_pks}"
-            else:
-                where_clauses.extend(next_by_pk_clauses)
+    # The first page needs this tie-breaker too: the ?_next= cursor assumes that
+    # rows with the same sort value come back in primary key order
+    if (sort or sort_desc) and not is_view:
+        order_by = f"{order_by}, {order_by_pks}"
 
     where_clause = ""
     if where_clauses:
@@ -2165,7 +2692,18 @@ async def table_view_data(
     # Handle ?_size=500
     # TODO: This was:
     # page_size = _size or request.args.get("_size") or table_metadata.get("size")
-    page_size = request.args.get("_size") or table_metadata.get("size")
+    page_size = request.args.get("_size")
+    # Streaming chooses its own page size unless the URL has a ?_size=. A
+    # max_returned_rows of 0 means no limit, so there is no largest page
+    stream_page_size = bool(stream and not page_size and datasette.max_returned_rows)
+    if not page_size:
+        page_size = table_metadata.get("size")
+        if stream_page_size:
+            if stream_small_pages:
+                page_size = page_size or datasette.page_size
+            else:
+                # Streaming every row is fastest using the largest pages
+                page_size = "max"
     if page_size:
         if page_size == "max":
             page_size = datasette.max_returned_rows
@@ -2177,34 +2715,35 @@ async def table_view_data(
         except ValueError:
             raise BadRequest("_size must be a positive integer")
 
+        if stream_page_size:
+            # A page longer than max_returned_rows is cut short without a
+            # next page, which would end the stream with rows still to come
+            page_size = min(page_size, datasette.max_returned_rows)
+
         if page_size > datasette.max_returned_rows:
             raise BadRequest(f"_size must be <= {datasette.max_returned_rows}")
 
-        extra_args["page_size"] = page_size
     else:
         page_size = datasette.page_size
+    extra_args["page_size"] = page_size
 
     # Facets are calculated against SQL without order by or limit
-    sql_no_order_no_limit = (
-        "select {select_all_columns} from {table_name} {where}".format(
-            select_all_columns=select_all_columns,
-            table_name=escape_sqlite(table_name),
-            where=where_clause,
-        )
-    )
+    sql_no_order_no_limit = f"select {select_all_columns} {from_sql}"
 
     # This is the SQL that populates the main table on the page
-    sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
-        select_specified_columns=select_specified_columns,
-        table_name=escape_sqlite(table_name),
-        where=where_clause,
-        order_by=order_by,
-        page_size=page_size + 1,
-        offset=offset,
+    sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
+
+    # The rowid of the last row on the page, for a cursor that needs it
+    last_rowid_sql = (
+        f"select rowid from {escape_sqlite(table_name)} {where_clause}{order_by}"
+        f" limit 1 offset {max(page_size - 1, 0)}"
     )
 
     if request.args.get("_timelimit"):
-        extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
+        # ?_timelimit= can shorten the time limit but not extend it
+        extra_args["custom_time_limit"] = datasette.capped_time_limit_ms(
+            int(request.args.get("_timelimit"))
+        )
 
     # Execute the main query!
     try:
@@ -2212,17 +2751,20 @@ async def table_view_data(
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-    except sqlite3.OperationalError as e:
-        raise DatasetteError(str(e))
-
-    columns = [r[0] for r in results.description]
+    # Describe the columns of the results using the details of the table
+    column_details = await db.table_column_details(table_name)
+    foreign_keys = await db.foreign_keys_for_table(table_name)
+    results = results.with_columns(
+        columns_for_results(column_details, results.columns.names)
+    )
+    columns = list(results.columns.names)
     rows = list(results.rows)
 
     # Expand labeled columns if requested
     expanded_columns = []
     # List of (fk_dict, label_column-or-None) pairs for that table
     expandable_columns = []
-    for fk in await db.foreign_keys_for_table(table_name):
+    for fk in foreign_keys:
         label_column = await db.label_column_for_table(fk["other_table"])
         expandable_columns.append((fk, label_column))
 
@@ -2238,42 +2780,38 @@ async def table_view_data(
         # expand all columns with foreign keys
         columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
 
+    # Foreign key columns to link to the row they reference even though that
+    # row has no label to show, as {column: other_table}
+    foreign_key_links = {}
     if columns_to_expand:
-        expanded_labels = {}
+        # {column: {value: label}}
+        labels = {}
         for fk, _ in expandable_columns:
             column = fk["column"]
             if column not in columns_to_expand:
                 continue
             if column not in columns:
                 continue
-            expanded_columns.append(column)
             # Gather the values
             column_index = columns.index(column)
             values = [row[column_index] for row in rows]
-            # Expand them
-            expanded_labels.update(
-                await datasette.expand_foreign_keys(
-                    request.actor, database_name, table_name, column, values
-                )
+            # Look up their labels
+            expanded = await datasette.foreign_key_labels(
+                request.actor, database_name, table_name, column, values
             )
-        if expanded_labels:
-            # Rewrite the rows
-            new_rows = []
-            for row in rows:
-                new_row = CustomRow(columns)
-                for column in row.keys():
-                    value = row[column]
-                    if (column, value) in expanded_labels and value is not None:
-                        new_row[column] = {
-                            "value": value,
-                            "label": expanded_labels[(column, value)],
-                        }
-                    else:
-                        new_row[column] = value
-                new_rows.append(new_row)
-            rows = new_rows
-
-    _next = request.args.get("_next")
+            if expanded is None:
+                # Not a foreign key this actor can follow
+                expanded_columns.append(column)
+                continue
+            other_table, column_labels = expanded
+            if column_labels is None:
+                # The other table has no label column, so there is nothing
+                # to expand - but the value can still link to that row
+                foreign_key_links[column] = other_table
+                continue
+            expanded_columns.append(column)
+            labels[column] = column_labels
+        rows = label_rows(rows, labels)
 
     # Pagination next link
     next_value, next_url = await _next_value_and_url(
@@ -2289,8 +2827,21 @@ async def table_view_data(
         sort_desc,
         page_size,
         is_view,
+        last_rowid_sql=last_rowid_sql,
+        params=params,
     )
     rows = rows[:page_size]
+
+    if rows_only:
+        # A later page of a streaming response: skip the extras
+        return (
+            {"next": next_value and str(next_value) or None},
+            rows,
+            columns,
+            expanded_columns,
+            sql,
+            next_url,
+        )
 
     # Resolve extras
     extras = extra_names_from_request(request)
@@ -2298,7 +2849,11 @@ async def table_view_data(
         # Data formats reject unknown extras; the HTML path (which passes
         # extra_extras={"_html"}) resolves internal extras of its own
         table_extra_registry.validate_requested(extras, ExtraScope.TABLE)
-    if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
+    if renderer_extras:
+        # Extras declared by the output renderer for this format. Any that
+        # are not available for tables are skipped when extras are resolved.
+        extras.update(renderer_extras)
+    if any(k for k in request.args if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
         extras.add("primary_keys")
@@ -2308,7 +2863,7 @@ async def table_view_data(
         extras.update(extra_extras)
 
     # Faceting
-    if not datasette.setting("allow_facet") and any(
+    if not datasette.setting("default_allow_facet") and any(
         arg.startswith("_facet") for arg in request.args
     ):
         raise BadRequest("_facet= is not allowed")
@@ -2329,6 +2884,8 @@ async def table_view_data(
         private=private,
         rows=rows,
         columns=columns,
+        expanded_columns=expanded_columns,
+        foreign_key_links=foreign_key_links,
         results_description=results.description,
         table_columns=table_columns,
         pks=pks,
@@ -2368,19 +2925,14 @@ async def table_view_data(
             include_internal=bool(extra_extras),
         )
     )
-    raw_sqlite_rows = rows[:page_size]
-    # Apply transform_value for columns with assigned types
-    ct_map = await datasette.get_column_types(database_name, table_name)
-    transformed_rows = []
-    for r in raw_sqlite_rows:
-        row_dict = dict(r)
-        for col_name, ct in ct_map.items():
-            if col_name in row_dict:
-                row_dict[col_name] = await ct.transform_value(
-                    row_dict[col_name], datasette
-                )
-        transformed_rows.append(row_dict)
-    data["rows"] = transformed_rows
+    if context_for_html_hack:
+        # Apply transform_value for columns with assigned types
+        data["rows"] = await apply_column_type_transforms(
+            datasette, database_name, table_name, rows[:page_size]
+        )
+    else:
+        # The JSON renderer applies those transforms itself
+        data["rows"] = [row_as_dict(row) for row in rows[:page_size]]
 
     if context_for_html_hack:
         data["count_truncated"] = count_is_truncated(
@@ -2395,30 +2947,52 @@ async def table_view_data(
             for table_column in table_columns
             if table_column not in columns
         ]
+        filter_keys = {key for key, _ in filters.pairs}
+        data["clear_filters_url"] = (
+            datasette.urls.modify(request, remove=filter_keys | {"_next"})
+            if filter_keys
+            else None
+        )
         url_labels_extra = {}
         if data.get("expandable_columns"):
             url_labels_extra = {"_labels": "on"}
-        url_csv_args = {"_size": "max", **url_labels_extra}
-        url_csv = datasette.urls.path(
-            path_with_format(
-                request=request,
-                path=request.scope.get("route_path"),
-                format="csv",
-                extra_qs=url_csv_args,
-            )
-        )
+        url_csv_args = {**url_labels_extra, "_size": "max"}
+        url_csv = datasette.urls.modify(request, format="csv", add=url_csv_args)
         url_csv_path = url_csv.split("?")[0]
         data.update(
             {
+                "filter_description_en": filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+                "sort_description_en": (
+                    "sorted by {}{}".format(
+                        sort or sort_desc, " descending" if sort_desc else ""
+                    )
+                    if (sort or sort_desc)
+                    else ""
+                ),
                 "url_csv": url_csv,
                 "url_csv_path": url_csv_path,
+                "url_tsv_path": tsv_export_path(datasette, request),
                 "url_csv_hidden_args": [
                     (key, value)
-                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    # Blank values matter: ?name= filters for name = ""
+                    for key, value in urllib.parse.parse_qsl(
+                        request.query_string, keep_blank_values=True
+                    )
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],
             }
+        )
+        data["page_position"] = _page_position(
+            datasette, request, is_view, sort, sort_desc, pks, use_rowid
         )
         # if no sort specified AND table has a single primary key,
         # set sort to that so arrow is displayed
@@ -2437,6 +3011,15 @@ async def table_view_data(
         )
         data["table_insert_ui"] = table_insert_ui
         data["table_alter_ui"] = table_alter_ui
+        row_mutation_ui = False
+        if not is_view and db.is_mutable:
+            row_action_permissions = await datasette.allowed_many(
+                actions=["update-row", "delete-row"],
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
+            )
+            row_mutation_ui = any(row_action_permissions.values())
+        data["row_mutation_ui"] = row_mutation_ui
         data["table_page_data"] = await _table_page_data(
             datasette=datasette,
             request=request,
@@ -2446,6 +3029,25 @@ async def table_view_data(
             is_view=is_view,
             table_insert_ui=table_insert_ui,
             table_alter_ui=table_alter_ui,
+            execute_sql_ui=await _execute_sql_ui(
+                datasette,
+                request,
+                database_name,
+                filter_where=filter_where_sql,
+                filter_params=from_sql_params,
+                db=db,
+                table_name=table_name,
+                use_rowid=use_rowid,
+                filter_description=filters.human_description_en(
+                    extra=extra_human_descriptions
+                    + [
+                        extra_where["text"]
+                        for extra_where in extra_context_from_filters.get(
+                            "extra_wheres_for_ui", []
+                        )
+                    ]
+                ),
+            ),
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
@@ -2464,43 +3066,57 @@ async def _next_value_and_url(
     sort_desc,
     page_size,
     is_view,
+    last_rowid_sql=None,
+    params=None,
 ):
     next_value = None
     next_url = None
+    last_rowid = None
     if 0 < page_size < len(rows):
         if is_view:
             next_value = int(_next or 0) + page_size
         else:
-            next_value = path_from_row_pks(rows[-2], pks, use_rowid)
+            next_value = path_from_row_pks(
+                rows[-2],
+                pks,
+                use_rowid,
+                typed_columns=untyped_columns(
+                    await db.table_column_details(table_name)
+                ),
+            )
+            if last_rowid_sql and row_has_null_primary_key(rows[-2], pks):
+                # A null primary key does not identify the row to resume from
+                last_rowid = (await db.execute(last_rowid_sql, params)).single_value()
+                next_value = f"{next_value},{last_rowid}"
         # If there's a sort or sort_desc, add that value as a prefix
         if (sort or sort_desc) and not is_view:
             try:
                 prefix = rows[-2][sort or sort_desc]
-            except IndexError:
+            except KeyError:
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
+                # Tables with no primary key paginate on rowid
+                lookup_pks = pks or ["rowid"]
+                if last_rowid is not None:
+                    lookup_pks = ["rowid"]
                 prefix_where_clause = " and ".join(
-                    "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                    f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(lookup_pks)
                 )
-                prefix_lookup_sql = "select [{}] from [{}] where {}".format(
-                    sort or sort_desc, table_name, prefix_where_clause
+                prefix_lookup_sql = (
+                    f"select {escape_sqlite(sort or sort_desc)} "
+                    f"from {escape_sqlite(table_name)} where {prefix_where_clause}"
                 )
                 prefix = (
                     await db.execute(
                         prefix_lookup_sql,
                         {
-                            **{
-                                "pk{}".format(i): rows[-2][pk]
-                                for i, pk in enumerate(pks)
-                            }
+                            f"pk{i}": (
+                                last_rowid if last_rowid is not None else rows[-2][pk]
+                            )
+                            for i, pk in enumerate(lookup_pks)
                         },
                     )
                 ).single_value()
-            if isinstance(prefix, dict) and "value" in prefix:
-                prefix = prefix["value"]
-            if prefix is None:
-                prefix = "$null"
-            else:
-                prefix = tilde_encode(str(prefix))
+            prefix = encode_key_value(prefix, typed=True)
             next_value = f"{prefix},{next_value}"
             added_args = {"_next": next_value}
             if sort:
@@ -2510,6 +3126,7 @@ async def _next_value_and_url(
         else:
             added_args = {"_next": next_value}
         next_url = datasette.absolute_url(
-            request, datasette.urls.path(path_with_replaced_args(request, added_args))
+            request,
+            datasette.urls.modify(request, replace=added_args),
         )
     return next_value, next_url

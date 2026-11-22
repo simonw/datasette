@@ -1,9 +1,11 @@
+import sqlite3
+
 import pytest
-from datasette.database import Database
+
 from datasette.app import Datasette
+from datasette.database import Database
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "create_sql,table_name,config,expected_label_column",
     [
@@ -95,3 +97,30 @@ async def test_label_column_for_table(
         assert actual_label_column is None
     else:
         assert actual_label_column == expected_label_column
+
+
+@pytest.mark.asyncio
+async def test_label_column_for_table_created_after_read_connection_opened(tmp_path):
+    # The unique index on slug must be detected even though the read
+    # connection cached the schema before the table existed
+    # https://github.com/simonw/datasette/issues/2356
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table docs (id integer primary key)")
+    conn.close()
+    ds = Datasette([path], settings={"num_sql_threads": 1})
+    db = ds.get_database("data")
+    try:
+        await db.execute("select count(*) from docs")
+        await db.execute_write(
+            "create table things (id integer primary key, slug text unique, other text)"
+        )
+        assert await db.label_column_for_table("things") == "slug"
+        await db.execute_write(
+            "create table links (id integer primary key, thing_id integer references things(id))"
+        )
+        assert await db.foreign_keys_for_table("links") == [
+            {"column": "thing_id", "other_table": "things", "other_column": "id"}
+        ]
+    finally:
+        ds.close()

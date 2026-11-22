@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}{{ request.path }} template context{% endblock %}
+
+{% block extra_head %}
+<style>
+.context-debug-summary {
+    margin: 0 0 1.5rem;
+}
+.context-debug-summary li {
+    margin-bottom: 0.25rem;
+}
+.context-debug-jump {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    margin: 0.5rem 0 1.5rem;
+    padding: 0;
+    list-style: none;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+.context-debug h2 {
+    margin-top: 2rem;
+}
+.context-debug dl {
+    margin: 0;
+}
+.context-debug dt {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid #d8e6f5;
+    scroll-margin-top: 1rem;
+}
+.context-debug dt .context-debug-name {
+    font-family: monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+.context-debug dt .context-debug-type {
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: #6b6b6b;
+}
+.context-debug dt .context-debug-snippet {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+}
+.context-debug dt .context-debug-snippet code {
+    padding: 0.15rem 0.4rem;
+    background: #eef2f6;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+.context-debug dd {
+    margin: 0.4rem 0 0;
+    min-width: 0;
+}
+.context-debug dd p {
+    margin: 0 0 0.5rem;
+}
+.context-debug pre {
+    margin: 0.25rem 0 0.5rem;
+    padding: 0.6rem 0.75rem;
+    max-height: 30rem;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #d8e6f5;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.context-debug pre.context-debug-doc {
+    background: none;
+    border: none;
+    border-left: 3px solid #d8e6f5;
+    border-radius: 0;
+    padding: 0 0 0 0.75rem;
+    font-family: inherit;
+    font-size: 0.95rem;
+}
+.context-debug summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.context-debug .context-debug-members {
+    margin: 0.5rem 0 0 0;
+    padding: 0;
+    list-style: none;
+}
+.context-debug .context-debug-members li {
+    margin-bottom: 0.5rem;
+}
+.context-debug .context-debug-members code {
+    font-weight: bold;
+}
+.context-debug .context-debug-warning {
+    margin: 0.75rem 0 1rem;
+    padding: 0.6rem 0.9rem;
+    background: #fff8e1;
+    border: 1px solid #e6c200;
+    border-left-width: 5px;
+    border-radius: 6px;
+}
+.context-debug .context-debug-note {
+    color: #6b6b6b;
+    font-size: 0.9rem;
+}
+</style>
+{% endblock %}
+
+{# The messages block would consume messages intended for the real page #}
+{% block messages %}{% endblock %}
+
+{% block content %}
+<div class="context-debug">
+<h1><code>{{ request.path }}</code> template context</h1>
+
+<ul class="context-debug-summary">
+    <li>Template: <code>{{ debug_template_name }}</code></li>
+    {% if debug_templates_considered %}
+        <li>Templates considered:
+            {% for name in debug_templates_considered %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+            <span class="context-debug-note">(<code>*</code> marks the one that was used)</span>
+        </li>
+    {% endif %}
+    <li>Context class: {% if debug_context_class %}<code>{{ debug_context_class }}</code>{% else %}none - this page passes a plain dictionary, so its variables are not documented{% endif %}</li>
+    <li><a href="{{ debug_page_url }}">View the page</a> &middot; <a href="{{ debug_json_url }}">View this context as JSON</a></li>
+</ul>
+
+{% for section in debug_sections %}
+<section id="context-{{ section.id }}">
+    <h2>{{ section.title }}</h2>
+    {% if section.intro %}<p>{{ section.intro }}</p>{% endif %}
+    {% if section.unstable %}
+        <p class="context-debug-warning"><strong>Not a stable contract.</strong> <code>{{ request.path }}</code> is one of Datasette's debugging tools. The variables it passes to its template are documented here for reference, but a custom template that uses them may break in any future Datasette release.</p>
+    {% endif %}
+    <ul class="context-debug-jump">
+        {% for variable in section.variables %}
+            <li><a href="#var-{{ variable.name }}">{{ variable.name }}</a></li>
+        {% endfor %}
+    </ul>
+    <dl>
+    {% for variable in section.variables %}
+        <dt id="var-{{ variable.name }}">
+            <span class="context-debug-name">{{ variable.name }}</span>
+            <span class="context-debug-type">
+                {%- if variable.kind == "function" -%}
+                    {% if variable.is_async %}async {% endif %}function
+                {%- elif variable.documented_type and variable.documented_type != variable.actual_type -%}
+                    {{ variable.documented_type }} &middot; currently {{ variable.actual_type }}
+                {%- else -%}
+                    {{ variable.actual_type }}
+                {%- endif -%}
+            </span>
+            <span class="context-debug-snippet">
+                <code>{{ variable.snippet }}</code>
+                <datasette-copy-button value="{{ variable.snippet }}" name="{{ variable.name }} template syntax"></datasette-copy-button>
+            </span>
+        </dt>
+        <dd>
+            {% if variable.help %}<p>{{ variable.help }}</p>{% endif %}
+            {% if variable.kind == "function" %}
+                <pre>{% if variable.is_async %}async {% endif %}{{ variable.name }}{{ variable.signature }}</pre>
+                {% if variable.doc %}<pre class="context-debug-doc">{{ variable.doc }}</pre>{% endif %}
+            {% else %}
+                {% if variable.kind == "object" and variable.doc %}<pre class="context-debug-doc">{{ variable.doc }}</pre>{% endif %}
+                {% if variable.collapsed %}
+                    <details>
+                        <summary>Value ({{ "{:,}".format(variable.value_length) }} characters)</summary>
+                        <pre>{{ variable.value }}</pre>
+                    </details>
+                {% else %}
+                    <pre>{{ variable.value }}</pre>
+                {% endif %}
+                {% if variable.truncated %}
+                    <p class="context-debug-note">Showing the first {{ "{:,}".format(variable.value|length) }} characters. The <a href="{{ debug_json_url }}">JSON version</a> has the full value.</p>
+                {% endif %}
+                {% if variable.members %}
+                    <details>
+                        <summary>{{ variable.members|length }} method{% if variable.members|length != 1 %}s{% endif %} and properties</summary>
+                        <ul class="context-debug-members">
+                        {% for member in variable.members %}
+                            <li>
+                                <code>{% if member.is_async %}async {% endif %}{{ variable.name }}.{{ member.name }}{{ member.signature }}</code>
+                                {% if member.doc %}<pre class="context-debug-doc">{{ member.doc }}</pre>{% endif %}
+                            </li>
+                        {% endfor %}
+                        </ul>
+                        {% if variable.members_truncated %}<p class="context-debug-note">Not every member is listed.</p>{% endif %}
+                    </details>
+                {% endif %}
+            {% endif %}
+        </dd>
+    {% endfor %}
+    </dl>
+</section>
+{% endfor %}
+</div>
+{% endblock %}

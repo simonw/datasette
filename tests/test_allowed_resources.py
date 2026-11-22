@@ -5,11 +5,11 @@ These tests verify that the allowed_resources() API correctly filters resources
 based on permission rules from plugins and configuration.
 """
 
-import pytest
 import pytest_asyncio
+
+from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
-from datasette import hookimpl
 
 
 # Test plugin that provides permission rules
@@ -50,7 +50,6 @@ async def test_ds():
     return ds
 
 
-@pytest.mark.asyncio
 async def test_tables_allowed_resources_global_access(test_ds):
     """Test allowed_resources() with global access permissions"""
 
@@ -89,7 +88,6 @@ async def test_tables_allowed_resources_global_access(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_database_restriction(test_ds):
     """Test allowed_resources() with database-level restriction"""
 
@@ -131,7 +129,6 @@ async def test_tables_endpoint_database_restriction(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_table_exception(test_ds):
     """Test allowed_resources() with table-level exception (deny database, allow specific table)"""
 
@@ -173,7 +170,6 @@ async def test_tables_endpoint_table_exception(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_deny_overrides_allow(test_ds):
     """Test that child-level DENY beats parent-level ALLOW"""
 
@@ -215,7 +211,6 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_no_permissions():
     """Test allowed_resources() when user has no custom permissions (only defaults)"""
 
@@ -239,7 +234,6 @@ async def test_tables_endpoint_no_permissions():
     assert any(m["name"].endswith("/items") for m in result)
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_specific_table_only(test_ds):
     """Test allowed_resources() when only specific tables are allowed (no parent/global rules)"""
 
@@ -281,7 +275,6 @@ async def test_tables_endpoint_specific_table_only(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_empty_result(test_ds):
     """Test allowed_resources() when all tables are explicitly denied"""
 
@@ -312,7 +305,6 @@ async def test_tables_endpoint_empty_result(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_no_query_returns_all():
     """Test allowed_resources() without query parameter returns all tables"""
     ds = Datasette()
@@ -336,7 +328,6 @@ async def test_tables_endpoint_no_query_returns_all():
     assert "test_db/comments" in table_names
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_truncation():
     """Test allowed_resources() truncates at 100 tables and sets truncated flag"""
     ds = Datasette()
@@ -357,7 +348,6 @@ async def test_tables_endpoint_truncation():
     assert page.next is not None  # More results available
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_search_single_term():
     """Test allowed_resources()?q=user to filter tables matching 'user'"""
 
@@ -394,7 +384,6 @@ async def test_tables_endpoint_search_single_term():
     assert "posts" not in table_names
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_search_multiple_terms():
     """Test allowed_resources()?q=user+profile to filter tables matching .*user.*profile.*"""
 
@@ -431,7 +420,6 @@ async def test_tables_endpoint_search_multiple_terms():
     assert "profile_settings" not in table_names  # doesn't have "user"
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_search_ordering():
     """Test that search results are ordered by shortest name first"""
 
@@ -474,7 +462,6 @@ async def test_tables_endpoint_search_ordering():
     assert matching_names[-1] == "user_authentication_tokens"  # longest
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_search_case_insensitive():
     """Test that search is case-insensitive"""
 
@@ -510,7 +497,6 @@ async def test_tables_endpoint_search_case_insensitive():
     assert len(filtered) >= 3
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_search_no_matches():
     """Test search with no matching tables returns empty list"""
 
@@ -541,7 +527,6 @@ async def test_tables_endpoint_search_no_matches():
     assert len(filtered) == 0
 
 
-@pytest.mark.asyncio
 async def test_tables_endpoint_config_database_allow():
     """Test that database-level allow blocks work for view-table action"""
 

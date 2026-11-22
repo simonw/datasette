@@ -5,24 +5,29 @@ from datasette.resources import DatabaseResource
 from datasette.stored_queries import (
     StoredQuery,
 )
-from datasette.write_sql import (
-    IgnoreWriteSqlOperation,
-    QueryWriteRejected,
-    RequireWriteSqlPermissions,
-    decision_for_write_sql_operation,
-    operation_is_write,
-)
 from datasette.utils import (
-    parse_size_limit,
-    named_parameters as derive_named_parameters,
+    InvalidSql,
     escape_sqlite,
+    parse_size_limit,
     path_from_row_pks,
     sqlite3,
+    untyped_columns,
     validate_sql_select,
-    InvalidSql,
+)
+from datasette.utils import (
+    named_parameters as derive_named_parameters,
 )
 from datasette.utils.asgi import Forbidden
 from datasette.utils.sql_analysis import Operation, SQLAnalysis
+from datasette.write_sql import (
+    IgnoreWriteSqlOperation,
+    QueryWriteRejected,
+    RejectWriteSqlOperation,
+    RequireWriteSqlPermissions,
+    UnsupportedWriteSqlOperation,
+    decision_for_write_sql_operation,
+    operation_is_write,
+)
 
 _query_name_re = re.compile(r"^[^/\.\n]+$")
 
@@ -91,7 +96,7 @@ def _as_optional_bool(value, name):
             return True
         if lowered in {"0", "false", "f", "no", "off"}:
             return False
-    raise QueryValidationError("{} must be 0 or 1".format(name))
+    raise QueryValidationError(f"{name} must be 0 or 1")
 
 
 def _query_list_limit(value, default, maximum):
@@ -171,7 +176,7 @@ async def _json_or_form_payload(request):
         try:
             return json.loads(body or b"{}"), True
         except json.JSONDecodeError as e:
-            raise QueryValidationError("Invalid JSON: {}".format(e))
+            raise QueryValidationError(f"Invalid JSON: {e}")
     return await request.post_vars(), False
 
 
@@ -192,7 +197,7 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
     try:
         analysis = await db.analyze_sql(sql, params)
     except sqlite3.DatabaseError as ex:
-        raise QueryValidationError("Could not analyze query: {}".format(ex)) from ex
+        raise QueryValidationError(f"Could not analyze query: {ex}") from ex
 
     is_write = _analysis_is_write(analysis)
     if is_write:
@@ -232,12 +237,21 @@ def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
             if isinstance(decision, RequireWriteSqlPermissions)
             else ""
         )
+        # Why an operation can never run, whatever the actor's permissions
+        message = (
+            decision.message
+            if isinstance(
+                decision, (RejectWriteSqlOperation, UnsupportedWriteSqlOperation)
+            )
+            else None
+        )
         rows.append(
             {
                 "operation": operation.operation,
                 "database": operation.database,
                 "table": operation.table or operation.target,
                 "required_permission": required_permission,
+                "message": message,
                 "source": operation.source,
             }
         )
@@ -273,7 +287,11 @@ def _execute_write_disabled_reason(sql, analysis_error, analysis_rows):
         return "Enter writable SQL before executing."
     if analysis_error:
         return analysis_error
-    if any(row.get("allowed") is False for row in analysis_rows):
+    denied_rows = [row for row in analysis_rows if row.get("allowed") is False]
+    for row in denied_rows:
+        if row.get("message"):
+            return row["message"]
+    if denied_rows:
         return "You do not have permission for every operation listed above."
     return None
 
@@ -293,8 +311,7 @@ def _coerce_execute_write_payload(data, is_json):
         for key, value in data.items():
             if key in {"sql", "csrftoken", "_json"}:
                 continue
-            if key.startswith(SQL_PARAMETER_FORM_PREFIX):
-                key = key[len(SQL_PARAMETER_FORM_PREFIX) :]
+            key = key.removeprefix(SQL_PARAMETER_FORM_PREFIX)
             params[key] = value
     if not isinstance(params, dict):
         raise QueryValidationError("params must be a dictionary")
@@ -314,7 +331,7 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
     try:
         analysis = await db.analyze_sql(sql, params)
     except sqlite3.DatabaseError as ex:
-        raise QueryValidationError("Could not analyze query: {}".format(ex)) from ex
+        raise QueryValidationError(f"Could not analyze query: {ex}") from ex
     if not _analysis_is_write(analysis):
         raise QueryValidationError(
             "Use /-/query for read-only SQL; this endpoint only executes writes"
@@ -414,6 +431,16 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
     }
 
 
+def _analysis_template_data(analysis_data):
+    # "ok" and "parameters" are for the JSON analysis endpoint, the
+    # templates use analysis_error instead
+    return {
+        key: value
+        for key, value in analysis_data.items()
+        if key not in ("ok", "parameters")
+    }
+
+
 async def _query_create_form_context(
     datasette,
     request,
@@ -434,7 +461,7 @@ async def _query_create_form_context(
         "title": title,
         "description": description,
         "is_private": is_private,
-        **analysis_data,
+        **_analysis_template_data(analysis_data),
     }
 
 
@@ -463,7 +490,7 @@ async def _query_edit_form_context(
         "description": description or "",
         "is_private": is_private,
         "query_url": datasette.urls.table(db.name, existing.name),
-        **analysis_data,
+        **_analysis_template_data(analysis_data),
     }
 
 
@@ -496,7 +523,7 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     )
     try:
         result = await db.execute(
-            "select {} from {} where rowid = ?".format(select, escape_sqlite(table)),
+            f"select {select} from {escape_sqlite(table)} where rowid = ?",
             [lastrowid],
         )
     except sqlite3.DatabaseError:
@@ -504,7 +531,12 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     row = result.first()
     if row is None:
         return None
-    row_path = path_from_row_pks(row, pks, use_rowid)
+    row_path = path_from_row_pks(
+        row,
+        pks,
+        use_rowid,
+        typed_columns=untyped_columns(await db.table_column_details(table)),
+    )
     return datasette.urls.row(db.name, table, row_path)
 
 

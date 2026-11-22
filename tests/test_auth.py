@@ -1,27 +1,31 @@
+import asyncio
+import time
+from unittest.mock import AsyncMock
+
+import pytest
 from bs4 import BeautifulSoup as Soup
-from .utils import cookie_was_deleted, last_event
 from click.testing import CliRunner
-from datasette.utils import baseconv
+
 from datasette.cli import cli
 from datasette.resources import (
     DatabaseResource,
     TableResource,
 )
-import pytest
-import time
+from datasette.utils import baseconv
+
+from .utils import cookie_was_deleted, last_event
 
 
-@pytest.mark.asyncio
 async def test_auth_token(ds_client):
     """The /-/auth-token endpoint sets the correct cookie"""
     assert ds_client.ds._root_token is not None
     path = f"/-/auth-token?token={ds_client.ds._root_token}"
     response = await ds_client.get(path)
     assert response.status_code == 302
-    assert "/" == response.headers["Location"]
-    assert {"a": {"id": "root"}} == ds_client.ds.unsign(
-        response.cookies["ds_actor"], "actor"
-    )
+    assert response.headers["Location"] == "/"
+    assert ds_client.ds.unsign(response.cookies["ds_actor"], "actor") == {
+        "a": {"id": "root"}
+    }
     # Should have recorded a login event
     event = last_event(ds_client.ds)
     assert event.name == "login"
@@ -37,7 +41,6 @@ async def test_auth_token(ds_client):
     assert response.headers["Location"] == "/"
 
 
-@pytest.mark.asyncio
 async def test_actor_cookie(ds_client):
     """A valid actor cookie sets request.scope['actor']"""
     cookie = ds_client.actor_cookie({"id": "test"})
@@ -45,7 +48,6 @@ async def test_actor_cookie(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "test"}
 
 
-@pytest.mark.asyncio
 async def test_actor_cookie_invalid(ds_client):
     cookie = ds_client.actor_cookie({"id": "test"})
     # Break the signature
@@ -57,7 +59,6 @@ async def test_actor_cookie_invalid(ds_client):
     assert ds_client.ds._last_request.scope["actor"] is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "offset,expected",
     [
@@ -74,43 +75,40 @@ async def test_actor_cookie_that_expires(ds_client, offset, expected):
     assert ds_client.ds._last_request.scope["actor"] == expected
 
 
-def test_logout(app_client):
-    # Keeping app_client for the moment because of csrftoken_from
-    response = app_client.get(
-        "/-/logout", cookies={"ds_actor": app_client.actor_cookie({"id": "test"})}
+async def test_logout(ds_client):
+    response = await ds_client.get(
+        "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"id": "test"})}
     )
-    assert 200 == response.status
+    assert response.status_code == 200
     assert "<p>You are logged in as <strong>test</strong></p>" in response.text
     # Actors without an id get full serialization
-    response2 = app_client.get(
-        "/-/logout", cookies={"ds_actor": app_client.actor_cookie({"name2": "bob"})}
+    response2 = await ds_client.get(
+        "/-/logout", cookies={"ds_actor": ds_client.actor_cookie({"name2": "bob"})}
     )
-    assert 200 == response2.status
+    assert response2.status_code == 200
     assert (
         "<p>You are logged in as <strong>{&#39;name2&#39;: &#39;bob&#39;}</strong></p>"
         in response2.text
     )
     # If logged out you get a redirect to /
-    response3 = app_client.get("/-/logout")
-    assert 302 == response3.status
+    response3 = await ds_client.get("/-/logout")
+    assert response3.status_code == 302
     # A POST to that page should log the user out
-    response4 = app_client.post(
+    response4 = await ds_client.post(
         "/-/logout",
-        csrftoken_from=True,
-        cookies={"ds_actor": app_client.actor_cookie({"id": "test"})},
+        cookies={"ds_actor": ds_client.actor_cookie({"id": "test"})},
     )
     # Should have recorded a logout event
-    event = last_event(app_client.ds)
+    event = last_event(ds_client.ds)
     assert event.name == "logout"
     assert event.actor == {"id": "test"}
     # The ds_actor cookie should have been unset
     assert cookie_was_deleted(response4, "ds_actor")
     # Should also have set a message
-    messages = app_client.ds.unsign(response4.cookies["ds_messages"], "messages")
-    assert [["You are now logged out", 2]] == messages
+    messages = ds_client.ds.unsign(response4.cookies["ds_messages"], "messages")
+    assert messages == [["You are now logged out", 2]]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
 async def test_logout_button_in_navigation(ds_client, path):
     response = await ds_client.get(
@@ -125,7 +123,6 @@ async def test_logout_button_in_navigation(ds_client, path):
         assert fragment not in anon_response.text
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
 async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, path):
     response = await ds_client.get(path + "?_bot=1")
@@ -174,13 +171,13 @@ async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, p
         ),
     ),
 )
-def test_auth_create_token(
-    app_client, post_data, errors, expected_duration, expected_r
+async def test_auth_create_token(
+    ds_client, post_data, errors, expected_duration, expected_r
 ):
-    assert app_client.get("/-/create-token").status == 403
-    ds_actor = app_client.actor_cookie({"id": "test"})
-    response = app_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
-    assert response.status == 200
+    assert (await ds_client.get("/-/create-token")).status_code == 403
+    ds_actor = ds_client.actor_cookie({"id": "test"})
+    response = await ds_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
+    assert response.status_code == 200
     assert ">Create an API token<" in response.text
     # Confirm some aspects of expected set of checkboxes
     soup = Soup(response.text, "html.parser")
@@ -195,19 +192,18 @@ def test_auth_create_token(
         }
     )
     # Now try actually creating one
-    response2 = app_client.post(
+    response2 = await ds_client.post(
         "/-/create-token",
-        post_data,
-        csrftoken_from=True,
+        data=post_data,
         cookies={"ds_actor": ds_actor},
     )
-    assert response2.status == 200
+    assert response2.status_code == 200
     if errors:
         for error in errors:
-            assert '<p class="message-error">{}</p>'.format(error) in response2.text
+            assert f'<p class="message-error">{error}</p>' in response2.text
     else:
         # Check create-token event
-        event = last_event(app_client.ds)
+        event = last_event(ds_client.ds)
         assert event.name == "create-token"
         assert event.expires_after == expected_duration
         assert isinstance(event.restrict_all, list)
@@ -215,7 +211,7 @@ def test_auth_create_token(
         assert isinstance(event.restrict_resource, dict)
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
-        details = app_client.ds.unsign(token, "token")
+        details = ds_client.ds.unsign(token, "token")
         if expected_r:
             r = details.pop("_r")
             assert r == expected_r
@@ -226,27 +222,53 @@ def test_auth_create_token(
         else:
             assert details["d"] == expected_duration
         # And test that token
-        response3 = app_client.get(
+        response3 = await ds_client.get(
             "/-/actor.json",
-            headers={"Authorization": "Bearer {}".format("dstok_{}".format(token))},
+            headers={"Authorization": "Bearer {}".format(f"dstok_{token}")},
         )
-        assert response3.status == 200
-        assert response3.json["actor"]["id"] == "test"
+        assert response3.status_code == 200
+        assert response3.json()["actor"]["id"] == "test"
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize(
+    "restrictions",
+    [
+        {},
+        {"a": ["vi"]},
+        {"d": {"db": ["vd"]}},
+        {"r": {"db": {"t1": ["vt"]}}},
+    ],
+    ids=["empty", "instance", "database", "table"],
+)
+async def test_auth_create_token_not_allowed_for_restricted_actors(
+    bare_ds, monkeypatch, method, restrictions
+):
+    create_token = AsyncMock()
+    monkeypatch.setattr(bare_ds, "create_token", create_token)
+
+    response = await bare_ds.client.request(
+        method,
+        "/-/create-token",
+        actor={"id": "test", "_r": restrictions},
+    )
+
+    assert response.status_code == 403
+    assert "Restricted actors cannot create API tokens" in response.text
+    create_token.assert_not_called()
+
+
 async def test_auth_create_token_not_allowed_for_tokens(ds_client):
     ds_tok = ds_client.ds.sign(
         {"a": "test", "token": "dstok", "t": int(time.time())}, "token"
     )
     response = await ds_client.get(
         "/-/create-token",
-        headers={"Authorization": "Bearer dstok_{}".format(ds_tok)},
+        headers={"Authorization": f"Bearer dstok_{ds_tok}"},
     )
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(ds_client):
     ds_client.ds._settings["allow_signed_tokens"] = False
     try:
@@ -259,7 +281,6 @@ async def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(ds_clien
         ds_client.ds._settings["allow_signed_tokens"] = True
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario,should_work",
     (
@@ -286,12 +307,12 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
     elif scenario == "invalid_token":
         token = "invalid"
     if token:
-        token = "dstok_{}".format(token)
+        token = f"dstok_{token}"
     if scenario == "allow_signed_tokens_off":
         ds_client.ds._settings["allow_signed_tokens"] = False
     headers = {}
     if token:
-        headers["Authorization"] = "Bearer {}".format(token)
+        headers["Authorization"] = f"Bearer {token}"
     response = await ds_client.get("/-/actor.json", headers=headers)
     try:
         if should_work:
@@ -321,8 +342,8 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
 
 
 @pytest.mark.parametrize("expires", (None, 1000, -1000))
-def test_cli_create_token(app_client, expires):
-    secret = app_client.ds._secret
+def test_cli_create_token(ds_on_disk, expires):
+    secret = ds_on_disk._secret
     runner = CliRunner()
     args = ["create-token", "--secret", secret, "test"]
     if expires:
@@ -331,14 +352,17 @@ def test_cli_create_token(app_client, expires):
     assert result.exit_code == 0
     token = result.output.strip()
     assert token.startswith("dstok_")
-    details = app_client.ds.unsign(token[len("dstok_") :], "token")
+    details = ds_on_disk.unsign(token[len("dstok_") :], "token")
     expected_keys = {"a", "t"}
     if expires:
         expected_keys.add("d")
     assert details.keys() == expected_keys
     assert details["a"] == "test"
-    response = app_client.get(
-        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+    # Not an async test, because the CLI command above runs its own event loop
+    response = asyncio.run(
+        ds_on_disk.client.get(
+            "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
+        )
     )
     if expires is None or expires > 0:
         expected_actor = {
@@ -347,14 +371,13 @@ def test_cli_create_token(app_client, expires):
         }
         if expires and expires > 0:
             expected_actor["token_expires"] = details["t"] + expires
-        assert response.json == {"ok": True, "actor": expected_actor}
+        assert response.json() == {"ok": True, "actor": expected_actor}
     else:
         # Expired token - hard 401
-        assert response.status == 401
-        assert response.json["ok"] is False
+        assert response.status_code == 401
+        assert response.json()["ok"] is False
 
 
-@pytest.mark.asyncio
 async def test_root_with_root_enabled_gets_all_permissions(ds_client):
     """Root user with root_enabled=True gets all permissions"""
     # Ensure catalog tables are populated
@@ -458,7 +481,6 @@ async def test_root_with_root_enabled_gets_all_permissions(ds_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_root_without_root_enabled_no_special_permissions(ds_client):
     """Root user without root_enabled doesn't get automatic permissions"""
     # Ensure catalog tables are populated
@@ -521,3 +543,25 @@ async def test_root_without_root_enabled_no_special_permissions(ds_client):
         )
         is not True
     ), "Root without root_enabled should not automatically get set-column-type"
+
+
+@pytest.mark.parametrize("expire_after", (1, 300, 3600, 30 * 24 * 60 * 60))
+def test_set_actor_cookie_honours_expire_after(expire_after):
+    # GHSA-53fc-rhfg-h7qp issue 4: expire_after is documented as a number of
+    # seconds, but every value was being replaced with 24 hours.
+    from datasette.app import Datasette
+    from datasette.utils.asgi import Response
+
+    ds = Datasette(memory=True)
+    response = Response.text("")
+    before = int(time.time())
+    ds.set_actor_cookie(response, {"id": "test"}, expire_after=expire_after)
+    after = int(time.time())
+
+    (header,) = response._set_cookie_headers
+    assert header.startswith("ds_actor=")
+    value = header[len("ds_actor=") :].split(";", 1)[0]
+    data = ds.unsign(value, "actor")
+    assert data["a"] == {"id": "test"}
+    expires_at = baseconv.base62.decode(data["e"])
+    assert before + expire_after <= expires_at <= after + expire_after

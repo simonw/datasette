@@ -1,6 +1,8 @@
-from datasette.utils.asgi import PayloadTooLarge, Request
 import json
+
 import pytest
+
+from datasette.utils.asgi import PayloadTooLarge, Request
 
 
 def _post_scope(headers=None):
@@ -33,7 +35,51 @@ def _receive_chunks(chunks):
     return receive
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "header_name", [b"content-type", b"Content-Type", b"CONTENT-TYPE"]
+)
+@pytest.mark.parametrize("lookup", ["content-type", "Content-Type", "CONTENT-TYPE"])
+def test_request_headers_case_insensitive(header_name, lookup):
+    request = Request({"headers": [(header_name, b"application/json")]}, None)
+    assert request.headers.get(lookup) == "application/json"
+    assert request.headers[lookup] == "application/json"
+    assert lookup in request.headers
+
+
+def test_request_headers_mapping():
+    request = Request(
+        {
+            "headers": [
+                (b"Content-Type", b"application/json"),
+                (b"X-Title", "café".encode("latin-1")),
+                (b"CONTENT-TYPE", b"text/plain"),
+            ]
+        },
+        None,
+    )
+    headers = request.headers
+    expected = {"content-type": "text/plain", "x-title": "café"}
+    assert headers == expected
+    assert dict(headers) == expected
+    assert list(headers) == list(expected)
+    assert list(headers.keys()) == list(expected.keys())
+    assert list(headers.items()) == list(expected.items())
+    assert json.loads(json.dumps(headers)) == expected
+    assert headers["Content-Type"] == "text/plain"
+    assert headers["X-Title"] == "café"
+
+
+@pytest.mark.parametrize("scope", [{}, {"headers": None}, {"headers": []}])
+def test_request_headers_missing(scope):
+    headers = Request(scope, None).headers
+    assert headers == {}
+    assert headers.get("Content-Type") is None
+    assert headers.get("Content-Type", "default") == "default"
+    assert "Content-Type" not in headers
+    with pytest.raises(KeyError):
+        headers["Content-Type"]
+
+
 async def test_request_post_vars():
     scope = {
         "http_version": "1.1",
@@ -54,10 +100,9 @@ async def test_request_post_vars():
         }
 
     request = Request(scope, receive)
-    assert {"foo": "bar", "baz": "1", "empty": ""} == await request.post_vars()
+    assert await request.post_vars() == {"foo": "bar", "baz": "1", "empty": ""}
 
 
-@pytest.mark.asyncio
 async def test_request_post_body():
     scope = {
         "http_version": "1.1",
@@ -85,7 +130,6 @@ async def test_request_post_body():
     assert data == json.loads(body)
 
 
-@pytest.mark.asyncio
 async def test_request_json():
     scope = {
         "http_version": "1.1",
@@ -111,7 +155,6 @@ async def test_request_json():
     assert data == await request.json()
 
 
-@pytest.mark.asyncio
 async def test_request_json_invalid():
     scope = {
         "http_version": "1.1",
@@ -136,13 +179,11 @@ async def test_request_json_invalid():
         await request.json()
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_multiple_chunks():
     request = Request(_post_scope(), _receive_chunks([b"hello ", b"world"]))
     assert await request.post_body() == b"hello world"
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_content_length_too_large():
     # Should reject based on content-length without reading the body
     async def receive():
@@ -159,7 +200,6 @@ async def test_request_post_body_content_length_too_large():
         await request.post_body(max_bytes=100)
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_streaming_too_large():
     # No content-length header - limit enforced as chunks arrive
     chunks = [b"a" * 60, b"b" * 60, b"c" * 60]
@@ -168,7 +208,6 @@ async def test_request_post_body_streaming_too_large():
         await request.post_body(max_bytes=100)
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_limit_from_constructor():
     request = Request(
         _post_scope(), _receive_chunks([b"too much data"]), max_post_body_bytes=5
@@ -177,22 +216,24 @@ async def test_request_post_body_limit_from_constructor():
         await request.post_body()
 
 
-@pytest.mark.asyncio
 async def test_request_post_body_limit_disabled():
-    body = b"a" * (3 * 1024 * 1024)
+    body = b"a" * (11 * 1024 * 1024)
     request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=0)
     assert await request.post_body() == body
 
 
-@pytest.mark.asyncio
-async def test_request_post_body_default_limit():
-    # Bodies over 2MB are rejected by default
-    request = Request(_post_scope(), _receive_chunks([b"a" * (2 * 1024 * 1024 + 1)]))
-    with pytest.raises(PayloadTooLarge):
-        await request.post_body()
+@pytest.mark.parametrize("extra_byte", [0, 1])
+async def test_request_post_body_default_limit(extra_byte):
+    # Bodies up to 10MB are accepted by default
+    body = b"a" * (10 * 1024 * 1024 + extra_byte)
+    request = Request(_post_scope(), _receive_chunks([body]))
+    if extra_byte:
+        with pytest.raises(PayloadTooLarge):
+            await request.post_body()
+    else:
+        assert await request.post_body() == body
 
 
-@pytest.mark.asyncio
 async def test_request_json_too_large():
     body = json.dumps({"rows": ["x" * 100]}).encode("utf-8")
     request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=50)
@@ -202,20 +243,20 @@ async def test_request_json_too_large():
 
 def test_request_args():
     request = Request.fake("/foo?multi=1&multi=2&single=3")
-    assert "1" == request.args.get("multi")
-    assert "3" == request.args.get("single")
-    assert "1" == request.args["multi"]
-    assert "3" == request.args["single"]
-    assert ["1", "2"] == request.args.getlist("multi")
-    assert [] == request.args.getlist("missing")
+    assert request.args.get("multi") == "1"
+    assert request.args.get("single") == "3"
+    assert request.args["multi"] == "1"
+    assert request.args["single"] == "3"
+    assert request.args.getlist("multi") == ["1", "2"]
+    assert request.args.getlist("missing") == []
     assert "multi" in request.args
     assert "single" in request.args
     assert "missing" not in request.args
     expected = ["multi", "single"]
-    assert expected == list(request.args.keys())
+    assert list(request.args.keys()) == expected
     for i, key in enumerate(request.args):
         assert expected[i] == key
-    assert 2 == len(request.args)
+    assert len(request.args) == 2
     with pytest.raises(KeyError):
         request.args["missing"]
 
@@ -246,10 +287,10 @@ def test_request_url_vars():
         "type": "http",
         "headers": [[b"content-type", b"application/x-www-form-urlencoded"]],
     }
-    assert {} == Request(scope, None).url_vars
-    assert {"name": "cleo"} == Request(
+    assert Request(scope, None).url_vars == {}
+    assert Request(
         dict(scope, url_route={"kwargs": {"name": "cleo"}}), None
-    ).url_vars
+    ).url_vars == {"name": "cleo"}
 
 
 @pytest.mark.parametrize(

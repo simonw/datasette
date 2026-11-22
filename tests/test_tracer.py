@@ -1,14 +1,23 @@
 import pytest
-from .fixtures import make_app_client
+import pytest_asyncio
+
+from .fixtures import make_ds
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def trace_ds():
+    ds = await make_ds(settings={"trace_debug": True})
+    yield ds
+    ds.close()
 
 
 @pytest.mark.parametrize("trace_debug", (True, False))
-def test_trace(trace_debug):
-    with make_app_client(settings={"trace_debug": trace_debug}) as client:
-        response = client.get("/fixtures/simple_primary_key.json?_trace=1")
-        assert response.status == 200
+async def test_trace(trace_debug):
+    ds = await make_ds(settings={"trace_debug": trace_debug})
+    response = await ds.client.get("/fixtures/simple_primary_key.json?_trace=1")
+    assert response.status_code == 200
 
-    data = response.json
+    data = response.json()
     if not trace_debug:
         assert "_trace" not in data
         return
@@ -39,56 +48,53 @@ def test_trace(trace_debug):
     assert any(sql.startswith("select ") for sql in sqls), "No select statements traced"
 
 
-def test_trace_silently_fails_for_large_page():
+async def test_trace_silently_fails_for_large_page(trace_ds):
     # Max HTML size is 256KB
-    with make_app_client(settings={"trace_debug": True}) as client:
-        # Small response should have trace
-        small_response = client.get("/fixtures/simple_primary_key.json?_trace=1")
-        assert small_response.status == 200
-        assert "_trace" in small_response.json
+    # Small response should have trace
+    small_response = await trace_ds.client.get(
+        "/fixtures/simple_primary_key.json?_trace=1"
+    )
+    assert small_response.status_code == 200
+    assert "_trace" in small_response.json()
 
-        # Big response should not
-        big_response = client.get(
-            "/fixtures/-/query.json",
-            params={"_trace": 1, "sql": "select zeroblob(1024 * 256)"},
-        )
-        assert big_response.status == 200
-        assert "_trace" not in big_response.json
+    # Big response should not
+    big_response = await trace_ds.client.get(
+        "/fixtures/-/query.json",
+        params={"_trace": 1, "sql": "select zeroblob(1024 * 256)"},
+    )
+    assert big_response.status_code == 200
+    assert "_trace" not in big_response.json()
 
 
-def test_trace_query_errors():
-    with make_app_client(settings={"trace_debug": True}) as client:
-        response = client.get(
-            "/fixtures/-/query.json",
-            params={"_trace": 1, "sql": "select * from non_existent_table"},
-        )
-        assert response.status == 400
+async def test_trace_query_errors(trace_ds):
+    response = await trace_ds.client.get(
+        "/fixtures/-/query.json",
+        params={"_trace": 1, "sql": "select * from non_existent_table"},
+    )
+    assert response.status_code == 400
 
-    data = response.json
+    data = response.json()
     assert "_trace" in data
     trace_info = data["_trace"]
     assert trace_info["traces"][-1]["error"] == "no such table: non_existent_table"
 
 
-@pytest.mark.asyncio
 async def test_trace_child_tasks_resets_contextvar_on_exception():
     from datasette import tracer
 
     before = tracer.trace_task_id.get()
-    with pytest.raises(ValueError):
-        with tracer.trace_child_tasks():
-            assert tracer.trace_task_id.get() is not None
-            raise ValueError("simulated error")
+    with pytest.raises(ValueError), tracer.trace_child_tasks():
+        assert tracer.trace_task_id.get() is not None
+        raise ValueError("simulated error")
     # The contextvar must be reset even though the block raised
     assert tracer.trace_task_id.get() == before
 
 
-def test_trace_parallel_queries():
-    with make_app_client(settings={"trace_debug": True}) as client:
-        response = client.get("/parallel-queries?_trace=1")
-        assert response.status == 200
+async def test_trace_parallel_queries(trace_ds):
+    response = await trace_ds.client.get("/parallel-queries?_trace=1")
+    assert response.status_code == 200
 
-    data = response.json
+    data = response.json()
     assert data["one"] == 1
     assert data["two"] == 2
     trace_info = data["_trace"]

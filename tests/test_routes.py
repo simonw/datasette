@@ -1,7 +1,11 @@
-from datasette.app import Datasette, Database
-from datasette.utils import resolve_routes
+import pathlib
+import sqlite3
+
 import pytest
 import pytest_asyncio
+
+from datasette.app import Database, Datasette
+from datasette.utils import resolve_routes
 
 
 @pytest.fixture(scope="session")
@@ -70,7 +74,6 @@ async def ds_with_route():
     return ds
 
 
-@pytest.mark.asyncio
 async def test_db_with_route_databases(ds_with_route):
     response = await ds_with_route.client.get("/-/databases.json")
     assert response.json()["databases"][0] == {
@@ -84,7 +87,6 @@ async def test_db_with_route_databases(ds_with_route):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status",
     (
@@ -107,3 +109,46 @@ async def test_db_with_route_that_does_not_match_name(
     if response.status_code == 200:
         assert "/custom-route-name" in response.text
         assert "/original-name" not in response.text
+
+
+async def test_db_with_route_download_checks_permissions_against_name(tmp_path):
+    # Permission rules refer to a database by its name, so the download at
+    # /<route>.db needs to check them against the name, not the route
+    path = str(tmp_path / "private.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette(
+        config={"databases": {"original-name": {"allow": {"id": "root"}}}},
+    )
+    await ds.invoke_startup()
+    ds.add_database(
+        Database(ds, path=path, is_mutable=False),
+        name="original-name",
+        route="custom-route-name",
+    )
+    # Actors the allow block does not match cannot view the database page
+    # or download the file
+    for actor in (None, {"id": "not-root"}):
+        for url in ("/custom-route-name", "/custom-route-name.db"):
+            response = await ds.client.get(url, actor=actor)
+            assert response.status_code == 403
+    # The actor matched by the allow block can do both
+    root = {"id": "root"}
+    assert (await ds.client.get("/custom-route-name", actor=root)).status_code == 200
+    response = await ds.client.get("/custom-route-name.db", actor=root)
+    assert response.status_code == 200
+    assert response.content == pathlib.Path(path).read_bytes()
+    # The name is not a route, and neither is an unknown database
+    for missing in ("/original-name.db", "/does-not-exist.db"):
+        assert (await ds.client.get(missing, actor=root)).status_code == 404
+
+
+async def test_db_download_checks_permission_before_404():
+    # An actor denied for the whole instance gets a 403 for a database that
+    # does not exist, not a 404
+    ds = Datasette(config={"allow": {"id": "root"}})
+    await ds.invoke_startup()
+    assert (await ds.client.get("/does-not-exist.db")).status_code == 403
+    response = await ds.client.get("/does-not-exist.db", actor={"id": "root"})
+    assert response.status_code == 404

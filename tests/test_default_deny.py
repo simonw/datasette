@@ -1,9 +1,7 @@
-import pytest
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, TableResource
 
 
-@pytest.mark.asyncio
 async def test_default_deny_denies_default_permissions():
     """Test that default_deny=True denies default permissions"""
     # Without default_deny, anonymous users can view instance/database/tables
@@ -45,7 +43,6 @@ async def test_default_deny_denies_default_permissions():
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_default_deny_with_root_user():
     """Test that root user still has access when default_deny=True"""
     ds = Datasette(default_deny=True)
@@ -80,7 +77,6 @@ async def test_default_deny_with_root_user():
     )
 
 
-@pytest.mark.asyncio
 async def test_default_deny_with_config_allow():
     """Test that config allow rules still work with default_deny=True"""
     ds = Datasette(default_deny=True, config={"allow": {"id": "user1"}})
@@ -96,7 +92,6 @@ async def test_default_deny_with_config_allow():
     assert await ds.allowed(action="view-instance", actor={"id": "user2"}) is False
 
 
-@pytest.mark.asyncio
 async def test_default_deny_basic_permissions():
     """Test that default_deny=True denies basic permissions"""
     ds = Datasette(default_deny=True)
@@ -129,7 +124,6 @@ async def test_default_deny_basic_permissions():
     assert await ds.allowed(action="view-instance", actor={"id": "user"}) is False
 
 
-@pytest.mark.asyncio
 async def test_default_deny_root_no_config_index_does_not_500():
     # https://github.com/simonw/datasette/issues/2644
     # --default-deny --root with no config file must not 500 on the index

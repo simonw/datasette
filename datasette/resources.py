@@ -25,6 +25,7 @@ class TableResource(Resource):
 
     name = "table"
     parent_class = DatabaseResource
+    case_insensitive_child = True
 
     def __init__(self, database: str, table: str):
         super().__init__(parent=database, child=table)

@@ -1,6 +1,7 @@
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
+
 from datasette.app import Datasette
 
 
@@ -27,7 +28,6 @@ async def datasette_with_permissions():
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method,path,expected_status",
     [
@@ -42,14 +42,13 @@ async def datasette_with_permissions():
 async def test_client_methods(datasette, method, path, expected_status):
     client_method = getattr(datasette.client, method)
     response = await client_method(path)
-    assert isinstance(response, httpx.Response)
+    assert isinstance(response, httpx2.Response)
     assert response.status_code == expected_status
     # Try that again using datasette.client.request
     response2 = await datasette.client.request(method, path)
     assert response2.status_code == expected_status
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("prefix", [None, "/prefix/"])
 async def test_client_post(datasette, prefix):
     original_base_url = datasette._settings["base_url"]
@@ -62,14 +61,13 @@ async def test_client_post(datasette, prefix):
                 "message": "A message",
             },
         )
-        assert isinstance(response, httpx.Response)
+        assert isinstance(response, httpx2.Response)
         assert response.status_code == 302
         assert "ds_messages" in response.cookies
     finally:
         datasette._settings["base_url"] = original_base_url
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "prefix,expected_path", [(None, "/asgi-scope"), ("/prefix/", "/prefix/asgi-scope")]
 )
@@ -85,7 +83,6 @@ async def test_client_path(datasette, prefix, expected_path):
         datasette._settings["base_url"] = original_base_url
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_allows_forbidden_access(
     datasette_with_permissions,
 ):
@@ -103,7 +100,6 @@ async def test_skip_permission_checks_allows_forbidden_access(
     assert data["database"] == "test_db"
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_on_table(datasette_with_permissions):
     """Test skip_permission_checks works for table access"""
     ds = datasette_with_permissions
@@ -121,7 +117,6 @@ async def test_skip_permission_checks_on_table(datasette_with_permissions):
     assert data["rows"] == [{"id": 1, "name": "Alice"}]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method", ["get", "post", "put", "patch", "delete", "options", "head"]
 )
@@ -134,10 +129,9 @@ async def test_skip_permission_checks_all_methods(datasette_with_permissions, me
     response = await client_method("/test_db.json", skip_permission_checks=True)
     # We don't check status code since some methods might not be allowed,
     # but we verify the request doesn't fail due to permissions
-    assert isinstance(response, httpx.Response)
+    assert isinstance(response, httpx2.Response)
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_request_method(datasette_with_permissions):
     """Test that skip_permission_checks works with client.request()"""
     ds = datasette_with_permissions
@@ -153,7 +147,6 @@ async def test_skip_permission_checks_request_method(datasette_with_permissions)
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_isolated_to_request(datasette_with_permissions):
     """Test that skip_permission_checks doesn't affect other concurrent requests"""
     ds = datasette_with_permissions
@@ -171,7 +164,6 @@ async def test_skip_permission_checks_isolated_to_request(datasette_with_permiss
     assert response3.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_with_admin_actor(datasette_with_permissions):
     """Test that skip_permission_checks works even when actor is provided"""
     ds = datasette_with_permissions
@@ -193,7 +185,6 @@ async def test_skip_permission_checks_with_admin_actor(datasette_with_permission
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_skip_permission_checks_shows_denied_tables():
     """Test that skip_permission_checks=True shows tables from denied databases in /-/jump.json"""
     ds = Datasette(
@@ -229,16 +220,14 @@ async def test_skip_permission_checks_shows_denied_tables():
     assert "fixtures: test_table" in table_names
 
 
-@pytest.mark.asyncio
 async def test_in_client_returns_false_outside_request(datasette):
     """Test that datasette.in_client() returns False outside of a client request"""
     assert datasette.in_client() is False
 
 
-@pytest.mark.asyncio
 async def test_in_client_returns_true_inside_request():
     """Test that datasette.in_client() returns True inside a client request"""
-    from datasette import hookimpl, Response
+    from datasette import Response, hookimpl
 
     class TestPlugin:
         __name__ = "test_in_client_plugin"
@@ -273,7 +262,6 @@ async def test_in_client_returns_true_inside_request():
         ds.pm.unregister(name="test_in_client_plugin")
 
 
-@pytest.mark.asyncio
 async def test_in_client_with_skip_permission_checks():
     """Test that in_client() works regardless of skip_permission_checks value"""
     from datasette import hookimpl
@@ -313,7 +301,6 @@ async def test_in_client_with_skip_permission_checks():
         ds.pm.unregister(name="test_in_client_skip_plugin")
 
 
-@pytest.mark.asyncio
 async def test_actor_parameter_sets_cookie(datasette):
     """Passing actor= should sign a ds_actor cookie and authenticate the request."""
     response = await datasette.client.get("/-/actor.json", actor={"id": "root"})
@@ -321,7 +308,6 @@ async def test_actor_parameter_sets_cookie(datasette):
     assert response.json() == {"ok": True, "actor": {"id": "root"}}
 
 
-@pytest.mark.asyncio
 async def test_actor_parameter_works_with_request_method(datasette):
     response = await datasette.client.request(
         "GET", "/-/actor.json", actor={"id": "root"}
@@ -330,7 +316,6 @@ async def test_actor_parameter_works_with_request_method(datasette):
     assert response.json() == {"ok": True, "actor": {"id": "root"}}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method", ["get", "post", "options", "head", "put", "patch", "delete"]
 )
@@ -339,10 +324,9 @@ async def test_actor_parameter_all_http_methods(datasette, method):
     client_method = getattr(datasette.client, method)
     # Just verify no TypeError about unexpected 'actor' kwarg
     response = await client_method("/", actor={"id": "root"})
-    assert isinstance(response, httpx.Response)
+    assert isinstance(response, httpx2.Response)
 
 
-@pytest.mark.asyncio
 async def test_actor_parameter_conflicts_with_ds_actor_cookie(datasette):
     """Passing both actor= and a ds_actor cookie should raise TypeError."""
     with pytest.raises(TypeError, match="actor"):
@@ -353,7 +337,6 @@ async def test_actor_parameter_conflicts_with_ds_actor_cookie(datasette):
         )
 
 
-@pytest.mark.asyncio
 async def test_actor_parameter_merges_with_other_cookies(datasette):
     """actor= should coexist with unrelated cookies."""
     response = await datasette.client.get(
@@ -365,7 +348,6 @@ async def test_actor_parameter_merges_with_other_cookies(datasette):
     assert response.json() == {"ok": True, "actor": {"id": "root"}}
 
 
-@pytest.mark.asyncio
 async def test_actor_parameter_with_skip_permission_checks(
     datasette_with_permissions,
 ):

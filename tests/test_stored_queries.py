@@ -1,18 +1,21 @@
-from bs4 import BeautifulSoup as Soup
-from asgiref.sync import async_to_sync
 import json
-import pytest
 import re
-from .fixtures import make_app_client
+
+import pytest
+import pytest_asyncio
+from bs4 import BeautifulSoup as Soup
+
+from datasette.utils.asgi import Request
+from datasette.views.database import MagicParameters
+
+from .fixtures import make_ds, make_ds_on_disk
+
+# These tests send JSON bodies using the content type of an HTML form
+FORM_CONTENT_TYPE = {"content-type": "application/x-www-form-urlencoded"}
 
 
-def update_query(client, name, **kwargs):
-    async_to_sync(client.ds.invoke_startup)()
-    async_to_sync(client.ds.update_query)("data", name, **kwargs)
-
-
-@pytest.fixture
-def stored_write_client(tmpdir):
+@pytest_asyncio.fixture
+async def stored_write_client(tmpdir):
     template_dir = tmpdir / "stored_write_templates"
     template_dir.mkdir()
     (template_dir / "query-data-update_name.html").write_text(
@@ -22,8 +25,8 @@ def stored_write_client(tmpdir):
     """,
         "utf-8",
     )
-    with make_app_client(
-        extra_databases={"data.db": "create table names (name text)"},
+    ds = await make_ds(
+        extra_databases={"data": "create table names (name text)"},
         template_dir=str(template_dir),
         config={
             "databases": {
@@ -61,13 +64,13 @@ def stored_write_client(tmpdir):
                 }
             }
         },
-    ) as client:
-        yield client
+    )
+    return ds.client
 
 
 @pytest.fixture
 def stored_write_immutable_client():
-    with make_app_client(
+    with make_ds_on_disk(
         is_immutable=True,
         config={
             "databases": {
@@ -81,11 +84,11 @@ def stored_write_immutable_client():
                 }
             }
         },
-    ) as client:
-        yield client
+    ) as ds:
+        # Immutable databases need a file on disk
+        yield ds.client
 
 
-@pytest.mark.asyncio
 async def test_stored_query_with_named_parameter(ds_client):
     response = await ds_client.get(
         "/fixtures/neighborhood_search.json?text=town&_shape=arrays"
@@ -100,83 +103,80 @@ async def test_stored_query_with_named_parameter(ds_client):
     ]
 
 
-def test_insert(stored_write_client):
-    response = stored_write_client.post(
+async def test_insert(stored_write_client):
+    response = await stored_write_client.post(
         "/data/add_name",
-        {"name": "Hello"},
-        csrftoken_from=True,
+        data={"name": "Hello"},
         cookies={"foo": "bar"},
     )
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
     assert messages == [["Query executed, 1 row affected", 1]]
-    assert response.status == 302
+    assert response.status_code == 302
     assert response.headers["Location"] == "/data/add_name?success"
 
 
-def test_insert_blocked_cross_site(stored_write_client):
+async def test_insert_blocked_cross_site(stored_write_client):
     # A cross-site POST (browser-originated) must be blocked
-    response = stored_write_client.post(
+    response = await stored_write_client.post(
         "/data/add_name",
-        {"name": "Hello"},
+        data={"name": "Hello"},
         headers={"sec-fetch-site": "cross-site"},
     )
-    assert 403 == response.status
+    assert response.status_code == 403
 
 
-def test_insert_no_cookies_no_csrf(stored_write_client):
-    response = stored_write_client.post("/data/add_name", {"name": "Hello"})
-    assert 302 == response.status
-    assert "/data/add_name?success" == response.headers["Location"]
+async def test_insert_no_cookies_no_csrf(stored_write_client):
+    response = await stored_write_client.post("/data/add_name", data={"name": "Hello"})
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/data/add_name?success"
 
 
-def test_custom_success_message(stored_write_client):
-    response = stored_write_client.post(
+async def test_custom_success_message(stored_write_client):
+    response = await stored_write_client.post(
         "/data/delete_name",
-        {"rowid": 1},
+        data={"rowid": 1},
         cookies={"ds_actor": stored_write_client.actor_cookie({"id": "root"})},
-        csrftoken_from=True,
     )
-    assert 302 == response.status
+    assert response.status_code == 302
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
-    assert [["Name deleted", 1]] == messages
+    assert messages == [["Name deleted", 1]]
 
 
-def test_insert_error(stored_write_client):
-    stored_write_client.post("/data/add_name", {"name": "Hello"}, csrftoken_from=True)
-    response = stored_write_client.post(
+async def test_insert_error(stored_write_client):
+    await stored_write_client.post("/data/add_name", data={"name": "Hello"})
+    response = await stored_write_client.post(
         "/data/add_name_specify_id",
-        {"rowid": 1, "name": "Should fail"},
-        csrftoken_from=True,
+        data={"rowid": 1, "name": "Should fail"},
     )
-    assert 302 == response.status
-    assert "/data/add_name_specify_id?error" == response.headers["Location"]
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/data/add_name_specify_id?error"
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
-    assert [["UNIQUE constraint failed: names.rowid", 3]] == messages
+    assert messages == [["UNIQUE constraint failed: names.rowid", 3]]
     # How about with a custom error message?
-    update_query(stored_write_client, "add_name_specify_id", on_error_message="ERROR")
-    response = stored_write_client.post(
-        "/data/add_name_specify_id",
-        {"rowid": 1, "name": "Should fail"},
-        csrftoken_from=True,
+    await stored_write_client.ds.update_query(
+        "data", "add_name_specify_id", on_error_message="ERROR"
     )
-    assert [["ERROR", 3]] == stored_write_client.ds.unsign(
+    response = await stored_write_client.post(
+        "/data/add_name_specify_id",
+        data={"rowid": 1, "name": "Should fail"},
+    )
+    assert stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
-    )
+    ) == [["ERROR", 3]]
 
 
-def test_on_success_message_sql(stored_write_client):
-    response = stored_write_client.post(
+async def test_on_success_message_sql(stored_write_client):
+    response = await stored_write_client.post(
         "/data/add_name_specify_id",
-        {"rowid": 5, "name": "Should be OK"},
-        csrftoken_from=True,
+        data={"rowid": 5, "name": "Should be OK"},
     )
-    assert response.status == 302
+    assert response.status_code == 302
     assert response.headers["Location"] == "/data/add_name_specify_id"
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
@@ -184,11 +184,10 @@ def test_on_success_message_sql(stored_write_client):
     assert messages == [["Name added: Should be OK with rowid 5", 1]]
 
 
-def test_error_in_on_success_message_sql(stored_write_client):
-    response = stored_write_client.post(
+async def test_error_in_on_success_message_sql(stored_write_client):
+    response = await stored_write_client.post(
         "/data/add_name_specify_id_with_error_in_on_success_message_sql",
-        {"rowid": 1, "name": "Should fail"},
-        csrftoken_from=True,
+        data={"rowid": 1, "name": "Should fail"},
     )
     messages = stored_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
@@ -198,29 +197,31 @@ def test_error_in_on_success_message_sql(stored_write_client):
     ]
 
 
-def test_custom_params(stored_write_client):
-    response = stored_write_client.get("/data/update_name?extra=foo")
+async def test_custom_params(stored_write_client):
+    response = await stored_write_client.get("/data/update_name?extra=foo")
     assert (
         '<input type="text" id="qp3" name="extra" value="foo" data-parameter-control data-parameter-name="extra">'
         in response.text
     )
 
 
-def test_stored_query_pages_no_vary_header(stored_write_client):
-    # These pages no longer embed per-cookie CSRF tokens, so they must not
-    # set Vary: Cookie - they should be cacheable across users.
-    assert "vary" not in stored_write_client.get("/data").headers
-    assert "vary" not in stored_write_client.get("/data/update_name").headers
+async def test_stored_query_pages_vary_by_credentials(stored_write_client):
+    # Even without per-cookie CSRF tokens, anonymous pages must not be reused
+    # for authenticated users whose permissions or navigation can differ.
+    for path in ("/data", "/data/update_name"):
+        response = await stored_write_client.get(path)
+        assert response.headers["vary"] == "Cookie, Authorization"
 
 
-def test_json_post_body(stored_write_client):
-    response = stored_write_client.post(
+async def test_json_post_body(stored_write_client):
+    response = await stored_write_client.post(
         "/data/add_name",
-        body=json.dumps({"name": ["Hello", "there"]}),
+        content=json.dumps({"name": ["Hello", "there"]}),
+        headers=FORM_CONTENT_TYPE,
     )
-    assert 302 == response.status
-    assert "/data/add_name?success" == response.headers["Location"]
-    rows = stored_write_client.get("/data/names.json?_shape=array").json
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/data/add_name?success"
+    rows = (await stored_write_client.get("/data/names.json?_shape=array")).json()
     assert rows == [{"rowid": 1, "name": "['Hello', 'there']"}]
 
 
@@ -233,27 +234,27 @@ def test_json_post_body(stored_write_client):
         (None, '{"name": "NameGoesHere", "_json": 1}', None),
     ),
 )
-def test_json_response(stored_write_client, headers, body, querystring):
-    response = stored_write_client.post(
+async def test_json_response(stored_write_client, headers, body, querystring):
+    response = await stored_write_client.post(
         "/data/add_name" + (querystring or ""),
-        body=body,
-        headers=headers,
+        content=body,
+        headers={**FORM_CONTENT_TYPE, **(headers or {})},
     )
-    assert 200 == response.status
+    assert response.status_code == 200
     assert response.headers["content-type"] == "application/json; charset=utf-8"
-    assert response.json == {
+    assert response.json() == {
         "ok": True,
         "message": "Query executed, 1 row affected",
         "redirect": "/data/add_name?success",
     }
-    rows = stored_write_client.get("/data/names.json?_shape=array").json
+    rows = (await stored_write_client.get("/data/names.json?_shape=array")).json()
     assert rows == [{"rowid": 1, "name": "NameGoesHere"}]
 
 
-def test_stored_query_permissions_on_database_page(stored_write_client):
+async def test_stored_query_permissions_on_database_page(stored_write_client):
     # Without auth shows the five public queries
-    anon_response = stored_write_client.get("/data.json")
-    query_names = {q["name"] for q in anon_response.json["queries"]}
+    anon_response = await stored_write_client.get("/data.json")
+    query_names = {q["name"] for q in anon_response.json()["queries"]}
     assert query_names == {
         "add_name_specify_id_with_error_in_on_success_message_sql",
         "update_name",
@@ -261,18 +262,18 @@ def test_stored_query_permissions_on_database_page(stored_write_client):
         "stored_read",
         "add_name",
     }
-    assert anon_response.json["queries_more"] is False
+    assert anon_response.json()["queries_more"] is False
 
     # With auth the database page preview shows the first five queries
-    response = stored_write_client.get(
+    response = await stored_write_client.get(
         "/data.json",
         cookies={"ds_actor": stored_write_client.actor_cookie({"id": "root"})},
     )
-    assert response.status == 200
+    assert response.status_code == 200
     query_names_and_private = sorted(
         [
             {"name": q["name"], "private": q["private"]}
-            for q in response.json["queries"]
+            for q in response.json()["queries"]
         ],
         key=lambda q: q["name"],
     )
@@ -286,18 +287,18 @@ def test_stored_query_permissions_on_database_page(stored_write_client):
         {"name": "delete_name", "private": True},
         {"name": "stored_read", "private": False},
     ]
-    assert response.json["queries_more"] is True
+    assert response.json()["queries_more"] is True
 
     # The full query list endpoint includes the remaining query
-    response = stored_write_client.get(
+    response = await stored_write_client.get(
         "/data/-/queries.json?_size=10",
         cookies={"ds_actor": stored_write_client.actor_cookie({"id": "root"})},
     )
-    assert response.status == 200
+    assert response.status_code == 200
     query_names_and_private = sorted(
         [
             {"name": q["name"], "private": q["private"]}
-            for q in response.json["queries"]
+            for q in response.json()["queries"]
         ],
         key=lambda q: q["name"],
     )
@@ -314,18 +315,22 @@ def test_stored_query_permissions_on_database_page(stored_write_client):
     ]
 
 
-def test_stored_query_permissions(stored_write_client):
-    assert 403 == stored_write_client.get("/data/delete_name").status
-    assert 200 == stored_write_client.get("/data/update_name").status
+async def test_stored_query_permissions(stored_write_client):
+    assert (await stored_write_client.get("/data/delete_name")).status_code == 403
+    assert (await stored_write_client.get("/data/update_name")).status_code == 200
     cookies = {"ds_actor": stored_write_client.actor_cookie({"id": "root"})}
-    assert 200 == stored_write_client.get("/data/delete_name", cookies=cookies).status
-    assert 200 == stored_write_client.get("/data/update_name", cookies=cookies).status
+    assert (
+        await stored_write_client.get("/data/delete_name", cookies=cookies)
+    ).status_code == 200
+    assert (
+        await stored_write_client.get("/data/update_name", cookies=cookies)
+    ).status_code == 200
 
 
-@pytest.fixture(scope="session")
-def magic_parameters_client():
-    with make_app_client(
-        extra_databases={"data.db": "create table logs (line text)"},
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def magic_parameters_client():
+    ds = await make_ds(
+        extra_databases={"data": "create table logs (line text)"},
         config={
             "databases": {
                 "data": {
@@ -336,8 +341,29 @@ def magic_parameters_client():
                 }
             }
         },
-    ) as client:
-        yield client
+    )
+    yield ds.client
+    ds.close()
+
+
+@pytest.mark.parametrize(
+    "actor,key",
+    [
+        (None, "id"),
+        (None, "name"),
+        ({}, "id"),
+        ({"id": "root"}, "name"),
+    ],
+)
+async def test_magic_actor_missing_key(bare_ds, actor, key):
+    request = Request.fake("/")
+    request.scope["actor"] = actor
+    parameters = MagicParameters(f"select :_actor_{key}", {}, request, bare_ds)
+
+    with pytest.raises(KeyError) as exc_info:
+        await parameters.execute_params()
+
+    assert exc_info.value.args == (key,)
 
 
 @pytest.mark.parametrize(
@@ -354,14 +380,14 @@ def magic_parameters_client():
         ("_random_chars_10", r"^\w{10}$"),
     ],
 )
-def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
-    update_query(
-        magic_parameters_client,
+async def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
+    await magic_parameters_client.ds.update_query(
+        "data",
         "runme_post",
         sql=f"insert into logs (line) values (:{magic_parameter})",
     )
-    update_query(
-        magic_parameters_client,
+    await magic_parameters_client.ds.update_query(
+        "data",
         "runme_get",
         sql=f"select :{magic_parameter} as result",
     )
@@ -370,73 +396,80 @@ def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re)
         "foo": "bar",
     }
     # Test the GET version
-    get_response = magic_parameters_client.get(
+    get_response = await magic_parameters_client.get(
         "/data/runme_get.json?_shape=array", cookies=cookies
     )
-    get_actual = get_response.json[0]["result"]
+    get_actual = get_response.json()[0]["result"]
     assert re.match(expected_re, str(get_actual))
     # Test the form
-    form_response = magic_parameters_client.get("/data/runme_post")
-    soup = Soup(form_response.body, "html.parser")
+    form_response = await magic_parameters_client.get("/data/runme_post")
+    soup = Soup(form_response.content, "html.parser")
     # The magic parameter should not be represented as a form field
     assert None is soup.find("input", {"name": magic_parameter})
     # Submit the form to create a log line
-    response = magic_parameters_client.post(
-        "/data/runme_post?_json=1", {}, csrftoken_from=True, cookies=cookies
+    response = await magic_parameters_client.post(
+        "/data/runme_post?_json=1", data={}, cookies=cookies
     )
-    assert response.json == {
+    assert response.json() == {
         "ok": True,
         "message": "Query executed, 1 row affected",
         "redirect": None,
     }
-    post_actual = magic_parameters_client.get(
-        "/data/logs.json?_sort_desc=rowid&_shape=array"
-    ).json[0]["line"]
+    post_actual = (
+        await magic_parameters_client.get(
+            "/data/logs.json?_sort_desc=rowid&_shape=array"
+        )
+    ).json()[0]["line"]
     assert re.match(expected_re, post_actual)
 
 
 @pytest.mark.parametrize("use_csrf", [True, False])
 @pytest.mark.parametrize("return_json", [True, False])
-def test_magic_parameters_csrf_json(magic_parameters_client, use_csrf, return_json):
-    update_query(
-        magic_parameters_client,
+async def test_magic_parameters_csrf_json(
+    magic_parameters_client, use_csrf, return_json
+):
+    await magic_parameters_client.ds.update_query(
+        "data",
         "runme_post",
         sql="insert into logs (line) values (:_header_host)",
     )
     qs = ""
     if return_json:
         qs = "?_json=1"
-    response = magic_parameters_client.post(
+    response = await magic_parameters_client.post(
         f"/data/runme_post{qs}",
-        {},
-        csrftoken_from=use_csrf or None,
+        data={},
     )
     if return_json:
-        assert response.status == 200
-        assert response.json["ok"], response.json
+        assert response.status_code == 200
+        assert response.json()["ok"], response.json()
     else:
-        assert response.status == 302
+        assert response.status_code == 302
         messages = magic_parameters_client.ds.unsign(
             response.cookies["ds_messages"], "messages"
         )
-        assert [["Query executed, 1 row affected", 1]] == messages
-    post_actual = magic_parameters_client.get(
-        "/data/logs.json?_sort_desc=rowid&_shape=array"
-    ).json[0]["line"]
+        assert messages == [["Query executed, 1 row affected", 1]]
+    post_actual = (
+        await magic_parameters_client.get(
+            "/data/logs.json?_sort_desc=rowid&_shape=array"
+        )
+    ).json()[0]["line"]
     assert post_actual == "localhost"
 
 
-def test_magic_parameters_cannot_be_used_in_arbitrary_queries(magic_parameters_client):
-    response = magic_parameters_client.get(
+async def test_magic_parameters_cannot_be_used_in_arbitrary_queries(
+    magic_parameters_client,
+):
+    response = await magic_parameters_client.get(
         "/data/-/query.json?sql=select+:_header_host&_shape=array"
     )
-    assert 400 == response.status
-    assert response.json["error"].startswith("You did not supply a value for binding")
+    assert response.status_code == 400
+    assert response.json()["error"].startswith("You did not supply a value for binding")
 
 
-def test_stored_write_custom_template(stored_write_client):
-    response = stored_write_client.get("/data/update_name")
-    assert response.status == 200
+async def test_stored_write_custom_template(stored_write_client):
+    response = await stored_write_client.get("/data/update_name")
+    assert response.status_code == 200
     assert "!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!" in response.text
     assert (
         "<!-- Templates considered: *query-data-update_name.html, query-data.html, query.html -->"
@@ -453,21 +486,20 @@ def test_stored_write_custom_template(stored_write_client):
     )
 
 
-def test_stored_write_query_disabled_for_immutable_database(
+async def test_stored_write_query_disabled_for_immutable_database(
     stored_write_immutable_client,
 ):
-    response = stored_write_immutable_client.get("/fixtures/add")
-    assert response.status == 200
+    response = await stored_write_immutable_client.get("/fixtures/add")
+    assert response.status_code == 200
     assert (
         "This query cannot be executed because the database is immutable."
         in response.text
     )
     assert '<input type="submit" value="Run SQL" disabled>' in response.text
     # Submitting form should get a forbidden error
-    response = stored_write_immutable_client.post(
+    response = await stored_write_immutable_client.post(
         "/fixtures/add",
-        {"text": "text"},
-        csrftoken_from=True,
+        data={"text": "text"},
     )
-    assert response.status == 403
+    assert response.status_code == 403
     assert "Database is immutable" in response.text

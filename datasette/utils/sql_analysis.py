@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from datasette.utils.sqlite import SQLiteTableType, sqlite3, sqlite_table_type
+from datasette.utils import escape_sqlite
+from datasette.utils.sqlite import (
+    SQLiteTableType,
+    sqlite3,
+    sqlite_fts_external_content_tables,
+    sqlite_table_type,
+    sqlite_triggers_and_views_named,
+)
 
 SQLOperation = Literal[
     "read",
@@ -190,9 +197,109 @@ _AUTHORIZER_ACTION_NAMES = {
     if hasattr(sqlite3, name)
 }
 
+_TABLE_WRITE_OPERATIONS = {"insert", "update", "delete"}
+# SQLite identifiers fold ASCII letters only
+_IDENTIFIER_CASE = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
 
-def _allow_authorizer_action(*args):
-    return sqlite3.SQLITE_OK
+
+def _fold_identifier(name: str) -> str:
+    return name.translate(_IDENTIFIER_CASE)
+
+
+def _fts_index_maintenance_triggers(conn, operations) -> set[str]:
+    """
+    Return the names of triggers that only keep an FTS index in sync.
+
+    sqlite-utils' ``enable_fts(..., create_triggers=True)`` creates triggers
+    like this one, which SQLite compiles into every DELETE against ``repos``::
+
+        CREATE TRIGGER repos_ad AFTER DELETE ON repos BEGIN
+          INSERT INTO repos_fts (repos_fts, rowid, name)
+          VALUES ('delete', old.rowid, old.name);
+        END
+
+    ``repos_fts`` is declared with ``content=repos``, so its contents (and its
+    view-table permission) derive from ``repos``. The write to ``repos`` that
+    fires the trigger is checked in its own right. The trigger's reads of
+    ``repos`` and writes to ``repos_fts`` are index maintenance defined by the
+    schema, not access requested by the analyzed SQL.
+
+    A trigger qualifies only if every operation SQLite reports for it is a
+    read of the table it is attached to, or a write to an FTS table declared
+    with ``content=`` that same table, all within one non-temp schema.
+    """
+    operations_by_source: dict[str, list[OperationKey]] = {}
+    for key in operations:
+        if key.source is not None:
+            operations_by_source.setdefault(key.source, []).append(key)
+    if not operations_by_source:
+        return set()
+
+    schemas = [row[1] for row in conn.execute("PRAGMA database_list")]
+    fts_tables_by_content_table: dict[str, dict[str, set[str]]] = {}
+    maintenance_triggers = set()
+    for source, keys in operations_by_source.items():
+        sqlite_schemas = {key.sqlite_schema for key in keys}
+        if len(sqlite_schemas) != 1:
+            continue
+        schema = sqlite_schemas.pop()
+        if schema is None or schema == "temp":
+            continue
+        # SQLite reports the innermost trigger *or view* as the source, so the
+        # name must identify exactly one trigger, and no view, in any schema.
+        matches = sqlite_triggers_and_views_named(conn, source, schemas=schemas)
+        if len(matches) != 1:
+            continue
+        match_schema, match_type, trigger_table = matches[0]
+        if match_type != "trigger" or match_schema != schema:
+            continue
+        trigger_table = _fold_identifier(trigger_table)
+
+        if schema not in fts_tables_by_content_table:
+            by_content_table: dict[str, set[str]] = {}
+            for fts_table, content_table in sqlite_fts_external_content_tables(
+                conn, schema=schema
+            ).items():
+                by_content_table.setdefault(_fold_identifier(content_table), set()).add(
+                    _fold_identifier(fts_table)
+                )
+            fts_tables_by_content_table[schema] = by_content_table
+        index_tables = fts_tables_by_content_table[schema].get(trigger_table, set())
+        if not index_tables:
+            continue
+
+        fired_by_checked_write = any(
+            key.operation in _TABLE_WRITE_OPERATIONS
+            and key.source != source
+            and key.sqlite_schema == schema
+            and key.table is not None
+            and _fold_identifier(key.table) == trigger_table
+            for key in operations
+        )
+        if (
+            fired_by_checked_write
+            and all(
+                _is_fts_maintenance_operation(key, trigger_table, index_tables)
+                for key in keys
+            )
+            and any(key.operation in _TABLE_WRITE_OPERATIONS for key in keys)
+        ):
+            maintenance_triggers.add(source)
+    return maintenance_triggers
+
+
+def _is_fts_maintenance_operation(
+    key: OperationKey, trigger_table: str, index_tables: set[str]
+) -> bool:
+    """A read of the trigger's own table, or a write to one of its FTS indexes"""
+    if key.target_type != "table" or key.table is None:
+        return False
+    table = _fold_identifier(key.table)
+    if key.operation == "read":
+        return table == trigger_table
+    return key.operation in _TABLE_WRITE_OPERATIONS and table in index_tables
 
 
 def analyze_sql_tables(
@@ -208,7 +315,9 @@ def analyze_sql_tables(
 
     This function is synchronous and connection-based. It temporarily installs a
     SQLite authorizer, prepares ``EXPLAIN <sql>``, and returns the operation
-    callbacks observed while SQLite compiles the statement.
+    callbacks observed while SQLite compiles the statement. ``CREATE VIEW`` is
+    additionally executed inside a rolled-back savepoint so its source-table reads
+    can be discovered by analyzing a query against the temporary view.
     """
     operations: dict[OperationKey, set[str]] = {}
 
@@ -413,12 +522,12 @@ def analyze_sql_tables(
                 database=None,
                 table=None,
                 sqlite_schema=sqlite_schema,
-                target="{} {}".format(arg1, arg2) if arg2 is not None else arg1,
+                target=f"{arg1} {arg2}" if arg2 is not None else arg1,
                 source=source,
             )
             return sqlite3.SQLITE_OK
 
-        action_name = _AUTHORIZER_ACTION_NAMES.get(action, "SQLITE_{}".format(action))
+        action_name = _AUTHORIZER_ACTION_NAMES.get(action, f"SQLITE_{action}")
         record(
             "unknown",
             "unknown",
@@ -431,15 +540,23 @@ def analyze_sql_tables(
         return sqlite3.SQLITE_OK
 
     table_kind_cache: dict[tuple[str | None, str], SQLiteTableType | None] = {}
+    fts_maintenance_triggers: set[str] = set()
 
-    conn.set_authorizer(authorizer)
     try:
+        # Virtual table modules run their own SQL when a connection first
+        # uses them - FTS5 reads its <name>_config shadow table, for example.
+        # That is the module's bookkeeping, not access by the analyzed SQL,
+        # and it only happens once per connection, so it would make the
+        # analysis depend on the connection's history. Compile once without
+        # the authorizer to get it out of the way. Installing the authorizer
+        # expires prepared statements, so the compile below is always
+        # authorized again.
+        conn.execute("EXPLAIN " + sql, params if params is not None else {}).fetchall()
+        conn.set_authorizer(authorizer)
         explain_rows = conn.execute(
             "EXPLAIN " + sql, params if params is not None else {}
         ).fetchall()
-        # Passing None before these lookups leaves a failing callback installed
-        # on Python 3.10, so use a permissive callback until they are complete.
-        conn.set_authorizer(_allow_authorizer_action)
+        conn.set_authorizer(None)
 
         if not operations:
             vacuum_row = next((row for row in explain_rows if row[1] == "Vacuum"), None)
@@ -480,6 +597,8 @@ def analyze_sql_tables(
                     table_kind_cache[cache_key] = sqlite_table_type(
                         conn, key.table, schema=key.sqlite_schema
                     )
+
+        fts_maintenance_triggers = _fts_index_maintenance_triggers(conn, operations)
     finally:
         conn.set_authorizer(None)
 
@@ -512,6 +631,8 @@ def analyze_sql_tables(
     def operation_is_internal(key: OperationKey) -> bool:
         if key.internal or (has_schema_operation and key.target_type == "schema"):
             return True
+        if key.source is not None and key.source in fts_maintenance_triggers:
+            return True
         if has_schema_operation and key.operation == "reindex":
             return True
         if (
@@ -521,9 +642,7 @@ def analyze_sql_tables(
             and key.target in _SQLITE_INTERNAL_SCHEMA_FUNCTIONS
         ):
             return True
-        if key_is_drop_table_delete(key):
-            return True
-        return False
+        return bool(key_is_drop_table_delete(key))
 
     def table_kind_for(key: OperationKey) -> SQLiteTableType | None:
         if (
@@ -534,7 +653,7 @@ def analyze_sql_tables(
             return None
         return table_kind_cache[(key.sqlite_schema, key.table)]
 
-    return SQLAnalysis(
+    analysis = SQLAnalysis(
         operations=tuple(
             Operation(
                 operation=key.operation,
@@ -549,5 +668,60 @@ def analyze_sql_tables(
                 internal=operation_is_internal(key),
             )
             for key, columns in operations.items()
+        )
+    )
+
+    # SQLite does not resolve the SELECT body of a view when preparing CREATE
+    # VIEW, so its authorizer does not report reads from the view's source
+    # tables. Temporarily create the view, analyze a query against it (which
+    # does resolve the body), then roll the schema change back. Database-level
+    # callers use an isolated writable connection for this analysis.
+    create_view_operations = tuple(
+        operation
+        for operation in analysis.operations
+        if operation.operation == "create" and operation.target_type == "view"
+    )
+    if not create_view_operations:
+        return analysis
+
+    savepoint = "datasette_analyze_create_view"
+    conn.execute(f"SAVEPOINT {savepoint}")
+    try:
+        conn.execute(sql, params if params is not None else {})
+        dependency_reads = []
+        for view_operation in create_view_operations:
+            if view_operation.sqlite_schema is None or view_operation.table is None:
+                raise sqlite3.OperationalError(
+                    "Could not determine the created view name"
+                )
+            quoted_schema = escape_sqlite(view_operation.sqlite_schema)
+            quoted_view = escape_sqlite(view_operation.table)
+            qualified_view = f"{quoted_schema}.{quoted_view}"
+            view_analysis = analyze_sql_tables(
+                conn,
+                f"SELECT * FROM {qualified_view}",
+                database_name=database_name,
+                schema_to_database=schema_to_database,
+            )
+            dependency_reads.extend(
+                operation
+                for operation in view_analysis.operations
+                if operation.operation == "read"
+                and not (
+                    operation.sqlite_schema == view_operation.sqlite_schema
+                    and operation.table == view_operation.table
+                )
+            )
+    finally:
+        conn.execute(f"ROLLBACK TO {savepoint}")
+        conn.execute(f"RELEASE {savepoint}")
+
+    existing_operations = set(analysis.operations)
+    return SQLAnalysis(
+        operations=analysis.operations
+        + tuple(
+            operation
+            for operation in dependency_reads
+            if operation not in existing_operations
         )
     )

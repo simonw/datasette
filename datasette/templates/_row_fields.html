@@ -1,0 +1,39 @@
+<!-- above-table-panel is a hook node for plugins to attach to . Displays even if no data available -->
+<div class="above-table-panel"> </div>
+{% if display_columns and display_rows %}
+{% set row = display_rows[0] %}
+<dl class="row-fields"{% if row.row_path %} data-row="{{ row.row_path }}" data-row-display="{{ row.pk_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
+    {% for column, cell in zip(display_columns, row) %}
+    {% set raw = cell.raw %}
+    {% set is_text = raw is string %}
+    {% set is_empty = raw is none or (is_text and raw == "") %}
+    {% set copyable = not is_empty and (is_text or raw is number) %}
+    {% set is_long = is_text and (raw|length > 400 or raw.count("\n") > 6) %}
+    {% set expand_label = "Show all {:,} characters".format(raw|length) if is_long else "" %}
+    <div class="row-field col-{{ column.name|to_css_class }} type-{{ cell.value_type }}" data-column="{{ column.name }}"{% if column.is_pk %} data-is-pk="1"{% endif %}>
+        <dt>
+            {#- <wbr> after underscores lets long snake_case names wrap between words #}
+            <span class="row-field-name">{{ (column.name|e)|replace("_", "_<wbr>"|safe) }}</span>
+            {% if column.description %}<span class="row-field-description">{{ column.description }}</span>{% endif %}
+        </dt>
+        <dd>
+            {#- Labels are CSS generated content so copying a section of the page leaves them out #}
+            {% if raw is none %}<span class="row-field-empty" data-label="null"></span>
+            {% elif is_text and raw == "" %}<span class="row-field-empty" data-label="empty string"></span>
+            {% elif is_long %}<div class="row-field-long"><div class="row-field-value" id="row-field-{{ loop.index }}">{{ cell.value }}</div><button type="button" class="row-field-expand" aria-expanded="false" aria-controls="row-field-{{ loop.index }}" data-label="{{ expand_label }}" aria-label="{{ expand_label }}"></button></div>
+            {% else %}<div class="row-field-value">{{ cell.value }}</div>
+            {% endif %}
+            {% if copyable %}
+            {#- row-fields.js adds a JSON pretty-print toggle here for JSON values #}
+            <div class="row-field-actions">
+            <datasette-copy-button value="{{ raw }}" name="{{ column.name }}"></datasette-copy-button>
+            </div>
+            {% endif %}
+        </dd>
+    </div>
+    {% endfor %}
+</dl>
+{% endif %}
+{% if not display_rows %}
+    <p class="zero-results">0 records</p>
+{% endif %}

@@ -3,14 +3,16 @@ Tests for the write_wrapper plugin hook.
 """
 
 import asyncio
+import sqlite3
+import time
 from dataclasses import dataclass
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.events import Event
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-import pytest
-import sqlite3
-import time
 
 
 @dataclass
@@ -26,7 +28,6 @@ def datasette(tmp_path):
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "use_execute_write",
     (False, True),
@@ -67,7 +68,6 @@ async def test_write_wrapper_before_and_after(datasette, use_execute_write):
         pm.unregister(name="test_before_after")
 
 
-@pytest.mark.asyncio
 async def test_write_wrapper_receives_result_via_yield(datasette):
     """Test that the result of fn(conn) is sent back through yield."""
     captured = {}
@@ -99,7 +99,6 @@ async def test_write_wrapper_receives_result_via_yield(datasette):
         pm.unregister(name="test_result")
 
 
-@pytest.mark.asyncio
 async def test_write_wrapper_exception_thrown_into_generator(datasette):
     """Test that exceptions from fn(conn) are thrown into the generator."""
     caught = {}
@@ -113,7 +112,8 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
             def wrapper(conn):
                 try:
                     yield
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
+                    # Test helper deliberately captures whatever the wrapped write raised
                     caught["error"] = e
 
             return wrapper
@@ -131,7 +131,6 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
         pm.unregister(name="test_exception")
 
 
-@pytest.mark.asyncio
 async def test_write_wrapper_conn_is_usable(datasette):
     """Test that the conn passed to the wrapper can execute SQL."""
 
@@ -164,7 +163,6 @@ async def test_write_wrapper_conn_is_usable(datasette):
         pm.unregister(name="test_conn")
 
 
-@pytest.mark.asyncio
 async def test_write_wrapper_multiple_plugins_nest(datasette):
     """Test that multiple write_wrapper plugins nest correctly."""
     log = []
@@ -220,7 +218,6 @@ async def test_write_wrapper_multiple_plugins_nest(datasette):
         pm.unregister(name="PluginB")
 
 
-@pytest.mark.asyncio
 async def test_write_wrapper_return_none_skips(datasette):
     """Test that returning None from write_wrapper means no wrapping."""
     log = []
@@ -232,7 +229,6 @@ async def test_write_wrapper_return_none_skips(datasette):
         @hookimpl
         def write_wrapper(datasette, database, request, transaction):
             log.append("hook-called")
-            return None
 
     pm.register(Plugin(), name="test_skip")
     try:
@@ -247,7 +243,6 @@ async def test_write_wrapper_return_none_skips(datasette):
         pm.unregister(name="test_skip")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "request_value,transaction_value,expected_request,expected_transaction",
     (
@@ -296,7 +291,6 @@ async def test_write_wrapper_hook_parameters(
         pm.unregister(name="test_params")
 
 
-@pytest.mark.asyncio
 async def test_write_wrapper_via_api(tmp_path):
     """Test that write_wrapper fires for API write operations."""
     log = []
@@ -339,7 +333,7 @@ async def test_write_wrapper_via_api(tmp_path):
             "/test/api_test/-/insert",
             json={"row": {"name": "test"}, "return": True},
             headers={
-                "Authorization": "Bearer {}".format(token),
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
         )
@@ -349,7 +343,72 @@ async def test_write_wrapper_via_api(tmp_path):
         pm.unregister(name="test_api")
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+@pytest.mark.parametrize("in_memory", (True, False))
+@pytest.mark.parametrize(
+    "operations",
+    (
+        [{"op": "add_column", "args": {"name": "extra", "type": "text"}}],
+        [{"op": "rename_column", "args": {"name": "id", "to": "renamed_id"}}],
+        [{"op": "rename_table", "args": {"to": "renamed_t"}}],
+        [
+            {"op": "add_column", "args": {"name": "extra", "type": "text"}},
+            {"op": "rename_column", "args": {"name": "id", "to": "renamed_id"}},
+            {"op": "rename_table", "args": {"to": "renamed_t"}},
+        ],
+    ),
+    ids=["add-column", "transform", "rename-table", "combined"],
+)
+async def test_write_wrapper_can_reject_alter_table_after_write(
+    tmp_path, num_sql_threads, in_memory, operations
+):
+    """Raising after yield should roll back the schema change."""
+    db_path = str(tmp_path / "demo.db")
+    ds = Datasette(
+        [] if in_memory else [db_path],
+        config={"permissions": {"alter-table": True}},
+        settings={"num_sql_threads": num_sql_threads},
+    )
+    db = (
+        ds.add_memory_database(db_path, name="demo")
+        if in_memory
+        else ds.get_database("demo")
+    )
+    await db.execute_write("CREATE TABLE t (id)")
+    await db.execute_write("INSERT INTO t (id) VALUES (1)")
+    before = await db.execute_fn(lambda conn: list(conn.iterdump()))
+
+    class Plugin:
+        __name__ = "Plugin"
+
+        @staticmethod
+        @hookimpl
+        def write_wrapper(database):
+            def wrapper(conn):
+                yield
+                raise ValueError("Rejected after write")
+
+            return wrapper if database == "demo" else None
+
+    pm.register(Plugin(), name="test_reject_alter_table")
+    try:
+        response = await ds.client.post(
+            "/demo/t/-/alter",
+            json={"operations": operations},
+        )
+        assert response.status_code == 400
+        assert response.json()["errors"] == ["Rejected after write"]
+        assert await db.execute_fn(lambda conn: list(conn.iterdump())) == before
+        assert not [
+            event
+            for event in getattr(ds, "_tracked_events", [])
+            if event.name in ("alter-table", "rename-table")
+        ]
+    finally:
+        pm.unregister(name="test_reject_alter_table")
+        ds.close()
+
+
 async def test_write_wrapper_change_group_pattern(datasette):
     """Test the motivating use case: activating a change group around a write."""
     db = datasette.get_database("test")
@@ -404,7 +463,6 @@ WRITE_ACTIONS = (
 )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,table,should_deny",
     (
@@ -454,7 +512,7 @@ async def test_write_wrapper_set_authorizer(datasette, actor, table, should_deny
                 try:
                     yield
                 finally:
-                    conn.set_authorizer(lambda *args: sqlite3.SQLITE_OK)
+                    conn.set_authorizer(None)
 
             return wrapper
 
@@ -466,7 +524,7 @@ async def test_write_wrapper_set_authorizer(datasette, actor, table, should_deny
     try:
         request = FakeRequest(actor)
         if should_deny:
-            with pytest.raises(Exception):
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
                 await db.execute_write_fn(
                     lambda conn: conn.execute(
                         f"insert into {table} (value) values ('test')"
@@ -509,7 +567,6 @@ def ds_with_event_tracking(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_track_event_in_write_fn(ds_with_event_tracking):
     """fn(conn, track_event) can queue events that are dispatched after commit."""
     ds = ds_with_event_tracking
@@ -524,7 +581,6 @@ async def test_track_event_in_write_fn(ds_with_event_tracking):
     assert ds._tracked_events[0].message == "hello"
 
 
-@pytest.mark.asyncio
 async def test_track_event_discarded_on_exception(ds_with_event_tracking):
     """Events are discarded if the write fn raises an exception."""
     ds = ds_with_event_tracking
@@ -539,7 +595,6 @@ async def test_track_event_discarded_on_exception(ds_with_event_tracking):
     assert len(ds._tracked_events) == 0
 
 
-@pytest.mark.asyncio
 async def test_track_event_existing_fn_signature_still_works(ds_with_event_tracking):
     """Existing fn(conn) signatures continue to work without track_event."""
     ds = ds_with_event_tracking
@@ -554,7 +609,6 @@ async def test_track_event_existing_fn_signature_still_works(ds_with_event_track
     assert len(ds._tracked_events) == 0
 
 
-@pytest.mark.asyncio
 async def test_track_event_in_write_wrapper(ds_with_event_tracking):
     """write_wrapper generator with (conn, track_event) can queue events."""
     ds = ds_with_event_tracking
@@ -587,7 +641,6 @@ async def test_track_event_in_write_wrapper(ds_with_event_tracking):
         pm.unregister(name="test_track_wrapper")
 
 
-@pytest.mark.asyncio
 async def test_track_event_shared_between_fn_and_wrapper(ds_with_event_tracking):
     """Both fn and wrapper can queue events, all dispatched in order."""
     ds = ds_with_event_tracking
@@ -620,7 +673,6 @@ async def test_track_event_shared_between_fn_and_wrapper(ds_with_event_tracking)
         pm.unregister(name="test_track_shared")
 
 
-@pytest.mark.asyncio
 async def test_track_event_with_block_false(ds_with_event_tracking):
     """Events are dispatched even when block=False (non-blocking writes)."""
     ds = ds_with_event_tracking
@@ -643,7 +695,6 @@ async def test_track_event_with_block_false(ds_with_event_tracking):
     assert ds._tracked_events[0].message == "non-blocking"
 
 
-@pytest.mark.asyncio
 async def test_track_event_with_block_false_discarded_on_exception(
     ds_with_event_tracking,
 ):
@@ -687,7 +738,6 @@ def ds_for_rename(tmp_path):
     return ds
 
 
-@pytest.mark.asyncio
 async def test_rename_table_fires_event(ds_for_rename):
     """Renaming a table via ALTER TABLE fires a RenameTableEvent."""
     from datasette.events import RenameTableEvent
@@ -709,7 +759,6 @@ async def test_rename_table_fires_event(ds_for_rename):
     assert rename_events[0].database == "test"
 
 
-@pytest.mark.asyncio
 async def test_no_rename_event_for_regular_writes(ds_for_rename):
     """Regular writes (CREATE, INSERT) do not fire RenameTableEvent."""
     from datasette.events import RenameTableEvent
@@ -724,7 +773,6 @@ async def test_no_rename_event_for_regular_writes(ds_for_rename):
     assert len(rename_events) == 0
 
 
-@pytest.mark.asyncio
 async def test_no_rename_event_on_rollback(ds_for_rename):
     """RenameTableEvent is not fired if the write raises an exception."""
     from datasette.events import RenameTableEvent
@@ -745,7 +793,6 @@ async def test_no_rename_event_on_rollback(ds_for_rename):
     assert len(rename_events) == 0
 
 
-@pytest.mark.asyncio
 async def test_multiple_renames_in_one_write(ds_for_rename):
     """Multiple renames in a single write fire multiple RenameTableEvents."""
     from datasette.events import RenameTableEvent

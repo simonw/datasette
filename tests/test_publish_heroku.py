@@ -1,9 +1,12 @@
-from click.testing import CliRunner
-from datasette import cli
-from unittest import mock
 import os
 import pathlib
+from unittest import mock
+
 import pytest
+from click.testing import CliRunner
+
+from datasette import cli
+from datasette.version import __version__
 
 
 @pytest.mark.serial
@@ -33,7 +36,7 @@ def test_publish_heroku_installs_plugin(
     with open("t.db", "w") as fp:
         fp.write("data")
     result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
-    assert 0 != result.exit_code
+    assert result.exit_code != 0
     mock_check_output.assert_has_calls(
         [mock.call(["heroku", "plugins"]), mock.call(["heroku", "apps:list", "--json"])]
     )
@@ -67,7 +70,7 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which, tmp_path_facto
     with open("test.db", "w") as fp:
         fp.write("data")
     result = runner.invoke(cli.cli, ["publish", "heroku", "test.db", "--tar", "gtar"])
-    assert 0 == result.exit_code, result.output
+    assert result.exit_code == 0, result.output
     mock_call.assert_has_calls(
         [
             mock.call(
@@ -114,7 +117,7 @@ def test_publish_heroku_plugin_secrets(
             "x-client-id",
         ],
     )
-    assert 0 == result.exit_code, result.output
+    assert result.exit_code == 0, result.output
     mock_call.assert_has_calls(
         [
             mock.call(
@@ -169,7 +172,7 @@ def test_publish_heroku_generate_dir(
         "test.db",
     }
     for name, expected in (
-        ("requirements.txt", "datasette"),
+        ("requirements.txt", f"datasette=={__version__}"),
         ("runtime.txt", "python-3.11.0"),
         (
             "Procfile",

@@ -44,10 +44,10 @@
 </style>
 
 <nav class="permissions-debug-tabs">
-    <a href="{{ urls.path('-/permissions') }}" {% if current_tab == "permissions" %}class="active"{% endif %}>Playground</a>
-    <a href="{{ urls.path('-/check') }}{{ query_string }}" {% if current_tab == "check" %}class="active"{% endif %}>Check</a>
-    <a href="{{ urls.path('-/allowed') }}{{ query_string }}" {% if current_tab == "allowed" %}class="active"{% endif %}>Allowed</a>
-    <a href="{{ urls.path('-/rules') }}{{ query_string }}" {% if current_tab == "rules" %}class="active"{% endif %}>Rules</a>
+    <a href="{{ urls.path('-/check') }}{{ query_string }}" {% if current_tab == "check" %}class="active"{% endif %}>Explain</a>
+    <a href="{{ urls.path('-/allowed') }}{{ query_string }}" {% if current_tab == "allowed" %}class="active"{% endif %}>Access map</a>
+    <a href="{{ urls.path('-/rules') }}{{ query_string }}" {% if current_tab == "rules" %}class="active"{% endif %}>Rule explorer</a>
+    <a href="{{ urls.path('-/permissions') }}" {% if current_tab == "permissions" %}class="active"{% endif %}>Activity</a>
     <a href="{{ urls.path('-/actions') }}" {% if current_tab == "actions" %}class="active"{% endif %}>Actions</a>
     <a href="{{ urls.path('-/allow-debug') }}" {% if current_tab == "allow_debug" %}class="active"{% endif %}>Allow debug</a>
 </nav>

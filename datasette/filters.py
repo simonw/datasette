@@ -1,9 +1,17 @@
-from datasette import hookimpl
-from datasette.resources import DatabaseResource
-from datasette.views.base import DatasetteError
-from datasette.utils.asgi import BadRequest
 import json
-from .utils import detect_json1, escape_sqlite, path_with_removed_args
+import math
+import re
+from typing import ClassVar
+
+from datasette import hookimpl
+from datasette.resources import DatabaseResource, TableResource
+from datasette.utils.asgi import BadRequest
+from datasette.views.base import DatasetteError
+
+from .utils import (
+    detect_json1,
+    escape_sqlite,
+)
 
 
 @hookimpl(specname="filters_from_request")
@@ -24,7 +32,9 @@ def where_filters(request, database, datasette):
                 extra_wheres_for_ui = [
                     {
                         "text": text,
-                        "remove_url": path_with_removed_args(request, {"_where": text}),
+                        "remove_url": datasette.urls.modify(
+                            request, remove={"_where": text}
+                        ),
                     }
                     for text in request.args.getlist("_where")
                 ]
@@ -48,13 +58,20 @@ def search_filters(request, database, table, datasette):
         human_descriptions = []
         extra_context = {}
 
-        # Figure out which fts_table to use
+        # Figure out which trusted fts_table to use. Query string parameters can
+        # repeat this mapping (for backwards compatibility), but must not select
+        # a different table or primary key.
         table_metadata = await datasette.table_config(database, table)
         db = datasette.get_database(database)
-        fts_table = request.args.get("_fts_table")
-        fts_table = fts_table or table_metadata.get("fts_table")
+        fts_table = table_metadata.get("fts_table")
         fts_table = fts_table or await db.fts_table(table)
-        fts_pk = request.args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
+        fts_pk = table_metadata.get("fts_pk", "rowid")
+        requested_fts_table = request.args.get("_fts_table")
+        requested_fts_pk = request.args.get("_fts_pk")
+        if (requested_fts_table and requested_fts_table != fts_table) or (
+            requested_fts_pk and requested_fts_pk != fts_pk
+        ):
+            raise BadRequest("Invalid _fts_table or _fts_pk")
         search_args = {
             key: request.args[key]
             for key in request.args
@@ -72,6 +89,11 @@ def search_filters(request, database, table, datasette):
         extra_context["supports_search"] = bool(fts_table)
 
         if fts_table and search_args:
+            await datasette.ensure_permission(
+                action="view-table",
+                resource=TableResource(database=database, table=fts_table),
+                actor=request.actor,
+            )
             if "_search" in search_args:
                 # Simple ?_search=xxx
                 search = search_args["_search"]
@@ -99,9 +121,9 @@ def search_filters(request, database, table, datasette):
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
                             match_clause=(
-                                ":search_{}".format(i)
+                                f":search_{i}"
                                 if search_mode_raw
-                                else "escape_fts(:search_{})".format(i)
+                                else f"escape_fts(:search_{i})"
                             ),
                         )
                     )
@@ -132,13 +154,18 @@ def through_filters(request, database, table, datasette):
                 through_table = through_data["table"]
                 other_column = through_data["column"]
                 value = through_data["value"]
+                await datasette.ensure_permission(
+                    action="view-table",
+                    resource=TableResource(database=database, table=through_table),
+                    actor=request.actor,
+                )
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
-                try:
-                    fk_to_us = [
-                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
-                    ][0]
-                except IndexError:
+                fk_to_us = next(
+                    (fk for fk in outgoing_foreign_keys if fk["other_table"] == table),
+                    None,
+                )
+                if fk_to_us is None:
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"
                     )
@@ -182,6 +209,48 @@ class Filter:
         raise NotImplementedError
 
 
+def _coerce_numeric_filter_value(value):
+    try:
+        integer = int(value)
+        # SQLite binds integers as signed 64-bit values.
+        if -(2**63) <= integer < 2**63:
+            return integer
+    except ValueError:
+        pass
+    try:
+        converted = float(value)
+    except ValueError:
+        return value
+    return converted if math.isfinite(converted) else value
+
+
+# Values that SQLite would convert to a number when comparing them to a
+# column with INTEGER, REAL or NUMERIC affinity
+_numeric_literal_re = re.compile(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?")
+
+
+def looks_numeric(value):
+    # fullmatch(), because "$" would also match before a trailing newline
+    return isinstance(value, str) and bool(_numeric_literal_re.fullmatch(value))
+
+
+def column_type_has_no_affinity(column_type):
+    """
+    True if a column with this declared type has no type affinity (which
+    SQLite calls BLOB affinity), following the rules in
+    https://www.sqlite.org/datatype3.html#determination_of_column_affinity
+
+    This is the case for expression columns in views, such as
+    ``count(*) as n``, and for table columns declared without a type.
+    """
+    column_type = (column_type or "").upper()
+    if "INT" in column_type:
+        return False
+    if any(text in column_type for text in ("CHAR", "CLOB", "TEXT")):
+        return False
+    return not column_type or "BLOB" in column_type
+
+
 class TemplatedFilter(Filter):
     def __init__(
         self,
@@ -192,10 +261,18 @@ class TemplatedFilter(Filter):
         format="{}",
         numeric=False,
         no_argument=False,
+        no_affinity_sql_template=None,
     ):
         self.key = key
         self.display = display
         self.sql_template = sql_template
+        # Alternative SQL for comparing a numeric-looking value against a
+        # column that has no type affinity, see #1671. This should use
+        # "in (:p, cast(:p as numeric))" rather than "= cast(:p as numeric)":
+        # the "=" form applies numeric affinity to the column as well, so
+        # ?col=1 would also match the text values '1.0' and '01', and it
+        # stops SQLite from using an index on the column
+        self.no_affinity_sql_template = no_affinity_sql_template
         self.human_template = human_template
         self.format = format
         self.numeric = numeric
@@ -203,14 +280,28 @@ class TemplatedFilter(Filter):
 
     def where_clause(self, table, column, value, param_counter):
         converted = self.format.format(value)
-        if self.numeric and converted.isdigit():
-            converted = int(converted)
+        if self.numeric:
+            converted = _coerce_numeric_filter_value(converted)
         if self.no_argument:
-            kwargs = {"c": column}
+            kwargs = {"c": _quote_sqlite_identifier(column)}
             converted = None
         else:
-            kwargs = {"c": column, "p": f"p{param_counter}", "t": table}
+            kwargs = {
+                "c": _quote_sqlite_identifier(column),
+                "p": f"p{param_counter}",
+                "t": _quote_sqlite_identifier(table),
+            }
         return self.sql_template.format(**kwargs), converted
+
+    def where_clause_no_affinity(self, table, column, value, param_counter):
+        if not self.no_affinity_sql_template or not looks_numeric(value):
+            return self.where_clause(table, column, value, param_counter)
+        return (
+            self.no_affinity_sql_template.format(
+                c=_quote_sqlite_identifier(column), p=f"p{param_counter}"
+            ),
+            value,
+        )
 
     def human_clause(self, column, value):
         if callable(self.human_template):
@@ -223,20 +314,58 @@ class TemplatedFilter(Filter):
             return template.format(c=column, v=value)
 
 
+def _quote_sqlite_identifier(identifier):
+    # Preserve the historic always-quoted SQL generated by TemplatedFilter.
+    escaped = escape_sqlite(identifier)
+    if escaped == identifier:
+        return f'"{identifier}"'
+    return escaped
+
+
 class InFilter(Filter):
     key = "in"
     display = "in"
 
     def split_value(self, value):
         if value.startswith("["):
-            return json.loads(value)
+            try:
+                values = json.loads(value)
+                for item in values:
+                    if isinstance(item, str):
+                        # Lone surrogates such as "\ud800" cannot be bound
+                        item.encode("utf-8")
+                    elif isinstance(item, (list, dict)) or (
+                        isinstance(item, int) and not -(2**63) <= item < 2**63
+                    ):
+                        raise ValueError(item)
+            except ValueError:
+                raise BadRequest(
+                    "Invalid JSON array for __in or __notin: values must be "
+                    "strings, numbers, booleans or null, and integers must "
+                    "fit in 64 bits"
+                )
+            return values
         else:
             return [v.strip() for v in value.split(",")]
+
+    operator = "in"
 
     def where_clause(self, table, column, value, param_counter):
         values = self.split_value(value)
         params = [f":p{param_counter + i}" for i in range(len(values))]
-        sql = f"{escape_sqlite(column)} in ({', '.join(params)})"
+        sql = f"{escape_sqlite(column)} {self.operator} ({', '.join(params)})"
+        return sql, values
+
+    def where_clause_no_affinity(self, table, column, value, param_counter):
+        # Numeric-looking values are compared as both text and numbers
+        values = self.split_value(value)
+        params = []
+        for i, individual_value in enumerate(values):
+            param = f":p{param_counter + i}"
+            params.append(param)
+            if looks_numeric(individual_value):
+                params.append(f"cast({param} as numeric)")
+        sql = f"{escape_sqlite(column)} {self.operator} ({', '.join(params)})"
         return sql, values
 
     def human_clause(self, column, value):
@@ -246,12 +375,7 @@ class InFilter(Filter):
 class NotInFilter(InFilter):
     key = "notin"
     display = "not in"
-
-    def where_clause(self, table, column, value, param_counter):
-        values = self.split_value(value)
-        params = [f":p{param_counter + i}" for i in range(len(values))]
-        sql = f"{escape_sqlite(column)} not in ({', '.join(params)})"
-        return sql, values
+    operator = "not in"
 
     def human_clause(self, column, value):
         return f"{column} not in {json.dumps(self.split_value(value))}"
@@ -264,56 +388,58 @@ class Filters:
             TemplatedFilter(
                 "exact",
                 "=",
-                '"{c}" = :{p}',
+                "{c} = :{p}",
                 lambda c, v: "{c} = {v}" if v.isdigit() else '{c} = "{v}"',
+                no_affinity_sql_template="{c} in (:{p}, cast(:{p} as numeric))",
             ),
             TemplatedFilter(
                 "not",
                 "!=",
-                '"{c}" != :{p}',
+                "{c} != :{p}",
                 lambda c, v: "{c} != {v}" if v.isdigit() else '{c} != "{v}"',
+                no_affinity_sql_template="{c} not in (:{p}, cast(:{p} as numeric))",
             ),
             TemplatedFilter(
                 "contains",
                 "contains",
-                '"{c}" like :{p}',
+                "{c} like :{p}",
                 '{c} contains "{v}"',
                 format="%{}%",
             ),
             TemplatedFilter(
                 "notcontains",
                 "does not contain",
-                '"{c}" not like :{p}',
+                "{c} not like :{p}",
                 '{c} does not contain "{v}"',
                 format="%{}%",
             ),
             TemplatedFilter(
                 "endswith",
                 "ends with",
-                '"{c}" like :{p}',
+                "{c} like :{p}",
                 '{c} ends with "{v}"',
                 format="%{}",
             ),
             TemplatedFilter(
                 "startswith",
                 "starts with",
-                '"{c}" like :{p}',
+                "{c} like :{p}",
                 '{c} starts with "{v}"',
                 format="{}%",
             ),
-            TemplatedFilter("gt", ">", '"{c}" > :{p}', "{c} > {v}", numeric=True),
+            TemplatedFilter("gt", ">", "{c} > :{p}", "{c} > {v}", numeric=True),
             TemplatedFilter(
-                "gte", "\u2265", '"{c}" >= :{p}', "{c} \u2265 {v}", numeric=True
+                "gte", "\u2265", "{c} >= :{p}", "{c} \u2265 {v}", numeric=True
             ),
-            TemplatedFilter("lt", "<", '"{c}" < :{p}', "{c} < {v}", numeric=True),
+            TemplatedFilter("lt", "<", "{c} < :{p}", "{c} < {v}", numeric=True),
             TemplatedFilter(
-                "lte", "\u2264", '"{c}" <= :{p}', "{c} \u2264 {v}", numeric=True
+                "lte", "\u2264", "{c} <= :{p}", "{c} \u2264 {v}", numeric=True
             ),
-            TemplatedFilter("like", "like", '"{c}" like :{p}', '{c} like "{v}"'),
+            TemplatedFilter("like", "like", "{c} like :{p}", '{c} like "{v}"'),
             TemplatedFilter(
-                "notlike", "not like", '"{c}" not like :{p}', '{c} not like "{v}"'
+                "notlike", "not like", "{c} not like :{p}", '{c} not like "{v}"'
             ),
-            TemplatedFilter("glob", "glob", '"{c}" glob :{p}', '{c} glob "{v}"'),
+            TemplatedFilter("glob", "glob", "{c} glob :{p}", '{c} glob "{v}"'),
             InFilter(),
             NotInFilter(),
         ]
@@ -322,13 +448,13 @@ class Filters:
                 TemplatedFilter(
                     "arraycontains",
                     "array contains",
-                    """:{p} in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} in (select value from json_each({t}.{c}))""",
                     '{c} contains "{v}"',
                 ),
                 TemplatedFilter(
                     "arraynotcontains",
                     "array does not contain",
-                    """:{p} not in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} not in (select value from json_each({t}.{c}))""",
                     '{c} does not contain "{v}"',
                 ),
             ]
@@ -336,36 +462,34 @@ class Filters:
             else []
         )
         + [
+            TemplatedFilter("date", "date", "date({c}) = :{p}", '"{c}" is on date {v}'),
             TemplatedFilter(
-                "date", "date", 'date("{c}") = :{p}', '"{c}" is on date {v}'
-            ),
-            TemplatedFilter(
-                "isnull", "is null", '"{c}" is null', "{c} is null", no_argument=True
+                "isnull", "is null", "{c} is null", "{c} is null", no_argument=True
             ),
             TemplatedFilter(
                 "notnull",
                 "is not null",
-                '"{c}" is not null',
+                "{c} is not null",
                 "{c} is not null",
                 no_argument=True,
             ),
             TemplatedFilter(
                 "isblank",
                 "is blank",
-                '("{c}" is null or "{c}" = "")',
+                "({c} is null or {c} = '')",
                 "{c} is blank",
                 no_argument=True,
             ),
             TemplatedFilter(
                 "notblank",
                 "is not blank",
-                '("{c}" is not null and "{c}" != "")',
+                "({c} is not null and {c} != '')",
                 "{c} is not blank",
                 no_argument=True,
             ),
         ]
     )
-    _filters_by_key = {f.key: f for f in _filters}
+    _filters_by_key: ClassVar[dict[str, Filter]] = {f.key: f for f in _filters}
 
     def __init__(self, pairs):
         self.pairs = pairs
@@ -408,14 +532,24 @@ class Filters:
     def has_selections(self):
         return bool(self.pairs)
 
-    def build_where_clauses(self, table):
+    def build_where_clauses(self, table, no_affinity_columns=None):
+        # no_affinity_columns is the set of columns that have no type
+        # affinity, such as expression columns in views. SQLite will not
+        # convert the text values from the query string to numbers when
+        # comparing against those, so we have to do that ourselves - see #1671
+        no_affinity_columns = no_affinity_columns or ()
         sql_bits = []
         params = {}
         i = 0
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(table, column, value, i)
+                where_clause = filter.where_clause
+                if column in no_affinity_columns:
+                    where_clause = getattr(
+                        filter, "where_clause_no_affinity", where_clause
+                    )
+                sql_bit, param = where_clause(table, column, value, i)
                 sql_bits.append(sql_bit)
                 if param is not None:
                     if not isinstance(param, list):

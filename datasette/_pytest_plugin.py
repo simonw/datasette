@@ -89,7 +89,8 @@ def pytest_runtest_protocol(item, nextitem):
                 continue
             try:
                 ds.close()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
+                # Surfaced as a pytest warning; teardown must not fail the run
                 item.warn(
                     pytest.PytestUnraisableExceptionWarning(
                         f"Error closing Datasette instance: {e!r}"

@@ -46,7 +46,7 @@ from .background_tasks import BackgroundTask, BackgroundTaskSupervisor
 from .column_types import SQLiteType
 from .context_debug import build_context_debug, context_as_json
 from .csrf import CrossOriginProtectionMiddleware
-from .database import Database, QueryInterrupted
+from .database import Database, QueryInterrupted, _schema_checks
 from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
@@ -2370,17 +2370,11 @@ ORDER BY allowed.parent, allowed.child
 
         other_table = fk["other_table"]
         # Foreign key declarations can spell the target with different casing.
-        target_table = (
-            await db.execute(
-                "select name from sqlite_master where type='table' and name=? collate nocase",
-                [other_table],
-            )
-        ).first()
-        if target_table is None:
+        other_table = await db._table_name_nocase(other_table)
+        if other_table is None:
             # SQLite accepts a foreign key to a table that does not exist, and
             # linking to it would only lead to a 404
             return None
-        other_table = target_table[0]
         other_column = fk["other_column"]
         if other_column is None:
             other_pks = await db.primary_keys(other_table)
@@ -3413,9 +3407,13 @@ class DatasetteRouter:
         from datasette.permissions import _permission_check_cache
 
         cache_token = _permission_check_cache.set({})
+        # Each database is asked whether its schema has changed at most
+        # once per request - see Database._get_schema_cache()
+        schema_checks_token = _schema_checks.set({})
         try:
             return await self.route_path(scope, receive, send, path)
         finally:
+            _schema_checks.reset(schema_checks_token)
             _permission_check_cache.reset(cache_token)
 
     async def route_path(self, scope, receive, send, path):

@@ -49,9 +49,11 @@ async def test_execute(db):
 async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
     ds = Datasette(memory=True)
     db = ds.add_memory_database(uuid.uuid4().hex, name="data")
-    await db.derived_table_dependencies()
-    previous_cache = db._cached_derived_table_dependencies
-    await db.execute_write("create table dependency_cache_refresh (id integer)")
+    await db.execute_write("create table documents (id integer primary key, body)")
+    assert await db.derived_table_dependencies() == {}
+    await db.execute_write(
+        "create virtual table documents_fts using fts5(body, content='documents')"
+    )
 
     class UnavailableSchema:
         def execute(self, sql):
@@ -64,10 +66,12 @@ async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
         )
         with pytest.raises(sqlite3.DatabaseError, match="schema temporarily"):
             await db.derived_table_dependencies()
-    assert db._cached_derived_table_dependencies == previous_cache
+    # The failure must not leave the dependencies from before the schema
+    # change, or nothing at all, cached as if they were current
+    assert "derived_table_dependencies" not in db._schema_cache
 
-    await db.derived_table_dependencies()
-    assert db._cached_derived_table_dependencies[0] != previous_cache[0]
+    assert (await db.derived_table_dependencies())["documents_fts"] == "documents"
+    assert "derived_table_dependencies" in db._schema_cache
 
 
 async def test_results_first(db):

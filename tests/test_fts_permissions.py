@@ -104,14 +104,14 @@ async def test_derived_permission_discovery_error_is_retried(monkeypatch, listin
                 await check()
 
         # Failed discovery must not cache an empty map or a permission grant.
-        assert db._cached_derived_table_dependencies is None
+        assert "derived_table_dependencies" not in db._schema_cache
         assert not _permission_check_cache.get()
         result = await check()
         if listing:
             assert [resource.child for resource in result.resources] == ["documents"]
         else:
             assert result is True
-        assert db._cached_derived_table_dependencies is not None
+        assert "derived_table_dependencies" in db._schema_cache
     finally:
         _permission_check_cache.reset(token)
 

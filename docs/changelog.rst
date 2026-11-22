@@ -9,9 +9,11 @@ Changelog
 Unreleased
 ----------
 
-This alpha includes three security fixes, and settles more of the API that plugins and custom templates depend on. Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``, optional arguments to the documented internal methods are keyword-only, a new ``datasette.urls.modify()`` method replaces the ``path_with_*()`` helpers and the template context is now documented for every page, with a new debug page for exploring it. ``?_stream=1`` exports are also several times faster. Rows with a null, empty string or binary primary key now work correctly, and so do filters and facets against calculated columns in views.
+This alpha settles a great deal of the outstanding JSON and internal APIs needed prior to the stable 1.0 release - see the `1.0 milestone <https://github.com/simonw/datasette/milestone/37>`__ for current progress.
 
-Several of these changes are backwards incompatible. The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins for the new rows and columns.
+Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``. The ``path_with_*()`` helpers have been replaced by a new ``datasette.urls.modify()`` method. Datasette now handles null primary keys (allowed by SQLite) correctly.
+
+The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins backwards incompatible changes in this release.
 
 Security fixes
 ~~~~~~~~~~~~~~

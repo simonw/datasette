@@ -851,6 +851,232 @@ async def test_insert_ignore_replace(
         assert response.json()["rows"] == expected_rows
 
 
+PK_EDGE_CASE_TABLES = """
+create table text_pk (id text primary key, title text);
+create table compound_pk (a text, b integer, title text, primary key (a, b));
+create table rowid_only (title text);
+create table without_rowid (id text primary key, title text) without rowid;
+create table compound_without_rowid (
+    a text, b integer, title text, primary key (a, b)
+) without rowid;
+"""
+
+
+@pytest.mark.parametrize(
+    "table,select,steps,expected_rows_after",
+    (
+        pytest.param(
+            "docs",
+            "select id, title from docs",
+            (
+                # An explicit value can be provided for an integer primary key
+                ({"row": {"id": 10, "title": "Ten"}}, 201, [(10, "Ten", None, None)]),
+                # ... and automatic values then continue from there
+                ({"row": {"title": "Auto"}}, 201, [(11, "Auto", None, None)]),
+                (
+                    {"row": {"id": 10, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: docs.id",
+                ),
+            ),
+            [(10, "Ten"), (11, "Auto")],
+            id="integer_pk",
+        ),
+        pytest.param(
+            "text_pk",
+            "select id, title from text_pk",
+            (
+                ({"row": {"id": "a", "title": "A"}}, 201, [("a", "A")]),
+                (
+                    {
+                        "rows": [{"id": "b", "title": "B"}, {"id": "c", "title": "C"}],
+                        "return": True,
+                    },
+                    201,
+                    [("b", "B"), ("c", "C")],
+                ),
+                (
+                    {"row": {"id": "a", "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: text_pk.id",
+                ),
+                ({"row": {"id": "a", "title": "Ignored"}, "ignore": True}, 201, None),
+                (
+                    {"row": {"id": "a", "title": "Replaced"}, "replace": True},
+                    201,
+                    [("a", "Replaced")],
+                ),
+            ),
+            [("a", "Replaced"), ("b", "B"), ("c", "C")],
+            id="text_pk",
+        ),
+        pytest.param(
+            "compound_pk",
+            "select a, b, title from compound_pk",
+            (
+                ({"row": {"a": "x", "b": 1, "title": "X1"}}, 201, [("x", 1, "X1")]),
+                (
+                    {
+                        "rows": [
+                            {"a": "x", "b": 2, "title": "X2"},
+                            {"a": "y", "b": 1, "title": "Y1"},
+                        ],
+                        "return": True,
+                    },
+                    201,
+                    [("x", 2, "X2"), ("y", 1, "Y1")],
+                ),
+                # Both columns have to match to count as a conflict
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: compound_pk.a, compound_pk.b",
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Ignored"}, "ignore": True},
+                    201,
+                    None,
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Replaced"}, "replace": True},
+                    201,
+                    [("x", 1, "Replaced")],
+                ),
+            ),
+            [("x", 1, "Replaced"), ("x", 2, "X2"), ("y", 1, "Y1")],
+            id="compound_pk",
+        ),
+        pytest.param(
+            "rowid_only",
+            "select rowid, title from rowid_only",
+            (
+                # Returned rows include the rowid that was assigned
+                ({"row": {"title": "One"}}, 201, [(1, "One")]),
+                (
+                    {"rows": [{"title": "Two"}, {"title": "Three"}], "return": True},
+                    201,
+                    [(2, "Two"), (3, "Three")],
+                ),
+                # The rowid can be set explicitly
+                ({"row": {"rowid": 10, "title": "Ten"}}, 201, [(10, "Ten")]),
+                ({"row": {"title": "Eleven"}}, 201, [(11, "Eleven")]),
+                (
+                    {"row": {"rowid": 10, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: rowid_only.rowid",
+                ),
+                ({"row": {"rowid": 10, "title": "Ignored"}, "ignore": True}, 201, None),
+                (
+                    {"row": {"rowid": 10, "title": "Replaced"}, "replace": True},
+                    201,
+                    [(10, "Replaced")],
+                ),
+            ),
+            [(1, "One"), (2, "Two"), (3, "Three"), (10, "Replaced"), (11, "Eleven")],
+            id="rowid_only",
+        ),
+        pytest.param(
+            "without_rowid",
+            "select id, title from without_rowid",
+            (
+                ({"row": {"id": "a", "title": "A"}}, 201, [("a", "A")]),
+                (
+                    {
+                        "rows": [{"id": "b", "title": "B"}, {"id": "c", "title": "C"}],
+                        "return": True,
+                    },
+                    201,
+                    [("b", "B"), ("c", "C")],
+                ),
+                ({"rows": [{"id": "d", "title": "D"}]}, 201, None),
+                # WITHOUT ROWID primary keys are always NOT NULL
+                (
+                    {"row": {"title": "No primary key"}},
+                    400,
+                    "NOT NULL constraint failed: without_rowid.id",
+                ),
+                (
+                    {"row": {"id": "a", "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: without_rowid.id",
+                ),
+                (
+                    {"row": {"id": "a", "title": "Replaced"}, "replace": True},
+                    201,
+                    [("a", "Replaced")],
+                ),
+            ),
+            [("a", "Replaced"), ("b", "B"), ("c", "C"), ("d", "D")],
+            id="without_rowid",
+        ),
+        pytest.param(
+            "compound_without_rowid",
+            "select a, b, title from compound_without_rowid",
+            (
+                ({"row": {"a": "x", "b": 1, "title": "X1"}}, 201, [("x", 1, "X1")]),
+                (
+                    {
+                        "rows": [
+                            {"a": "x", "b": 2, "title": "X2"},
+                            {"a": "y", "b": 1, "title": "Y1"},
+                        ],
+                        "return": True,
+                    },
+                    201,
+                    [("x", 2, "X2"), ("y", 1, "Y1")],
+                ),
+                (
+                    {"row": {"a": "x", "title": "Missing b"}},
+                    400,
+                    "NOT NULL constraint failed: compound_without_rowid.b",
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: compound_without_rowid.a, compound_without_rowid.b",
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Replaced"}, "replace": True},
+                    201,
+                    [("x", 1, "Replaced")],
+                ),
+            ),
+            [("x", 1, "Replaced"), ("x", 2, "X2"), ("y", 1, "Y1")],
+            id="compound_without_rowid",
+        ),
+    ),
+)
+async def test_insert_primary_key_edge_cases(
+    ds_write, table, select, steps, expected_rows_after
+):
+    # https://github.com/simonw/datasette/issues/1873
+    # Each step is (request body, expected status, expected) where expected
+    # is an error string, a list of returned rows as tuples, or None to
+    # skip checking the returned rows
+    db = ds_write.get_database("data")
+    await db.execute_write_script(PK_EDGE_CASE_TABLES)
+    token = write_token(ds_write)
+    for body, expected_status, expected in steps:
+        response = await ds_write.client.post(
+            f"/data/{table}/-/insert",
+            json=body,
+            headers=_headers(token),
+        )
+        data = response.json()
+        assert response.status_code == expected_status, (body, data)
+        if expected_status == 400:
+            assert data["ok"] is False
+            assert data["errors"] == [expected]
+        else:
+            assert data["ok"] is True
+            if expected is not None:
+                assert [tuple(row.values()) for row in data["rows"]] == expected
+    rows_after = [
+        tuple(row) for row in (await db.execute(select + " order by 1, 2")).rows
+    ]
+    assert rows_after == expected_rows_after
+
+
 @pytest.mark.parametrize(
     "initial,input,expected_rows",
     (

@@ -537,6 +537,7 @@ async def view_instance_client():
         "/-/versions",
         "/-/plugins",
         "/-/settings",
+        "/-/config",
         "/-/threads",
         "/-/tasks",
         "/-/databases",

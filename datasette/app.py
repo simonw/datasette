@@ -3014,7 +3014,13 @@ ORDER BY allowed.parent, allowed.child
             r"/-/settings(\.(?P<format>json))?$",
         )
         add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self._config()),
+            JsonDataView.as_view(
+                self,
+                "config.json",
+                lambda: self._config(),
+                # Configuration includes allow blocks and stored query SQL
+                permission="permissions-debug",
+            ),
             r"/-/config(\.(?P<format>json))?$",
         )
         add_route(

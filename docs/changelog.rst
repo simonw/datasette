@@ -16,6 +16,7 @@ Several of these changes are backwards incompatible. The :ref:`upgrade guide <up
 Security fixes
 ~~~~~~~~~~~~~~
 
+- Fixed a security issue where the :ref:`/-/config <JsonDataView_config>` introspection endpoint showed anonymous visitors the ``allow`` blocks, the names of private tables and the name and SQL of private stored queries defined in configuration, on an instance that was otherwise public. **Backwards incompatible:** the endpoint now requires the ``permissions-debug`` permission, which by default is only granted to the :ref:`root user <authentication_root>`. It previously needed only ``view-instance``.
 - Fixed a security issue where a stored query could be given a name ending in a newline, such as ``"dogs\n"``, which got past the check that a query name does not conflict with a table or view. Those names are now rejected.
 
 Features

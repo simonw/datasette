@@ -910,7 +910,7 @@ class Database:
                 table_count = (
                     await self.execute(
                         f"select count(*) from (select * from {escape_sqlite(table)} limit {self.count_limit + 1})",
-                        custom_time_limit=limit,
+                        custom_time_limit=self.ds.capped_time_limit_ms(limit),
                     )
                 ).rows[0][0]
                 counts[table] = table_count

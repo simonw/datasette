@@ -39,7 +39,7 @@ dialog.datasette-modal::backdrop {
     animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
 }
 
-/* DatasetteModal.confirm() */
+/* DatasetteModal.alert() and DatasetteModal.confirm() */
 dialog.modal-confirm-dialog {
     width: min(420px, calc(100vw - 32px));
 }
@@ -51,6 +51,10 @@ dialog.modal-confirm-dialog {
     font-size: 0.95rem;
     line-height: 1.5;
     overflow-wrap: anywhere;
+    /* Keep line breaks, and scroll a long message so the buttons stay visible */
+    white-space: pre-wrap;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 .modal-confirm-dialog .modal-btn-danger {

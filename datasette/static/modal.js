@@ -1,6 +1,58 @@
 // Shared lifecycle for native modal dialogs.
 (() => {
-  let confirmCount = 0;
+  let messageCount = 0;
+
+  function messageButton(label, className) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `modal-btn ${className}`;
+    button.textContent = label;
+    return button;
+  }
+
+  // The dialog behind alert() and confirm(): a message above a row of buttons.
+  // buttons(modal) returns those buttons, and the last one takes focus.
+  // Resolves to result() once the dialog has been closed.
+  function showMessage({ message, className = "", buttons, result }) {
+    return new Promise((resolve) => {
+      const modal = DatasetteModal.create();
+      const dialog = modal.dialog;
+      messageCount += 1;
+      const messageId = `modal-message-${messageCount}`;
+      dialog.className = `modal-confirm-dialog ${className}`.trim();
+      // Screen readers announce an alertdialog, and the message that names
+      // it, as soon as it opens
+      dialog.setAttribute("role", "alertdialog");
+      dialog.setAttribute("aria-labelledby", messageId);
+
+      const text = document.createElement("p");
+      text.className = "modal-confirm-message";
+      text.id = messageId;
+      text.textContent = message;
+
+      const footer = document.createElement("div");
+      footer.className = "modal-footer";
+      const footerButtons = buttons(modal);
+      footer.append(...footerButtons);
+      dialog.append(text, footer);
+
+      // Answer as soon as the dialog is closed. The native close event
+      // fires in a later task, by which time the user may have acted again.
+      const close = modal.close.bind(modal);
+      modal.close = (options) => {
+        close(options);
+        resolve(result());
+      };
+      document.body.appendChild(modal);
+      // Registered after the wrapper's own close listener, so focus has
+      // already been restored by the time the dialog is removed
+      dialog.addEventListener("close", () => {
+        modal.remove();
+        resolve(result());
+      });
+      modal.show({ initialFocus: footerButtons[footerButtons.length - 1] });
+    });
+  }
 
   class DatasetteModal extends HTMLElement {
     constructor() {
@@ -20,69 +72,54 @@
       return modal;
     }
 
-    // In-page replacement for window.confirm(), which embedded browsers can
-    // dismiss without ever showing it. Resolves to true if the user confirms.
+    // In-page replacement for window.alert(), which embedded browsers can
+    // dismiss without ever showing it. Resolves once the user dismisses it.
+    static alert({ message = "", okLabel = "OK" } = {}) {
+      return showMessage({
+        message,
+        className: "modal-alert-dialog",
+        result: () => undefined,
+        buttons: (modal) => {
+          const okButton = messageButton(
+            okLabel,
+            "modal-btn-primary modal-alert-ok",
+          );
+          okButton.addEventListener("click", () => modal.close());
+          return [okButton];
+        },
+      });
+    }
+
+    // In-page replacement for window.confirm(), for the same reason.
+    // Resolves to true if the user confirms.
     static confirm({
       message = "",
       confirmLabel = "OK",
       cancelLabel = "Cancel",
       danger = false,
     } = {}) {
-      return new Promise((resolve) => {
-        const modal = DatasetteModal.create();
-        const dialog = modal.dialog;
-        confirmCount += 1;
-        const messageId = `modal-confirm-message-${confirmCount}`;
-        dialog.classList.add("modal-confirm-dialog");
-        dialog.setAttribute("role", "alertdialog");
-        dialog.setAttribute("aria-labelledby", messageId);
-
-        const text = document.createElement("p");
-        text.className = "modal-confirm-message";
-        text.id = messageId;
-        text.textContent = message;
-
-        const cancelButton = document.createElement("button");
-        cancelButton.type = "button";
-        cancelButton.className =
-          "modal-btn modal-btn-ghost modal-confirm-cancel";
-        cancelButton.textContent = cancelLabel;
-
-        const confirmButton = document.createElement("button");
-        confirmButton.type = "button";
-        confirmButton.className = `modal-btn ${
-          danger ? "modal-btn-danger" : "modal-btn-primary"
-        } modal-confirm-ok`;
-        confirmButton.textContent = confirmLabel;
-
-        const footer = document.createElement("div");
-        footer.className = "modal-footer";
-        footer.append(cancelButton, confirmButton);
-        dialog.append(text, footer);
-
-        let confirmed = false;
-        // Answer as soon as the dialog is closed. The native close event
-        // fires in a later task, by which time the user may have acted again.
-        const close = modal.close.bind(modal);
-        modal.close = (options) => {
-          close(options);
-          resolve(confirmed);
-        };
-        cancelButton.addEventListener("click", () =>
-          modal.requestClose("cancel"),
-        );
-        confirmButton.addEventListener("click", () => {
-          confirmed = true;
-          modal.close();
-        });
-        document.body.appendChild(modal);
-        // Registered after the wrapper's own close listener, so focus has
-        // already been restored by the time the dialog is removed
-        dialog.addEventListener("close", () => {
-          modal.remove();
-          resolve(confirmed);
-        });
-        modal.show({ initialFocus: confirmButton });
+      let confirmed = false;
+      return showMessage({
+        message,
+        result: () => confirmed,
+        buttons: (modal) => {
+          const cancelButton = messageButton(
+            cancelLabel,
+            "modal-btn-ghost modal-confirm-cancel",
+          );
+          cancelButton.addEventListener("click", () =>
+            modal.requestClose("cancel"),
+          );
+          const confirmButton = messageButton(
+            confirmLabel,
+            `${danger ? "modal-btn-danger" : "modal-btn-primary"} modal-confirm-ok`,
+          );
+          confirmButton.addEventListener("click", () => {
+            confirmed = true;
+            modal.close();
+          });
+          return [cancelButton, confirmButton];
+        },
       });
     }
 

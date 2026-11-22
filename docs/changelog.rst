@@ -105,6 +105,7 @@ Features
 - Filtering, faceting, sorting and paginating a table now crossfades the table and facets in place, in browsers that support CSS cross-document view transitions. Suggested facet links no longer jump to a ``#facet-...`` fragment. (:issue:`3061`)
 - New ``<datasette-copy-button>`` custom element that plugins and custom templates can use to add a copy to clipboard button. Datasette now uses it for the schema on the table and schema pages, as well as for values on the row page. See :ref:`javascript_plugins_copy_button`. (:pr:`3063`)
 - New ``DatasetteModal.confirm()`` JavaScript method for asking a question using an in-page dialog, returning a promise. See :ref:`javascript_plugins_modal_confirm`.
+- New ``DatasetteModal.alert()`` JavaScript method for showing a message using an in-page dialog, returning a promise that resolves when it is dismissed. Datasette now uses this in place of the browser's ``alert()``, which embedded browsers can dismiss without displaying. See :ref:`javascript_plugins_modal_alert`.
 - The ``beforeClose`` guard for a :ref:`modal dialog <javascript_plugins_modals>` can now return a promise. The dialog stays open until that promise resolves.
 - The list of columns in the Column statistics dialog now shows at most three rows of columns, with a "+N more" button to show the rest, and no longer truncates column names when there is room to show them. (:pr:`3064`)
 - The select boxes used to filter a table now look the same across different browsers. (:issue:`3060`)

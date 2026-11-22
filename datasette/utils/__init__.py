@@ -395,14 +395,38 @@ def untyped_columns(columns):
     )
 
 
-def path_from_row_pks(row, pks, use_rowid, quote=True, typed_columns=()):
+ROWID_COLUMN_NAMES = ("rowid", "_rowid_", "oid")
+
+
+def rowid_column_name(columns) -> str | None:
+    """Return the first SQLite rowid alias not shadowed by a real column of the
+    table, or None if all three (rowid, _rowid_, oid) are already real columns."""
+    lower = {column.lower() for column in columns}
+    for name in ROWID_COLUMN_NAMES:
+        if name not in lower:
+            return name
+    return None
+
+
+def rowid_select_expr(rowid_col: str) -> str:
+    """SQL SELECT expression for a table's rowid alias.
+
+    SQLite reports ``_rowid_`` and ``oid`` as ``rowid`` in cursor.description
+    unless aliased, which would collide with a real ``rowid`` column.
+    """
+    return rowid_col if rowid_col == "rowid" else f"{rowid_col} as {rowid_col}"
+
+
+def path_from_row_pks(
+    row, pks, use_rowid, quote=True, typed_columns=(), rowid_column="rowid"
+):
     """Generate a unique identifier for a row from its primary keys, encoded
     for use in a URL unless ``quote`` is false.
 
     ``typed_columns`` are the primary key columns that need their integers and
     floats encoded with a type - see untyped_columns()."""
     if use_rowid:
-        pks = ["rowid"]
+        pks = [rowid_column]
     values = [
         (pk, row[pk]["value"] if isinstance(row[pk], dict) else row[pk]) for pk in pks
     ]
@@ -1810,8 +1834,11 @@ async def row_sql_params_pks(db, table, pk_values):
     use_rowid = not pks
     select = "*"
     if use_rowid:
-        select = "rowid, *"
-        pks = ["rowid"]
+        rowid_col = await db.rowid_column(table)
+        if rowid_col is None:
+            return None, {}, []
+        select = f"{rowid_select_expr(rowid_col)}, *"
+        pks = [rowid_col]
     wheres = []
     for i, pk in enumerate(pks):
         escaped_pk = escape_sqlite(pk)

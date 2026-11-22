@@ -65,7 +65,12 @@ def search_filters(request, database, table, datasette):
         db = datasette.get_database(database)
         fts_table = table_metadata.get("fts_table")
         fts_table = fts_table or await db.fts_table(table)
-        fts_pk = table_metadata.get("fts_pk", "rowid")
+        default_fts_pk = (
+            "rowid"
+            if await db.view_exists(table)
+            else (await db.rowid_column(table) or "rowid")
+        )
+        fts_pk = table_metadata.get("fts_pk", default_fts_pk)
         requested_fts_table = request.args.get("_fts_table")
         requested_fts_pk = request.args.get("_fts_pk")
         if (requested_fts_table and requested_fts_table != fts_table) or (
@@ -117,7 +122,8 @@ def search_filters(request, database, table, datasette):
                         raise BadRequest("Cannot search by that column")
 
                     where_clauses.append(
-                        "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
+                        "{fts_pk} in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
+                            fts_pk=escape_sqlite(fts_pk),
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
                             match_clause=(

@@ -1263,22 +1263,27 @@ class ApiExplorerView(BaseView):
                     actor=request.actor,
                 ):
                     pks = await db.primary_keys(table)
-                    table_links.extend(
-                        [
-                            {
-                                "path": self.ds.urls.table(name, table) + "/-/insert",
-                                "method": "POST",
-                                "label": f"Insert rows into {table}",
-                                "json": {
-                                    "rows": [
-                                        {
-                                            column: None
-                                            for column in await db.table_columns(table)
-                                            if column not in pks
-                                        }
-                                    ]
-                                },
+                    table_columns = await db.table_columns(table)
+                    rowid_col = await db.rowid_column(table) if not pks else None
+                    table_links.append(
+                        {
+                            "path": self.ds.urls.table(name, table) + "/-/insert",
+                            "method": "POST",
+                            "label": f"Insert rows into {table}",
+                            "json": {
+                                "rows": [
+                                    {
+                                        column: None
+                                        for column in table_columns
+                                        if column not in pks
+                                    }
+                                ]
                             },
+                        }
+                    )
+                    if pks or rowid_col:
+                        upsert_pks = pks or [rowid_col]
+                        table_links.append(
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/upsert",
                                 "method": "POST",
@@ -1290,20 +1295,19 @@ class ApiExplorerView(BaseView):
                                                 column,
                                                 (
                                                     " (primary key)"
-                                                    if column in (pks or ["rowid"])
+                                                    if column in upsert_pks
                                                     else ""
                                                 ),
                                             )
                                             for column in (
-                                                (["rowid"] if not pks else [])
-                                                + await db.table_columns(table)
+                                                ([rowid_col] if not pks else [])
+                                                + table_columns
                                             )
                                         }
                                     ]
                                 },
-                            },
-                        ]
-                    )
+                            }
+                        )
                 if await self.ds.allowed(
                     action="drop-table",
                     resource=TableResource(database=name, table=table),

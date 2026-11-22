@@ -11,6 +11,7 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
+    rowid_column_name,
     table_xinfo_hidden,
     to_css_class,
 )
@@ -567,13 +568,16 @@ class DisplayColumnsAndRowsProvider(Provider):
     scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
+        can_link = not context.is_view and bool(
+            context.pks or rowid_column_name(context.table_columns)
+        )
         display_columns, display_rows = await context.display_columns_and_rows(
             context.datasette,
             context.database_name,
             context.table_name,
             context.results_description,
             context.rows,
-            link_column=not context.is_view,
+            link_column=can_link,
             truncate_cells=context.datasette.setting("truncate_cells_html"),
             sortable_columns=context.sortable_columns,
             request=context.request,
@@ -682,9 +686,18 @@ class RenderCellExtra(Extra):
 
     async def resolve(self, context):
         table_name = context.table_name
-        pks_for_display = context.pks or (
-            ["rowid"] if table_name and not context.is_view else []
-        )
+        if context.pks:
+            pks_for_display = context.pks
+        elif table_name and not context.is_view:
+            table_columns = getattr(context, "table_columns", None)
+            rowid_col = (
+                rowid_column_name(table_columns)
+                if table_columns is not None
+                else await context.db.rowid_column(table_name)
+            )
+            pks_for_display = [rowid_col] if rowid_col else []
+        else:
+            pks_for_display = []
         ct_map = (
             await context.datasette.get_column_types(context.database_name, table_name)
             if table_name

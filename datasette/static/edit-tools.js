@@ -6646,11 +6646,20 @@ async function fetchUpdatedRowElement(state) {
   return findDataRowElement(doc, state.currentRowId);
 }
 
-function rowPathFromRowData(row, primaryKeys, columns) {
+function rowPathFromRowData(row, primaryKeys, columns, rowidColumn) {
   if (!row) {
     return null;
   }
-  var keys = primaryKeys && primaryKeys.length ? primaryKeys : ["rowid"];
+  var keys;
+  if (primaryKeys && primaryKeys.length) {
+    keys = primaryKeys;
+  } else if (typeof rowidColumn === "undefined") {
+    keys = ["rowid"];
+  } else if (rowidColumn) {
+    keys = [rowidColumn];
+  } else {
+    return null;
+  }
   // SQLite will not convert a text value for a column with no declared type,
   // so numbers in those columns have to be encoded with their type
   var untyped = {};
@@ -6753,6 +6762,7 @@ async function saveRowEditDialog(state) {
         insertedRowData,
         insertData.primaryKeys || [],
         insertData.columns || [],
+        insertData.rowidColumn,
       );
       if (!insertedRowId) {
         state.modal.close({ restoreFocus: false });

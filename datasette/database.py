@@ -66,6 +66,7 @@ from .utils import (
     escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
+    rowid_column_name,
     sqlite3,
     sqlite_timelimit,
     table_column_details,
@@ -1108,6 +1109,9 @@ class Database:
         )
         return [name for _, name in pks]
 
+    async def rowid_column(self, table: str) -> str | None:
+        return rowid_column_name(await self.table_columns(table))
+
     async def fts_table(self, table):
         def _fts_table(conn):
             return detect_fts(conn, table)
@@ -1452,10 +1456,11 @@ def columns_for_results(table_columns: Columns, names: Iterable[str]) -> Columns
     A name that is not a column of the table is included with no details.
     """
     columns = []
+    rowid_col = rowid_column_name(table_columns.names) if len(table_columns) else None
     for name in names:
         if name in table_columns:
             column = table_columns[name]
-        elif name == "rowid" and len(table_columns):
+        elif rowid_col and name == rowid_col:
             # The implicit rowid of a table that has no column of that name
             column = Column(name=name, type="INTEGER")
         else:

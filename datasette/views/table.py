@@ -46,6 +46,8 @@ from datasette.utils import (
     request_route_path,
     request_wants_json,
     row_has_null_primary_key,
+    rowid_column_name,
+    rowid_select_expr,
     sqlite3,
     tilde_encode,
     to_css_class,
@@ -53,6 +55,7 @@ from datasette.utils import (
     untyped_columns,
     value_as_boolean,
 )
+from datasette.utils import sqlite as datasette_sqlite
 from datasette.utils.asgi import (
     BadRequest,
     Forbidden,
@@ -349,7 +352,13 @@ async def _fragment_request_for_row(request, resolved):
         raise BadRequest("_row is not supported for views")
 
     pks = await resolved.db.primary_keys(resolved.table)
-    row_pks = pks or ["rowid"]
+    if pks:
+        row_pks = pks
+    else:
+        rowid_col = await resolved.db.rowid_column(resolved.table)
+        if rowid_col is None:
+            raise BadRequest("_row is not supported for tables without a primary key")
+        row_pks = [rowid_col]
     try:
         pk_values = decode_key_path(row_path)
     except ValueError:
@@ -583,7 +592,13 @@ async def _table_insert_ui(
         "primaryKeys": pks,
         "maxInsertRows": datasette.setting("max_insert_rows"),
     }
-    if can_update:
+    if not pks:
+        rowid_col = rowid_column_name(column_details.names)
+        if rowid_col != "rowid":
+            data["rowidColumn"] = rowid_col
+    else:
+        rowid_col = None
+    if can_update and (pks or rowid_col is not None):
         data["upsertPath"] = (
             f"{datasette.urls.table(database_name, table_name)}/-/upsert"
         )
@@ -600,6 +615,7 @@ async def _execute_sql_ui(
     db=None,
     table_name=None,
     use_rowid=False,
+    rowid_col="rowid",
 ):
     # URLs JavaScript can use to run read-only SQL against this database, used
     # by the column statistics dialog. Only provided if the actor is allowed
@@ -618,7 +634,9 @@ async def _execute_sql_ui(
     if db is not None and table_name is not None:
         # Every column with its declared type, including any hidden from the
         # current page, so the column statistics dialog can switch between them
-        columns = [{"name": "rowid", "type": "integer"}] if use_rowid else []
+        columns = (
+            [{"name": rowid_col, "type": "integer"}] if use_rowid and rowid_col else []
+        )
         columns.extend(
             {"name": column.name, "type": (column.type or "").lower()}
             for column in await db.table_column_details(table_name)
@@ -776,10 +794,11 @@ async def display_columns_and_rows(
         col.name: col for col in await db.table_column_details(table_name)
     }
     pks = await db.primary_keys(table_name)
-    has_rowid_column = any(d[0] == "rowid" for d in description)
+    rowid_col = rowid_column_name(column_details.keys())
+    has_rowid_column = bool(rowid_col and any(d[0] == rowid_col for d in description))
     pks_for_display = pks
-    if not pks_for_display and not await db.view_exists(table_name):
-        pks_for_display = ["rowid"]
+    if not pks_for_display and rowid_col and not await db.view_exists(table_name):
+        pks_for_display = [rowid_col]
     label_column = None
     if link_column:
         label_column = await db.label_column_for_table(table_name)
@@ -793,7 +812,7 @@ async def display_columns_and_rows(
 
     columns = []
     for r in description:
-        if r[0] == "rowid" and "rowid" not in column_details:
+        if rowid_col and r[0] == rowid_col and r[0] not in column_details:
             type_ = "integer"
             notnull = 0
         else:
@@ -844,8 +863,12 @@ async def display_columns_and_rows(
             # so it gets no link to a row page and no edit or delete buttons
             row_link = "&nbsp;"
             if not null_pk:
-                pk_path = path_from_row_pks(row, pks, not pks, False)
-                row_path = path_from_row_pks(row, pks, not pks, typed_columns=typed_pks)
+                pk_path = path_from_row_pks(
+                    row, pks, not pks, False, rowid_column=rowid_col
+                )
+                row_path = path_from_row_pks(
+                    row, pks, not pks, typed_columns=typed_pks, rowid_column=rowid_col
+                )
                 row_label = row_label_from_label_column(row, label_column)
                 row_action_label = pk_path
                 if row_label and row_label != pk_path:
@@ -975,11 +998,19 @@ async def display_columns_and_rows(
                 )
             elif isinstance(value, bytes):
                 formatted = do_filesizeformat(len(value))
-                if ((pks or has_rowid_column) and not null_pk) or request is None:
+                if ((pks or has_rowid_column) and not null_pk) or (
+                    request is None and (pks or has_rowid_column)
+                ):
                     blob_url = datasette.urls.row_blob(
                         database_name,
                         table_name,
-                        path_from_row_pks(row, pks, not pks, typed_columns=typed_pks),
+                        path_from_row_pks(
+                            row,
+                            pks,
+                            not pks,
+                            typed_columns=typed_pks,
+                            rowid_column=rowid_col,
+                        ),
                         column,
                     )
                 else:
@@ -1076,7 +1107,9 @@ class TableInsertView(BaseView):
     def __init__(self, datasette):
         self.ds = datasette
 
-    async def _validate_data(self, request, db, table_name, pks, upsert):
+    async def _validate_data(
+        self, request, db, table_name, pks, upsert, rowid_col="rowid"
+    ):
         errors = []
 
         pks_list = []
@@ -1085,11 +1118,16 @@ class TableInsertView(BaseView):
         else:
             pks_list = list(pks)
 
-        if not pks_list:
-            pks_list = ["rowid"]
-
         def _errors(errors):
             return None, errors, {}
+
+        if not pks_list:
+            if rowid_col:
+                pks_list = [rowid_col]
+            elif upsert:
+                return _errors(
+                    ["Cannot upsert into a table with no primary key or rowid"]
+                )
 
         # The body is parsed as JSON regardless of the Content-Type header
         try:
@@ -1213,10 +1251,11 @@ class TableInsertView(BaseView):
             return Response.error(["Database is immutable"], 403)
 
         pks = await db.primary_keys(table_name)
+        rowid_col = await db.rowid_column(table_name)
 
         try:
             rows, errors, extras = await self._validate_data(
-                request, db, table_name, pks, upsert
+                request, db, table_name, pks, upsert, rowid_col=rowid_col
             )
         except PayloadTooLarge as e:
             return Response.error([str(e)], 413)
@@ -1236,10 +1275,11 @@ class TableInsertView(BaseView):
 
         num_rows = len(rows)
 
-        # No that we've passed pks to _validate_data it's safe to
+        # Now that we've passed pks to _validate_data it's safe to
         # fix the rowids case:
-        if not pks:
-            pks = ["rowid"]
+        use_rowid = not pks
+        if use_rowid and rowid_col:
+            pks = [rowid_col]
 
         ignore = extras.get("ignore")
         replace = extras.get("replace")
@@ -1288,38 +1328,86 @@ class TableInsertView(BaseView):
             else:
                 # Insert
                 kwargs = {"ignore": ignore, "replace": replace, "alter": alter}
-            if should_return and not upsert:
-                try:
-                    conn.execute(
-                        f"select rowid from {escape_sqlite(table_name)} limit 0"
-                    )
-                    has_rowid = True
-                except sqlite3.OperationalError:
-                    # WITHOUT ROWID table
-                    has_rowid = False
-                if not has_rowid:
-                    # These always have a primary key, which can never be
-                    # null - so fetch the rows back using those values
-                    pk_values = {}
-                    for row in rows:
-                        table.insert(row, **kwargs)
-                        pk_values[tuple(row.get(pk) for pk in pks)] = None
-                    where = " and ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
-                    returned = []
-                    for values in pk_values:
-                        returned.extend(table.rows_where(where, values))
-                    return returned
-                rowids = []
+
+            def _insert_and_fetch_by_pks():
+                pk_values = {}
                 for row in rows:
-                    rowids.append(table.insert(row, **kwargs).last_rowid)
-                return list(
-                    table.rows_where(
-                        "rowid in ({})".format(",".join("?" for _ in rowids)),
-                        rowids,
-                        # Tables without a primary key need the rowid returned
-                        select="rowid, *" if pks == ["rowid"] else "*",
+                    table.insert(row, **kwargs)
+                    pk_values[tuple(row.get(pk) for pk in pks)] = None
+                where = " and ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
+                returned = []
+                for values in pk_values:
+                    returned.extend(table.rows_where(where, values))
+                return returned
+
+            if should_return and not upsert:
+                if rowid_col is not None:
+                    try:
+                        conn.execute(
+                            f"select {rowid_col} from {escape_sqlite(table_name)} limit 0"
+                        )
+                        has_rowid = True
+                    except sqlite3.OperationalError:
+                        # WITHOUT ROWID table
+                        has_rowid = False
+                    if not has_rowid:
+                        # These always have a primary key, which can never be
+                        # null - so fetch the rows back using those values
+                        return _insert_and_fetch_by_pks()
+                    rowids = []
+                    for row in rows:
+                        rowids.append(table.insert(row, **kwargs).last_rowid)
+                    return list(
+                        table.rows_where(
+                            "{} in ({})".format(
+                                rowid_col, ",".join("?" for _ in rowids)
+                            ),
+                            rowids,
+                            # Tables without a primary key need the rowid returned
+                            select=(
+                                f"{rowid_select_expr(rowid_col)}, *"
+                                if use_rowid
+                                else "*"
+                            ),
+                        )
                     )
+                if not datasette_sqlite.supports_returning():
+                    # SQLite < 3.35 has no RETURNING and all three rowid
+                    # aliases are shadowed by real columns.
+                    if not use_rowid and all(
+                        all(row.get(pk) is not None for pk in pks) for row in rows
+                    ):
+                        return _insert_and_fetch_by_pks()
+                    table.insert_all(rows, **kwargs)
+                    return []
+                inserted = []
+                conflict_sql = (
+                    "or ignore " if ignore else "or replace " if replace else ""
                 )
+                for row in rows:
+                    if alter:
+                        table.add_missing_columns([row])
+                    cols = list(row.keys())
+                    if cols:
+                        col_list = ", ".join(escape_sqlite(c) for c in cols)
+                        placeholders = ", ".join("?" for _ in cols)
+                        values = [
+                            sqlite_utils.db.jsonify_if_needed(row[c]) for c in cols
+                        ]
+                        cur = conn.execute(
+                            f"insert {conflict_sql}into {escape_sqlite(table_name)} "
+                            f"({col_list}) values ({placeholders}) returning *",
+                            values,
+                        )
+                    else:
+                        cur = conn.execute(
+                            f"insert {conflict_sql}into {escape_sqlite(table_name)} "
+                            "default values returning *"
+                        )
+                    col_names = [d[0] for d in cur.description]
+                    for inserted_row in cur.fetchall():
+                        inserted.append(dict(zip(col_names, inserted_row)))
+                return inserted
             else:
                 method_all = table.upsert_all if upsert else table.insert_all
                 method_all(rows, **kwargs)
@@ -1353,7 +1441,11 @@ class TableInsertView(BaseView):
                 args = list(itertools.chain.from_iterable(row_pk_values_for_later))
                 fetched_rows = await db.execute(
                     "select {}* from {} where {}".format(
-                        "rowid, " if pks == ["rowid"] else "",
+                        (
+                            f"{rowid_select_expr(rowid_col)}, "
+                            if use_rowid and rowid_col
+                            else ""
+                        ),
                         escape_sqlite(table_name),
                         where_clause,
                     ),
@@ -1645,18 +1737,30 @@ class TableCountView(BaseView):
         Used to show "Rows 51-100" on pages after the first, without slowing
         down the page itself."""
         db, table_name = resolved.db, resolved.table
-        if resolved.is_view:
-            # For views _next is a plain offset
+        pks = [] if resolved.is_view else await db.primary_keys(table_name)
+        rowid_col = None if resolved.is_view else await db.rowid_column(table_name)
+        use_rowid = not pks and not resolved.is_view and rowid_col is not None
+        has_null_keys = (
+            not resolved.is_view
+            and not use_rowid
+            and bool(pks)
+            and await _has_null_keys(db, table_name, pks, request)
+        )
+        use_offset_pagination = (
+            resolved.is_view
+            or (not pks and not use_rowid)
+            or (has_null_keys and rowid_col is None)
+        )
+        if use_offset_pagination:
+            # _next is a plain offset
             try:
                 count = int(_next)
             except ValueError:
                 return Response.error("Invalid _next", status=400)
         else:
-            pks = await db.primary_keys(table_name)
-            use_rowid = not pks
             table_metadata = await self.ds.table_config(db.name, table_name)
             sortable_columns = await _sortable_columns_for_table(
-                self.ds, db.name, table_name, use_rowid
+                self.ds, db.name, table_name, use_rowid, rowid_col=rowid_col
             )
             sort, sort_desc, _ = await _sort_order(
                 table_metadata, sortable_columns, request, ""
@@ -1669,7 +1773,8 @@ class TableCountView(BaseView):
                 pks,
                 use_rowid,
                 params,
-                has_null_keys=await _has_null_keys(db, table_name, pks, request),
+                has_null_keys=has_null_keys,
+                rowid_col=rowid_col,
             )
             if before_clause is None:
                 return Response.error("Invalid _next", status=400)
@@ -1819,13 +1924,26 @@ class TableAutocompleteView(BaseView):
             raise Forbidden("You do not have permission to view this table")
 
         pks = await db.primary_keys(table_name)
-        if not pks:
-            pks = ["rowid"]
+        use_rowid = not pks
+        if use_rowid:
+            rowid_col = await db.rowid_column(table_name)
+            if rowid_col is None:
+                raise BadRequest(
+                    "Autocomplete is not available for tables without a primary key or rowid"
+                )
+            pks = [rowid_col]
         label_column = await db.label_column_for_table(table_name)
         select_columns = list(
             dict.fromkeys(pks + ([label_column] if label_column else []))
         )
-        select_sql = ", ".join(escape_sqlite(column) for column in select_columns)
+        select_sql = ", ".join(
+            (
+                rowid_select_expr(column)
+                if use_rowid and column == pks[0]
+                else escape_sqlite(column)
+            )
+            for column in select_columns
+        )
         q = request.args.get("q") or ""
         initial_arg = request.args.get("_initial")
         initial = (
@@ -1938,15 +2056,17 @@ async def _columns_to_select(table_columns, pks, request):
     return columns
 
 
-async def _sortable_columns_for_table(datasette, database_name, table_name, use_rowid):
+async def _sortable_columns_for_table(
+    datasette, database_name, table_name, use_rowid, rowid_col="rowid"
+):
     db = datasette.databases[database_name]
     table_metadata = await datasette.table_config(database_name, table_name)
     if "sortable_columns" in table_metadata:
         sortable_columns = set(table_metadata["sortable_columns"])
     else:
         sortable_columns = set(await db.table_columns(table_name))
-    if use_rowid:
-        sortable_columns.add("rowid")
+    if use_rowid and rowid_col:
+        sortable_columns.add(rowid_col)
     return sortable_columns
 
 
@@ -2292,7 +2412,7 @@ async def _has_null_keys_query(db, table_name, pks):
         return False
 
 
-def _cursor_key_columns(components, pks):
+def _cursor_key_columns(components, pks, rowid_col="rowid"):
     """The columns a cursor's primary key components are values for, or None
     if there are the wrong number of them.
 
@@ -2300,18 +2420,22 @@ def _cursor_key_columns(components, pks):
     row, because the primary key does not identify it."""
     if len(components) == len(pks):
         return pks
-    if len(components) == len(pks) + 1 and None in components[:-1]:
-        return pks + ["rowid"]
+    if rowid_col and len(components) == len(pks) + 1 and None in components[:-1]:
+        return pks + [rowid_col]
     return None
 
 
-def _null_aware_keys_sql(columns, values, params, before=False):
+def _null_aware_keys_sql(columns, values, params, before=False, rowid_col="rowid"):
     """Like compound_keys_after_sql() - or compound_keys_at_or_before_sql() if
     before is true - for columns that sort ascending and can contain nulls,
     which SQLite sorts before every other value. Adds the values to params."""
 
     def clause(i):
-        column = "rowid" if columns[i] == "rowid" else escape_sqlite(columns[i])
+        column = (
+            rowid_col
+            if rowid_col and columns[i] == rowid_col
+            else escape_sqlite(columns[i])
+        )
         last = i == len(columns) - 1
         if values[i] is None:
             if before:
@@ -2336,7 +2460,14 @@ def _null_aware_keys_sql(columns, values, params, before=False):
 
 
 def _at_or_before_next_where_clause(
-    _next, sort, sort_desc, pks, use_rowid, params, has_null_keys=False
+    _next,
+    sort,
+    sort_desc,
+    pks,
+    use_rowid,
+    params,
+    has_null_keys=False,
+    rowid_col="rowid",
 ):
     """SQL clause selecting the rows up to and including a ?_next= cursor - the
     rows on earlier pages. Returns None if the cursor is not valid.
@@ -2348,14 +2479,16 @@ def _at_or_before_next_where_clause(
     if use_rowid:
         if len(components) != 1:
             return None
-        pk_clause = f"rowid <= :p{len(params)}"
+        pk_clause = f"{rowid_col} <= :p{len(params)}"
         params[f"p{len(params)}"] = components[0]
     else:
-        columns = _cursor_key_columns(components, pks)
+        columns = _cursor_key_columns(components, pks, rowid_col=rowid_col)
         if columns is None:
             return None
         if has_null_keys or None in components:
-            pk_clause = _null_aware_keys_sql(columns, components, params, before=True)
+            pk_clause = _null_aware_keys_sql(
+                columns, components, params, before=True, rowid_col=rowid_col
+            )
         else:
             param_len = len(params)
             pk_clause = compound_keys_at_or_before_sql(pks, param_len)
@@ -2383,7 +2516,14 @@ def _at_or_before_next_where_clause(
 
 
 def _next_where_clauses(
-    _next, sort, sort_desc, pks, use_rowid, params, has_null_keys=False
+    _next,
+    sort,
+    sort_desc,
+    pks,
+    use_rowid,
+    params,
+    has_null_keys=False,
+    rowid_col="rowid",
 ):
     """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
 
@@ -2394,13 +2534,15 @@ def _next_where_clauses(
     # Figure out the SQL for next-based-on-primary-key first
     next_by_pk_clauses = []
     if use_rowid:
-        next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+        next_by_pk_clauses.append(f"{rowid_col} > :p{len(params)}")
         params[f"p{len(params)}"] = components[0]
     else:
         # Apply the tie-breaker based on primary keys
-        columns = _cursor_key_columns(components, pks)
+        columns = _cursor_key_columns(components, pks, rowid_col=rowid_col)
         if columns and (has_null_keys or None in components):
-            next_by_pk_clauses.append(_null_aware_keys_sql(columns, components, params))
+            next_by_pk_clauses.append(
+                _null_aware_keys_sql(columns, components, params, rowid_col=rowid_col)
+            )
         elif columns:
             param_len = len(params)
             next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
@@ -2445,7 +2587,17 @@ def _next_where_clauses(
     return clauses
 
 
-def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid):
+def _page_position(
+    datasette,
+    request,
+    is_view,
+    sort,
+    sort_desc,
+    pks,
+    use_rowid,
+    rowid_col="rowid",
+    use_offset_pagination=False,
+):
     """Context for the "you are not on the first page" strip, or None on page 1."""
     _next = request.args.get("_next")
     if not _next:
@@ -2461,14 +2613,14 @@ def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid)
         "after_column": None,
         "after_value": None,
     }
-    if is_view:
+    if is_view or use_offset_pagination:
         return position
     sort_value, components = _parse_next(_next, sort, sort_desc)
     if (sort or sort_desc) and len(_next.split(",")) > 1:
         position["after_column"] = sort or sort_desc
         position["after_value"] = None if sort_value is None else str(sort_value)
     else:
-        position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
+        position["after_column"] = rowid_col if use_rowid else ", ".join(pks)
         position["after_value"] = ", ".join(
             key_value_display(component) for component in components
         )
@@ -2587,6 +2739,7 @@ async def table_view_data(
     # Introspect columns and primary keys for table
     pks = await db.primary_keys(table_name)
     table_columns = await db.table_columns(table_name)
+    rowid_col = None if is_view else rowid_column_name(table_columns)
 
     # Take ?_col= and ?_nocol= into account
     specified_columns = await _columns_to_select(table_columns, pks, request)
@@ -2594,26 +2747,31 @@ async def table_view_data(
     select_all_columns = ", ".join(escape_sqlite(t) for t in table_columns)
 
     # rowid tables (no specified primary key) need a different SELECT
-    use_rowid = not pks and not is_view
+    use_rowid = not pks and not is_view and rowid_col is not None
     has_null_keys = (
         not is_view
         and not use_rowid
+        and bool(pks)
         and await _has_null_keys(db, table_name, pks, request)
+    )
+    use_offset_pagination = (
+        is_view or (not pks and not use_rowid) or (has_null_keys and rowid_col is None)
     )
     order_by = ""
     if use_rowid:
-        select_specified_columns = f"rowid, {select_specified_columns}"
-        select_all_columns = f"rowid, {select_all_columns}"
-        order_by = "rowid"
-        order_by_pks = "rowid"
+        rowid_select = rowid_select_expr(rowid_col)
+        select_specified_columns = f"{rowid_select}, {select_specified_columns}"
+        select_all_columns = f"{rowid_select}, {select_all_columns}"
+        order_by = rowid_col
+        order_by_pks = rowid_col
     else:
         order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
-        if has_null_keys:
+        if has_null_keys and rowid_col:
             # Rows that share a null primary key need a defined order
-            order_by_pks += ", rowid"
+            order_by_pks += f", {rowid_col}"
         order_by = order_by_pks
 
-    if is_view:
+    if is_view or (not pks and not use_rowid):
         order_by = ""
 
     # TODO: This logic should turn into logic about which ?_extras get
@@ -2637,7 +2795,7 @@ async def table_view_data(
 
     # Deal with custom sort orders
     sortable_columns = await _sortable_columns_for_table(
-        datasette, database_name, table_name, use_rowid
+        datasette, database_name, table_name, use_rowid, rowid_col=rowid_col
     )
 
     sort, sort_desc, order_by = await _sort_order(
@@ -2662,7 +2820,7 @@ async def table_view_data(
 
     offset = ""
     if _next:
-        if is_view:
+        if use_offset_pagination:
             # _next is an offset
             offset = f" offset {int(_next)}"
         else:
@@ -2675,12 +2833,13 @@ async def table_view_data(
                     use_rowid,
                     params,
                     has_null_keys=has_null_keys,
+                    rowid_col=rowid_col,
                 )
             )
 
     # The first page needs this tie-breaker too: the ?_next= cursor assumes that
     # rows with the same sort value come back in primary key order
-    if (sort or sort_desc) and not is_view:
+    if (sort or sort_desc) and not is_view and order_by_pks:
         order_by = f"{order_by}, {order_by_pks}"
 
     where_clause = ""
@@ -2737,8 +2896,10 @@ async def table_view_data(
 
     # The rowid of the last row on the page, for a cursor that needs it
     last_rowid_sql = (
-        f"select rowid from {escape_sqlite(table_name)} {where_clause}{order_by}"
+        f"select {rowid_col} from {escape_sqlite(table_name)} {where_clause}{order_by}"
         f" limit 1 offset {max(page_size - 1, 0)}"
+        if rowid_col
+        else None
     )
 
     if request.args.get("_timelimit"):
@@ -2831,6 +2992,8 @@ async def table_view_data(
         is_view,
         last_rowid_sql=last_rowid_sql,
         params=params,
+        rowid_col=rowid_col,
+        use_offset_pagination=use_offset_pagination,
     )
     rows = rows[:page_size]
 
@@ -2994,7 +3157,15 @@ async def table_view_data(
             }
         )
         data["page_position"] = _page_position(
-            datasette, request, is_view, sort, sort_desc, pks, use_rowid
+            datasette,
+            request,
+            is_view,
+            sort,
+            sort_desc,
+            pks,
+            use_rowid,
+            rowid_col=rowid_col,
+            use_offset_pagination=use_offset_pagination,
         )
         # if no sort specified AND table has a single primary key,
         # set sort to that so arrow is displayed
@@ -3002,7 +3173,7 @@ async def table_view_data(
             if 1 == len(pks):
                 sort = pks[0]
             elif use_rowid:
-                sort = "rowid"
+                sort = rowid_col
         data["sort"] = sort
         data["sort_desc"] = sort_desc
         table_insert_ui = await _table_insert_ui(
@@ -3014,7 +3185,7 @@ async def table_view_data(
         data["table_insert_ui"] = table_insert_ui
         data["table_alter_ui"] = table_alter_ui
         row_mutation_ui = False
-        if not is_view and db.is_mutable:
+        if not is_view and (pks or use_rowid) and db.is_mutable:
             row_action_permissions = await datasette.allowed_many(
                 actions=["update-row", "delete-row"],
                 resource=TableResource(database=database_name, table=table_name),
@@ -3040,6 +3211,7 @@ async def table_view_data(
                 db=db,
                 table_name=table_name,
                 use_rowid=use_rowid,
+                rowid_col=rowid_col,
                 filter_description=filters.human_description_en(
                     extra=extra_human_descriptions
                     + [
@@ -3070,12 +3242,14 @@ async def _next_value_and_url(
     is_view,
     last_rowid_sql=None,
     params=None,
+    rowid_col="rowid",
+    use_offset_pagination=False,
 ):
     next_value = None
     next_url = None
     last_rowid = None
     if 0 < page_size < len(rows):
-        if is_view:
+        if is_view or use_offset_pagination:
             next_value = int(_next or 0) + page_size
         else:
             next_value = path_from_row_pks(
@@ -3085,21 +3259,22 @@ async def _next_value_and_url(
                 typed_columns=untyped_columns(
                     await db.table_column_details(table_name)
                 ),
+                rowid_column=rowid_col,
             )
             if last_rowid_sql and row_has_null_primary_key(rows[-2], pks):
                 # A null primary key does not identify the row to resume from
                 last_rowid = (await db.execute(last_rowid_sql, params)).single_value()
                 next_value = f"{next_value},{last_rowid}"
         # If there's a sort or sort_desc, add that value as a prefix
-        if (sort or sort_desc) and not is_view:
+        if (sort or sort_desc) and not (is_view or use_offset_pagination):
             try:
                 prefix = rows[-2][sort or sort_desc]
             except KeyError:
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 # Tables with no primary key paginate on rowid
-                lookup_pks = pks or ["rowid"]
+                lookup_pks = pks or [rowid_col]
                 if last_rowid is not None:
-                    lookup_pks = ["rowid"]
+                    lookup_pks = [rowid_col]
                 prefix_where_clause = " and ".join(
                     f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(lookup_pks)
                 )

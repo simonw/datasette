@@ -71,7 +71,13 @@ from .utils import (
     table_column_details,
 )
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
-from .utils.sqlite import sqlite_derived_table_dependencies, sqlite_hidden_table_names
+from .utils.sqlite import (
+    _virtual_table_module,
+    sqlite_derived_table_dependencies,
+    sqlite_hidden_table_names,
+)
+
+_SPATIALITE_KNN_MODULES = {"virtualknn", "virtualknn2"}
 
 connections = threading.local()
 
@@ -906,7 +912,16 @@ class Database:
             return self.cached_table_counts
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
-        for table in await self.table_names():
+        tables = await self.execute(
+            "select name, sql from sqlite_master where type='table' order by name"
+        )
+        for table, sql in tables.rows:
+            # SpatiaLite's KNN virtual tables only return rows for a nearest
+            # neighbour query, so they are always empty to count(*) - which
+            # can still run for minutes without being stopped by the time limit
+            if _virtual_table_module(sql) in _SPATIALITE_KNN_MODULES:
+                counts[table] = 0
+                continue
             try:
                 table_count = (
                     await self.execute(

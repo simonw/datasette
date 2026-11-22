@@ -1411,3 +1411,37 @@ async def test_database_constructor_mode(bare_ds, tmp_path):
     )
     with pytest.raises(sqlite3.OperationalError):
         await missing.execute("select 1")
+
+
+@pytest.mark.asyncio
+async def test_table_counts_skips_spatialite_knn_tables(tmp_path):
+    # https://github.com/simonw/datasette/issues/1611
+    # count(*) against SpatiaLite's KNN virtual tables can run for minutes
+    # past the time limit, so table_counts() must not run it. SpatiaLite is
+    # not needed: the virtual table entries are written directly into the
+    # schema, and an ordinary table called "knn" must still be counted.
+    path = str(tmp_path / "spatial.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table places (id integer primary key)")
+    conn.execute("insert into places (id) values (1), (2)")
+    conn.execute("create table knn_notes (id integer primary key)")
+    conn.execute("insert into knn_notes (id) values (1)")
+    conn.execute("pragma writable_schema = on")
+    for name, module in (("KNN", "VirtualKNN"), ("KNN2", '"VirtualKNN2"')):
+        conn.execute(
+            "insert into sqlite_master (type, name, tbl_name, rootpage, sql) "
+            "values ('table', ?, ?, 0, ?)",
+            [name, name, f"CREATE VIRTUAL TABLE {name} USING {module}()"],
+        )
+    conn.execute("pragma writable_schema = off")
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([path])
+    db = ds.get_database("spatial")
+    assert await db.table_counts() == {
+        "KNN": 0,
+        "KNN2": 0,
+        "knn_notes": 1,
+        "places": 2,
+    }

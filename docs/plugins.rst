@@ -140,7 +140,7 @@ This should output the following:
 Seeing what plugins are installed
 ---------------------------------
 
-You can see a list of installed plugins by navigating to the ``/-/plugins`` page of your Datasette instance - for example: https://fivethirtyeight.datasettes.com/-/plugins
+You can see a list of installed plugins by navigating to the ``/-/plugins`` page of your Datasette instance - for example: https://latest.datasette.io/-/plugins
 
 You can also use the ``datasette plugins`` command::
 
@@ -191,6 +191,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
         },
         {
             "name": "datasette.blob_renderer",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_output_renderer"
+            ]
+        },
+        {
+            "name": "datasette.csv_renderer",
             "static": false,
             "templates": false,
             "version": null,
@@ -254,6 +263,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
         },
         {
             "name": "datasette.default_permissions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "permission_resources_sql"
+            ]
+        },
+        {
+            "name": "datasette.default_permissions.sqlite_statistics",
             "static": false,
             "templates": false,
             "version": null,
@@ -341,6 +359,7 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
+                "asgi_wrapper",
                 "publish_subcommand"
             ]
         },
@@ -458,6 +477,8 @@ Secret configuration values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
+
+The :ref:`/-/config <JsonDataView_config>` introspection endpoint redacts the values of any configuration keys whose names contain one of these substrings: ``secret``, ``key``, ``password``, ``token``, ``hash`` or ``dsn``. Name your plugin's secret configuration keys accordingly - for example ``api_key`` or ``client_secret`` - so they are automatically redacted there.
 
 **As environment variables**. If your secret lives in an environment variable that is available to the Datasette process, you can indicate that the configuration value should be read from that environment variable like so:
 

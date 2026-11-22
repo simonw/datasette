@@ -1,10 +1,8 @@
-import pytest
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.resources import TableResource
 
 
-@pytest.mark.asyncio
 async def test_multiple_restriction_sources_intersect():
     """
     Test that when multiple plugins return restriction_sql, they are INTERSECTed.
@@ -58,7 +56,6 @@ async def test_multiple_restriction_sources_intersect():
         ds.pm.unregister(name="restrictive_plugin")
 
 
-@pytest.mark.asyncio
 async def test_restriction_sql_with_overlapping_databases_and_tables():
     """
     Test actor with both database-level and table-level restrictions for same database.
@@ -102,7 +99,6 @@ async def test_restriction_sql_with_overlapping_databases_and_tables():
     assert ("db1_overlapping", "t2") in resources
 
 
-@pytest.mark.asyncio
 async def test_restriction_sql_empty_allowlist_query():
     """
     Test the specific SQL query generated when action is not in allowlist.
@@ -126,7 +122,6 @@ async def test_restriction_sql_empty_allowlist_query():
     assert len(page.resources) == 0
 
 
-@pytest.mark.asyncio
 async def test_restriction_sql_with_pagination():
     """
     Test that restrictions work correctly with keyset pagination.
@@ -173,7 +168,6 @@ async def test_restriction_sql_with_pagination():
         assert table_num % 2 == 1, f"Table {table_id} should be odd-numbered"
 
 
-@pytest.mark.asyncio
 async def test_also_requires_with_restrictions():
     """
     Test that also_requires actions properly respect restrictions.
@@ -217,7 +211,6 @@ async def test_also_requires_with_restrictions():
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_restriction_abbreviations_and_full_names():
     """
     Test that both abbreviations and full action names work in restrictions.
@@ -256,7 +249,6 @@ async def test_restriction_abbreviations_and_full_names():
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_permission_resources_sql_multiple_restriction_sources_intersect():
     """
     Test that when multiple plugins return restriction_sql, they are INTERSECTed.

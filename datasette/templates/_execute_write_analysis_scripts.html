@@ -85,7 +85,25 @@ window.datasetteSqlAnalysis = (() => {
       appendCodeCell(row, analysisRow.operation);
       appendCodeCell(row, analysisRow.database);
       appendCodeCell(row, analysisRow.table);
-      appendCodeCell(row, analysisRow.required_permission, "n/a");
+      if (analysisRow.source) {
+        const tableCell = row.lastElementChild;
+        const source = document.createElement("span");
+        source.className = "execute-write-analysis-source";
+        const sourceName = document.createElement("code");
+        sourceName.textContent = analysisRow.source;
+        source.append("via ", sourceName);
+        tableCell.append(" ", source);
+      }
+      if (!analysisRow.required_permission && analysisRow.message) {
+        const messageCell = document.createElement("td");
+        const message = document.createElement("span");
+        message.className = "execute-write-analysis-rejected";
+        message.textContent = analysisRow.message;
+        messageCell.appendChild(message);
+        row.appendChild(messageCell);
+      } else {
+        appendCodeCell(row, analysisRow.required_permission, "n/a");
+      }
 
       const allowedCell = document.createElement("td");
       if (analysisRow.allowed !== null && analysisRow.allowed !== undefined) {

@@ -33,10 +33,11 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
   uv run codespell tests --ignore-words docs/codespell-ignore-words.txt
 
-# Run linters: black, ruff, cog
+# Run linters: black, ruff, prettier, cog
 @lint: codespell
   uv run black datasette tests --check
   uv run ruff check datasette tests
+  npm run prettier -- --check
   uv run cog --check README.md docs/*.rst
 
 # Apply ruff fixes
@@ -48,12 +49,17 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
-@docs: cog blacken-docs
+@docs: shots cog blacken-docs
   uv run make -C docs livehtml
 
 # Build docs as static HTML
 @docs-build: cog blacken-docs
   rm -rf docs/_build && cd docs && uv run make html
+
+# Take any missing documentation screenshots defined in docs/shots.yml
+@shots:
+  uv run --group shots shot-scraper install
+  cd docs && uv run --group shots shot-scraper multi shots.yml --no-clobber --reduced-motion --retina
 
 # Apply Black
 @black:

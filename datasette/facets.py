@@ -1,14 +1,34 @@
 import json
+import time
 import urllib
+
 from datasette import hookimpl
 from datasette.database import QueryInterrupted
 from datasette.utils import (
-    escape_sqlite,
-    path_with_added_args,
-    path_with_removed_args,
     detect_json1,
+    escape_sqlite,
     sqlite3,
 )
+
+# Suggesting facets for a page can take at most this many multiples of
+# the facet_suggest_time_limit_ms setting in total, see #862
+SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE = 10
+
+
+def start_suggest_deadline(ds, facet_instances):
+    """
+    Start the clock on the total time allowed for suggesting facets for a
+    page, sharing a single deadline across all of the facet instances.
+    """
+    time_limit_ms = ds.setting("facet_suggest_time_limit_ms")
+    if not time_limit_ms:
+        # 0 means no per-query suggestion limit, so no total limit either
+        return
+    deadline = (
+        time.monotonic() + SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE * time_limit_ms / 1000
+    )
+    for facet in facet_instances:
+        facet.suggest_deadline = deadline
 
 
 def load_facet_configs(request, table_config):
@@ -30,7 +50,7 @@ def load_facet_configs(request, table_config):
             assert (
                 len(facet_config.values()) == 1
             ), "Metadata config dicts should be {type: config}"
-            type, facet_config = list(facet_config.items())[0]
+            type, facet_config = next(iter(facet_config.items()))
             if isinstance(facet_config, str):
                 facet_config = {"simple": facet_config}
         facet_configs.setdefault(type, []).append(
@@ -38,7 +58,7 @@ def load_facet_configs(request, table_config):
         )
     qs_pairs = urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
     for key, values in qs_pairs.items():
-        if key.startswith("_facet"):
+        if key == "_facet" or key.startswith("_facet_"):
             # Figure out the facet type
             if key == "_facet":
                 type = "column"
@@ -67,6 +87,10 @@ class Facet:
     type = None
     # How many rows to consider when suggesting facets:
     suggest_consider = 1000
+    # time.monotonic() value after which suggest() should stop considering
+    # further columns, or None for no deadline. Shared by every facet
+    # instance on a page, see start_suggest_deadline()
+    suggest_deadline = None
 
     def __init__(
         self,
@@ -85,11 +109,24 @@ class Facet:
         self.database = database
         # For foreign key expansion. Can be None for e.g. stored SQL queries:
         self.table = table
-        self.sql = sql or f"select * from [{table}]"
+        self.sql = sql or f"select * from {escape_sqlite(table)}"
         self.params = params or []
         self.table_config = table_config
         # row_count can be None, in which case we calculate it ourselves:
         self.row_count = row_count
+
+    # The facet time limit settings can shorten sql_time_limit_ms, but a
+    # facet query never runs for longer than a regular query
+
+    @property
+    def time_limit_ms(self):
+        return self.ds.capped_time_limit_ms(self.ds.setting("facet_time_limit_ms"))
+
+    @property
+    def suggest_time_limit_ms(self):
+        return self.ds.capped_time_limit_ms(
+            self.ds.setting("facet_suggest_time_limit_ms")
+        )
 
     def get_configs(self):
         configs = load_facet_configs(self.request, self.table_config)
@@ -133,6 +170,17 @@ class Facet:
     async def suggest(self):
         return []
 
+    def suggest_time_exceeded(self):
+        """
+        True if the page has used up its total time budget for suggesting
+        facets. suggest() implementations should check this before running
+        the query for each column and stop if it returns True.
+        """
+        return (
+            self.suggest_deadline is not None
+            and time.monotonic() >= self.suggest_deadline
+        )
+
     async def facet_results(self):
         # returns ([results], [timed_out])
         # TODO: Include "hideable" with each one somehow, which indicates if it was
@@ -141,11 +189,10 @@ class Facet:
 
     async def get_columns(self, sql, params=None):
         # Detect column names using the "limit 0" trick
-        return (
-            await self.ds.execute(
-                self.database, f"select * from ({sql}) limit 0", params or []
-            )
-        ).columns
+        results = await self.ds.execute(
+            self.database, f"select * from ({sql}) limit 0", params or []
+        )
+        return list(results.columns.names)
 
 
 class ColumnFacet(Facet):
@@ -158,20 +205,17 @@ class ColumnFacet(Facet):
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
-            suggested_facet_sql = """
-                with limited as (select * from ({sql}) limit {suggest_consider})
-                select {column} as value, count(*) as n from limited
+            suggested_facet_sql = f"""
+                with limited as (select * from ({self.sql}) limit {self.suggest_consider})
+                select {escape_sqlite(column)} as value, count(*) as n from limited
                 where value is not null
                 group by value
-                limit {limit}
-            """.format(
-                column=escape_sqlite(column),
-                sql=self.sql,
-                limit=facet_size + 1,
-                suggest_consider=self.suggest_consider,
-            )
+                limit {facet_size + 1}
+            """
             distinct_values = None
             try:
                 distinct_values = await self.ds.execute(
@@ -179,7 +223,7 @@ class ColumnFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=self.suggest_time_limit_ms,
                 )
                 num_distinct_values = len(distinct_values)
                 if (
@@ -193,10 +237,8 @@ class ColumnFacet(Facet):
                             "name": column,
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
-                                self.ds.urls.path(
-                                    path_with_added_args(
-                                        self.request, {"_facet": column}
-                                    )
+                                self.ds.urls.modify(
+                                    self.request, add={"_facet": column}
                                 ),
                             ),
                         }
@@ -240,7 +282,7 @@ class ColumnFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=self.time_limit_ms,
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -248,8 +290,8 @@ class ColumnFacet(Facet):
                         "name": column,
                         "type": self.type,
                         "hideable": source != "metadata",
-                        "toggle_url": self.ds.urls.path(
-                            path_with_removed_args(self.request, {"_facet": column})
+                        "toggle_url": self.ds.urls.modify(
+                            self.request, remove={"_facet": column}
                         ),
                         "results": facet_results_values,
                         "truncated": len(facet_rows_results) > facet_size,
@@ -267,15 +309,20 @@ class ColumnFacet(Facet):
                 for row in facet_rows:
                     column_qs = column
                     if column.startswith("_"):
-                        column_qs = "{}__exact".format(column)
-                    selected = (column_qs, str(row["value"])) in qs_pairs
+                        column_qs = f"{column}__exact"
+                    selected_args = {
+                        key: str(row["value"])
+                        for key in (column_qs, f"{column}__exact")
+                        if (key, str(row["value"])) in qs_pairs
+                    }
+                    selected = bool(selected_args)
                     if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, {column_qs: str(row["value"])}
+                        toggle_path = self.ds.urls.modify(
+                            self.request, remove=[*selected_args.items(), "_next"]
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {column_qs: row["value"]}
+                        toggle_path = self.ds.urls.modify(
+                            self.request, add={column_qs: row["value"]}, remove="_next"
                         )
                     facet_results_values.append(
                         {
@@ -283,7 +330,7 @@ class ColumnFacet(Facet):
                             "label": expanded.get((column, row["value"]), row["value"]),
                             "count": row["count"],
                             "toggle_url": self.ds.absolute_url(
-                                self.request, self.ds.urls.path(toggle_path)
+                                self.request, toggle_path
                             ),
                             "selected": selected,
                         }
@@ -312,6 +359,8 @@ class ArrayFacet(Facet):
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             # Is every value in this column either null or a JSON array?
@@ -331,7 +380,7 @@ class ArrayFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=self.suggest_time_limit_ms,
                     log_sql_errors=False,
                 )
                 types = tuple(r[0] for r in results.rows)
@@ -342,17 +391,15 @@ class ArrayFacet(Facet):
                         for v in await self.ds.execute(
                             self.database,
                             (
-                                "select {column} from ({sql}) "
-                                "where {column} is not null "
-                                "and {column} != '' "
-                                "and json_array_length({column}) > 0 "
+                                f"select {escape_sqlite(column)} from ({self.sql}) "
+                                f"where {escape_sqlite(column)} is not null "
+                                f"and {escape_sqlite(column)} != '' "
+                                f"and json_array_length({escape_sqlite(column)}) > 0 "
                                 "limit 100"
-                            ).format(column=escape_sqlite(column), sql=self.sql),
+                            ),
                             self.params,
                             truncate=False,
-                            custom_time_limit=self.ds.setting(
-                                "facet_suggest_time_limit_ms"
-                            ),
+                            custom_time_limit=self.suggest_time_limit_ms,
                             log_sql_errors=False,
                         )
                     ]
@@ -365,10 +412,8 @@ class ArrayFacet(Facet):
                                 "type": "array",
                                 "toggle_url": self.ds.absolute_url(
                                     self.request,
-                                    self.ds.urls.path(
-                                        path_with_added_args(
-                                            self.request, {"_facet_array": column}
-                                        )
+                                    self.ds.urls.modify(
+                                        self.request, add={"_facet_array": column}
                                     ),
                                 ),
                             }
@@ -388,14 +433,14 @@ class ArrayFacet(Facet):
             source = source_and_config["source"]
             column = config.get("column") or config["simple"]
             # https://github.com/simonw/datasette/issues/448
-            facet_sql = """
-                with inner as ({sql}),
+            facet_sql = f"""
+                with inner as ({self.sql}),
                 deduped_array_items as (
                     select
                         distinct j.value,
                         inner.*
                     from
-                        json_each([inner].{col}) j
+                        json_each([inner].{escape_sqlite(column)}) j
                         join inner
                 )
                 select
@@ -406,19 +451,15 @@ class ArrayFacet(Facet):
                 group by
                     value
                 order by
-                    count(*) desc, value limit {limit}
-            """.format(
-                col=escape_sqlite(column),
-                sql=self.sql,
-                limit=facet_size + 1,
-            )
+                    count(*) desc, value limit {facet_size + 1}
+            """
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=self.time_limit_ms,
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -427,10 +468,8 @@ class ArrayFacet(Facet):
                         "type": self.type,
                         "results": facet_results_values,
                         "hideable": source != "metadata",
-                        "toggle_url": self.ds.urls.path(
-                            path_with_removed_args(
-                                self.request, {"_facet_array": column}
-                            )
+                        "toggle_url": self.ds.urls.modify(
+                            self.request, remove={"_facet_array": column}
                         ),
                         "truncated": len(facet_rows_results) > facet_size,
                     }
@@ -441,12 +480,15 @@ class ArrayFacet(Facet):
                     value = str(row["value"])
                     selected = (f"{column}__arraycontains", value) in pairs
                     if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, {f"{column}__arraycontains": value}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            remove=[(f"{column}__arraycontains", value), "_next"],
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {f"{column}__arraycontains": value}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            add={f"{column}__arraycontains": value},
+                            remove="_next",
                         )
                     facet_results_values.append(
                         {
@@ -473,6 +515,8 @@ class DateFacet(Facet):
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         suggested_facets = []
         for column in columns:
+            if self.suggest_time_exceeded():
+                break
             if column in already_enabled:
                 continue
             # Does this column contain any dates in the first 100 rows?
@@ -487,7 +531,7 @@ class DateFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=self.suggest_time_limit_ms,
                     log_sql_errors=False,
                 )
                 values = tuple(r[0] for r in results.rows)
@@ -498,10 +542,8 @@ class DateFacet(Facet):
                             "type": "date",
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
-                                self.ds.urls.path(
-                                    path_with_added_args(
-                                        self.request, {"_facet_date": column}
-                                    )
+                                self.ds.urls.modify(
+                                    self.request, add={"_facet_date": column}
                                 ),
                             ),
                         }
@@ -533,7 +575,7 @@ class DateFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=self.time_limit_ms,
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -542,8 +584,8 @@ class DateFacet(Facet):
                         "type": self.type,
                         "results": facet_results_values,
                         "hideable": source != "metadata",
-                        "toggle_url": path_with_removed_args(
-                            self.request, {"_facet_date": column}
+                        "toggle_url": self.ds.urls.modify(
+                            self.request, remove={"_facet_date": column}
                         ),
                         "truncated": len(facet_rows_results) > facet_size,
                     }
@@ -552,12 +594,15 @@ class DateFacet(Facet):
                 for row in facet_rows:
                     selected = str(args.get(f"{column}__date")) == str(row["value"])
                     if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, {f"{column}__date": str(row["value"])}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            remove=[(f"{column}__date", row["value"]), "_next"],
                         )
                     else:
-                        toggle_path = path_with_added_args(
-                            self.request, {f"{column}__date": row["value"]}
+                        toggle_path = self.ds.urls.modify(
+                            self.request,
+                            add={f"{column}__date": row["value"]},
+                            remove="_next",
                         )
                     facet_results_values.append(
                         {

@@ -1,6 +1,15 @@
 name: Check JavaScript for conformance with Prettier
 
-on: [push]
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -10,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out repo
-      uses: actions/checkout@v6
-    - uses: actions/cache@v5
+      uses: actions/checkout@v7
+    - uses: actions/cache@v6
       name: Configure npm caching
       with:
         path: ~/.npm

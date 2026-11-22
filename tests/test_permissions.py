@@ -1,24 +1,27 @@
 import collections
-from asgiref.sync import async_to_sync
-from datasette.app import Datasette
-from datasette.cli import cli
-from datasette.default_permissions import restrictions_allow_action
-from .fixtures import assert_permissions_checked, make_app_client
-from click.testing import CliRunner
-from bs4 import BeautifulSoup as Soup
 import copy
 import json
-from pprint import pprint
-import pytest_asyncio
-import pytest
 import re
 import time
 import urllib
+from pprint import pprint
+
+import pytest
+import pytest_asyncio
+from bs4 import BeautifulSoup as Soup
+from click.testing import CliRunner
+
+from datasette.app import Datasette
+from datasette.cli import cli
+from datasette.default_permissions import restrictions_allow_action
+from datasette.utils import UNSTABLE_API_MESSAGE
+
+from .fixtures import assert_permissions_checked, make_ds, make_ds_on_disk
 
 
-@pytest.fixture(scope="module")
-def padlock_client():
-    with make_app_client(
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def padlock_client():
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {
@@ -26,8 +29,9 @@ def padlock_client():
                 }
             }
         }
-    ) as client:
-        yield client
+    )
+    yield ds.client
+    ds.close()
 
 
 @pytest_asyncio.fixture
@@ -70,19 +74,19 @@ async def perms_ds():
         ),  # Query
     ),
 )
-def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
+async def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
     padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
-    anon_response = padlock_client.get(path)
-    assert expected_anon == anon_response.status
-    if allow and anon_response.status == 200:
+    anon_response = await padlock_client.get(path)
+    assert anon_response.status_code == expected_anon
+    if allow and anon_response.status_code == 200:
         # Should be no padlock
         assert fragment not in anon_response.text
-    auth_response = padlock_client.get(
+    auth_response = await padlock_client.get(
         path,
         cookies={"ds_actor": padlock_client.actor_cookie({"id": "root"})},
     )
-    assert expected_auth == auth_response.status
+    assert auth_response.status_code == expected_auth
     # Check for the padlock
     if allow and expected_anon == 403 and expected_auth == 200:
         assert fragment in auth_response.text
@@ -98,52 +102,64 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
     ],
 )
 @pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_database(allow, expected_anon, expected_auth, use_metadata):
+async def test_view_database(allow, expected_anon, expected_auth, use_metadata):
     key = "metadata" if use_metadata else "config"
     kwargs = {key: {"databases": {"fixtures": {"allow": allow}}}}
-    with make_app_client(**kwargs) as client:
-        for path in (
-            "/fixtures",
-            "/fixtures/compound_three_primary_keys",
-            "/fixtures/compound_three_primary_keys/a,a,a",
-        ):
-            anon_response = client.get(path)
-            assert expected_anon == anon_response.status, path
-            if allow and path == "/fixtures" and anon_response.status == 200:
-                # Should be no padlock
-                assert ">fixtures 🔒</h1>" not in anon_response.text
-            auth_response = client.get(
-                path,
-                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-            )
-            assert expected_auth == auth_response.status
-            if (
-                allow
-                and path == "/fixtures"
-                and expected_anon == 403
-                and expected_auth == 200
-            ):
-                assert ">fixtures 🔒</h1>" in auth_response.text
-
-
-def test_database_list_respects_view_database():
-    with make_app_client(
-        config={"databases": {"fixtures": {"allow": {"id": "root"}}}},
-        extra_databases={"data.db": "create table names (name text)"},
-    ) as client:
-        anon_response = client.get("/")
-        assert '<a href="/data">data</a></h2>' in anon_response.text
-        assert '<a href="/fixtures">fixtures</a>' not in anon_response.text
-        auth_response = client.get(
-            "/",
-            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+    ds = await make_ds(**kwargs)
+    for path in (
+        "/fixtures",
+        "/fixtures/compound_three_primary_keys",
+        "/fixtures/compound_three_primary_keys/a,a,a",
+    ):
+        anon_response = await ds.client.get(path)
+        assert anon_response.status_code == expected_anon, path
+        if allow and path == "/fixtures" and anon_response.status_code == 200:
+            # Should be no padlock
+            assert ">fixtures 🔒</h1>" not in anon_response.text
+        auth_response = await ds.client.get(
+            path,
+            cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
         )
-        assert '<a href="/data">data</a></h2>' in auth_response.text
-        assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
+        assert auth_response.status_code == expected_auth
+        if (
+            allow
+            and path == "/fixtures"
+            and expected_anon == 403
+            and expected_auth == 200
+        ):
+            assert ">fixtures 🔒</h1>" in auth_response.text
 
 
-def test_database_list_respects_view_table():
-    with make_app_client(
+async def test_database_list_respects_view_database():
+    ds = await make_ds(
+        config={"databases": {"fixtures": {"allow": {"id": "root"}}}},
+        extra_databases={"data": "create table names (name text)"},
+    )
+    anon_response = await ds.client.get("/")
+    anon_links = homepage_item_links(anon_response.text)
+    assert "/data/names" in anon_links
+    assert not any(link.startswith("/fixtures/") for link in anon_links)
+    # Only one database is visible, so there is no database filter
+    assert 'href="/?database=fixtures"' not in anon_response.text
+    auth_response = await ds.client.get(
+        "/",
+        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+    )
+    auth_links = homepage_item_links(auth_response.text)
+    assert "/data/names" in auth_links
+    assert any(link.startswith("/fixtures/") for link in auth_links)
+    soup = Soup(auth_response.text, "html.parser")
+    fixtures_chip = soup.select_one('a.homepage-database[href="/?database=fixtures"]')
+    assert "🔒" in fixtures_chip.text
+
+
+def homepage_item_links(html):
+    soup = Soup(html, "html.parser")
+    return [a["href"] for a in soup.select("a.catalog-item-name")]
+
+
+async def test_database_list_respects_view_table():
+    ds = await make_ds(
         config={
             "databases": {
                 "data": {
@@ -155,23 +171,28 @@ def test_database_list_respects_view_table():
             }
         },
         extra_databases={
-            "data.db": "create table names (name text); create view v as select * from names"
+            "data": "create table names (name text); create view v as select * from names"
         },
-    ) as client:
-        html_fragments = [
-            ">names</a> 🔒",
-            ">v</a> 🔒",
-        ]
-        anon_response_text = client.get("/").text
-        assert "0 rows in 0 tables" in anon_response_text
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response_text
-        auth_response_text = client.get(
-            "/",
-            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-        ).text
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response_text
+    )
+    html_fragments = [
+        ">names</a> 🔒",
+        ">v</a> 🔒",
+    ]
+    # ?database=data keeps this to one page of the homepage catalog, however
+    # many tables and views the fixtures database has
+    anon_response_text = (await ds.client.get("/?database=data")).text
+    assert "/data/names" not in homepage_item_links(anon_response_text)
+    assert "/data/v" not in homepage_item_links(anon_response_text)
+    for html_fragment in html_fragments:
+        assert html_fragment not in anon_response_text
+    auth_response_text = (
+        await ds.client.get(
+            "/?database=data",
+            cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+        )
+    ).text
+    for html_fragment in html_fragments:
+        assert html_fragment in auth_response_text
 
 
 @pytest.mark.parametrize(
@@ -183,7 +204,7 @@ def test_database_list_respects_view_table():
     ],
 )
 @pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_table(allow, expected_anon, expected_auth, use_metadata):
+async def test_view_table(allow, expected_anon, expected_auth, use_metadata):
     key = "metadata" if use_metadata else "config"
     kwargs = {
         key: {
@@ -194,23 +215,23 @@ def test_view_table(allow, expected_anon, expected_auth, use_metadata):
             }
         }
     }
-    with make_app_client(**kwargs) as client:
-        anon_response = client.get("/fixtures/compound_three_primary_keys")
-        assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
-        auth_response = client.get(
-            "/fixtures/compound_three_primary_keys",
-            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-        )
-        assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
+    ds = await make_ds(**kwargs)
+    anon_response = await ds.client.get("/fixtures/compound_three_primary_keys")
+    assert anon_response.status_code == expected_anon
+    if allow and anon_response.status_code == 200:
+        # Should be no padlock
+        assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures/compound_three_primary_keys",
+        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+    )
+    assert auth_response.status_code == expected_auth
+    if allow and expected_anon == 403 and expected_auth == 200:
+        assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
 
 
-def test_table_list_respects_view_table():
-    with make_app_client(
+async def test_table_list_respects_view_table():
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {
@@ -222,19 +243,19 @@ def test_table_list_respects_view_table():
                 }
             }
         }
-    ) as client:
-        html_fragments = [
-            ">compound_three_primary_keys</a> 🔒",
-            ">paginated_view</a> 🔒",
-        ]
-        anon_response = client.get("/fixtures")
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response.text
-        auth_response = client.get(
-            "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response.text
+    )
+    html_fragments = [
+        ">compound_three_primary_keys</a> 🔒",
+        ">paginated_view</a> 🔒",
+    ]
+    anon_response = await ds.client.get("/fixtures")
+    for html_fragment in html_fragments:
+        assert html_fragment not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    )
+    for html_fragment in html_fragments:
+        assert html_fragment in auth_response.text
 
 
 @pytest.mark.parametrize(
@@ -245,25 +266,25 @@ def test_table_list_respects_view_table():
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_query(allow, expected_anon, expected_auth):
-    with make_app_client(
+async def test_view_query(allow, expected_anon, expected_auth):
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {"queries": {"q": {"sql": "select 1 + 1", "allow": allow}}}
             }
         }
-    ) as client:
-        anon_response = client.get("/fixtures/q")
-        assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert "🔒</h1>" not in anon_response.text
-        auth_response = client.get(
-            "/fixtures/q", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">fixtures: q 🔒</h1>" in auth_response.text
+    )
+    anon_response = await ds.client.get("/fixtures/q")
+    assert anon_response.status_code == expected_anon
+    if allow and anon_response.status_code == 200:
+        # Should be no padlock
+        assert "🔒</h1>" not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures/q", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    )
+    assert auth_response.status_code == expected_auth
+    if allow and expected_anon == 403 and expected_auth == 200:
+        assert ">fixtures: q 🔒</h1>" in auth_response.text
 
 
 @pytest.mark.parametrize(
@@ -273,42 +294,45 @@ def test_view_query(allow, expected_anon, expected_auth):
         {"databases": {"fixtures": {"allow_sql": {"id": "root"}}}},
     ],
 )
-def test_execute_sql(config):
+async def test_execute_sql(config):
     schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
-    with make_app_client(config=config) as client:
-        form_fragment = '<form class="sql core" action="/fixtures/-/query"'
+    ds = await make_ds(config=config)
+    form_fragment = '<form class="sql core" action="/fixtures/-/query"'
 
-        # Anonymous users - should not display the form:
-        anon_html = client.get("/fixtures").text
-        assert form_fragment not in anon_html
-        # And const schema should be an empty object:
-        assert "const schema = {};" in anon_html
-        # This should 403:
-        assert client.get("/fixtures/-/query?sql=select+1").status == 403
-        # ?_where= not allowed on tables:
-        assert client.get("/fixtures/facet_cities?_where=id=3").status == 403
+    # Anonymous users - should not display the form:
+    anon_html = (await ds.client.get("/fixtures")).text
+    assert form_fragment not in anon_html
+    # And const schema should be an empty object:
+    assert "const schema = {};" in anon_html
+    # This should 403:
+    assert (await ds.client.get("/fixtures/-/query?sql=select+1")).status_code == 403
+    # ?_where= not allowed on tables:
+    assert (
+        await ds.client.get("/fixtures/facet_cities?_where=id=3")
+    ).status_code == 403
 
-        # But for logged in user all of these should work:
-        cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
-        response_text = client.get("/fixtures", cookies=cookies).text
-        # Extract the schema= portion of the JavaScript
-        schema_json = schema_re.search(response_text).group(1)
-        schema = json.loads(schema_json)
-        assert set(schema["attraction_characteristic"]) == {"name", "pk"}
-        assert schema["paginated_view"] == []
-        assert form_fragment in response_text
-        query_response = client.get("/fixtures/-/query?sql=select+1", cookies=cookies)
-        assert query_response.status == 200
-        schema2 = json.loads(schema_re.search(query_response.text).group(1))
-        assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
-        assert (
-            client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies).status
-            == 200
-        )
+    # But for logged in user all of these should work:
+    cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    response_text = (await ds.client.get("/fixtures", cookies=cookies)).text
+    # Extract the schema= portion of the JavaScript
+    schema_json = schema_re.search(response_text).group(1)
+    schema = json.loads(schema_json)
+    assert set(schema["attraction_characteristic"]) == {"name", "pk"}
+    assert schema["paginated_view"] == []
+    assert form_fragment in response_text
+    query_response = await ds.client.get(
+        "/fixtures/-/query?sql=select+1", cookies=cookies
+    )
+    assert query_response.status_code == 200
+    schema2 = json.loads(schema_re.search(query_response.text).group(1))
+    assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
+    assert (
+        await ds.client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies)
+    ).status_code == 200
 
 
-def test_query_list_respects_view_query():
-    with make_app_client(
+async def test_query_list_respects_view_query():
+    ds = await make_ds(
         config={
             "databases": {
                 "fixtures": {
@@ -316,15 +340,15 @@ def test_query_list_respects_view_query():
                 }
             }
         }
-    ) as client:
-        html_fragment = '<li><a href="/fixtures/q" title="select 1 + 1">q</a> 🔒</li>'
-        anon_response = client.get("/fixtures")
-        assert html_fragment not in anon_response.text
-        assert '"/fixtures/q"' not in anon_response.text
-        auth_response = client.get(
-            "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        assert html_fragment in auth_response.text
+    )
+    html_fragment = '<a class="query-row-name" href="/fixtures/q">q</a> 🔒'
+    anon_response = await ds.client.get("/fixtures")
+    assert html_fragment not in anon_response.text
+    assert '"/fixtures/q"' not in anon_response.text
+    auth_response = await ds.client.get(
+        "/fixtures", cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    )
+    assert html_fragment in auth_response.text
 
 
 @pytest.mark.parametrize(
@@ -370,15 +394,14 @@ def test_query_list_respects_view_query():
         ),
     ],
 )
-def test_permissions_checked(app_client, path, permissions):
-    # Needs file-backed app_client for /fixtures.db
-    app_client.ds._permission_checks.clear()
-    response = app_client.get(path)
+async def test_permissions_checked(ds_on_disk, path, permissions):
+    # Needs file-backed ds_on_disk for /fixtures.db
+    ds_on_disk._permission_checks.clear()
+    response = await ds_on_disk.client.get(path)
     assert response.status_code in (200, 403)
-    assert_permissions_checked(app_client.ds, permissions)
+    assert_permissions_checked(ds_on_disk, permissions)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("filter_", ("all", "exclude-yours", "only-yours"))
 async def test_permissions_debug(ds_client, filter_):
     ds_client.ds._permission_checks.clear()
@@ -456,7 +479,19 @@ async def test_permissions_debug(ds_client, filter_):
     assert checks == expected_checks
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "permissions_debug,expected_status",
+    (
+        (1, 200),
+        (0, 403),
+    ),
+)
+async def test_permissions_debug_numeric_boolean(permissions_debug, expected_status):
+    ds = Datasette(config={"permissions": {"permissions-debug": permissions_debug}})
+    response = await ds.client.get("/-/permissions")
+    assert response.status_code == expected_status
+
+
 @pytest.mark.parametrize(
     "actor,allow,expected_fragment",
     [
@@ -481,15 +516,16 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
         ({"id": "root", "unauthenticated": True}, 200),
     ],
 )
-def test_allow_unauthenticated(allow, expected):
-    with make_app_client(config={"allow": allow}) as client:
-        assert expected == client.get("/").status
+async def test_allow_unauthenticated(allow, expected):
+    ds = await make_ds(config={"allow": allow})
+    assert (await ds.client.get("/")).status_code == expected
 
 
-@pytest.fixture(scope="session")
-def view_instance_client():
-    with make_app_client(config={"allow": {}}) as client:
-        yield client
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def view_instance_client():
+    ds = await make_ds(config={"allow": {}})
+    yield ds.client
+    ds.close()
 
 
 @pytest.mark.parametrize(
@@ -502,22 +538,30 @@ def view_instance_client():
         "/-/plugins",
         "/-/settings",
         "/-/threads",
+        "/-/tasks",
         "/-/databases",
         "/-/permissions",
         "/-/messages",
         "/-/patterns",
+        "/-/patterns/menus",
     ],
 )
-def test_view_instance(path, view_instance_client):
-    assert 403 == view_instance_client.get(path).status
-    if path not in ("/-/permissions", "/-/messages", "/-/patterns"):
-        assert 403 == view_instance_client.get(path + ".json").status
+async def test_view_instance(path, view_instance_client):
+    assert (await view_instance_client.get(path)).status_code == 403
+    if path not in (
+        "/-/permissions",
+        "/-/messages",
+        "/-/patterns",
+        "/-/patterns/menus",
+    ):
+        assert (await view_instance_client.get(path + ".json")).status_code == 403
 
 
 @pytest.fixture(scope="session")
-def cascade_app_client():
-    with make_app_client(is_immutable=True) as client:
-        yield client
+def cascade_client():
+    # Needs a file on disk, to test downloading /fixtures.db
+    with make_ds_on_disk(is_immutable=True) as ds:
+        yield ds.client
 
 
 @pytest.mark.parametrize(
@@ -557,11 +601,11 @@ def cascade_app_client():
         ("/fixtures.db", ["download"], 200),
     ],
 )
-def test_permissions_cascade(cascade_app_client, path, permissions, expected_status):
+async def test_permissions_cascade(cascade_client, path, permissions, expected_status):
     """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
-    previous_config = cascade_app_client.ds.config
+    previous_config = cascade_client.ds.config
     updated_config = copy.deepcopy(previous_config)
     actor = {"id": "test"}
     if "download" in permissions:
@@ -580,21 +624,19 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
         updated_config["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)
-        cascade_app_client.ds.config = updated_config
-        response = cascade_app_client.get(
+        cascade_client.ds.config = updated_config
+        response = await cascade_client.get(
             path,
-            cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
+            cookies={"ds_actor": cascade_client.actor_cookie(actor)},
         )
         assert (
-            response.status == expected_status
-        ), "path: {}, permissions: {}, expected_status: {}, status: {}".format(
-            path, permissions, expected_status, response.status
-        )
+            response.status_code == expected_status
+        ), f"path: {path}, permissions: {permissions}, expected_status: {expected_status}, status: {response.status_code}"
     finally:
-        cascade_app_client.ds.config = previous_config
+        cascade_client.ds.config = previous_config
 
 
-def test_padlocks_on_database_page(cascade_app_client):
+async def test_padlocks_on_database_page(cascade_client):
     config = {
         "databases": {
             "fixtures": {
@@ -607,31 +649,47 @@ def test_padlocks_on_database_page(cascade_app_client):
             }
         }
     }
-    previous_config = cascade_app_client.ds.config
+    previous_config = cascade_client.ds.config
     try:
-        cascade_app_client.ds.config = config
-        async_to_sync(cascade_app_client.ds.invoke_startup)()
-        async_to_sync(cascade_app_client.ds.add_query)(
+        cascade_client.ds.config = config
+        await cascade_client.ds.invoke_startup()
+        await cascade_client.ds.add_query(
             "fixtures", "query_two", "select 2", source="config"
         )
-        response = cascade_app_client.get(
+        response = await cascade_client.get(
             "/fixtures",
-            cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
+            cookies={"ds_actor": cascade_client.actor_cookie({"id": "test"})},
         )
+        soup = Soup(response.text, "html.parser")
+
+        def link_and_padlock(css_class, name):
+            link = soup.find("a", class_=css_class, string=name)
+            following = link.next_sibling
+            padlock = isinstance(following, str) and "🔒" in following
+            return name + (" 🔒" if padlock else "")
+
         # Tables
-        assert ">123_starts_with_digits</a></h3>" in response.text
-        assert ">Table With Space In Name</a> 🔒</h3>" in response.text
+        assert (
+            link_and_padlock("catalog-item-name", "123_starts_with_digits")
+            == "123_starts_with_digits"
+        )
+        assert (
+            link_and_padlock("catalog-item-name", "Table With Space In Name")
+            == "Table With Space In Name 🔒"
+        )
         # Queries
-        assert ">query_two</a></li>" in response.text
+        assert link_and_padlock("query-row-name", "query_two") == "query_two"
         # Views
-        assert ">paginated_view</a> 🔒</li>" in response.text
-        assert ">simple_view</a></li>" in response.text
+        assert (
+            link_and_padlock("catalog-item-name", "paginated_view")
+            == "paginated_view 🔒"
+        )
+        assert link_and_padlock("catalog-item-name", "simple_view") == "simple_view"
     finally:
-        cascade_app_client.ds.config = previous_config
-        async_to_sync(cascade_app_client.ds.remove_query)("fixtures", "query_two")
+        cascade_client.ds.config = previous_config
+        await cascade_client.ds.remove_query("fixtures", "query_two")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,permission,resource_1,resource_2,expected_result",
     (
@@ -739,13 +797,20 @@ async def test_actor_restricted_permissions(
         "path": expected_path,
     }
     expected = {
+        "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
         "action": permission,
         "allowed": expected_result,
         "resource": expected_resource,
     }
     if actor.get("id"):
         expected["actor_id"] = actor["id"]
-    assert response.json() == expected
+    data = response.json()
+    for key, value in expected.items():
+        assert data[key] == value
+    assert data["actor"] == actor
+    assert data["explanation"]["allowed"] is expected_result
+    assert data["explanation"]["summary"]
 
 
 PermConfigTestCase = collections.namedtuple(
@@ -754,7 +819,6 @@ PermConfigTestCase = collections.namedtuple(
 )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config,actor,action,resource,expected_result",
     (
@@ -967,7 +1031,6 @@ async def test_permissions_in_config(
         await perms_ds._save_queries_from_config()
 
 
-@pytest.mark.asyncio
 async def test_allowed_resources_view_query_includes_actor_specific_query_permissions():
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
@@ -1011,7 +1074,6 @@ async def test_allowed_resources_view_query_includes_actor_specific_query_permis
         ds.pm.unregister(name="actor_specific_query_permission_plugin")
 
 
-@pytest.mark.asyncio
 async def test_actor_endpoint_allows_any_token():
     ds = Datasette()
     token = ds.sign(
@@ -1114,14 +1176,13 @@ def test_cli_create_token(options, expected):
             token,
         ],
     )
-    assert 0 == result2.exit_code, result2.output
-    assert json.loads(result2.output) == {"actor": expected}
+    assert result2.exit_code == 0, result2.output
+    assert json.loads(result2.output) == {"ok": True, "actor": expected}
 
 
 _visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "is_logged_in,config,expected_visible_tables",
     (
@@ -1184,7 +1245,6 @@ async def test_api_explorer_visibility(
         perms_ds.config = prev_config
 
 
-@pytest.mark.asyncio
 async def test_view_table_token_cannot_gain_access_without_base_permission(perms_ds):
     # Only allow a different actor to view this table
     previous_config = perms_ds.config
@@ -1209,7 +1269,6 @@ async def test_view_table_token_cannot_gain_access_without_base_permission(perms
         perms_ds.config = previous_config
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "restrictions,verb,path,body,expected_status",
     (
@@ -1349,7 +1408,6 @@ async def test_actor_restrictions(
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "restrictions,action,resource,expected",
     (
@@ -1413,7 +1471,6 @@ async def test_restrictions_allow_action(restrictions, action, resource, expecte
     assert actual == expected
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_filters_allowed_resources(perms_ds):
     """Test that allowed_resources() respects actor restrictions - issue #2534"""
 
@@ -1431,7 +1488,6 @@ async def test_actor_restrictions_filters_allowed_resources(perms_ds):
     assert len(db_page.resources) == 0
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
     """Restrictions cannot grant access not already allowed to the actor."""
 
@@ -1460,7 +1516,6 @@ async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
         perms_ds.config = previous_config
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_database_level(perms_ds):
     """Test database-level restrictions allow all tables in database - issue #2534"""
 
@@ -1475,7 +1530,6 @@ async def test_actor_restrictions_database_level(perms_ds):
     assert "v1" in table_names  # views too
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_global_level(perms_ds):
     """Test global-level restrictions allow all resources - issue #2534"""
 
@@ -1490,7 +1544,6 @@ async def test_actor_restrictions_global_level(perms_ds):
     assert "perms_ds_two" in dbs
 
 
-@pytest.mark.asyncio
 async def test_restrictions_gate_before_config(perms_ds):
     """Test that restrictions act as gating filter before config permissions - issue #2534"""
     from datasette.resources import TableResource
@@ -1516,7 +1569,6 @@ async def test_restrictions_gate_before_config(perms_ds):
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds):
     """Test that /.json and /db.json show correct filtered listings - issue #2534"""
 
@@ -1535,7 +1587,6 @@ async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_view_instance_only(perms_ds):
     """Test actor restricted to view-instance only - issue #2534"""
 
@@ -1552,7 +1603,6 @@ async def test_actor_restrictions_view_instance_only(perms_ds):
     assert len(page.resources) == 0
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_empty_allowlist(perms_ds):
     """Test actor with empty restrictions allowlist denies everything - issue #2534"""
 
@@ -1569,7 +1619,6 @@ async def test_actor_restrictions_empty_allowlist(perms_ds):
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_cannot_be_overridden_by_config():
     """Test that config permissions cannot override actor restrictions - issue #2534"""
     from datasette.app import Datasette
@@ -1612,7 +1661,6 @@ async def test_actor_restrictions_cannot_be_overridden_by_config():
     ), "t2 should be denied - NOT in restriction allowlist, config cannot override"
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_with_database_level_config(perms_ds):
     """Test database-level restrictions with table-level config - issue #2534"""
     from datasette.resources import TableResource
@@ -1657,7 +1705,6 @@ async def test_actor_restrictions_with_database_level_config(perms_ds):
     perms_ds._config = None
 
 
-@pytest.mark.asyncio
 async def test_actor_restrictions_parent_deny_blocks_config_child_allow(perms_ds):
     """
     Test that table-level restrictions add parent-level deny to block
@@ -1703,7 +1750,6 @@ async def test_actor_restrictions_parent_deny_blocks_config_child_allow(perms_ds
     perms_ds._config = None
 
 
-@pytest.mark.asyncio
 async def test_permission_check_view_requires_debug_permission():
     """Test that /-/check requires permissions-debug permission"""
     # Anonymous user should be denied
@@ -1731,9 +1777,10 @@ async def test_permission_check_view_requires_debug_permission():
     data = response.json()
     assert data["action"] == "view-instance"
     assert data["allowed"] is True
+    assert data["explanation"]["allowed"] is True
+    assert data["explanation"]["summary"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("action", ("view-query", "update-query", "delete-query"))
 async def test_permission_check_view_query_actions(action):
     # https://github.com/simonw/datasette/issues/2756
@@ -1756,7 +1803,208 @@ async def test_permission_check_view_query_actions(action):
     }
 
 
-@pytest.mark.asyncio
+async def test_permission_check_explains_specificity_for_hypothetical_actor():
+    ds = Datasette(
+        config={
+            "permissions": {"view-table": {"id": "alice"}},
+            "databases": {
+                "analytics": {
+                    "permissions": {"view-table": False},
+                    "tables": {
+                        "public": {"permissions": {"view-table": {"id": "alice"}}}
+                    },
+                }
+            },
+        }
+    )
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    def path_for(child):
+        return "/-/check.json?" + urllib.parse.urlencode(
+            {
+                "action": "view-table",
+                "parent": "analytics",
+                "child": child,
+                "actor": json.dumps({"id": "alice"}),
+            }
+        )
+
+    public_response = await ds.client.get(path_for("public"), actor={"id": "root"})
+    assert public_response.status_code == 200
+    public = public_response.json()
+    assert public["actor"] == {"id": "alice"}
+    assert public["allowed"] is True
+    assert public["explanation"]["allowed"] is True
+    assert public["explanation"]["winning_scope"] == "resource"
+    public_rules = public["explanation"]["matched_rules"]
+    assert any(
+        rule["scope"] == "resource" and rule["effect"] == "allow" and rule["decisive"]
+        for rule in public_rules
+    )
+    assert any(
+        rule["scope"] == "parent"
+        and rule["effect"] == "deny"
+        and rule["ignored_because"] == "A more specific rule matched"
+        for rule in public_rules
+    )
+
+    private_response = await ds.client.get(path_for("private"), actor={"id": "root"})
+    assert private_response.status_code == 200
+    private = private_response.json()
+    assert private["allowed"] is False
+    assert private["explanation"]["allowed"] is False
+    assert private["explanation"]["winning_scope"] == "parent"
+    assert private["explanation"]["summary"].startswith("Denied by a parent-level rule")
+
+
+async def test_permission_check_explains_deny_wins_at_same_scope():
+    ds = Datasette(config={"permissions": {"view-table": {"id": "someone-else"}}})
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "view-table",
+            "parent": "analytics",
+            "child": "users",
+            "actor": json.dumps({"id": "alice"}),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    assert data["explanation"]["winning_scope"] == "global"
+    rules = data["explanation"]["matched_rules"]
+    assert any(rule["effect"] == "deny" and rule["decisive"] for rule in rules)
+    assert any(
+        rule["effect"] == "allow"
+        and rule["ignored_because"] == "A deny rule matched at the same scope"
+        for rule in rules
+    )
+
+
+async def test_permission_check_explains_default_deny():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "insert-row",
+            "parent": "analytics",
+            "child": "users",
+            "actor": json.dumps({"id": "alice"}),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    explanation = data["explanation"]
+    assert explanation["allowed"] is False
+    assert explanation["matched_rules"] == []
+    assert explanation["winning_scope"] is None
+    assert explanation["summary"] == (
+        "Denied because no permission rule matched this actor and resource."
+    )
+
+
+async def test_permission_check_explains_actor_restrictions():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    restricted_actor = {
+        "id": "alice",
+        "_r": {"r": {"analytics": {"public": ["vt"]}}},
+    }
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "view-table",
+            "parent": "analytics",
+            "child": "private",
+            "actor": json.dumps(restricted_actor),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    explanation = data["explanation"]
+    assert explanation["rule_allowed"] is True
+    assert explanation["restriction_allowed"] is False
+    assert explanation["allowed"] is False
+    assert explanation["restrictions"]
+    assert any(
+        restriction["allowed"] is False for restriction in explanation["restrictions"]
+    )
+    assert "actor's restrictions" in explanation["summary"]
+
+
+async def test_permission_check_explains_required_actions():
+    from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
+
+    class StoreQueryPermissions:
+        @hookimpl
+        def permission_resources_sql(self, actor, action):
+            if not actor or actor.get("id") != "alice":
+                return None
+            if action == "store-query":
+                return PermissionSQL(
+                    sql="SELECT 'analytics' AS parent, NULL AS child, 1 AS allow, 'alice can store queries' AS reason"
+                )
+            if action == "execute-sql":
+                return PermissionSQL(
+                    sql="SELECT 'analytics' AS parent, NULL AS child, 0 AS allow, 'alice cannot execute SQL' AS reason"
+                )
+
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    ds.pm.register(StoreQueryPermissions(), name="store-query-test")
+    try:
+        path = "/-/check.json?" + urllib.parse.urlencode(
+            {
+                "action": "store-query",
+                "parent": "analytics",
+                "actor": json.dumps({"id": "alice"}),
+            }
+        )
+        response = await ds.client.get(path, actor={"id": "root"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["allowed"] is False
+        explanation = data["explanation"]
+        assert explanation["rule_allowed"] is True
+        assert explanation["required_actions"][0]["action"] == "execute-sql"
+        assert explanation["required_actions"][0]["allowed"] is False
+        assert explanation["summary"] == (
+            "Denied because store-query also requires execute-sql, which was denied."
+        )
+    finally:
+        ds.pm.unregister(name="store-query-test")
+
+
+async def test_permission_check_hypothetical_actor_validation():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/-/check.json?action=view-instance&actor=not-json",
+        actor={"id": "root"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"].startswith("Invalid actor JSON:")
+
+    response = await ds.client.get(
+        "/-/check.json?action=view-instance&actor=%5B%5D",
+        actor={"id": "root"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "actor must be a JSON object or null"
+
+
 async def test_root_allow_block_with_table_restricted_actor():
     """
     Test that root-level allow: blocks are processed for actors with
@@ -1799,3 +2047,34 @@ async def test_root_allow_block_with_table_restricted_actor():
         actor=admin_actor,
     )
     assert result is True
+
+
+async def test_databases_json_respects_view_database(tmp_path_factory):
+    # https://github.com/simonw/datasette - /-/databases should not list
+    # databases the actor is not allowed to view
+    db_directory = tmp_path_factory.mktemp("dbs")
+    from datasette.utils import sqlite3 as _sqlite3
+
+    paths = []
+    for name in ("public", "private"):
+        path = str(db_directory / f"{name}.db")
+        conn = _sqlite3.connect(path)
+        conn.execute("vacuum")
+        conn.close()
+        paths.append(path)
+    ds = Datasette(
+        paths,
+        config={"databases": {"private": {"allow": {"id": "root"}}}},
+    )
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    try:
+        anon_response = await ds.client.get("/-/databases.json")
+        assert anon_response.status_code == 200
+        anon_names = {db["name"] for db in anon_response.json()["databases"]}
+        assert anon_names == {"public"}
+        root_response = await ds.client.get("/-/databases.json", actor={"id": "root"})
+        root_names = {db["name"] for db in root_response.json()["databases"]}
+        assert root_names == {"public", "private"}
+    finally:
+        ds.close()

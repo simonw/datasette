@@ -1,5 +1,3 @@
-import pytest
-
 from datasette.app import Datasette
 from datasette.database import Database
 from datasette.resources import DatabaseResource, TableResource
@@ -14,7 +12,6 @@ async def setup_datasette(config=None, databases=None):
     return ds
 
 
-@pytest.mark.asyncio
 async def test_root_permissions_allow():
     config = {"permissions": {"execute-sql": {"id": "alice"}}}
     ds = await setup_datasette(config=config, databases=["content"])
@@ -31,7 +28,6 @@ async def test_root_permissions_allow():
     )
 
 
-@pytest.mark.asyncio
 async def test_database_permission():
     config = {
         "databases": {
@@ -56,7 +52,6 @@ async def test_database_permission():
     )
 
 
-@pytest.mark.asyncio
 async def test_table_permission():
     config = {
         "databases": {
@@ -79,7 +74,6 @@ async def test_table_permission():
     )
 
 
-@pytest.mark.asyncio
 async def test_view_table_allow_block():
     config = {
         "databases": {"content": {"tables": {"repos": {"allow": {"id": "alice"}}}}}
@@ -103,7 +97,6 @@ async def test_view_table_allow_block():
     )
 
 
-@pytest.mark.asyncio
 async def test_view_table_allow_false_blocks():
     config = {"databases": {"content": {"tables": {"repos": {"allow": False}}}}}
     ds = await setup_datasette(config=config, databases=["content"])
@@ -115,7 +108,6 @@ async def test_view_table_allow_false_blocks():
     )
 
 
-@pytest.mark.asyncio
 async def test_allow_sql_blocks():
     config = {"allow_sql": {"id": "alice"}}
     ds = await setup_datasette(config=config, databases=["content"])
@@ -154,7 +146,6 @@ async def test_allow_sql_blocks():
     )
 
 
-@pytest.mark.asyncio
 async def test_view_instance_allow_block():
     config = {"allow": {"id": "alice"}}
     ds = await setup_datasette(config=config)

@@ -1,16 +1,17 @@
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import ClassVar
 
+from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
+from datasette.facets import start_suggest_deadline
 from datasette.plugins import pm
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
-    path_with_added_args,
-    path_with_format,
-    path_with_removed_args,
+    table_xinfo_hidden,
     to_css_class,
 )
 
@@ -27,6 +28,7 @@ class TableExtraContext:
     private: bool
     rows: list
     columns: list
+    expanded_columns: list
     results_description: list
     table_columns: list
     pks: list
@@ -53,6 +55,8 @@ class TableExtraContext:
     run_sequential: object
     query_name: str | None = None
     scope: ExtraScope = ExtraScope.TABLE
+    # {column: other_table} for foreign keys to tables with no label column
+    foreign_key_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -100,7 +104,7 @@ class QueryExtraContext:
 class CountSqlExtra(Extra):
     description = "SQL query string used to calculate the total count for the current table view, including active filters."
     example = ExtraExample("/fixtures/facetable.json?_size=0&_extra=count_sql")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         return context.count_sql
@@ -109,7 +113,7 @@ class CountSqlExtra(Extra):
 class CountExtra(Extra):
     description = "Total count of rows matching these filters"
     example = ExtraExample("/fixtures/facetable.json?_extra=count")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
     expensive = True
 
     async def resolve(self, context):
@@ -127,9 +131,7 @@ class CountExtra(Extra):
                 pass
 
         if context.count_sql and count is None and not context.nocount:
-            count_sql_limited = "select count(*) from (select * {} limit {})".format(
-                context.from_sql, context.db.count_limit + 1
-            )
+            count_sql_limited = f"select count(*) from (select * {context.from_sql} limit {context.db.count_limit + 1})"
             try:
                 count_rows = list(
                     await context.db.execute(count_sql_limited, context.from_sql_params)
@@ -140,8 +142,41 @@ class CountExtra(Extra):
         return count
 
 
+def count_is_truncated(datasette, db, database_name, table_name, count_sql, count):
+    if count != db.count_limit + 1:
+        return False
+    if (
+        not db.is_mutable
+        and datasette.inspect_data
+        and count_sql == f"select count(*) from {table_name} "
+    ):
+        try:
+            datasette.inspect_data[database_name]["tables"][table_name]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
+
+
+class CountTruncatedExtra(Extra):
+    description = "True if the count hit Datasette's counting limit, meaning the real number of matching rows is at least the reported count."
+    example = ExtraExample("/fixtures/facetable.json?_extra=count,count_truncated")
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
+    expensive = True
+
+    async def resolve(self, context, count):
+        return count_is_truncated(
+            context.datasette,
+            context.db,
+            context.database_name,
+            context.table_name,
+            context.count_sql,
+            count,
+        )
+
+
 class FacetInstancesProvider(Provider):
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context, count):
         facet_instances = []
@@ -155,7 +190,7 @@ class FacetInstancesProvider(Provider):
                     context.request,
                     context.database_name,
                     sql=context.sql_no_order_no_limit,
-                    params=context.params,
+                    params=context.from_sql_params,
                     table=context.table_name,
                     table_config=context.table_metadata,
                     row_count=count,
@@ -182,7 +217,7 @@ class FacetResultsExtra(Extra):
         },
         note="Shape abbreviated from /fixtures/facetable.json?_facet=state&_extra=facet_results.",
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
     expensive = True
     docs_note = "See :ref:`facets` for details of how facets work."
 
@@ -225,7 +260,7 @@ class FacetsTimedOutExtra(Extra):
             "if every facet calculation completed."
         ),
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context, facet_results):
         return facet_results["timed_out"]
@@ -242,7 +277,7 @@ class SuggestedFacetsExtra(Extra):
         ],
         note="Shape abbreviated from /fixtures/facetable.json?_extra=suggested_facets.",
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
     expensive = True
     docs_note = (
         "Suggestions are controlled by the :ref:`setting_suggest_facets` setting."
@@ -252,15 +287,16 @@ class SuggestedFacetsExtra(Extra):
         suggested_facets = []
         if (
             context.datasette.setting("suggest_facets")
-            and context.datasette.setting("allow_facet")
+            and context.datasette.setting("default_allow_facet")
             and not context.next_arg
             and not context.nofacet
             and not context.nosuggest
         ):
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await context.run_sequential(
-                *facet_suggest_awaitables
-            ):
+            start_suggest_deadline(context.datasette, facet_instances)
+            for facet in facet_instances:
+                if facet.suggest_time_exceeded():
+                    break
+                (suggest_result,) = await context.run_sequential(facet.suggest())
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 
@@ -270,7 +306,7 @@ class HumanDescriptionEnExtra(Extra):
     example = ExtraExample(
         "/fixtures/facetable.json?state=CA&_sort=pk&_extra=human_description_en"
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         human_description_en = context.filters.human_description_en(
@@ -287,25 +323,10 @@ class HumanDescriptionEnExtra(Extra):
         return human_description_en
 
 
-class NextUrlExtra(Extra):
-    description = "Full URL for the next page of results"
-    example = ExtraExample(
-        "/fixtures/facetable.json?_size=1&_extra=next_url",
-        note=(
-            "``null`` if there are no more pages of results. "
-            "See :ref:`json_api_pagination`."
-        ),
-    )
-    scopes = {ExtraScope.TABLE}
-
-    async def resolve(self, context):
-        return context.next_url
-
-
 class ColumnsExtra(Extra):
     description = "List of column names returned by this table, row or query."
     example = ExtraExample("/fixtures/facetable.json?_extra=columns")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=columns"
         ),
@@ -313,7 +334,11 @@ class ColumnsExtra(Extra):
             "/fixtures/-/query.json?sql=select+1+as+one&_extra=columns"
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         return context.columns
@@ -322,7 +347,7 @@ class ColumnsExtra(Extra):
 class AllColumnsExtra(Extra):
     description = "List of all column names in the table, regardless of ``_col=`` or ``_nocol=`` filtering."
     example = ExtraExample("/fixtures/facetable.json?_col=pk&_extra=all_columns")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         return list(context.table_columns)
@@ -331,20 +356,69 @@ class AllColumnsExtra(Extra):
 class PrimaryKeysExtra(Extra):
     description = "List of primary key column names for this table, or an empty list if the table has no explicit primary key."
     example = ExtraExample("/fixtures/facetable.json?_extra=primary_keys")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=primary_keys"
         )
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE, ExtraScope.ROW}
 
     async def resolve(self, context):
         return context.pks
 
 
+def column_detail_as_json(column):
+    return {
+        "type": column.type or "",
+        "sqlite_type": SQLiteType.from_declared_type(column.type).value,
+        "notnull": bool(column.notnull),
+        "default": column.default_value,
+        "is_pk": bool(column.pk_position),
+        "pk_position": column.pk_position,
+        "hidden": table_xinfo_hidden(column),
+    }
+
+
+class ColumnDetailsExtra(Extra):
+    description = (
+        "SQLite schema details for columns in this table. The dictionary maps "
+        "column names to objects describing the schema for each column."
+    )
+    docs_note = (
+        "Each object has ``type`` as the declared type string returned by "
+        'SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the '
+        "normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, "
+        "``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` "
+        'as the raw SQL default expression string, such as ``"42"``, '
+        "``\"'hello'\"`` or ``\"datetime('now')\"``, or ``null`` if there is "
+        "no default; ``is_pk`` as a boolean; ``pk_position`` as the integer "
+        "primary key position reported by SQLite, or ``0`` for columns that "
+        "are not part of the primary key; and ``hidden`` as the integer value "
+        "reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for "
+        "normal columns, ``1`` for hidden virtual table columns, ``2`` for "
+        "virtual generated columns and ``3`` for stored generated columns."
+    )
+    example = ExtraExample("/fixtures/binary_data.json?_size=0&_extra=column_details")
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
+        ExtraScope.ROW: ExtraExample(
+            "/fixtures/binary_data/1.json?_extra=column_details"
+        )
+    }
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE, ExtraScope.ROW}
+
+    async def resolve(self, context):
+        column_details = await context.datasette._get_resource_column_details(
+            context.database_name, context.table_name
+        )
+        return {
+            column_name: column_detail_as_json(column)
+            for column_name, column in column_details.items()
+        }
+
+
 class ActionsExtra(Extra):
     description = 'Async callable returning table or view actions made available by core and plugin hooks. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions`, :ref:`plugin_hook_table_actions` and :ref:`plugin_hook_view_actions`.'
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
     # Returns an async function for the HTML templates - not JSON serializable
     public = False
 
@@ -416,7 +490,7 @@ async def precompute_database_action_permissions(datasette, actor, database_name
 class IsViewExtra(Extra):
     description = "Whether this resource is a view instead of a table"
     example = ExtraExample("/fixtures/simple_view.json?_extra=is_view")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         return context.is_view
@@ -429,7 +503,7 @@ class DebugExtra(Extra):
         "API and may change without warning."
     )
     example = ExtraExample("/fixtures/facetable.json?_extra=debug")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=debug"
         ),
@@ -437,7 +511,11 @@ class DebugExtra(Extra):
             "/fixtures/-/query.json?sql=select+1+as+one&_extra=debug"
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         debug = {
@@ -461,7 +539,7 @@ class DebugExtra(Extra):
 class RequestExtra(Extra):
     description = "Dictionary with request details: ``url``, ``path``, ``full_path``, ``host`` and ``args`` where ``args`` maps query string parameter names to their values."
     example = ExtraExample("/fixtures/facetable.json?_extra=request")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=request"
         ),
@@ -469,7 +547,11 @@ class RequestExtra(Extra):
             "/fixtures/-/query.json?sql=select+1+as+one&_extra=request"
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         return {
@@ -482,7 +564,7 @@ class RequestExtra(Extra):
 
 
 class DisplayColumnsAndRowsProvider(Provider):
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         display_columns, display_rows = await context.display_columns_and_rows(
@@ -495,6 +577,7 @@ class DisplayColumnsAndRowsProvider(Provider):
             truncate_cells=context.datasette.setting("truncate_cells_html"),
             sortable_columns=context.sortable_columns,
             request=context.request,
+            foreign_key_links=context.foreign_key_links,
         )
         return {
             "columns": display_columns,
@@ -503,7 +586,7 @@ class DisplayColumnsAndRowsProvider(Provider):
 
 
 class DisplayColumnsExtra(Extra):
-    description = "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+    description = "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row."
     example = ExtraExample(
         value=[
             {
@@ -526,7 +609,7 @@ class DisplayColumnsExtra(Extra):
         ],
         note="Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.",
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context, display_columns_and_rows):
         return display_columns_and_rows["columns"]
@@ -534,8 +617,8 @@ class DisplayColumnsExtra(Extra):
 
 class DisplayRowsExtra(Extra):
     description = "Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys; table pages may also provide ``pk_path``, ``row_path`` and ``row_label`` attributes on each row object."
-    scopes = {ExtraScope.TABLE}
-    # Contains markupsafe/sqlite3.Row values - not JSON serializable
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
+    # Contains markupsafe values - not JSON serializable
     public = False
 
     async def resolve(self, context, display_columns_and_rows):
@@ -565,16 +648,17 @@ class RenderCellExtra(Extra):
             "whose rendered value differs from the default are included."
         ),
     )
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             value={
-                "rows": [{"id": 4, "content": "RENDER_CELL_DEMO"}],
-                "render_cell": [{"content": "<strong>Custom rendered HTML</strong>"}],
+                "row": {"id": 4, "content": "RENDER_CELL_DEMO"},
+                "render_cell": {"content": "<strong>Custom rendered HTML</strong>"},
             },
             note=(
-                "The ``render_cell`` array has one item for the requested row. "
-                "The object is keyed by column name. Only columns whose rendered "
-                "value differs from the default are included."
+                "The ``render_cell`` object is keyed by column name. Only columns "
+                "whose rendered value differs from the default are included. If a "
+                "``?_shape=`` is specified ``render_cell`` is instead a list with "
+                "one item, matching the ``rows`` list."
             ),
         ),
         ExtraScope.QUERY: ExtraExample(
@@ -590,7 +674,11 @@ class RenderCellExtra(Extra):
             ),
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         table_name = context.table_name
@@ -644,7 +732,7 @@ class RenderCellExtra(Extra):
 class QueryExtra(Extra):
     description = "Details of the underlying SQL query as a dictionary with ``sql`` and ``params`` keys."
     example = ExtraExample("/fixtures/facetable.json?_size=1&_extra=query")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=query"
         ),
@@ -653,7 +741,11 @@ class QueryExtra(Extra):
             ExtraExample("/fixtures/neighborhood_search.json?text=town&_extra=query"),
         ],
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         return {
@@ -677,7 +769,7 @@ class ColumnTypesExtra(Extra):
             "been assigned the ``json`` column type."
         ),
     )
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/facetable/1.json?_extra=column_types",
             note=(
@@ -686,7 +778,7 @@ class ColumnTypesExtra(Extra):
             ),
         )
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE, ExtraScope.ROW}
 
     async def resolve(self, context):
         ct_map = await context.datasette.get_column_types(
@@ -736,7 +828,7 @@ class SetColumnTypeUiExtra(Extra):
             "types that could be assigned to it."
         ),
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         if context.is_view:
@@ -778,9 +870,7 @@ class SetColumnTypeUiExtra(Extra):
                 ],
             }
         return {
-            "path": "{}/-/set-column-type".format(
-                context.datasette.urls.table(context.database_name, context.table_name)
-            ),
+            "path": f"{context.datasette.urls.table(context.database_name, context.table_name)}/-/set-column-type",
             "columns": columns,
         }
 
@@ -798,7 +888,7 @@ class MetadataExtra(Extra):
             "descriptions."
         ),
     )
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=metadata",
             note=(
@@ -816,7 +906,11 @@ class MetadataExtra(Extra):
             ),
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         if context.scope == ExtraScope.QUERY:
@@ -845,7 +939,7 @@ class MetadataExtra(Extra):
 class DatabaseExtra(Extra):
     description = "Database name"
     example = ExtraExample("/fixtures/facetable.json?_extra=database")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=database"
         ),
@@ -853,7 +947,11 @@ class DatabaseExtra(Extra):
             "/fixtures/-/query.json?sql=select+1+as+one&_extra=database"
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         return context.database_name
@@ -862,10 +960,10 @@ class DatabaseExtra(Extra):
 class TableExtra(Extra):
     description = "Table name"
     example = ExtraExample("/fixtures/facetable.json?_extra=table")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample("/fixtures/simple_primary_key/1.json?_extra=table")
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE, ExtraScope.ROW}
 
     async def resolve(self, context):
         return context.table_name
@@ -878,7 +976,7 @@ class DatabaseColorExtra(Extra):
         "a hash of the database name and used in the Datasette interface."
     )
     example = ExtraExample("/fixtures/facetable.json?_extra=database_color")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=database_color"
         ),
@@ -886,7 +984,11 @@ class DatabaseColorExtra(Extra):
             "/fixtures/-/query.json?sql=select+1+as+one&_extra=database_color"
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         return context.db.color
@@ -897,7 +999,7 @@ class FormHiddenArgsExtra(Extra):
     example = ExtraExample(
         "/fixtures/facetable.json?_facet=state&_size=1&_extra=form_hidden_args"
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         form_hidden_args = []
@@ -914,7 +1016,7 @@ class FormHiddenArgsExtra(Extra):
 
 class FiltersExtra(Extra):
     description = "``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable."
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
     # Returns a Filters instance for the HTML templates - not JSON serializable
     public = False
 
@@ -930,7 +1032,7 @@ class CustomTableTemplatesExtra(Extra):
         ":ref:`customization_custom_templates`."
     )
     example = ExtraExample("/fixtures/facetable.json?_extra=custom_table_templates")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         return [
@@ -951,7 +1053,7 @@ class SortedFacetResultsExtra(Extra):
     example = ExtraExample(
         "/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results"
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context, facet_results):
         facet_configs = context.table_metadata.get("facets", [])
@@ -961,7 +1063,7 @@ class SortedFacetResultsExtra(Extra):
                 if isinstance(fc, str):
                     metadata_facet_names.append(fc)
                 elif isinstance(fc, dict):
-                    metadata_facet_names.append(list(fc.values())[0])
+                    metadata_facet_names.append(next(iter(fc.values())))
             metadata_order = {name: i for i, name in enumerate(metadata_facet_names)}
             metadata_facets = []
             request_facets = []
@@ -987,7 +1089,7 @@ class SortedFacetResultsExtra(Extra):
 class TableDefinitionExtra(Extra):
     description = "SQL definition for this table"
     example = ExtraExample("/fixtures/facetable.json?_extra=table_definition")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         return await context.db.get_table_definition(context.table_name)
@@ -996,7 +1098,7 @@ class TableDefinitionExtra(Extra):
 class ViewDefinitionExtra(Extra):
     description = "SQL definition for this view"
     example = ExtraExample("/fixtures/simple_view.json?_extra=view_definition")
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         return await context.db.get_view_definition(context.table_name)
@@ -1013,7 +1115,7 @@ class RenderersExtra(Extra):
             "<plugin_register_output_renderer>`."
         ),
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context, expandable_columns, query):
         renderers = {}
@@ -1021,7 +1123,7 @@ class RenderersExtra(Extra):
         if expandable_columns:
             url_labels_extra = {"_labels": "on"}
         table_name = context.table_name
-        view_name = "table" if context.scope == ExtraScope.TABLE else "database"
+        view_name = context.scope.value  # "table", "row" or "query"
         for key, (_, can_render) in context.datasette.renderers.items():
             it_can_render = call_with_supported_arguments(
                 can_render,
@@ -1033,17 +1135,16 @@ class RenderersExtra(Extra):
                 database=context.database_name,
                 table=table_name,
                 request=context.request,
+                path=context.datasette.urls.modify(
+                    context.request, format=False
+                ).partition("?")[0],
+                full_path=context.datasette.urls.modify(context.request, format=False),
                 view_name=view_name,
             )
             it_can_render = await await_me_maybe(it_can_render)
             if it_can_render:
-                renderers[key] = context.datasette.urls.path(
-                    path_with_format(
-                        request=context.request,
-                        path=context.request.scope.get("route_path"),
-                        format=key,
-                        extra_qs={**url_labels_extra},
-                    )
+                renderers[key] = context.datasette.urls.modify(
+                    context.request, format=key, add={**url_labels_extra}
                 )
         return renderers
 
@@ -1055,7 +1156,7 @@ class PrivateExtra(Extra):
         "anonymous user could not. See :ref:`authentication_permissions`."
     )
     example = ExtraExample("/fixtures/facetable.json?_extra=private")
-    examples = {
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             "/fixtures/simple_primary_key/1.json?_extra=private"
         ),
@@ -1063,7 +1164,11 @@ class PrivateExtra(Extra):
             "/fixtures/-/query.json?sql=select+1+as+one&_extra=private"
         ),
     }
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         return context.private
@@ -1080,7 +1185,7 @@ class ExpandableColumnsExtra(Extra):
             "that would be used as the label for each expanded value."
         ),
     )
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         expandables = []
@@ -1089,6 +1194,18 @@ class ExpandableColumnsExtra(Extra):
             label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
+
+
+class ExpandedColumnsExtra(Extra):
+    description = 'List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects.'
+    docs_note = "See :ref:`expand_foreign_keys` for how to expand these labels."
+    example = ExtraExample(
+        "/fixtures/facetable.json?_labels=on&_extra=expanded_columns"
+    )
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
+
+    async def resolve(self, context):
+        return list(context.expanded_columns)
 
 
 class ForeignKeyTablesExtra(Extra):
@@ -1100,12 +1217,15 @@ class ForeignKeyTablesExtra(Extra):
             "reference this row, and ``link`` is a URL to browse those rows."
         ),
     )
-    scopes = {ExtraScope.ROW}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.ROW}
     expensive = True
 
     async def resolve(self, context):
         return await context.foreign_key_tables(
-            context.database_name, context.table_name, context.pk_values
+            context.database_name,
+            context.table_name,
+            context.pk_values,
+            actor=context.request.actor,
         )
 
 
@@ -1134,7 +1254,11 @@ class ExtrasExtra(Extra):
             "the current request."
         ),
     )
-    scopes = {ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY}
+    scopes: ClassVar[set[ExtraScope]] = {
+        ExtraScope.TABLE,
+        ExtraScope.ROW,
+        ExtraScope.QUERY,
+    }
 
     async def resolve(self, context):
         all_extras = [
@@ -1147,10 +1271,14 @@ class ExtrasExtra(Extra):
                 "description": description,
                 "toggle_url": context.datasette.absolute_url(
                     context.request,
-                    context.datasette.urls.path(
-                        path_with_added_args(context.request, {"_extra": name})
+                    (
+                        context.datasette.urls.modify(
+                            context.request, add={"_extra": name}
+                        )
                         if name not in context.extras
-                        else path_with_removed_args(context.request, {"_extra": name})
+                        else context.datasette.urls.modify(
+                            context.request, remove={"_extra": name}
+                        )
                     ),
                 ),
                 "selected": name in context.extras,
@@ -1167,7 +1295,6 @@ TABLE_EXTRA_BUNDLES = {
         "count",
         "count_sql",
         "human_description_en",
-        "next_url",
         "metadata",
         "query",
         "columns",
@@ -1196,16 +1323,17 @@ TABLE_EXTRA_BUNDLES = {
 
 TABLE_EXTRA_CLASSES = [
     CountExtra,
+    CountTruncatedExtra,
     CountSqlExtra,
     FacetResultsExtra,
     FacetsTimedOutExtra,
     SuggestedFacetsExtra,
     FacetInstancesProvider,
     HumanDescriptionEnExtra,
-    NextUrlExtra,
     ColumnsExtra,
     AllColumnsExtra,
     PrimaryKeysExtra,
+    ColumnDetailsExtra,
     DisplayColumnsAndRowsProvider,
     DisplayColumnsExtra,
     DisplayRowsExtra,
@@ -1230,6 +1358,7 @@ TABLE_EXTRA_CLASSES = [
     IsViewExtra,
     PrivateExtra,
     ExpandableColumnsExtra,
+    ExpandedColumnsExtra,
     ForeignKeyTablesExtra,
     FormHiddenArgsExtra,
 ]

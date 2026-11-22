@@ -1,7 +1,11 @@
 import json
 import logging
+import time
 
+import markupsafe
+import pytest
 from bs4 import BeautifulSoup as Soup
+
 from datasette.app import Datasette
 from datasette.column_types import (
     ColumnType,
@@ -9,11 +13,7 @@ from datasette.column_types import (
 )
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.utils import sqlite3
-from datasette.utils import StartupError
-import markupsafe
-import pytest
-import time
+from datasette.utils import StartupError, error_body, sqlite3
 
 
 @pytest.fixture
@@ -31,6 +31,7 @@ def ds_ct(tmp_path_factory):
         "'https://example.com', '{\"key\": \"value\"}')"
     )
     db.commit()
+    db.close()
     ds = Datasette(
         [db_path],
         config={
@@ -70,6 +71,7 @@ def ds_ct_editor_permission(tmp_path_factory):
         "'https://example.com', '{\"key\": \"value\"}')"
     )
     db.commit()
+    db.close()
     ds = Datasette(
         [db_path],
         config={
@@ -104,7 +106,7 @@ def write_token(ds, actor_id="root", permissions=None):
 
 def _headers(token):
     return {
-        "Authorization": "Bearer {}".format(token),
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
@@ -125,7 +127,6 @@ def _window_data_from_html(html, variable_name):
 # --- Internal DB and config loading ---
 
 
-@pytest.mark.asyncio
 async def test_column_types_table_created(ds_ct):
     await ds_ct.invoke_startup()
     internal = ds_ct.get_internal_database()
@@ -135,7 +136,6 @@ async def test_column_types_table_created(ds_ct):
     assert len(result.rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_config_loaded_into_internal_db(ds_ct):
     await ds_ct.invoke_startup()
     ct_map = await ds_ct.get_column_types("data", "posts")
@@ -147,7 +147,6 @@ async def test_config_loaded_into_internal_db(ds_ct):
     assert ct_map["metadata"].name == "json"
 
 
-@pytest.mark.asyncio
 async def test_config_with_type_and_config(tmp_path_factory):
     class PointColumnType(ColumnType):
         name = "point"
@@ -200,7 +199,6 @@ async def test_config_with_type_and_config(tmp_path_factory):
 # --- Datasette API methods ---
 
 
-@pytest.mark.asyncio
 async def test_get_column_type(ds_ct):
     await ds_ct.invoke_startup()
     ct = await ds_ct.get_column_type("data", "posts", "author_email")
@@ -209,14 +207,12 @@ async def test_get_column_type(ds_ct):
     assert ct.config is None
 
 
-@pytest.mark.asyncio
 async def test_get_column_type_missing(ds_ct):
     await ds_ct.invoke_startup()
     ct = await ds_ct.get_column_type("data", "posts", "title")
     assert ct is None
 
 
-@pytest.mark.asyncio
 async def test_set_and_remove_column_type(ds_ct):
     await ds_ct.invoke_startup()
     await ds_ct.set_column_type("data", "posts", "title", "email")
@@ -229,7 +225,6 @@ async def test_set_and_remove_column_type(ds_ct):
     assert ct is None
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_with_config(ds_ct):
     await ds_ct.invoke_startup()
     await ds_ct.set_column_type("data", "posts", "title", "url", {"max_length": 200})
@@ -238,7 +233,6 @@ async def test_set_column_type_with_config(ds_ct):
     assert ct.config == {"max_length": 200}
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_api(ds_ct):
     await ds_ct.invoke_startup()
     token = write_token(ds_ct, permissions=["sct"])
@@ -260,7 +254,6 @@ async def test_set_column_type_api(ds_ct):
     assert ct.config is None
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_api_with_config(ds_ct):
     await ds_ct.invoke_startup()
     token = write_token(ds_ct, permissions=["sct"])
@@ -282,7 +275,6 @@ async def test_set_column_type_api_with_config(ds_ct):
     assert ct.config == {"max_length": 200}
 
 
-@pytest.mark.asyncio
 async def test_clear_column_type_api(ds_ct):
     await ds_ct.invoke_startup()
     await ds_ct.set_column_type("data", "posts", "title", "email")
@@ -304,7 +296,6 @@ async def test_clear_column_type_api(ds_ct):
     assert ct is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "body,special_case,expected_status,expected_errors",
     (
@@ -321,12 +312,6 @@ async def test_clear_column_type_api(ds_ct):
             [
                 "Invalid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
             ],
-        ),
-        (
-            {"column": "title", "column_type": {"type": "email"}},
-            "invalid_content_type",
-            400,
-            ["Invalid content-type, must be application/json"],
         ),
         (
             [],
@@ -413,11 +398,7 @@ async def test_set_column_type_api_errors(
     kwargs = {
         "headers": {
             "Authorization": f"Bearer {token}",
-            "Content-Type": (
-                "text/plain"
-                if special_case == "invalid_content_type"
-                else "application/json"
-            ),
+            "Content-Type": "application/json",
         }
     }
     if special_case == "invalid_json":
@@ -426,10 +407,9 @@ async def test_set_column_type_api_errors(
         kwargs["json"] = body
     response = await ds_ct.client.post("/data/posts/-/set-column-type", **kwargs)
     assert response.status_code == expected_status
-    assert response.json() == {"ok": False, "errors": expected_errors}
+    assert response.json() == error_body(expected_errors, expected_status)
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_api_works_for_immutable_database(tmp_path_factory):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "immutable.db")
@@ -458,14 +438,12 @@ async def test_set_column_type_api_works_for_immutable_database(tmp_path_factory
                 database.close()
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_rejects_incompatible_sqlite_type(ds_ct):
     await ds_ct.invoke_startup()
     with pytest.raises(ValueError, match="only applicable to SQLite types TEXT"):
         await ds_ct.set_column_type("data", "posts", "id", "json")
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_allows_varchar_for_text_only_type(tmp_path_factory):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
@@ -487,7 +465,6 @@ async def test_set_column_type_allows_varchar_for_text_only_type(tmp_path_factor
 # --- Plugin registration ---
 
 
-@pytest.mark.asyncio
 async def test_builtin_column_types_registered(ds_ct):
     """register_column_types returns classes; _column_types stores them by name."""
     await ds_ct.invoke_startup()
@@ -498,7 +475,6 @@ async def test_builtin_column_types_registered(ds_ct):
     assert "nonexistent" not in ds_ct._column_types
 
 
-@pytest.mark.asyncio
 async def test_column_type_class_attributes(ds_ct):
     await ds_ct.invoke_startup()
     url_cls = ds_ct._column_types["url"]
@@ -535,7 +511,6 @@ def test_sqlite_type_from_declared_type():
 # --- JSON API ---
 
 
-@pytest.mark.asyncio
 async def test_column_types_extra(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=column_types")
@@ -551,7 +526,6 @@ async def test_column_types_extra(ds_ct):
     assert "title" not in data["column_types"]
 
 
-@pytest.mark.asyncio
 async def test_display_columns_include_column_type(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=display_columns")
@@ -567,7 +541,6 @@ async def test_display_columns_include_column_type(ds_ct):
 # --- Rendering ---
 
 
-@pytest.mark.asyncio
 async def test_url_render_cell(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=render_cell")
@@ -578,7 +551,6 @@ async def test_url_render_cell(ds_ct):
     assert "https://example.com" in rendered["website"]
 
 
-@pytest.mark.asyncio
 async def test_email_render_cell(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=render_cell")
@@ -589,7 +561,6 @@ async def test_email_render_cell(ds_ct):
     assert "test@example.com" in rendered["author_email"]
 
 
-@pytest.mark.asyncio
 async def test_json_render_cell(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=render_cell")
@@ -602,98 +573,86 @@ async def test_json_render_cell(ds_ct):
 # --- Validation ---
 
 
-@pytest.mark.asyncio
-async def test_email_validation_on_insert(ds_ct):
+@pytest.mark.parametrize(
+    "path,body,expected_status,invalid_column",
+    (
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": "not-an-email"}},
+            400,
+            "author_email",
+            id="insert-invalid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "website": "not-a-url"}},
+            400,
+            "website",
+            id="insert-invalid-url",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "metadata": "not-json{"}},
+            400,
+            "metadata",
+            id="insert-invalid-json",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": "valid@example.com"}},
+            201,
+            None,
+            id="insert-valid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": None}},
+            201,
+            None,
+            id="insert-null",
+        ),
+        pytest.param(
+            "/data/posts/-/insert",
+            {"row": {"title": "Test", "author_email": ""}},
+            201,
+            None,
+            id="insert-empty-string",
+        ),
+        pytest.param(
+            "/data/posts/1/-/update",
+            {"update": {"author_email": "invalid"}},
+            400,
+            "author_email",
+            id="update-invalid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/upsert",
+            {"rows": [{"id": 1, "title": "Updated", "author_email": "invalid"}]},
+            400,
+            "author_email",
+            id="upsert-invalid-email",
+        ),
+        pytest.param(
+            "/data/posts/-/upsert",
+            {"rows": [{"id": 1, "title": "Updated", "author_email": "valid@test.com"}]},
+            200,
+            None,
+            id="upsert-valid-email",
+        ),
+    ),
+)
+async def test_validation_on_write(ds_ct, path, body, expected_status, invalid_column):
     await ds_ct.invoke_startup()
     token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": "not-an-email"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "author_email" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_email_validation_passes_valid(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": "valid@example.com"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 201
-
-
-@pytest.mark.asyncio
-async def test_url_validation_on_insert(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "website": "not-a-url"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "website" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_json_validation_on_insert(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "metadata": "not-json{"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "metadata" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_validation_on_update(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/1/-/update",
-        json={"update": {"author_email": "invalid"}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "author_email" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_validation_allows_null(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": None}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 201
-
-
-@pytest.mark.asyncio
-async def test_validation_allows_empty_string(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/insert",
-        json={"row": {"title": "Test", "author_email": ""}},
-        headers=_headers(token),
-    )
-    assert response.status_code == 201
+    response = await ds_ct.client.post(path, json=body, headers=_headers(token))
+    assert response.status_code == expected_status
+    if invalid_column:
+        assert invalid_column in response.json()["errors"][0]
 
 
 # --- ColumnType base class ---
 
 
-@pytest.mark.asyncio
 async def test_column_type_base_defaults():
     class TestType(ColumnType):
         name = "test"
@@ -709,7 +668,6 @@ async def test_column_type_base_defaults():
 # --- render_cell extra with column types ---
 
 
-@pytest.mark.asyncio
 async def test_render_cell_extra_with_column_types(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=render_cell")
@@ -723,7 +681,6 @@ async def test_render_cell_extra_with_column_types(ds_ct):
 # --- Duplicate column type name ---
 
 
-@pytest.mark.asyncio
 async def test_duplicate_column_type_name_raises_error():
     class DuplicateUrlType(ColumnType):
         name = "url"
@@ -750,13 +707,12 @@ async def test_duplicate_column_type_name_raises_error():
 # --- Row endpoint ---
 
 
-@pytest.mark.asyncio
 async def test_row_endpoint_render_cell_with_column_types(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts/1.json?_extra=render_cell")
     assert response.status_code == 200
     data = response.json()
-    rendered = data["render_cell"][0]
+    rendered = data["render_cell"]
     assert "mailto:" in rendered["author_email"]
     assert "href" in rendered["website"]
 
@@ -764,7 +720,6 @@ async def test_row_endpoint_render_cell_with_column_types(ds_ct):
 # --- transform_value in JSON output ---
 
 
-@pytest.mark.asyncio
 async def test_transform_value_in_json_output(tmp_path_factory):
     """A column type with transform_value should modify rows in JSON API."""
 
@@ -816,7 +771,6 @@ async def test_transform_value_in_json_output(tmp_path_factory):
 # --- Column type priority over plugins ---
 
 
-@pytest.mark.asyncio
 async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factory):
     """Column type render_cell should take priority over render_cell plugin hook."""
 
@@ -895,7 +849,6 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
 # --- Row detail page rendering ---
 
 
-@pytest.mark.asyncio
 async def test_row_detail_page_html_rendering(ds_ct):
     """Row detail HTML page should use column type rendering."""
     await ds_ct.invoke_startup()
@@ -911,7 +864,6 @@ async def test_row_detail_page_html_rendering(ds_ct):
 # --- HTML table page rendering ---
 
 
-@pytest.mark.asyncio
 async def test_html_table_page_rendering(ds_ct):
     """HTML table page should use column type rendering."""
     await ds_ct.invoke_startup()
@@ -922,7 +874,6 @@ async def test_html_table_page_rendering(ds_ct):
     assert 'href="https://example.com"' in html
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_ui_data_hidden_without_permission(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts")
@@ -930,7 +881,6 @@ async def test_set_column_type_ui_data_hidden_without_permission(ds_ct):
     assert "window._setColumnTypeData" not in response.text
 
 
-@pytest.mark.asyncio
 async def test_set_column_type_ui_data_includes_applicable_types(
     ds_ct_editor_permission,
 ):
@@ -966,42 +916,9 @@ async def test_set_column_type_ui_data_includes_applicable_types(
     }
 
 
-# --- Validation on upsert ---
-
-
-@pytest.mark.asyncio
-async def test_validation_on_upsert(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/upsert",
-        json={
-            "rows": [{"id": 1, "title": "Updated", "author_email": "invalid"}],
-        },
-        headers=_headers(token),
-    )
-    assert response.status_code == 400
-    assert "author_email" in response.json()["errors"][0]
-
-
-@pytest.mark.asyncio
-async def test_validation_on_upsert_passes_valid(ds_ct):
-    await ds_ct.invoke_startup()
-    token = write_token(ds_ct)
-    response = await ds_ct.client.post(
-        "/data/posts/-/upsert",
-        json={
-            "rows": [{"id": 1, "title": "Updated", "author_email": "valid@test.com"}],
-        },
-        headers=_headers(token),
-    )
-    assert response.status_code == 200
-
-
 # --- Unknown type warning logged ---
 
 
-@pytest.mark.asyncio
 async def test_unknown_type_warning_logged(tmp_path_factory, caplog):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
@@ -1027,7 +944,6 @@ async def test_unknown_type_warning_logged(tmp_path_factory, caplog):
             database.close()
 
 
-@pytest.mark.asyncio
 async def test_incompatible_sqlite_type_warning_logged(tmp_path_factory, caplog):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
@@ -1054,7 +970,6 @@ async def test_incompatible_sqlite_type_warning_logged(tmp_path_factory, caplog)
 # --- Config overwrites on restart ---
 
 
-@pytest.mark.asyncio
 async def test_config_overwrites_on_restart(tmp_path_factory):
     """Config values should overwrite any existing column types in internal DB on startup."""
     db_directory = tmp_path_factory.mktemp("dbs")
@@ -1092,7 +1007,6 @@ async def test_config_overwrites_on_restart(tmp_path_factory):
 # --- No column_types in config ---
 
 
-@pytest.mark.asyncio
 async def test_no_column_types_in_config(tmp_path_factory):
     """Datasette should work fine without any column_types configuration."""
     db_directory = tmp_path_factory.mktemp("dbs")

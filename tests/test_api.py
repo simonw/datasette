@@ -1,21 +1,25 @@
-from datasette.app import Datasette
-from datasette.plugins import DEFAULT_PLUGINS
-from datasette.utils.sqlite import sqlite_version
-from datasette.version import __version__
-from .fixtures import make_app_client, EXPECTED_PLUGINS
 import pathlib
-import pytest
-import sys
 import urllib
 
+import pytest
 
-@pytest.mark.asyncio
+from datasette.app import Datasette
+from datasette.fixtures import EXTRA_DATABASE_SQL
+from datasette.plugins import DEFAULT_PLUGINS
+from datasette.resources import DatabaseResource, TableResource
+from datasette.utils import UNSTABLE_API_MESSAGE, escape_sqlite, tilde_encode
+from datasette.utils.sqlite import sqlite_version
+from datasette.version import __version__
+
+from .fixtures import EXPECTED_PLUGINS, make_ds
+
+
 async def test_homepage(ds_client):
     response = await ds_client.get("/.json")
     assert response.status_code == 200
-    assert "application/json; charset=utf-8" == response.headers["content-type"]
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
     data = response.json()
-    assert sorted(list(data.get("metadata").keys())) == [
+    assert sorted(data.get("metadata").keys()) == [
         "about",
         "about_url",
         "description_html",
@@ -26,35 +30,21 @@ async def test_homepage(ds_client):
         "title",
     ]
     databases = data.get("databases")
-    assert databases.keys() == {"fixtures": 0}.keys()
-    d = databases["fixtures"]
-    assert d["name"] == "fixtures"
-    assert isinstance(d["tables_count"], int)
-    assert isinstance(len(d["tables_and_views_truncated"]), int)
-    assert d["tables_and_views_more"] is True
-    assert isinstance(d["hidden_tables_count"], int)
-    assert isinstance(d["hidden_table_rows_sum"], int)
-    assert isinstance(d["views_count"], int)
+    assert isinstance(databases, list)
+    assert [d["name"] for d in databases] == ["fixtures"]
+    d = databases[0]
+    assert d["url"] == "/fixtures"
+    assert isinstance(d["tables"], int)
+    assert isinstance(d["views"], int)
+    assert "size" in d
+    assert data["totals"] == {
+        "databases": 1,
+        "tables": d["tables"],
+        "views": d["views"],
+    }
+    assert data["total"] == d["tables"] + d["views"]
 
 
-@pytest.mark.asyncio
-async def test_homepage_sort_by_relationships(ds_client):
-    response = await ds_client.get("/.json?_sort=relationships")
-    assert response.status_code == 200
-    tables = [
-        t["name"]
-        for t in response.json()["databases"]["fixtures"]["tables_and_views_truncated"]
-    ]
-    assert tables == [
-        "simple_primary_key",
-        "foreign_key_references",
-        "complex_foreign_keys",
-        "roadside_attraction_characteristics",
-        "searchable_tags",
-    ]
-
-
-@pytest.mark.asyncio
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures.json")
     assert response.status_code == 200
@@ -79,12 +69,15 @@ async def test_database_page(ds_client):
         "binary_data",
         "complex_foreign_keys",
         "compound_primary_key",
+        "compound_primary_key_edge_cases",
         "compound_three_primary_keys",
         "custom_foreign_key_label",
         "facet_cities",
         "facetable",
         "foreign_key_references",
         "infinity",
+        "primary_key_edge_case_references",
+        "primary_key_edge_cases",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
         "roadside_attraction_characteristics",
@@ -98,14 +91,11 @@ async def test_database_page(ds_client):
         "tags",
     }
 
-    # Expected hidden tables
+    # The external-content index is visible, but its shadow tables need a
+    # second dependency hop and are excluded by the one-hop permission policy.
     expected_hidden_tables = {
         "no_primary_key",
         "searchable_fts",
-        "searchable_fts_config",
-        "searchable_fts_data",
-        "searchable_fts_docsize",
-        "searchable_fts_idx",
     }
 
     # Verify all expected tables exist
@@ -115,8 +105,8 @@ async def test_database_page(ds_client):
     # Verify hidden status
     visible_tables = {t["name"] for t in tables if not t["hidden"]}
     hidden_tables = {t["name"] for t in tables if t["hidden"]}
-    assert expected_visible_tables == visible_tables
-    assert expected_hidden_tables == hidden_tables
+    assert visible_tables == expected_visible_tables
+    assert hidden_tables == expected_hidden_tables
 
     # Helper to compare foreign keys (order-insensitive)
     def fk_set(fks):
@@ -246,35 +236,41 @@ async def test_database_page(ds_client):
         assert "outgoing" in table["foreign_keys"]
 
 
-def test_no_files_uses_memory_database(app_client_no_files):
-    response = app_client_no_files.get("/.json")
-    assert response.status == 200
-    assert {
-        "databases": {
-            "_memory": {
+async def test_no_files_uses_memory_database():
+    ds = Datasette([])
+    response = await ds.client.get("/.json")
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
+        "databases": [
+            {
                 "name": "_memory",
-                "hash": None,
-                "color": "a6c7b9",
-                "path": "/_memory",
-                "tables_and_views_truncated": [],
-                "tables_and_views_more": False,
-                "tables_count": 0,
-                "table_rows_sum": 0,
-                "show_table_row_counts": False,
-                "hidden_table_rows_sum": 0,
-                "hidden_tables_count": 0,
-                "views_count": 0,
                 "private": False,
+                "tables": 0,
+                "views": 0,
+                "url": "/_memory",
+                "size": None,
             },
-        },
+        ],
+        "items": [],
+        "queries": [],
+        "total": 0,
+        "queries_total": 0,
+        "totals": {"databases": 1, "tables": 0, "views": 0},
+        "q": "",
+        "database_filter": None,
+        "previous_url": None,
+        "next_url": None,
         "metadata": {},
-    } == response.json
+        "private": False,
+    }
     # Try that SQL query
-    response = app_client_no_files.get(
+    response = await ds.client.get(
         "/_memory/-/query.json?sql=select+sqlite_version()&_shape=array"
     )
-    assert 1 == len(response.json)
-    assert ["sqlite_version()"] == list(response.json[0].keys())
+    assert len(response.json()) == 1
+    assert list(response.json()[0].keys()) == ["sqlite_version()"]
 
 
 @pytest.mark.parametrize(
@@ -287,18 +283,17 @@ def test_no_files_uses_memory_database(app_client_no_files):
         ("/:memory:.csv?sql=select+1", "/_memory.csv?sql=select+1"),
     ),
 )
-def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
-    response = app_client_no_files.get(path)
-    assert response.status == 301
+async def test_old_memory_urls_redirect(path, expected_redirect):
+    response = await Datasette([]).client.get(path)
+    assert response.status_code == 301
     assert response.headers["location"] == expected_redirect
 
 
-def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
-    response = app_client_with_dot.get("/fixtures~2Edot.json")
-    assert response.status == 200
+async def test_database_page_for_database_with_dot_in_name(ds_on_disk_with_dot):
+    response = await ds_on_disk_with_dot.client.get("/fixtures~2Edot.json")
+    assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_custom_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+content+from+simple_primary_key",
@@ -318,29 +313,23 @@ async def test_custom_sql(ds_client):
 
 
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
-def test_sql_time_limit(app_client_shorter_time_limit):
-    response = app_client_shorter_time_limit.get(
-        "/fixtures/-/query.json?sql=select+sleep(0.5)",
+async def test_sql_time_limit(ds_client_shorter_time_limit):
+    response = await ds_client_shorter_time_limit.get(
+        "/fixtures/-/query.json?sql=select+sleep(0.1)",
     )
-    assert 400 == response.status
-    assert response.json == {
+    assert response.status_code == 400
+    expected_message = (
+        "SQL query took too long. The time limit is"
+        " controlled by the sql_time_limit_ms setting."
+    )
+    assert response.json() == {
         "ok": False,
-        "error": (
-            "<p>SQL query took too long. The time limit is controlled by the\n"
-            '<a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>\n'
-            "configuration option.</p>\n"
-            '<textarea style="width: 90%">select sleep(0.5)</textarea>\n'
-            "<script>\n"
-            'let ta = document.querySelector("textarea");\n'
-            'ta.style.height = ta.scrollHeight + "px";\n'
-            "</script>"
-        ),
+        "error": expected_message,
+        "errors": [expected_message],
         "status": 400,
-        "title": "SQL Interrupted",
     }
 
 
-@pytest.mark.asyncio
 async def test_custom_sql_time_limit(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=select+sleep(0.01)",
@@ -350,37 +339,109 @@ async def test_custom_sql_time_limit(ds_client):
         "/fixtures/-/query.json?sql=select+sleep(0.01)&_timelimit=5",
     )
     assert response.status_code == 400
-    assert response.json()["title"] == "SQL Interrupted"
+    assert response.json()["error"].startswith("SQL query took too long.")
 
 
-@pytest.mark.asyncio
 async def test_invalid_custom_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=.schema",
     )
     assert response.status_code == 400
     assert response.json()["ok"] is False
-    assert "Statement must be a SELECT" == response.json()["error"]
+    assert response.json()["error"] == "Statement must be a SELECT"
 
 
-@pytest.mark.asyncio
 async def test_row(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key/1.json?_shape=objects")
+    response = await ds_client.get("/fixtures/simple_primary_key/1.json")
     assert response.status_code == 200
-    assert response.json()["ok"] is True
-    assert response.json()["rows"] == [{"id": 1, "content": "hello"}]
+    data = response.json()
+    assert data["ok"] is True
+    assert data["row"] == {"id": 1, "content": "hello"}
+    assert "rows" not in data
+    assert "truncated" not in data
 
 
-@pytest.mark.asyncio
-async def test_row_strange_table_name(ds_client):
+@pytest.mark.parametrize(
+    "shape,expected",
+    (
+        ("objects", [{"id": 1, "content": "hello"}]),
+        ("arrays", [[1, "hello"]]),
+        ("array", [{"id": 1, "content": "hello"}]),
+        ("arrayfirst", [1]),
+        ("object", {"1": {"id": 1, "content": "hello"}}),
+    ),
+)
+async def test_row_shape(ds_client, shape, expected):
+    # Any ?_shape= returns the same shapes as the table JSON
     response = await ds_client.get(
-        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects"
+        f"/fixtures/simple_primary_key/1.json?_shape={shape}"
     )
     assert response.status_code == 200
-    assert response.json()["rows"] == [{"pk": "3", "content": "hey"}]
+    data = response.json()
+    if shape in ("objects", "arrays"):
+        assert "row" not in data
+        assert data["truncated"] is False
+        data = data["rows"]
+    assert data == expected
 
 
-@pytest.mark.asyncio
+async def test_row_json_cols(ds_client):
+    response = await ds_client.get("/fixtures/facetable/1.json?_json=tags")
+    assert response.status_code == 200
+    assert response.json()["row"]["tags"] == ["tag1", "tag2"]
+
+
+async def test_row_not_found_is_an_error(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/missing.json")
+    assert response.status_code == 404
+    data = response.json()
+    assert data["ok"] is False
+    assert "row" not in data
+
+
+@pytest.mark.parametrize("suffix", ("", ".json"))
+@pytest.mark.parametrize(
+    "row_path",
+    (
+        "a",  # too few components for a two-column primary key
+        "a,b,c",  # too many components for a two-column primary key
+    ),
+)
+async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
+    # A row URL with the wrong number of comma-separated primary key
+    # components used to raise an uncaught sqlite3.ProgrammingError (HTTP 500)
+    # because the SQL had one bind placeholder per PK column but params were
+    # only bound for the supplied components. It should be a 400 instead,
+    # mirroring the existing guard in datasette/views/table.py.
+    response = await ds_client.get(f"/fixtures/compound_primary_key/{row_path}{suffix}")
+    assert response.status_code == 400
+    if suffix == ".json":
+        assert response.json()["ok"] is False
+        assert response.json()["status"] == 400
+
+
+@pytest.mark.parametrize(
+    "path,expected_rows",
+    (
+        # The valid two-component URL still resolves the row.
+        pytest.param(
+            "/fixtures/compound_primary_key/a,b.json?_shape=objects",
+            [{"pk1": "a", "pk2": "b", "content": "c"}],
+            id="compound_pk_correct_arity",
+        ),
+        pytest.param(
+            "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects",
+            [{"pk": "3", "content": "hey"}],
+            id="strange_table_name",
+        ),
+    ),
+)
+async def test_row_resolves(ds_client, path, expected_rows):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    assert response.json()["rows"] == expected_rows
+
+
 async def test_row_foreign_key_tables(ds_client):
     response = await ds_client.get(
         "/fixtures/simple_primary_key/1.json?_extra=foreign_key_tables"
@@ -426,10 +487,69 @@ async def test_row_foreign_key_tables(ds_client):
     ]
 
 
-@pytest.mark.asyncio
+async def test_row_foreign_key_tables_omit_denied_tables(request):
+    actor = {"id": "reader"}
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "parents": {"permissions": {"view-table": True}},
+                        "private_children": {"permissions": {"view-table": False}},
+                    }
+                }
+            }
+        },
+    )
+    request.addfinalizer(ds.close)
+    db = ds.add_memory_database("fk_count_leak", name="data")
+    await db.execute_write("create table parents (id integer primary key, name text)")
+    await db.execute_write("""
+        create table private_children (
+            id integer primary key,
+            parent_id integer references parents(id)
+        )
+    """)
+    await db.execute_write("insert into parents values (1, 'Public parent')")
+    await db.execute_write("""
+        insert into private_children (id, parent_id) values
+            (1, 1),
+            (2, 1),
+            (3, 1)
+    """)
+    await ds.invoke_startup()
+
+    parent = TableResource(database="data", table="parents")
+    private_children = TableResource(database="data", table="private_children")
+    assert await ds.allowed(action="view-table", resource=parent, actor=actor)
+    assert not await ds.allowed(
+        action="view-table", resource=private_children, actor=actor
+    )
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="data"),
+        actor=actor,
+    )
+
+    direct_child = await ds.client.get("/data/private_children.json", actor=actor)
+    assert direct_child.status_code == 403
+    parent_response = await ds.client.get(
+        "/data/parents/1.json?_extra=foreign_key_tables", actor=actor
+    )
+    assert parent_response.status_code == 200
+
+    foreign_key_tables = parent_response.json().get("foreign_key_tables", [])
+    assert foreign_key_tables == [], (
+        "denied child table name, foreign-key column, and row count disclosed: "
+        f"{foreign_key_tables}"
+    )
+
+
 async def test_row_extras(ds_client):
     response = await ds_client.get(
-        "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables"
+        "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables,column_details"
     )
     assert response.status_code == 200
     data = response.json()
@@ -446,9 +566,46 @@ async def test_row_extras(ds_client):
         "format": "json",
     }
     assert len(data["foreign_key_tables"]) == 5
+    id_detail = data["column_details"]["id"]
+    assert id_detail["type"].lower() == "integer"
+    assert id_detail == {
+        "type": id_detail["type"],
+        "sqlite_type": "INTEGER",
+        "notnull": False,
+        "default": None,
+        "is_pk": True,
+        "pk_position": 1,
+        "hidden": 0,
+    }
+    content_detail = data["column_details"]["content"]
+    assert content_detail["type"].lower() == "text"
+    assert content_detail == {
+        "type": content_detail["type"],
+        "sqlite_type": "TEXT",
+        "notnull": False,
+        "default": None,
+        "is_pk": False,
+        "pk_position": 0,
+        "hidden": 0,
+    }
 
 
-@pytest.mark.asyncio
+async def test_column_details_extra_row_for_null_blob(ds_client):
+    response = await ds_client.get("/fixtures/binary_data/3.json?_extra=column_details")
+    assert response.status_code == 200
+    data_detail = response.json()["column_details"]["data"]
+    assert data_detail["type"].lower() == "blob"
+    assert data_detail == {
+        "type": data_detail["type"],
+        "sqlite_type": "BLOB",
+        "notnull": False,
+        "default": None,
+        "is_pk": False,
+        "pk_position": 0,
+        "hidden": 0,
+    }
+
+
 async def test_row_extra_render_cell():
     """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook on row pages"""
     from datasette import hookimpl
@@ -483,50 +640,50 @@ async def test_row_extra_render_cell():
         assert response.status_code == 200
         data = response.json()
 
-        # Verify the response structure
-        assert "render_cell" in data
-        assert "rows" in data
+        # render_cell is a single object to match "row". Only columns
+        # modified by plugins are included, so there is no "id" key
+        assert data["render_cell"] == {"name": "<strong>Alice</strong>"}
+        # The row itself still contains raw values
+        assert data["row"] == {"id": 1, "name": "Alice"}
 
-        # render_cell should be a list with one row (since this is a row page)
-        # Only columns modified by plugins are included (sparse output)
-        render_cell = data["render_cell"]
-        assert len(render_cell) == 1
-
-        # The row: id=1, name='Alice'
-        # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
-        assert render_cell[0]["name"] == "<strong>Alice</strong>"
-        # The 'id' column is not included since no plugin modified it
-        assert "id" not in render_cell[0]
-
-        # The regular rows should still contain raw values
+        # With a ?_shape= render_cell is a list, matching "rows"
+        response = await ds.client.get(
+            "/test_row_render/test_render/1.json?_extra=render_cell&_shape=objects"
+        )
+        data = response.json()
+        assert data["render_cell"] == [{"name": "<strong>Alice</strong>"}]
         assert data["rows"] == [{"id": 1, "name": "Alice"}]
 
     finally:
         ds.pm.unregister(name="TestRenderCellPlugin")
 
 
-def test_databases_json(app_client_two_attached_databases_one_immutable):
-    response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
-    databases = response.json
-    assert 2 == len(databases)
+async def test_databases_json(ds_on_disk_two_databases_one_immutable):
+    response = await ds_on_disk_two_databases_one_immutable.client.get(
+        "/-/databases.json"
+    )
+    databases = response.json()["databases"]
+    assert len(databases) == 2
     extra_database, fixtures_database = databases
-    assert "extra database" == extra_database["name"]
+    assert extra_database["name"] == "extra database"
     assert extra_database["hash"] is None
     assert extra_database["is_mutable"] is True
     assert extra_database["is_memory"] is False
 
-    assert "fixtures" == fixtures_database["name"]
+    assert fixtures_database["name"] == "fixtures"
     assert fixtures_database["hash"] is not None
     assert fixtures_database["is_mutable"] is False
     assert fixtures_database["is_memory"] is False
 
 
-@pytest.mark.asyncio
 async def test_threads_json(ds_client):
-    response = await ds_client.get("/-/threads.json")
-    expected_keys = {"threads", "num_threads"}
-    if sys.version_info >= (3, 7, 0):
-        expected_keys.update({"tasks", "num_tasks"})
+    ds_client.ds.root_enabled = True
+    try:
+        response = await ds_client.get("/-/threads.json", actor={"id": "root"})
+    finally:
+        ds_client.ds.root_enabled = False
+    expected_keys = {"ok", "threads", "num_threads"}
+    expected_keys.update({"tasks", "num_tasks"})
     data = response.json()
     assert set(data.keys()) == expected_keys
     # Should be at least one _execute_writes thread for __INTERNAL__
@@ -534,7 +691,6 @@ async def test_threads_json(ds_client):
     assert "_execute_writes for database __INTERNAL__" in thread_names
 
 
-@pytest.mark.asyncio
 async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
     # Filter out TrackEventPlugin
@@ -542,7 +698,7 @@ async def test_plugins_json(ds_client):
         [p for p in response.json() if p["name"] != "TrackEventPlugin"],
         key=lambda p: p["name"],
     )
-    assert EXPECTED_PLUGINS == actual_plugins
+    assert actual_plugins == EXPECTED_PLUGINS
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
     names = {p["name"] for p in response.json()}
@@ -550,12 +706,11 @@ async def test_plugins_json(ds_client):
     assert names.issuperset(DEFAULT_PLUGINS)
 
 
-@pytest.mark.asyncio
 async def test_versions_json(ds_client):
     response = await ds_client.get("/-/versions.json")
     data = response.json()
     assert "python" in data
-    assert "3.0" == data.get("asgi")
+    assert data.get("asgi") == "3.0"
     assert "version" in data["python"]
     assert "full" in data["python"]
     assert "datasette" in data
@@ -571,13 +726,12 @@ async def test_versions_json(ds_client):
     assert data["sqlite"]["extensions"]["json1"]
 
 
-@pytest.mark.asyncio
 async def test_actions_json(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
         response = await ds_client.get("/-/actions.json", actor={"id": "root"})
-        data = response.json()
+        data = response.json()["actions"]
     finally:
         ds_client.ds.root_enabled = original_root_enabled
     assert isinstance(data, list)
@@ -605,10 +759,10 @@ async def test_actions_json(ds_client):
         assert expected_action in action_names
 
 
-@pytest.mark.asyncio
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
     assert response.json() == {
+        "ok": True,
         "default_page_size": 50,
         "default_facet_size": 30,
         "default_allow_sql": True,
@@ -616,17 +770,18 @@ async def test_settings_json(ds_client):
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,
         "max_insert_rows": 100,
+        "max_post_body_bytes": 10 * 1024 * 1024,
         "sql_time_limit_ms": 200,
-        "allow_download": True,
+        "default_allow_download": True,
         "allow_signed_tokens": True,
         "max_signed_tokens_ttl": 0,
-        "allow_facet": True,
+        "default_allow_facet": True,
         "suggest_facets": True,
         "default_cache_ttl": 5,
         "num_sql_threads": 1,
         "cache_size_kb": 0,
-        "allow_csv_stream": True,
-        "max_csv_mb": 100,
+        "default_allow_stream": True,
+        "max_stream_mb": 100,
         "truncate_cells_html": 2048,
         "force_https_urls": False,
         "template_debug": False,
@@ -640,7 +795,146 @@ test_json_columns_default_expected = [
 ]
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["table", "query"])
+@pytest.mark.parametrize("include_columns", [False, True])
+@pytest.mark.parametrize(
+    "shape", ["objects", "object", "array", "arrayfirst", "arrays"]
+)
+async def test_json_columns_with_output_shapes(endpoint, include_columns, shape):
+    if endpoint == "query" and shape == "object":
+        pytest.skip("Object shape requires a table primary key")
+    ds = Datasette()
+    db = ds.add_memory_database("json_shapes")
+    await db.execute_write("CREATE TABLE t (value text, id integer primary key)")
+    await db.execute_write("INSERT INTO t VALUES (?, ?)", ['["a", "b"]', 1])
+    parameters = {"_json": "value", "_shape": shape}
+    if include_columns:
+        parameters["_extra"] = "columns"
+    if endpoint == "query":
+        parameters["sql"] = "SELECT value, id FROM t"
+        path = "/json_shapes/-/query.json"
+    else:
+        path = "/json_shapes/t.json"
+    try:
+        response = await ds.client.get(path + "?" + urllib.parse.urlencode(parameters))
+        assert response.status_code == 200
+        result = response.json()
+        row = {"value": ["a", "b"], "id": 1}
+        if shape == "object":
+            assert result == {"1": row}
+        elif shape == "array":
+            assert result == [row]
+        elif shape == "arrayfirst":
+            assert result == [["a", "b"]]
+        elif shape == "arrays":
+            assert result["rows"] == [[["a", "b"], 1]]
+        else:
+            assert result["rows"] == [row]
+        if shape in ("objects", "arrays"):
+            assert ("columns" in result) == include_columns
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize("endpoint", ["table", "row"])
+@pytest.mark.parametrize(
+    "value,expected", [('["a"]', ["a"]), ("not JSON", "not JSON"), (None, None)]
+)
+async def test_json_columns_preserve_other_values(endpoint, value, expected):
+    ds = Datasette()
+    db = ds.add_memory_database("json_values")
+    await db.execute_write(
+        "CREATE TABLE t (id integer primary key, value text, other text)"
+    )
+    await db.execute_write(
+        "INSERT INTO t VALUES (?, ?, ?)", [1, value, '{"keep": true}']
+    )
+    path = "/json_values/t.json" if endpoint == "table" else "/json_values/t/1.json"
+    try:
+        response = await ds.client.get(path + "?_json=value")
+        assert response.status_code == 200
+        row = {"id": 1, "value": expected, "other": '{"keep": true}'}
+        if endpoint == "row":
+            assert response.json()["row"] == row
+        else:
+            assert response.json()["rows"] == [row]
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize("include_columns", [False, True])
+@pytest.mark.parametrize("composite_key", [False, True])
+@pytest.mark.parametrize(
+    "values",
+    [
+        [('"same"', "same"), ("same", "same")],
+        [("null", None), ("None", "None")],
+        [(' {"id":1}', {"id": 1})],
+        [('["x"]', ["x"]), ("['x']", "['x']")],
+    ],
+)
+async def test_json_columns_object_preserves_primary_keys(
+    include_columns, composite_key, values
+):
+    ds = Datasette()
+    db = ds.add_memory_database("json_keys")
+    primary_key = "id, tenant" if composite_key else "id"
+    await db.execute_write(
+        f"CREATE TABLE t (id text, tenant text, payload text, primary key ({primary_key}))"
+    )
+    expected = {}
+    for index, (raw_id, decoded_id) in enumerate(values):
+        payload = f"row-{index}"
+        await db.execute_write(
+            "INSERT INTO t VALUES (?, ?, ?)", [raw_id, '"team"', payload]
+        )
+        key = tilde_encode(raw_id)
+        if composite_key:
+            key += "," + tilde_encode('"team"')
+        expected[key] = {
+            "id": decoded_id,
+            "tenant": "team" if composite_key else '"team"',
+            "payload": payload,
+        }
+    parameters = [("_shape", "object"), ("_json", "id")]
+    if composite_key:
+        parameters.append(("_json", "tenant"))
+    if include_columns:
+        parameters.append(("_extra", "columns"))
+    try:
+        response = await ds.client.get(
+            "/json_keys/t.json?" + urllib.parse.urlencode(parameters)
+        )
+        assert response.status_code == 200
+        assert response.json() == expected
+        for key in expected:
+            detail = await ds.client.get(f"/json_keys/t/{key}.json")
+            assert detail.status_code == 200
+    finally:
+        ds.close()
+
+
+@pytest.mark.parametrize(
+    "shape", ["objects", "object", "array", "arrayfirst", "arrays"]
+)
+async def test_json_columns_with_empty_results(shape):
+    ds = Datasette()
+    db = ds.add_memory_database("json_empty")
+    await db.execute_write("CREATE TABLE t (id integer primary key, value text)")
+    try:
+        response = await ds.client.get(f"/json_empty/t.json?_json=value&_shape={shape}")
+        assert response.status_code == 200
+        result = response.json()
+        if shape == "object":
+            assert result == {}
+        elif shape in ("array", "arrayfirst"):
+            assert result == []
+        else:
+            assert result["rows"] == []
+    finally:
+        ds.close()
+
+
 @pytest.mark.parametrize(
     "extra_args,expected",
     [
@@ -669,25 +963,26 @@ async def test_json_columns(ds_client, extra_args, expected):
     assert response.json() == expected
 
 
-def test_config_cache_size(app_client_larger_cache_size):
-    response = app_client_larger_cache_size.get("/fixtures/pragma_cache_size.json")
-    assert response.json["rows"] == [{"cache_size": -2500}]
+async def test_config_cache_size():
+    ds = await make_ds(settings={"cache_size_kb": 2500})
+    response = await ds.client.get("/fixtures/pragma_cache_size.json")
+    assert response.json()["rows"] == [{"cache_size": -2500}]
 
 
-def test_config_force_https_urls():
-    with make_app_client(settings={"force_https_urls": True}) as client:
-        response = client.get(
-            "/fixtures/facetable.json?_size=3&_facet=state&_extra=next_url,suggested_facets"
-        )
-        assert response.json["next_url"].startswith("https://")
-        assert response.json["facet_results"]["results"]["state"]["results"][0][
-            "toggle_url"
-        ].startswith("https://")
-        assert response.json["suggested_facets"][0]["toggle_url"].startswith("https://")
-        # Also confirm that request.url and request.scheme are set correctly
-        response = client.get("/")
-        assert client.ds._last_request.url.startswith("https://")
-        assert client.ds._last_request.scheme == "https"
+async def test_config_force_https_urls():
+    ds = await make_ds(settings={"force_https_urls": True})
+    response = await ds.client.get(
+        "/fixtures/facetable.json?_size=3&_facet=state&_extra=suggested_facets"
+    )
+    assert response.json()["next_url"].startswith("https://")
+    assert response.json()["facet_results"]["results"]["state"]["results"][0][
+        "toggle_url"
+    ].startswith("https://")
+    assert response.json()["suggested_facets"][0]["toggle_url"].startswith("https://")
+    # Also confirm that request.url and request.scheme are set correctly
+    response = await ds.client.get("/")
+    assert ds._last_request.url.startswith("https://")
+    assert ds._last_request.scheme == "https"
 
 
 @pytest.mark.parametrize(
@@ -704,34 +999,35 @@ def test_config_force_https_urls():
         ("/fixtures/facetable/-/drop", 405),
     ],
 )
-def test_cors(
-    app_client_with_cors,
-    app_client_two_attached_databases_one_immutable,
+async def test_cors(
+    ds_on_disk_with_cors,
+    ds_on_disk_two_databases_one_immutable,
     path,
     status_code,
 ):
-    response = app_client_with_cors.get(
-        path,
-    )
-    assert response.status == status_code
+    # Both fixtures are on disk and immutable, so /fixtures.db can be downloaded
+    response = await ds_on_disk_with_cors.client.get(path)
+    assert response.status_code == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert (
         response.headers["Access-Control-Allow-Headers"]
         == "Authorization, Content-Type"
     )
-    assert response.headers["Access-Control-Expose-Headers"] == "Link"
+    assert (
+        response.headers["Access-Control-Expose-Headers"]
+        == "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )
     assert response.headers["Access-Control-Max-Age"] == "3600"
-    # Same request to app_client_two_attached_databases_one_immutable
+    # Same request to ds_on_disk_two_databases_one_immutable
     # should not have those headers - I'm using that fixture because
-    # regular app_client doesn't have immutable fixtures.db which means
+    # regular ds_on_disk doesn't have immutable fixtures.db which means
     # the test for /fixtures.db returns a 403 error
-    response = app_client_two_attached_databases_one_immutable.get(
-        path,
-    )
-    assert response.status == status_code
+    client = ds_on_disk_two_databases_one_immutable.client
+    response = await client.get(path)
+    assert response.status_code == status_code
     assert "Access-Control-Allow-Origin" not in response.headers
     assert "Access-Control-Allow-Headers" not in response.headers
     assert "Access-Control-Expose-Headers" not in response.headers
@@ -739,13 +1035,13 @@ def test_cors(
     assert "Access-Control-Max-Age" not in response.headers
 
 
-def test_cors_query_redirect(app_client_with_cors):
+async def test_cors_query_redirect(ds_client_with_cors):
     # /db?sql= redirects to /db/-/query - the redirect itself needs CORS
     # headers, otherwise browsers refuse to follow it cross-origin
-    response = app_client_with_cors.get(
+    response = await ds_client_with_cors.get(
         "/fixtures?sql=select+1", follow_redirects=False
     )
-    assert response.status == 302
+    assert response.status_code == 302
     assert response.headers["Location"] == "/fixtures/-/query?sql=select+1"
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
@@ -761,42 +1057,43 @@ def test_cors_query_redirect(app_client_with_cors):
         "/searchable_view.json",
     ),
 )
-def test_database_with_space_in_name(app_client_two_attached_databases, path):
-    response = app_client_two_attached_databases.get(
+async def test_database_with_space_in_name(ds_client_two_attached_databases, path):
+    response = await ds_client_two_attached_databases.get(
         "/extra~20database" + path, follow_redirects=True
     )
-    assert response.status == 200
+    assert response.status_code == 200
 
 
-def test_common_prefix_database_names(app_client_conflicting_database_names):
+async def test_common_prefix_database_names():
     # https://github.com/simonw/datasette/issues/597
-    assert ["foo-bar", "foo", "fixtures"] == [
+    ds = await make_ds(
+        extra_databases={"foo-bar": EXTRA_DATABASE_SQL, "foo": EXTRA_DATABASE_SQL}
+    )
+    assert [
         d["name"]
-        for d in app_client_conflicting_database_names.get("/-/databases.json").json
-    ]
+        for d in (await ds.client.get("/-/databases.json")).json()["databases"]
+    ] == ["foo-bar", "foo", "fixtures"]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
-        data = app_client_conflicting_database_names.get(path).json
+        data = (await ds.client.get(path)).json()
         assert db_name == data["database"]
 
 
-def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
-    response = app_client_immutable_and_inspect_file.get(
+async def test_inspect_file_used_for_count(ds_on_disk_immutable_and_inspect_file):
+    response = await ds_on_disk_immutable_and_inspect_file.client.get(
         "/fixtures/sortable.json?_extra=count"
     )
-    assert response.json["count"] == 100
+    assert response.json()["count"] == 100
 
 
-@pytest.mark.asyncio
 async def test_http_options_request(ds_client):
     response = await ds_client.options("/fixtures")
     assert response.status_code == 200
     assert response.text == "ok"
 
 
-@pytest.mark.asyncio
-async def test_db_path(app_client):
-    # Needs app_client because needs file based database
-    db = app_client.ds.get_database()
+async def test_db_path(ds_on_disk):
+    # Needs ds_on_disk because needs file based database
+    db = ds_on_disk.get_database()
     path = pathlib.Path(db.path)
 
     assert path.exists()
@@ -807,7 +1104,6 @@ async def test_db_path(app_client):
     await datasette.refresh_schemas()
 
 
-@pytest.mark.asyncio
 async def test_hidden_sqlite_stat1_table():
     ds = Datasette()
     db = ds.add_memory_database("db")
@@ -816,13 +1112,9 @@ async def test_hidden_sqlite_stat1_table():
     await db.execute_write("analyze")
     data = (await ds.client.get("/db.json?_show_hidden=1")).json()
     tables = [(t["name"], t["hidden"]) for t in data["tables"]]
-    assert tables in (
-        [("normal", False), ("sqlite_stat1", True)],
-        [("normal", False), ("sqlite_stat1", True), ("sqlite_stat4", True)],
-    )
+    assert tables == [("normal", False)]
 
 
-@pytest.mark.asyncio
 async def test_hide_tables_starting_with_underscore():
     ds = Datasette()
     db = ds.add_memory_database("test_hide_tables_starting_with_underscore")
@@ -837,20 +1129,45 @@ async def test_hide_tables_starting_with_underscore():
     assert tables == [("normal", False), ("_hidden", True)]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
 async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
     ds.add_memory_database(db_name)
     response = await ds.client.get("/.json")
-    assert db_name in response.json()["databases"].keys()
-    path = response.json()["databases"][db_name]["path"]
+    databases_by_name = {d["name"]: d for d in response.json()["databases"]}
+    assert db_name in databases_by_name
+    path = databases_by_name[db_name]["url"]
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("table_name", ("[foo]", "foo]", "[foo]/bar"))
+async def test_table_with_reserved_characters_in_name(table_name):
+    # Table names containing characters such as "]" that cannot be escaped
+    # using SQLite [bracket] quoting used to break schema introspection and
+    # the table page - https://github.com/simonw/datasette/issues/2431
+    ds = Datasette()
+    db = ds.add_memory_database("test_reserved_table_names")
+    await db.execute_write(
+        f"create table {escape_sqlite(table_name)} (id integer primary key, name text)"
+    )
+    await db.execute_write(
+        f"insert into {escape_sqlite(table_name)} (id, name) values (1, 'one')"
+    )
+    # Schema introspection (populate_schema_tables) must not crash:
+    db_response = await ds.client.get("/test_reserved_table_names.json")
+    assert db_response.status_code == 200
+    tables = {t["name"]: t for t in db_response.json()["tables"]}
+    assert tables[table_name]["count"] == 1
+    # And the table page itself must load and return the row:
+    table_response = await ds.client.get(
+        f"/test_reserved_table_names/{tilde_encode(table_name)}.json?_shape=array"
+    )
+    assert table_response.status_code == 200
+    assert table_response.json() == [{"id": 1, "name": "one"}]
+
+
 @pytest.mark.parametrize(
     "config,expected",
     (
@@ -883,10 +1200,9 @@ async def test_config_json(config, expected):
     "/-/config.json should return redacted configuration"
     ds = Datasette(config=config)
     response = await ds.client.get("/-/config.json")
-    assert response.json() == expected
+    assert response.json() == {"ok": True, **expected}
 
 
-@pytest.mark.asyncio
 @pytest.mark.skip(reason="rm?")
 @pytest.mark.parametrize(
     "metadata,expected_config,expected_metadata",
@@ -979,7 +1295,7 @@ async def test_config_json(config, expected):
 async def test_upgrade_metadata(metadata, expected_config, expected_metadata):
     ds = Datasette(metadata=metadata)
     response = await ds.client.get("/-/config.json")
-    assert response.json() == expected_config
+    assert response.json() == {"ok": True, **expected_config}
     response2 = await ds.client.get("/-/metadata.json")
     assert response2.json() == expected_metadata
 

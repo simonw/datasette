@@ -1,9 +1,13 @@
+import re
+
 import pytest
 import pytest_asyncio
+from bs4 import BeautifulSoup as Soup
+
 from datasette.app import Datasette
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def schema_ds():
     """Create a Datasette instance with test databases and permission config."""
     ds = Datasette(
@@ -38,7 +42,6 @@ async def schema_ds():
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "format_ext,expected_in_content",
     [
@@ -67,7 +70,6 @@ async def test_database_schema_formats(schema_ds, format_ext, expected_in_conten
             assert expected in content
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "format_ext,expected_in_content",
     [
@@ -103,7 +105,6 @@ async def test_instance_schema_formats(schema_ds, format_ext, expected_in_conten
             assert expected in content
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "format_ext,expected_in_content",
     [
@@ -134,7 +135,6 @@ async def test_table_schema_formats(schema_ds, format_ext, expected_in_content):
             assert expected in content
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "url",
     [
@@ -156,7 +156,6 @@ async def test_schema_permission_enforcement(schema_ds, url):
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_instance_schema_respects_database_permissions(schema_ds):
     """Test that /-/schema only shows databases the user can view."""
     # Anonymous user should only see public databases
@@ -181,7 +180,6 @@ async def test_instance_schema_respects_database_permissions(schema_ds):
     assert "schema_private_db" in db_names
 
 
-@pytest.mark.asyncio
 async def test_database_schema_with_multiple_tables(schema_ds):
     """Test schema with multiple tables in a database."""
     response = await schema_ds.client.get("/schema_public_db/-/schema.json")
@@ -195,7 +193,30 @@ async def test_database_schema_with_multiple_tables(schema_ds):
     assert "CREATE VIEW recent_posts" in schema
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_names",
+    [
+        # schema_empty_db has no schema, so nothing to copy
+        ("/-/schema", ["schema_public_db schema"]),
+        ("/schema_public_db/-/schema", ["schema_public_db schema"]),
+        ("/schema_public_db/users/-/schema", ["users schema"]),
+    ],
+)
+async def test_schema_html_copy_buttons(schema_ds, path, expected_names):
+    response = await schema_ds.client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.find("script", src=re.compile(r"copy-button\.js"))
+    buttons = soup.select(".copyable-sql > datasette-copy-button")
+    assert sorted(b["name"] for b in buttons) == expected_names
+    # Each button copies the text of the <pre> it sits next to
+    for button in buttons:
+        pre = button.find_previous_sibling("pre")
+        assert pre["id"] == button["for"]
+        assert "CREATE TABLE" in pre.text
+    assert len({b["for"] for b in buttons}) == len(buttons)
+
+
 async def test_empty_database_schema(schema_ds):
     """Test schema for an empty database."""
     response = await schema_ds.client.get("/schema_empty_db/-/schema.json")
@@ -205,7 +226,6 @@ async def test_empty_database_schema(schema_ds):
     assert data["schema"] == ""
 
 
-@pytest.mark.asyncio
 async def test_database_not_exists(schema_ds):
     """Test schema for a non-existent database returns 404."""
     # Test JSON format
@@ -226,7 +246,6 @@ async def test_database_not_exists(schema_ds):
     assert "not found" in response.text.lower()
 
 
-@pytest.mark.asyncio
 async def test_table_not_exists(schema_ds):
     """Test schema for a non-existent table returns 404."""
     # Test JSON format
@@ -245,3 +264,111 @@ async def test_table_not_exists(schema_ds):
     response = await schema_ds.client.get("/schema_public_db/nonexistent/-/schema.md")
     assert response.status_code == 404
     assert "not found" in response.text.lower()
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def schema_table_perms_ds():
+    """
+    A database that is viewable by anonymous users, but with one table
+    locked down using the documented per-table lockdown recipe:
+    a table-level allow block combined with allow_sql: false.
+    """
+    ds = Datasette(
+        config={
+            "databases": {
+                "schema_table_perms_db": {
+                    "allow_sql": False,
+                    "tables": {"employee_salaries": {"allow": {"id": "root"}}},
+                }
+            }
+        }
+    )
+    db = ds.add_memory_database("schema_table_perms_db")
+    await db.execute_write(
+        "CREATE TABLE IF NOT EXISTS public_posts (id INTEGER PRIMARY KEY, title TEXT)"
+    )
+    await db.execute_write(
+        "CREATE TABLE IF NOT EXISTS employee_salaries "
+        "(id INTEGER PRIMARY KEY, ssn TEXT, salary_usd INTEGER)"
+    )
+    await db.execute_write(
+        "CREATE INDEX IF NOT EXISTS idx_employee_salaries_ssn ON employee_salaries(ssn)"
+    )
+    await db.execute_write(
+        "CREATE TRIGGER IF NOT EXISTS trg_employee_salaries "
+        "AFTER INSERT ON employee_salaries BEGIN SELECT 1; END"
+    )
+    return ds
+
+
+async def test_schema_table_perms_controls(schema_table_perms_ds):
+    """Sanity check: the locked down table really is denied to anonymous users."""
+    ds = schema_table_perms_ds
+    for path in (
+        "/schema_table_perms_db/employee_salaries.json",
+        "/schema_table_perms_db/employee_salaries/-/schema.json",
+        "/schema_table_perms_db/-/query.json?sql=select+*+from+employee_salaries",
+    ):
+        response = await ds.client.get(path)
+        assert response.status_code == 403, path
+    response = await ds.client.get("/schema_table_perms_db.json")
+    assert response.status_code == 200
+    assert "employee_salaries" not in response.text
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    ["/-/schema", "/schema_table_perms_db/-/schema"],
+)
+@pytest.mark.parametrize("format_ext", ["json", "md", ""])
+async def test_schema_parent_views_hide_denied_tables(
+    schema_table_perms_ds, base_url, format_ext
+):
+    """
+    GHSA-926p-cw2f-643h: /-/schema and /db/-/schema must not disclose the DDL
+    of tables the actor is denied view-table on, including indexes and
+    triggers that belong to those tables.
+    """
+    url = base_url + (f".{format_ext}" if format_ext else "")
+
+    # Anonymous: allowed table visible, denied table (and its columns,
+    # index and trigger) absent
+    response = await schema_table_perms_ds.client.get(url)
+    assert response.status_code == 200
+    assert "public_posts" in response.text
+    assert "employee_salaries" not in response.text
+    assert "ssn" not in response.text
+    assert "salary_usd" not in response.text
+    assert "idx_employee_salaries_ssn" not in response.text
+    assert "trg_employee_salaries" not in response.text
+
+    # root can see everything
+    response = await schema_table_perms_ds.client.get(url, actor={"id": "root"})
+    assert response.status_code == 200
+    assert "public_posts" in response.text
+    assert "CREATE TABLE employee_salaries" in response.text
+    assert "idx_employee_salaries_ssn" in response.text
+    assert "trg_employee_salaries" in response.text
+
+
+@pytest.mark.parametrize(
+    "object_name", ["idx_employee_salaries_ssn", "trg_employee_salaries"]
+)
+@pytest.mark.parametrize("format_ext", ["json", "md", ""])
+async def test_table_schema_does_not_serve_objects_of_denied_table(
+    schema_table_perms_ds, object_name, format_ext
+):
+    """
+    Related to GHSA-926p-cw2f-643h: /db/<name>/-/schema looks up sqlite_master
+    by name without restricting to tables/views, so requesting the name of an
+    index or trigger that belongs to a denied table serves its DDL. The
+    view-table check runs against the index/trigger name, which is not a
+    restricted table, so it passes.
+    """
+    url = f"/schema_table_perms_db/{object_name}/-/schema"
+    if format_ext:
+        url += f".{format_ext}"
+    response = await schema_table_perms_ds.client.get(url)
+    assert response.status_code in (403, 404)
+    assert "employee_salaries" not in response.text
+    assert "ssn" not in response.text

@@ -6,6 +6,7 @@ Tests for permission endpoints:
 
 import pytest
 import pytest_asyncio
+
 from datasette.app import Datasette
 
 
@@ -38,7 +39,6 @@ async def ds_with_permissions():
     return ds
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status,expected_keys",
     [
@@ -86,7 +86,6 @@ async def test_allowed_json_basic(
     assert expected_keys.issubset(data.keys())
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_response_structure(ds_with_permissions):
     """Test that /-/allowed.json returns the expected structure."""
     response = await ds_with_permissions.client.get(
@@ -112,7 +111,6 @@ async def test_allowed_json_response_structure(ds_with_permissions):
         assert "resource" in item
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_with_actor(ds_with_permissions):
     """Test /-/allowed.json includes actor information."""
     response = await ds_with_permissions.client.get(
@@ -124,7 +122,6 @@ async def test_allowed_json_with_actor(ds_with_permissions):
     assert data["actor_id"] == "test_user"
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_pagination():
     """Test that /-/allowed.json pagination works."""
     ds = Datasette()
@@ -137,9 +134,7 @@ async def test_allowed_json_pagination():
     await ds.refresh_schemas()
 
     # Test page 1
-    response = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=1"
-    )
+    response = await ds.client.get("/-/allowed.json?action=view-table&_size=10&_page=1")
     assert response.status_code == 200
     data = response.json()
     assert data["page"] == 1
@@ -147,9 +142,7 @@ async def test_allowed_json_pagination():
     assert len(data["items"]) == 10
 
     # Test page 2
-    response = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=2"
-    )
+    response = await ds.client.get("/-/allowed.json?action=view-table&_size=10&_page=2")
     assert response.status_code == 200
     data = response.json()
     assert data["page"] == 2
@@ -157,17 +150,16 @@ async def test_allowed_json_pagination():
 
     # Verify items are different between pages
     response1 = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=1"
+        "/-/allowed.json?action=view-table&_size=10&_page=1"
     )
     response2 = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=2"
+        "/-/allowed.json?action=view-table&_size=10&_page=2"
     )
     items1 = {(item["parent"], item["child"]) for item in response1.json()["items"]}
     items2 = {(item["parent"], item["child"]) for item in response2.json()["items"]}
     assert items1 != items2
 
 
-@pytest.mark.asyncio
 async def test_allowed_json_total_count(tmp_path_factory):
     """Test that /-/allowed.json returns correct total count."""
     from datasette.database import Database
@@ -216,7 +208,6 @@ async def test_allowed_json_total_count(tmp_path_factory):
 # /-/rules.json tests
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_status,expected_keys",
     [
@@ -257,7 +248,6 @@ async def test_rules_json_basic(
     assert expected_keys.issubset(data.keys())
 
 
-@pytest.mark.asyncio
 async def test_rules_json_response_structure(ds_with_permissions):
     """Test that /-/rules.json returns the expected structure."""
     response = await ds_with_permissions.client.get(
@@ -286,7 +276,6 @@ async def test_rules_json_response_structure(ds_with_permissions):
         assert "reason" in item
 
 
-@pytest.mark.asyncio
 async def test_rules_json_includes_all_rules(ds_with_permissions):
     """Test that /-/rules.json includes both allowed and denied resources."""
     # Root user should see rules for everything
@@ -306,7 +295,6 @@ async def test_rules_json_includes_all_rules(ds_with_permissions):
         assert item["allow"] in [0, 1]
 
 
-@pytest.mark.asyncio
 async def test_rules_json_pagination():
     """Test that /-/rules.json pagination works."""
     ds = Datasette()
@@ -323,7 +311,7 @@ async def test_rules_json_pagination():
 
     # Test basic pagination structure - just verify it returns paginated results
     response = await ds.client.get(
-        "/-/rules.json?action=view-table&page_size=2&page=1",
+        "/-/rules.json?action=view-table&_size=2&_page=1",
         actor={"id": "root"},
     )
     assert response.status_code == 200
@@ -335,7 +323,6 @@ async def test_rules_json_pagination():
     assert "total" in data
 
 
-@pytest.mark.asyncio
 async def test_rules_json_with_actor(ds_with_permissions):
     """Test /-/rules.json includes actor information."""
     # Use root actor (rules endpoint requires permissions-debug)
@@ -348,7 +335,6 @@ async def test_rules_json_with_actor(ds_with_permissions):
     assert data["actor_id"] == "root"
 
 
-@pytest.mark.asyncio
 async def test_root_user_respects_settings_deny():
     """
     Test for issue #2509: Settings-based deny rules should override root user privileges.
@@ -385,7 +371,6 @@ async def test_root_user_respects_settings_deny():
     )
 
 
-@pytest.mark.asyncio
 async def test_root_user_respects_settings_deny_tables():
     """
     Test for issue #2509: Settings-based deny rules should override root for tables too.
@@ -428,7 +413,6 @@ async def test_root_user_respects_settings_deny_tables():
     )
 
 
-@pytest.mark.asyncio
 async def test_execute_sql_requires_view_database():
     """
     Test for issue #2527: execute-sql permission should require view-database permission.
@@ -436,8 +420,8 @@ async def test_execute_sql_requires_view_database():
     A user who has execute-sql permission but not view-database permission should not
     be able to execute SQL on that database.
     """
-    from datasette.permissions import PermissionSQL
     from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
 
     class TestPermissionPlugin:
         __name__ = "TestPermissionPlugin"
@@ -497,3 +481,30 @@ async def test_execute_sql_requires_view_database():
         )
     finally:
         ds.pm.unregister(plugin)
+
+
+@pytest.mark.parametrize("path", ["/-/allowed", "/-/allowed.json?action=view-table"])
+async def test_allowed_requires_view_instance(path):
+    """
+    GHSA-hp2x-vx2r-6vxg: /-/allowed should be gated like its /-/rules sibling.
+
+    An actor who is denied view-instance gets 403 from / and /-/rules, but
+    /-/allowed (HTML and JSON) currently returns 200 to the same actor.
+    """
+    ds = Datasette(config={"allow": {"id": "alice"}})
+    await ds.invoke_startup()
+    db = ds.add_memory_database("live")
+    await db.execute_write("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY)")
+    await ds.refresh_schemas()
+
+    assert (await ds.client.get("/")).status_code == 403
+    assert (await ds.client.get("/-/rules.json?action=view-table")).status_code == 403
+
+    response = await ds.client.get(path)
+    assert response.status_code == 403
+
+    # Alice is still allowed
+    response = await ds.client.get(
+        path, cookies={"ds_actor": ds.client.actor_cookie({"id": "alice"})}
+    )
+    assert response.status_code == 200

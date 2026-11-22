@@ -3,16 +3,32 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
-from types import SimpleNamespace
-from datasette.app import Datasette
-from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
-from datasette.database import DatasetteClosedError
-from datasette.database import _deliver_write_result
-from datasette.utils.sqlite import sqlite3, supports_returning
-from datasette.utils import Column
-import pytest
-import time
+import dataclasses
+import gc
+import threading
 import uuid
+from types import SimpleNamespace
+
+import pytest
+import sqlite_utils
+from opentelemetry import context as otel_context_api
+
+from datasette.app import Datasette
+from datasette.database import (
+    Database,
+    DatasetteClosedError,
+    ExecuteWriteResult,
+    MultipleValues,
+    QueryInterrupted,
+    Results,
+    _deliver_write_result,
+)
+from datasette.rows import Column, Columns, Row
+from datasette.utils.sqlite import (
+    sqlite3,
+    sqlite_derived_table_dependencies,
+    supports_returning,
+)
 
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
@@ -20,34 +36,59 @@ requires_sqlite_returning = pytest.mark.skipif(
 
 
 @pytest.fixture
-def db(app_client):
-    return app_client.ds.get_database("fixtures")
+def db(ds_on_disk):
+    return ds_on_disk.get_database("fixtures")
 
 
-@pytest.mark.asyncio
 async def test_execute(db):
     results = await db.execute("select * from facetable")
     assert isinstance(results, Results)
-    assert 15 == len(results)
+    assert len(results) == 15
 
 
-@pytest.mark.asyncio
+async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database(uuid.uuid4().hex, name="data")
+    await db.execute_write("create table documents (id integer primary key, body)")
+    assert await db.derived_table_dependencies() == {}
+    await db.execute_write(
+        "create virtual table documents_fts using fts5(body, content='documents')"
+    )
+
+    class UnavailableSchema:
+        def execute(self, sql):
+            raise sqlite3.DatabaseError("schema temporarily unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "datasette.database.sqlite_derived_table_dependencies",
+            lambda conn: sqlite_derived_table_dependencies(UnavailableSchema()),
+        )
+        with pytest.raises(sqlite3.DatabaseError, match="schema temporarily"):
+            await db.derived_table_dependencies()
+    # The failure must not leave the dependencies from before the schema
+    # change, or nothing at all, cached as if they were current
+    assert "derived_table_dependencies" not in db._schema_cache
+
+    assert (await db.derived_table_dependencies())["documents_fts"] == "documents"
+    assert "derived_table_dependencies" in db._schema_cache
+
+
 async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")
     row = results.first()
-    assert isinstance(row, sqlite3.Row)
+    assert isinstance(row, Row)
+    assert row.columns is results.columns
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("expected", (True, False))
 async def test_results_bool(db, expected):
     where = "" if expected else "where pk = 0"
-    results = await db.execute("select * from facetable {}".format(where))
+    results = await db.execute(f"select * from facetable {where}")
     assert bool(results) is expected
 
 
-@pytest.mark.asyncio
 async def test_results_dicts(db):
     results = await db.execute("select pk, name from roadside_attractions")
     assert results.dicts() == [
@@ -66,25 +107,22 @@ async def test_results_dicts(db):
         ("select 1 as num union select 2 as num", None),
     ],
 )
-@pytest.mark.asyncio
 async def test_results_single_value(db, query, expected):
     results = await db.execute(query)
     if expected:
-        assert expected == results.single_value()
+        assert results.single_value() == expected
     else:
         with pytest.raises(MultipleValues):
             results.single_value()
 
 
-@pytest.mark.asyncio
 async def test_execute_fn(db):
     def get_1_plus_1(conn):
         return conn.execute("select 1 + 1").fetchall()[0][0]
 
-    assert 2 == await db.execute_fn(get_1_plus_1)
+    assert await db.execute_fn(get_1_plus_1) == 2
 
 
-@pytest.mark.asyncio
 async def test_execute_fn_transaction_false():
     datasette = Datasette(memory=True)
     db = datasette.add_memory_database("test_execute_fn_transaction_false")
@@ -118,7 +156,6 @@ async def test_execute_fn_transaction_false():
         (["foo", "bar", "baz"], False),
     ),
 )
-@pytest.mark.asyncio
 async def test_table_exists(db, tables, exists):
     for table in tables:
         actual = await db.table_exists(table)
@@ -132,7 +169,6 @@ async def test_table_exists(db, tables, exists):
         ("paginated_view", True),
     ),
 )
-@pytest.mark.asyncio
 async def test_view_exists(db, view, expected):
     actual = await db.view_exists(view)
     assert actual == expected
@@ -171,7 +207,6 @@ async def test_view_exists(db, view, expected):
         ),
     ),
 )
-@pytest.mark.asyncio
 async def test_table_columns(db, table, expected):
     columns = await db.table_columns(table)
     assert columns == expected
@@ -184,103 +219,92 @@ async def test_table_columns(db, table, expected):
             "facetable",
             [
                 Column(
-                    cid=0,
                     name="pk",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=1,
-                    hidden=0,
+                    pk_position=1,
+                    hidden=False,
                 ),
                 Column(
-                    cid=1,
                     name="created",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=2,
                     name="planet_int",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=3,
                     name="on_earth",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=4,
                     name="state",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=5,
                     name="_city_id",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=6,
                     name="_neighborhood",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=7,
                     name="tags",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=8,
                     name="complex_array",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=9,
                     name="distinct_some_null",
-                    type="",
+                    type=None,
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=10,
                     name="n",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
             ],
         ),
@@ -288,87 +312,77 @@ async def test_table_columns(db, table, expected):
             "sortable",
             [
                 Column(
-                    cid=0,
                     name="pk1",
                     type="varchar(30)",
                     notnull=0,
                     default_value=None,
-                    is_pk=1,
-                    hidden=0,
+                    pk_position=1,
+                    hidden=False,
                 ),
                 Column(
-                    cid=1,
                     name="pk2",
                     type="varchar(30)",
                     notnull=0,
                     default_value=None,
-                    is_pk=2,
-                    hidden=0,
+                    pk_position=2,
+                    hidden=False,
                 ),
                 Column(
-                    cid=2,
                     name="content",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=3,
                     name="sortable",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=4,
                     name="sortable_with_nulls",
                     type="real",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=5,
                     name="sortable_with_nulls_2",
                     type="real",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=6,
                     name="text",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
             ],
         ),
     ),
 )
-@pytest.mark.asyncio
 async def test_table_column_details(db, table, expected):
     columns = await db.table_column_details(table)
     # Convert "type" to lowercase before comparison
     # https://github.com/simonw/datasette/issues/1647
+    assert isinstance(columns, Columns)
     compare_columns = [
-        Column(
-            c.cid, c.name, c.type.lower(), c.notnull, c.default_value, c.is_pk, c.hidden
-        )
-        for c in columns
+        dataclasses.replace(column, type=column.type and column.type.lower())
+        for column in columns
     ]
     assert compare_columns == expected
 
 
-@pytest.mark.asyncio
 async def test_get_all_foreign_keys(db):
     all_foreign_keys = await db.get_all_foreign_keys()
     assert all_foreign_keys["roadside_attraction_characteristics"] == {
@@ -423,7 +437,6 @@ async def test_get_all_foreign_keys(db):
     }
 
 
-@pytest.mark.asyncio
 async def test_table_names(db):
     table_names = await db.table_names()
     # Tables are sorted alphabetically by name
@@ -434,6 +447,7 @@ async def test_table_names(db):
         "binary_data",
         "complex_foreign_keys",
         "compound_primary_key",
+        "compound_primary_key_edge_cases",
         "compound_three_primary_keys",
         "custom_foreign_key_label",
         "facet_cities",
@@ -441,6 +455,8 @@ async def test_table_names(db):
         "foreign_key_references",
         "infinity",
         "no_primary_key",
+        "primary_key_edge_case_references",
+        "primary_key_edge_cases",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
         "roadside_attraction_characteristics",
@@ -460,7 +476,6 @@ async def test_table_names(db):
     ]
 
 
-@pytest.mark.asyncio
 async def test_view_names(db):
     view_names = await db.view_names()
     assert view_names == [
@@ -468,10 +483,32 @@ async def test_view_names(db):
         "simple_view",
         "searchable_view",
         "searchable_view_configured_by_metadata",
+        "binary_data_view",
+        "facetable_by_state",
     ]
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 3])
+async def test_execute_write_zero_time_limit(num_sql_threads):
+    ds = Datasette(settings={"num_sql_threads": num_sql_threads})
+    db = ds.add_memory_database(uuid.uuid4().hex, name="write_limits")
+    try:
+        await ds.invoke_startup()
+        await db.execute_write("create table items(value integer)")
+        # Zero expires at the first SQLite progress callback, regardless of speed.
+        with pytest.raises(QueryInterrupted):
+            await db.execute_write(
+                "insert into items(value) values (1)", time_limit_ms=0
+            )
+        # No new timeout handler: the interrupted operation must have cleared it.
+        await db.execute_write(
+            "insert into items(value) values (2)", time_limit_ms=None
+        )
+        assert (await db.execute("select value from items")).single_value() == 2
+    finally:
+        ds.close()
+
+
 async def test_execute_write_block_true(db):
     result = await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]
@@ -481,10 +518,9 @@ async def test_execute_write_block_true(db):
     assert result.description is None
     assert result.truncated is False
     assert result.fetchall() == []
-    assert "Mystery!" == rows.rows[0][0]
+    assert rows.rows[0][0] == "Mystery!"
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning(db):
     await db.execute_write(
@@ -506,7 +542,6 @@ async def test_execute_write_with_returning(db):
     ]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_default_limit(db):
     await db.execute_write(
@@ -529,7 +564,6 @@ async def test_execute_write_with_returning_default_limit(db):
     ).single_value() == 20
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_custom_limit(db):
     await db.execute_write(
@@ -550,7 +584,6 @@ async def test_execute_write_with_returning_custom_limit(db):
     assert [row["id"] for row in result.fetchall()] == [1, 2]
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_exact_default_limit(db):
     await db.execute_write(
@@ -570,7 +603,6 @@ async def test_execute_write_with_returning_exact_default_limit(db):
     assert len(result.fetchall()) == 10
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_one_more_than_default_limit(db):
     await db.execute_write(
@@ -590,7 +622,6 @@ async def test_execute_write_with_returning_one_more_than_default_limit(db):
     assert len(result.fetchall()) == 10
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_return_all(db):
     await db.execute_write("create table write_returning_all (id integer primary key)")
@@ -609,18 +640,16 @@ async def test_execute_write_with_returning_return_all(db):
     assert [row["id"] for row in result.fetchall()] == list(range(1, 21))
 
 
-@pytest.mark.asyncio
 async def test_execute_write_block_false(db):
     await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?",
         ["Mystery!", 1],
     )
-    time.sleep(0.1)
+    await asyncio.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")
-    assert "Mystery!" == rows.rows[0][0]
+    assert rows.rows[0][0] == "Mystery!"
 
 
-@pytest.mark.asyncio
 @requires_sqlite_returning
 async def test_execute_write_with_returning_block_false(db):
     await db.execute_write(
@@ -633,7 +662,7 @@ async def test_execute_write_with_returning_block_false(db):
     )
 
     assert isinstance(task_id, uuid.UUID)
-    time.sleep(0.1)
+    await asyncio.sleep(0.1)
     assert (
         await db.execute("select name from write_returning_block_false")
     ).single_value() == "Cleo"
@@ -662,7 +691,6 @@ def test_execute_write_result_closes_cursor_on_fetch_error():
     assert cursor.closed is True
 
 
-@pytest.mark.asyncio
 async def test_execute_write_script(db):
     await db.execute_write_script(
         "create table foo (id integer primary key); create table bar (id integer primary key);"
@@ -671,7 +699,6 @@ async def test_execute_write_script(db):
     assert {"foo", "bar"}.issubset(table_names)
 
 
-@pytest.mark.asyncio
 async def test_execute_write_many(db):
     await db.execute_write_script("create table foomany (id integer primary key)")
     await db.execute_write_many(
@@ -681,13 +708,11 @@ async def test_execute_write_many(db):
     assert [r[0] for r in result.rows] == [1, 10, 100]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_has_correctly_prepared_connection(db):
     # The sleep() function is only available if ds._prepare_connection() was called
     await db.execute_write("select sleep(0.01)")
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_block_false(db):
     def write_fn(conn):
         conn.execute("delete from roadside_attractions where pk = 1;")
@@ -698,7 +723,32 @@ async def test_execute_write_fn_block_false(db):
     assert isinstance(task_id, uuid.UUID)
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("disable_threads", (False, True))
+async def test_execute_write_fn_block_false_returns_uuid(tmp_path, disable_threads):
+    # block=False is documented to return "a UUID representing the queued task".
+    # With num_sql_threads=0 there is no write thread, so the non-threaded branch
+    # has to satisfy the same contract as the threaded one.
+    settings = {"num_sql_threads": 0} if disable_threads else {}
+    ds = Datasette([], memory=True, settings=settings)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_block_false")
+    await db.execute_write(
+        "create table if not exists t (id integer primary key, v text)"
+    )
+
+    def write_fn(conn):
+        conn.execute("insert into t (v) values ('a')")
+        # Returns None, like most write functions.
+
+    task_id = await db.execute_write_fn(write_fn, block=False)
+
+    assert isinstance(task_id, uuid.UUID)
+    # Distinct per call, so a caller can tell two queued tasks apart.
+    second = await db.execute_write_fn(write_fn, block=False)
+    assert isinstance(second, uuid.UUID)
+    assert second != task_id
+
+
 async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
         conn.execute("delete from roadside_attractions where pk = 1;")
@@ -706,10 +756,9 @@ async def test_execute_write_fn_block_true(db):
         return row[0]
 
     new_count = await db.execute_write_fn(write_fn)
-    assert 3 == new_count
+    assert new_count == 3
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_exception(db):
     def write_fn(conn):
         assert False
@@ -718,15 +767,49 @@ async def test_execute_write_fn_exception(db):
         await db.execute_write_fn(write_fn)
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+async def test_execute_write_fn_sqlite_utils_transaction(tmp_path, num_sql_threads):
+    # A write inside a failing Datasette task must never become visible or
+    # survive the rollback. Exercise both the synchronous and writer-thread
+    # paths against a file-backed database so a second connection can observe
+    # committed state independently.
+    db_path = tmp_path / "test.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})
+    db = ds.get_database("test")
+    await db.execute_write("create table items (id integer primary key)")
+    # This reader is used inside the write callback, which may run on another
+    # thread, but it is never accessed concurrently.
+    reader = sqlite3.connect(db_path, check_same_thread=False)
+
+    def insert_then_fail(conn):
+        # Datasette must open the outer transaction before sqlite-utils writes.
+        assert conn.in_transaction
+        sqlite_utils.Database(conn)["items"].insert({"id": 1})
+        # If sqlite-utils committed its own transaction, this would return 1.
+        assert reader.execute("select count(*) from items").fetchone()[0] == 0
+        # Simulate a later step failing after the sqlite-utils write succeeded.
+        raise ValueError("deliberate")
+
+    try:
+        with pytest.raises(ValueError, match="deliberate"):
+            await db.execute_write_fn(insert_then_fail)
+        # The outer transaction must roll back the sqlite-utils write as well.
+        assert reader.execute("select count(*) from items").fetchone()[0] == 0
+    finally:
+        reader.close()
+        db.close()
+
+
 @pytest.mark.parametrize("param_name", ["conn", "connection", "db", "c"])
 async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
     # Plugins historically relied on the fact that the callback was invoked
     # positionally, so any parameter name worked. Preserve that contract.
     scope = {}
-    exec(
-        "def write_fn({0}):\n"
-        "    return {0}.execute('select 1 + 1').fetchone()[0]".format(param_name),
+    # exec() is how we build a function with a parameterized argument name
+    exec(  # noqa: S102
+        f"def write_fn({param_name}):\n"
+        f"    return {param_name}.execute('select 1 + 1').fetchone()[0]",
         scope,
     )
     write_fn = scope["write_fn"]
@@ -734,7 +817,6 @@ async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
     assert result == 2
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_with_track_event(db):
     # When the callback declares track_event it still receives both args
     # via dependency injection.
@@ -749,15 +831,14 @@ async def test_execute_write_fn_with_track_event(db):
     assert len(seen) == 1 and callable(seen[0])
 
 
-@pytest.mark.asyncio
-@pytest.mark.timeout(1)
-async def test_execute_write_fn_connection_exception(tmpdir, app_client):
+@pytest.mark.timeout(1, func_only=True)
+async def test_execute_write_fn_connection_exception(tmpdir, bare_ds):
     path = str(tmpdir / "immutable.db")
     conn = sqlite3.connect(path)
     conn.execute("vacuum")
     conn.close()
-    db = Database(app_client.ds, path=path, is_mutable=False)
-    app_client.ds.add_database(db, name="immutable-db")
+    db = Database(bare_ds, path=path, is_mutable=False)
+    bare_ds.add_database(db, name="immutable-db")
 
     def write_fn(conn):
         assert False
@@ -765,10 +846,7 @@ async def test_execute_write_fn_connection_exception(tmpdir, app_client):
     with pytest.raises(AssertionError):
         await db.execute_write_fn(write_fn)
 
-    app_client.ds.remove_database("immutable-db")
 
-
-@pytest.mark.asyncio
 async def test_deliver_write_result_leaves_done_future_alone():
     loop = asyncio.get_running_loop()
     reply_future = loop.create_future()
@@ -784,7 +862,6 @@ async def test_deliver_write_result_leaves_done_future_alone():
     assert reply_future.result() == "original"
 
 
-@pytest.mark.asyncio
 async def test_deliver_write_result_ignores_closed_loop():
     closed_loop = asyncio.new_event_loop()
     closed_loop.close()
@@ -822,7 +899,6 @@ def table_exists_checker(name):
     return inner
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("disable_threads", (False, True))
 async def test_execute_isolated(db, disable_threads):
     if disable_threads:
@@ -863,7 +939,6 @@ async def test_execute_isolated(db, disable_threads):
     assert not await db.execute_isolated_fn(table_exists_checker("created_by_isolated"))
 
 
-@pytest.mark.asyncio
 async def test_execute_isolated_connect_failure_does_not_kill_write_thread():
     # A connect() failure for an isolated task should be returned to the
     # caller as an exception, not crash the write thread
@@ -896,7 +971,6 @@ async def test_execute_isolated_connect_failure_does_not_kill_write_thread():
     assert count == 1
 
 
-@pytest.mark.asyncio
 async def test_analyze_sql():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_analyze_sql", name="data")
@@ -922,7 +996,6 @@ async def test_analyze_sql():
     ]
 
 
-@pytest.mark.asyncio
 async def test_analyze_sql_insert_select():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_analyze_sql_insert_select", name="data")
@@ -950,39 +1023,33 @@ async def test_analyze_sql_insert_select():
     }
 
 
-@pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)
 
 
-def test_mtime_ns_is_none_for_memory(app_client):
-    memory_db = Database(app_client.ds, is_memory=True)
+def test_mtime_ns_is_none_for_memory(bare_ds):
+    memory_db = Database(bare_ds, is_memory=True)
     assert memory_db.is_memory is True
     assert None is memory_db.mtime_ns
 
 
-def test_is_mutable(app_client):
-    assert Database(app_client.ds, is_memory=True).is_mutable is True
-    assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
-    assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
+def test_is_mutable(bare_ds):
+    assert Database(bare_ds, is_memory=True).is_mutable is True
+    assert Database(bare_ds, is_memory=True, is_mutable=True).is_mutable is True
+    assert Database(bare_ds, is_memory=True, is_mutable=False).is_mutable is False
 
 
-@pytest.mark.asyncio
-async def test_attached_databases(app_client_two_attached_databases_crossdb_enabled):
-    database = app_client_two_attached_databases_crossdb_enabled.ds.get_database(
-        "_memory"
-    )
+async def test_attached_databases(ds_on_disk_two_databases_crossdb):
+    database = ds_on_disk_two_databases_crossdb.get_database("_memory")
     attached = await database.attached_databases()
     assert {a.name for a in attached} == {"extra database", "fixtures"}
 
 
-@pytest.mark.asyncio
-async def test_database_memory_name(app_client):
-    ds = app_client.ds
-    foo1 = ds.add_database(Database(ds, memory_name="foo"))
-    foo2 = ds.add_memory_database("foo")
-    bar1 = ds.add_database(Database(ds, memory_name="bar"))
-    bar2 = ds.add_memory_database("bar")
+async def test_database_memory_name(bare_ds):
+    foo1 = bare_ds.add_database(Database(bare_ds, memory_name="foo"))
+    foo2 = bare_ds.add_memory_database("foo")
+    bar1 = bare_ds.add_database(Database(bare_ds, memory_name="bar"))
+    bar2 = bare_ds.add_memory_database("bar")
     for db in (foo1, foo2, bar1, bar2):
         table_names = await db.table_names()
         assert table_names == []
@@ -994,10 +1061,8 @@ async def test_database_memory_name(app_client):
     assert await bar2.table_names() == []
 
 
-@pytest.mark.asyncio
-async def test_in_memory_databases_forbid_writes(app_client):
-    ds = app_client.ds
-    db = ds.add_database(Database(ds, memory_name="test"))
+async def test_in_memory_databases_forbid_writes(bare_ds):
+    db = bare_ds.add_database(Database(bare_ds, memory_name="test"))
     with pytest.raises(sqlite3.OperationalError):
         await db.execute("create table foo (t text)")
     assert await db.table_names() == []
@@ -1006,12 +1071,13 @@ async def test_in_memory_databases_forbid_writes(app_client):
     assert await db.table_names() == ["foo"]
 
 
-@pytest.mark.asyncio
-async def test_hidden_tables(app_client):
-    ds = app_client.ds
-    db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
+async def test_hidden_tables(bare_ds):
+    # A named in-memory database is shared between connections. An anonymous
+    # one is a separate empty database for each thread in the executor pool,
+    # so tables created by one query can be invisible to the next one.
+    db = bare_ds.add_database(Database(bare_ds, memory_name="test_hidden_tables"))
     assert await db.hidden_table_names() == []
-    await db.execute("create virtual table f using fts5(a)")
+    await db.execute_write("create virtual table f using fts5(a)")
     assert await db.hidden_table_names() == [
         "f_config",
         "f_content",
@@ -1020,7 +1086,7 @@ async def test_hidden_tables(app_client):
         "f_idx",
     ]
 
-    await db.execute("create virtual table r using rtree(id, amin, amax)")
+    await db.execute_write("create virtual table r using rtree(id, amin, amax)")
     assert await db.hidden_table_names() == [
         "f_config",
         "f_content",
@@ -1032,7 +1098,7 @@ async def test_hidden_tables(app_client):
         "r_rowid",
     ]
 
-    await db.execute("create table _hideme(_)")
+    await db.execute_write("create table _hideme(_)")
     assert await db.hidden_table_names() == [
         "_hideme",
         "f_config",
@@ -1046,7 +1112,7 @@ async def test_hidden_tables(app_client):
     ]
 
     # A fts virtual table with a content table should be hidden too
-    await db.execute("create virtual table f2_fts using fts5(a, content='f')")
+    await db.execute_write("create virtual table f2_fts using fts5(a, content='f')")
     assert await db.hidden_table_names() == [
         "_hideme",
         "f2_fts_config",
@@ -1065,7 +1131,6 @@ async def test_hidden_tables(app_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_replace_database(tmpdir):
     path1 = str(tmpdir / "data1.db")
     (tmpdir / "two").mkdir()
@@ -1108,14 +1173,14 @@ async def test_replace_database(tmpdir):
     ],
     ids=["memory", "named_memory", "immutable_memory"],
 )
-def test_repr(app_client, kwargs, expected_repr):
-    db = Database(app_client.ds, **kwargs)
+def test_repr(bare_ds, kwargs, expected_repr):
+    db = Database(bare_ds, **kwargs)
     db.name = "test_db"
     assert repr(db) == expected_repr
 
 
-def test_repr_temp_disk(app_client):
-    db = Database(app_client.ds, is_temp_disk=True)
+def test_repr_temp_disk(bare_ds):
+    db = Database(bare_ds, is_temp_disk=True)
     db.name = "test_db"
     r = repr(db)
     assert r.startswith("<Database: test_db (mutable, temp_disk, size=")
@@ -1125,7 +1190,6 @@ def test_repr_temp_disk(app_client):
     db.close()
 
 
-@pytest.mark.asyncio
 async def test_database_close_shuts_down_write_thread(tmpdir):
     path = str(tmpdir / "dbclose.db")
     conn = sqlite3.connect(path)
@@ -1144,7 +1208,6 @@ async def test_database_close_shuts_down_write_thread(tmpdir):
     ds._internal_database.close()
 
 
-@pytest.mark.asyncio
 async def test_database_close_raises_on_further_use(tmpdir):
     path = str(tmpdir / "closed.db")
     conn = sqlite3.connect(path)
@@ -1165,7 +1228,6 @@ async def test_database_close_raises_on_further_use(tmpdir):
     ds._internal_database.close()
 
 
-@pytest.mark.asyncio
 async def test_database_close_is_idempotent(tmpdir):
     path = str(tmpdir / "idemp.db")
     conn = sqlite3.connect(path)
@@ -1178,3 +1240,211 @@ async def test_database_close_is_idempotent(tmpdir):
     # Second call should be a no-op, not raise
     db.close()
     ds._internal_database.close()
+
+
+@pytest.mark.parametrize("num_sql_threads", [0, 2])
+@pytest.mark.parametrize("named", [False, True])
+async def test_close_releases_memory_connections(num_sql_threads, named):
+    ds = Datasette(memory=True, settings={"num_sql_threads": num_sql_threads})
+    db = ds.add_memory_database(uuid.uuid4().hex) if named else ds.get_database()
+    read_connection = await db.execute_fn(lambda conn: conn)
+    write_connection = await db.execute_write_fn(lambda conn: conn)
+    ds.close()
+    for conn in (read_connection, write_connection):
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            conn.execute("select 1")
+
+
+async def test_close_releases_memory_database_after_failed_query():
+    # A failed query's traceback keeps its cursor alive until the garbage
+    # collector runs, and an open cursor stops SQLite from closing the
+    # connection, so the shared in-memory database used to outlive close()
+    name = uuid.uuid4().hex
+    gc_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        ds = Datasette()
+        db = ds.add_memory_database(name)
+        await db.execute_write("create table t (id integer primary key, v text)")
+        await db.execute_write("insert into t (v) values ('not json')")
+        # This fails while stepping through rows, after the statement is prepared
+        with pytest.raises(sqlite3.OperationalError, match="malformed JSON"):
+            await db.execute("select json_type(v) from t", log_sql_errors=False)
+        ds.close()
+        conn = sqlite3.connect(f"file:{name}?mode=memory&cache=shared", uri=True)
+        try:
+            assert conn.execute("select name from sqlite_master").fetchall() == []
+        finally:
+            conn.close()
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+
+
+_CONTEXT_LEAK_MARKER_KEY = "otel-context-leak-marker"
+
+
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+async def test_write_thread_context_is_detached_between_tasks(
+    tmp_path, monkeypatch, num_sql_threads
+):
+    """
+    The write thread attaches each task's OpenTelemetry context and detaches
+    it before the next task, including when the task raises an exception.
+
+    Checks that each task sees the context from when it was queued, and that
+    the write thread's attach depth does not grow between tasks.
+    """
+    name = f"context_leak_test_{num_sql_threads}"
+    db_path = tmp_path / f"{name}.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})
+    db = ds.get_database(name)
+    await db.execute_write("create table t (id integer primary key)")
+
+    write_thread_name = f"_execute_writes for database {name}"
+    depth = {"value": 0}
+    real_attach = otel_context_api.attach
+    real_detach = otel_context_api.detach
+
+    def counting_attach(context):
+        token = real_attach(context)
+        if threading.current_thread().name == write_thread_name:
+            depth["value"] += 1
+        return token
+
+    def counting_detach(token):
+        real_detach(token)
+        if threading.current_thread().name == write_thread_name:
+            depth["value"] -= 1
+
+    # database.py and opentelemetry.trace both call these via the module
+    monkeypatch.setattr(otel_context_api, "attach", counting_attach)
+    monkeypatch.setattr(otel_context_api, "detach", counting_detach)
+
+    seen_markers = []
+    seen_depths = []
+
+    def probe(conn):
+        seen_markers.append(otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY))
+        seen_depths.append(depth["value"])
+
+    def failing_probe(conn):
+        probe(conn)
+        raise ValueError("deliberate failure inside a write task")
+
+    try:
+        for i in range(5):
+            ctx = otel_context_api.set_value(_CONTEXT_LEAK_MARKER_KEY, f"marker-{i}")
+            token = real_attach(ctx)
+            try:
+                if i == 2:
+                    with pytest.raises(ValueError):
+                        await db.execute_write_fn(failing_probe)
+                else:
+                    await db.execute_write_fn(probe)
+            finally:
+                real_detach(token)
+
+        # No marker is set here, so the final probe should see None
+        assert otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY) is None
+        await db.execute_write_fn(probe)
+    finally:
+        db.close()
+
+    assert seen_markers == [
+        "marker-0",
+        "marker-1",
+        "marker-2",
+        "marker-3",
+        "marker-4",
+        None,
+    ]
+    assert len(set(seen_depths)) == 1, (
+        f"write thread context stack grew across tasks: {seen_depths} - "
+        "a token was attached without being detached"
+    )
+
+
+async def test_execute_custom_time_limit_can_exceed_setting():
+    "custom_time_limit can be longer than sql_time_limit_ms"
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 5})
+    db = ds.add_memory_database("custom_time_limit_can_exceed_setting")
+    sql = """
+        with recursive counter(x) as (
+            select 1 union all select x + 1 from counter where x < 300000
+        )
+        select max(x) from counter
+    """
+    with pytest.raises(QueryInterrupted):
+        await db.execute(sql)
+    # custom_time_limit=0 is the same as not passing one
+    with pytest.raises(QueryInterrupted):
+        await db.execute(sql, custom_time_limit=0)
+    results = await db.execute(sql, custom_time_limit=30000)
+    assert results.rows[0][0] == 300000
+
+
+def test_database_constructor_arguments_are_keyword_only(bare_ds, tmp_path):
+    path = str(tmp_path / "data.db")
+    sqlite3.connect(path).execute("vacuum")
+    # path can be passed by position
+    assert Database(bare_ds, path).path == path
+    # Everything after it has to be named. is_temp_disk used to be the
+    # seventh positional argument, after a mode= the documentation left out
+    with pytest.raises(TypeError):
+        Database(bare_ds, path, False)
+    with pytest.raises(TypeError):
+        Database(bare_ds, None, True, False, None, None, True)
+    db = Database(bare_ds, path, is_mutable=False)
+    assert db.is_mutable is False
+
+
+async def test_database_constructor_mode(bare_ds, tmp_path):
+    # mode="rwc" creates the file if it does not exist yet
+    path = tmp_path / "created.db"
+    assert not path.exists()
+    db = bare_ds.add_database(Database(bare_ds, str(path), mode="rwc"), name="created")
+    await db.execute_write("create table t (id integer primary key)")
+    assert path.exists()
+    assert await db.table_names() == ["t"]
+    # Without it, a file that does not exist cannot be opened
+    missing = bare_ds.add_database(
+        Database(bare_ds, str(tmp_path / "missing.db")), name="missing"
+    )
+    with pytest.raises(sqlite3.OperationalError):
+        await missing.execute("select 1")
+
+
+@pytest.mark.asyncio
+async def test_table_counts_skips_spatialite_knn_tables(tmp_path):
+    # https://github.com/simonw/datasette/issues/1611
+    # count(*) against SpatiaLite's KNN virtual tables can run for minutes
+    # past the time limit, so table_counts() must not run it. SpatiaLite is
+    # not needed: the virtual table entries are written directly into the
+    # schema, and an ordinary table called "knn" must still be counted.
+    path = str(tmp_path / "spatial.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table places (id integer primary key)")
+    conn.execute("insert into places (id) values (1), (2)")
+    conn.execute("create table knn_notes (id integer primary key)")
+    conn.execute("insert into knn_notes (id) values (1)")
+    conn.execute("pragma writable_schema = on")
+    for name, module in (("KNN", "VirtualKNN"), ("KNN2", '"VirtualKNN2"')):
+        conn.execute(
+            "insert into sqlite_master (type, name, tbl_name, rootpage, sql) "
+            "values ('table', ?, ?, 0, ?)",
+            [name, name, f"CREATE VIRTUAL TABLE {name} USING {module}()"],
+        )
+    conn.execute("pragma writable_schema = off")
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([path])
+    db = ds.get_database("spatial")
+    assert await db.table_counts() == {
+        "KNN": 0,
+        "KNN2": 0,
+        "knn_notes": 1,
+        "places": 2,
+    }

@@ -1,75 +1,239 @@
 import json
-from datasette.extras import extra_names_from_request
+from collections.abc import Mapping
+from typing import Any
+
+from datasette.rows import Row
 from datasette.utils import (
-    value_as_boolean,
-    remove_infinites,
     CustomJSONEncoder,
+    error_body,
     path_from_row_pks,
-    sqlite3,
+    remove_infinites,
+    row_has_null_primary_key,
+    untyped_columns,
+    value_as_boolean,
 )
 from datasette.utils.asgi import Response
 
 
+class RowStream:
+    """
+    The row_stream argument passed to output renderers: an async iterator
+    over the rows to render.
+
+    This is the rows on the current page, or every row - fetched a page at
+    a time - if the request asked for them all using ?_stream=1.
+
+    Use ``async for row in row_stream`` to loop through individual rows, or
+    ``async for rows in row_stream.pages()`` for a list of rows at a time.
+    """
+
+    def __init__(self, rows, fetch_next_page=None):
+        self._rows = rows
+        self._fetch_next_page = fetch_next_page
+
+    async def pages(self):
+        yield self._rows
+        while self._fetch_next_page is not None:
+            rows = await self._fetch_next_page()
+            if rows is None:
+                break
+            yield rows
+
+    async def __aiter__(self):
+        async for rows in self.pages():
+            for row in rows:
+                yield row
+
+
+def _load_json_value(value):
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def convert_specific_columns_to_json(rows, columns, json_cols):
+    if not rows:
+        return rows
+    if columns is None:
+        if not isinstance(rows[0], dict):
+            return rows
+        columns = rows[0].keys()
     json_cols = set(json_cols)
     if not json_cols.intersection(columns):
         return rows
     new_rows = []
     for row in rows:
-        new_row = []
-        for value, column in zip(row, columns):
-            if column in json_cols:
-                try:
-                    value = json.loads(value)
-                except (TypeError, ValueError):
-                    pass
-            new_row.append(value)
+        if isinstance(row, dict):
+            new_row = dict(row)
+            for column in json_cols.intersection(row):
+                new_row[column] = _load_json_value(row[column])
+        else:
+            new_row = [
+                _load_json_value(value) if column in json_cols else value
+                for value, column in zip(row, columns)
+            ]
         new_rows.append(new_row)
     return new_rows
 
 
-def json_renderer(request, args, data, error, truncated=None):
+def row_as_dict(
+    row: Row | Mapping[str, Any], values: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """
+    Return a row as the dictionary used to represent it in JSON.
+
+    A foreign key value that has been expanded to a label, available in
+    ``row.labels``, becomes ``{"value": value, "label": label}``.
+
+    Pass ``values`` to use a different ``{column: value}`` dictionary in
+    place of the values from the row itself.
+    """
+    row_dict = _dict(row) if values is None else values
+    labels = getattr(row, "labels", None)
+    if labels:
+        for column, label in labels.items():
+            row_dict[column] = {"value": row_dict[column], "label": label}
+    return row_dict
+
+
+def _dict(row: Row | Mapping[str, Any]) -> dict[str, Any]:
+    "dict(row), but faster for a Row"
+    if row.__class__ is Row:
+        return dict(zip(row.columns.names, row))
+    return dict(row)
+
+
+async def apply_column_type_transforms(datasette, database, table, rows):
+    """
+    Return rows as dictionaries, with transform_value() applied for any
+    columns that have been assigned a column type.
+    """
+    ct_map = await datasette.get_column_types(database, table)
+    transformed_rows = []
+    for row in rows:
+        row_dict = _dict(row)
+        for col_name, ct in ct_map.items():
+            if col_name in row_dict:
+                row_dict[col_name] = await ct.transform_value(
+                    row_dict[col_name], datasette
+                )
+        transformed_rows.append(row_as_dict(row, row_dict))
+    return transformed_rows
+
+
+async def json_renderer(
+    datasette,
+    request,
+    rows,
+    columns,
+    page,
+    error,
+    database,
+    table,
+    view_name,
+    truncated=None,
+):
     """Render a response as JSON"""
+    args = request.args
     status_code = 200
+
+    if view_name == "table" and table and not error:
+        # Table pages apply transform_value() from any column types
+        rows = await apply_column_type_transforms(datasette, database, table, rows)
+
+    # Everything other than the rows comes from the page dictionary
+    data = {"ok": True, **page, "rows": rows}
 
     # Handle the _json= parameter which may modify data["rows"]
     json_cols = []
     if "_json" in args:
         json_cols = args.getlist("_json")
-    if json_cols and "rows" in data and "columns" in data:
+    object_keys = None
+    pks = data.get("primary_keys")
+    # Primary key columns where a number in a row path has to carry its type,
+    # so that the integer 1 and the text "1" are different keys
+    typed_columns = ()
+    if not error and args.get("_shape") == "object" and pks and table:
+        typed_columns = untyped_columns(
+            await datasette.get_database(database).table_column_details(table)
+        )
+    # Checked here, before ?_json= can turn the text "null" into a null
+    object_has_null_key = (
+        not error
+        and args.get("_shape") == "object"
+        and bool(pks)
+        and any(
+            row_has_null_primary_key(
+                (
+                    row
+                    if isinstance(row, dict) or not columns
+                    else dict(zip(columns, row))
+                ),
+                pks,
+            )
+            for row in data["rows"]
+        )
+    )
+    if (
+        not error
+        and args.get("_shape") == "object"
+        and pks
+        and any(pk in json_cols for pk in pks)
+    ):
+        object_keys = []
+        for row in data["rows"]:
+            if columns and not isinstance(row, dict):
+                row = dict(zip(columns, row))
+            object_keys.append(
+                path_from_row_pks(row, pks, False, typed_columns=typed_columns)
+            )
+    if json_cols:
         data["rows"] = convert_specific_columns_to_json(
-            data["rows"], data["columns"], json_cols
+            data["rows"], columns, json_cols
         )
 
     # unless _json_infinity=1 requested, replace infinity with None
-    if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
+    if not value_as_boolean(args.get("_json_infinity", "0")):
         data["rows"] = [remove_infinites(row) for row in data["rows"]]
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
+    # Row pages return {"row": {...}} unless a ?_shape= is requested
+    single_row = view_name == "row" and "_shape" not in args
     # if there's an error, ignore the shape entirely
-    data["ok"] = True
     if error:
         shape = "objects"
+        single_row = False
         status_code = 400
-        data["error"] = error
-        data["ok"] = False
+        data.update(error_body(error, status_code))
 
-    if truncated is not None:
+    # A single row cannot be truncated
+    if truncated is not None and not single_row:
         data["truncated"] = truncated
     if shape == "arrayfirst":
         if not data["rows"]:
             data = []
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data = [row[0] for row in data["rows"]]
-        else:
-            assert isinstance(data["rows"][0], dict)
+        elif isinstance(data["rows"][0], dict):
             data = [next(iter(row.values())) for row in data["rows"]]
+        else:
+            data = [row[0] for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
-        columns = data.get("columns")
         rows = data.get("rows")
         if rows and columns and not isinstance(rows[0], dict):
             data["rows"] = [dict(zip(columns, row)) for row in rows]
+        if single_row:
+            # Swap "rows" for "row", keeping its position in the output
+            data = {
+                ("row" if key == "rows" else key): (
+                    (value[0] if value else None) if key == "rows" else value
+                )
+                for key, value in data.items()
+            }
+            # Likewise the render_cell extra becomes a single object
+            if "render_cell" in data:
+                cells = data["render_cell"]
+                data["render_cell"] = cells[0] if cells else {}
         if shape == "object":
             shape_error = None
             if "primary_keys" not in data:
@@ -82,35 +246,38 @@ def json_renderer(request, args, data, error, truncated=None):
                     )
                 else:
                     object_rows = {}
-                    for row in data["rows"]:
-                        pk_string = path_from_row_pks(row, pks, not pks)
+                    for index, row in enumerate(data["rows"]):
+                        pk_string = (
+                            object_keys[index]
+                            if object_keys is not None
+                            else path_from_row_pks(
+                                row, pks, not pks, typed_columns=typed_columns
+                            )
+                        )
                         object_rows[pk_string] = row
                     data = object_rows
+                    if object_has_null_key:
+                        # Rows that share a null key cannot each have one
+                        shape_error = (
+                            "_shape=object not available for rows with "
+                            "a null primary key"
+                        )
             if shape_error:
-                data = {"ok": False, "error": shape_error}
+                status_code = 400
+                data = error_body(shape_error, status_code)
         elif shape == "array":
             data = data["rows"]
 
     elif shape == "arrays":
         if not data["rows"]:
             pass
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data["rows"] = [list(row) for row in data["rows"]]
-        else:
+        elif isinstance(data["rows"][0], dict):
             data["rows"] = [list(row.values()) for row in data["rows"]]
+        else:
+            data["rows"] = [list(row) for row in data["rows"]]
     else:
         status_code = 400
-        data = {
-            "ok": False,
-            "error": f"Invalid _shape: {shape}",
-            "status": 400,
-            "title": None,
-        }
-
-    # Don't include "columns" in output
-    # https://github.com/simonw/datasette/issues/2136
-    if isinstance(data, dict) and "columns" not in extra_names_from_request(request):
-        data.pop("columns", None)
+        data = error_body(f"Invalid _shape: {shape}", status_code)
 
     # Handle _nl option for _shape=array
     nl = args.get("_nl", "")

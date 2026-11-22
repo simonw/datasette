@@ -9,13 +9,15 @@ import importlib
 import os
 import sqlite3
 import time
+
+import pytest
+from itsdangerous import BadSignature
+
 from datasette import Context
-from datasette.app import Datasette, Database, ResourcesSQL
+from datasette.app import Database, Datasette, ResourcesSQL
 from datasette.database import DatasetteClosedError
 from datasette.resources import DatabaseResource
 from datasette.utils import PrefixedUrlString
-from itsdangerous import BadSignature
-import pytest
 
 
 @pytest.fixture
@@ -25,7 +27,7 @@ def datasette(ds_client):
 
 def test_get_database(datasette):
     db = datasette.get_database("fixtures")
-    assert "fixtures" == db.name
+    assert db.name == "fixtures"
     with pytest.raises(KeyError):
         datasette.get_database("missing")
 
@@ -33,7 +35,7 @@ def test_get_database(datasette):
 def test_get_database_no_argument(datasette):
     # Returns the first available database:
     db = datasette.get_database()
-    assert "fixtures" == db.name
+    assert db.name == "fixtures"
 
 
 @pytest.mark.parametrize("value", ["hello", 123, {"key": "value"}])
@@ -51,6 +53,9 @@ def test_sign_unsign(datasette, value, namespace):
     "setting,expected",
     (
         ("base_url", "/"),
+        ("max_stream_mb", 100),
+        ("default_allow_stream", True),
+        # Previous names for those two settings still work
         ("max_csv_mb", 100),
         ("allow_csv_stream", True),
     ),
@@ -70,16 +75,13 @@ def _setup_static_app_root(tmp_path, monkeypatch, filename, content):
     return asset_path
 
 
-@pytest.mark.asyncio
 async def test_static_template_function_hashes_core_asset(tmp_path, monkeypatch):
     _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"const demo = true;")
     ds = Datasette()
     template = ds.get_jinja_environment().from_string("{{ static('demo.js') }}")
     expected_hash = hashlib.sha256(b"const demo = true;").hexdigest()[:12]
 
-    assert await template.render_async() == "/-/static/demo.js?_hash={}".format(
-        expected_hash
-    )
+    assert await template.render_async() == f"/-/static/demo.js?_hash={expected_hash}"
     assert isinstance(ds.static("demo.js"), PrefixedUrlString)
 
 
@@ -101,7 +103,7 @@ def test_static_hash_recalculated_when_cache_headers_disabled(tmp_path, monkeypa
     asset_path.write_bytes(b"let a = 2;")
 
     expected_hash = hashlib.sha256(b"let a = 2;").hexdigest()[:12]
-    assert ds.static("demo.js") == "/-/static/demo.js?_hash={}".format(expected_hash)
+    assert ds.static("demo.js") == f"/-/static/demo.js?_hash={expected_hash}"
     assert ds.static("demo.js") != first_url
 
 
@@ -114,12 +116,12 @@ def test_static_hashes_mounted_static_file(tmp_path):
     expected_hash = hashlib.sha256(b"body { color: black; }").hexdigest()[:12]
 
     assert ds.static("styles.css", mount="assets") == (
-        "/assets/styles.css?_hash={}".format(expected_hash)
+        f"/assets/styles.css?_hash={expected_hash}"
     )
 
     ds._settings["base_url"] = "/prefix/"
     assert ds.static("styles.css", mount="assets") == (
-        "/prefix/assets/styles.css?_hash={}".format(expected_hash)
+        f"/prefix/assets/styles.css?_hash={expected_hash}"
     )
 
 
@@ -144,9 +146,7 @@ def test_static_hashes_plugin_static_file(tmp_path, monkeypatch):
     expected_hash = hashlib.sha256(b"console.log('plugin');").hexdigest()[:12]
 
     assert ds.static("plugin.js", plugin="datasette_cluster_map") == (
-        "/-/static-plugins/datasette_cluster_map/plugin.js?_hash={}".format(
-            expected_hash
-        )
+        f"/-/static-plugins/datasette_cluster_map/plugin.js?_hash={expected_hash}"
     )
 
 
@@ -164,10 +164,9 @@ def test_static_rejects_path_traversal(tmp_path, monkeypatch):
         ds.static("../secret.js")
 
 
-@pytest.mark.asyncio
 async def test_datasette_constructor():
     ds = Datasette()
-    databases = (await ds.client.get("/-/databases.json")).json()
+    databases = (await ds.client.get("/-/databases.json")).json()["databases"]
     assert databases == [
         {
             "name": "_memory",
@@ -181,14 +180,14 @@ async def test_datasette_constructor():
     ]
 
 
-@pytest.mark.asyncio
 async def test_num_sql_threads_zero():
     ds = Datasette([], memory=True, settings={"num_sql_threads": 0})
+    ds.root_enabled = True
     db = ds.add_database(Database(ds, memory_name="test_num_sql_threads_zero"))
     await db.execute_write("create table t(id integer primary key)")
     await db.execute_write("insert into t (id) values (1)")
-    response = await ds.client.get("/-/threads.json")
-    assert response.json() == {"num_threads": 0, "threads": []}
+    response = await ds.client.get("/-/threads.json", actor={"id": "root"})
+    assert response.json() == {"ok": True, "num_threads": 0, "threads": []}
     response2 = await ds.client.get("/test_num_sql_threads_zero/t.json?_shape=array")
     assert response2.json() == [{"id": 1}]
 
@@ -197,7 +196,6 @@ ROOT = {"id": "root"}
 ALLOW_ROOT = {"allow": {"id": "root"}}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,config,action,resource,should_allow,expected_private",
     (
@@ -242,7 +240,6 @@ async def test_datasette_check_visibility(
     assert private == expected_private
 
 
-@pytest.mark.asyncio
 async def test_datasette_render_template_no_request():
     # https://github.com/simonw/datasette/issues/1849
     ds = Datasette(memory=True)
@@ -251,7 +248,6 @@ async def test_datasette_render_template_no_request():
     assert "Error " in rendered
 
 
-@pytest.mark.asyncio
 async def test_datasette_render_template_with_dataclass():
     @dataclasses.dataclass
     class ExampleContext(Context):
@@ -274,7 +270,6 @@ def test_datasette_error_if_string_not_list(tmpdir):
         Datasette(db_path)
 
 
-@pytest.mark.asyncio
 async def test_get_action(ds_client):
     ds = ds_client.ds
     for name_or_abbr in (
@@ -294,7 +289,6 @@ async def test_get_action(ds_client):
     assert ds.get_action("missing-permission") is None
 
 
-@pytest.mark.asyncio
 async def test_apply_metadata_json():
     ds = Datasette(
         metadata={
@@ -317,7 +311,6 @@ async def test_apply_metadata_json():
     assert value == '{"nested": [1, 2, 3]}'
 
 
-@pytest.mark.asyncio
 async def test_allowed_resources_sql(datasette):
     result = await datasette.allowed_resources_sql(
         action="view-table",
@@ -328,7 +321,6 @@ async def test_allowed_resources_sql(datasette):
     assert result.params["action"] == "view-table"
 
 
-@pytest.mark.asyncio
 async def test_datasette_close_closes_all_databases_and_executor():
     ds = Datasette(memory=True)
     await ds.invoke_startup()
@@ -349,7 +341,6 @@ async def test_datasette_close_closes_all_databases_and_executor():
     assert not os.path.exists(temp_path)
 
 
-@pytest.mark.asyncio
 async def test_datasette_close_is_idempotent():
     ds = Datasette(memory=True)
     await ds.invoke_startup()
@@ -358,7 +349,6 @@ async def test_datasette_close_is_idempotent():
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_datasette_close_raises_on_use():
     ds = Datasette(memory=True)
     await ds.invoke_startup()
@@ -396,7 +386,6 @@ async def _datasette_with_sleeping_execute(tmp_path, sleep_ms=200):
     return ds, task
 
 
-@pytest.mark.asyncio
 async def test_datasette_close_waits_for_in_flight_execute(tmp_path):
     ds, task = await _datasette_with_sleeping_execute(tmp_path)
     ds.close()
@@ -404,7 +393,6 @@ async def test_datasette_close_waits_for_in_flight_execute(tmp_path):
     assert [tuple(row) for row in results.rows] == [(200,)]
 
 
-@pytest.mark.asyncio
 async def test_datasette_close_waits_for_cancelled_in_flight_execute(tmp_path):
     ds, task = await _datasette_with_sleeping_execute(tmp_path)
     task.cancel()
@@ -413,7 +401,6 @@ async def test_datasette_close_waits_for_cancelled_in_flight_execute(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
 async def test_asgi_lifespan_shutdown_closes_datasette():
     ds = Datasette(memory=True)
     app = ds.app()
@@ -436,7 +423,6 @@ async def test_asgi_lifespan_shutdown_closes_datasette():
     assert ds._closed
 
 
-@pytest.mark.asyncio
 async def test_datasette_close_continues_past_db_error():
     # If one Database raises during close(), the others still get closed.
     ds = Datasette(memory=True)
@@ -454,7 +440,6 @@ async def test_datasette_close_continues_past_db_error():
     assert ds._internal_database._closed
 
 
-@pytest.mark.asyncio
 async def test_datasette_render_template_dataclass_values_not_deep_copied():
     # display_rows can contain values like sqlite3.Row that cannot be
     # deep-copied, so render_template must convert Context dataclasses

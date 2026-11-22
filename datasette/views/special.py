@@ -1,20 +1,28 @@
 import json
 import logging
+import secrets
+import urllib
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
+from datasette.events import CreateTokenEvent, LoginEvent, LogoutEvent
 from datasette.jump import JumpSQL, namespace_sql_params
 from datasette.plugins import pm
-from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
-from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
+    UNSTABLE_API_MESSAGE,
     actor_matches_allow,
     add_cors_headers,
     await_me_maybe,
-    tilde_encode,
+    error_body,
+    parse_size_limit,
     tilde_decode,
+    tilde_encode,
 )
+from datasette.utils.asgi import Forbidden, Response
+
+from . import Context, alternate_url_json_field, select_templates_field
 from .base import BaseView, View
-import secrets
-import urllib
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +33,31 @@ def _resource_path(parent, child):
     if child is None:
         return f"/{parent}"
     return f"/{parent}/{child}"
+
+
+@dataclass
+class JsonDataContext(Context):
+    "The pages that display JSON describing the instance, such as ``/-/versions``, ``/-/plugins``, ``/-/settings``, ``/-/config``, ``/-/databases``, ``/-/threads`` and ``/-/actor``. ``/-/actions`` uses the same variables with the ``debug_actions.html`` template."
+
+    documented_template = "show_json.html"
+    documented_title = "JSON data pages"
+
+    filename: str = field(
+        metadata={
+            "help": "Name of the JSON file for this page, such as ``versions.json``, used as the page title"
+        }
+    )
+    data: dict | list = field(
+        metadata={"help": "The data for this page, as returned by its JSON API"}
+    )
+    data_json: str = field(metadata={"help": "That data as a string of indented JSON"})
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if this page requires the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
+    alternate_url_json: str = alternate_url_json_field()
 
 
 class JsonDataView(BaseView):
@@ -52,9 +85,9 @@ class JsonDataView(BaseView):
         if self.permission:
             await self.ds.ensure_permission(action=self.permission, actor=request.actor)
         if self.needs_request:
-            data = self.data_callback(request)
+            data = await await_me_maybe(self.data_callback(request))
         else:
-            data = self.data_callback()
+            data = await await_me_maybe(self.data_callback())
 
         # Return JSON or HTML depending on format parameter
         as_format = request.url_vars.get("format")
@@ -62,20 +95,19 @@ class JsonDataView(BaseView):
             headers = {}
             if self.ds.cors:
                 add_cors_headers(headers)
+            if isinstance(data, dict):
+                data = {"ok": True, **data}
             return Response.json(data, headers=headers)
         else:
-            context = {
-                "filename": self.filename,
-                "data": data,
-                "data_json": json.dumps(data, indent=2, default=repr),
-            }
-            # Add has_debug_permission if this view requires permissions-debug
-            if self.permission == "permissions-debug":
-                context["has_debug_permission"] = True
             return await self.render(
                 [self.template],
                 request=request,
-                context=context,
+                context=JsonDataContext(
+                    filename=self.filename,
+                    data=data,
+                    data_json=json.dumps(data, indent=2, default=repr),
+                    has_debug_permission=self.permission == "permissions-debug",
+                ),
             )
 
 
@@ -84,11 +116,65 @@ class PatternPortfolioView(View):
         await datasette.ensure_permission(action="view-instance", actor=request.actor)
         return Response.html(
             await datasette.render_template(
-                "patterns.html",
+                (
+                    "patterns_menus.html"
+                    if request.url_vars.get("pattern") == "menus"
+                    else "patterns.html"
+                ),
                 request=request,
                 view_name="patterns",
             )
         )
+
+
+@dataclass
+class AutocompleteDebugContext(Context):
+    "A tool for trying out the autocomplete for the rows of a table, at ``/-/debug/autocomplete``."
+
+    documented_template = "debug_autocomplete.html"
+    stable = False
+
+    database_name: str | None = field(
+        metadata={"help": "Name of the database from ``?database=``, or None"}
+    )
+    table_name: str | None = field(
+        metadata={"help": "Name of the table from ``?table=``, or None"}
+    )
+    error: str | None = field(
+        default=None,
+        metadata={
+            "help": "Error message if the database or table could not be found, otherwise None"
+        },
+    )
+    autocomplete_url: str | None = field(
+        default=None,
+        metadata={
+            "help": "URL of the autocomplete API for the table, or None if no table has been selected"
+        },
+    )
+    label_column: str | None = field(
+        default=None,
+        metadata={
+            "help": "The label column for the table, which autocomplete searches against, or None"
+        },
+    )
+    suggestions: list[dict] = field(
+        default_factory=list,
+        metadata={
+            "help": "Up to five tables with a label column to try, shown if no table has been selected. Each has ``database``, ``table``, ``label_column`` and ``url`` keys"
+        },
+    )
+    scanned: int = field(
+        default=0,
+        metadata={"help": "Number of tables examined while looking for suggestions"},
+    )
+    reached_scan_limit: bool = field(
+        default=False,
+        metadata={
+            "help": "True if the search for suggestions stopped because it reached its limit of 100 tables"
+        },
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class AutocompleteDebugView(BaseView):
@@ -174,9 +260,7 @@ class AutocompleteDebugView(BaseView):
                     )
                     context.update(
                         {
-                            "autocomplete_url": "{}/-/autocomplete".format(
-                                self.ds.urls.table(database_name, table_name)
-                            ),
+                            "autocomplete_url": f"{self.ds.urls.table(database_name, table_name)}/-/autocomplete",
                             "label_column": await db.label_column_for_table(table_name),
                         }
                     )
@@ -192,7 +276,9 @@ class AutocompleteDebugView(BaseView):
                 }
             )
 
-        return await self.render(["debug_autocomplete.html"], request, context)
+        return await self.render(
+            ["debug_autocomplete.html"], request, AutocompleteDebugContext(**context)
+        )
 
 
 class AuthTokenView(BaseView):
@@ -217,6 +303,15 @@ class AuthTokenView(BaseView):
             raise Forbidden("Invalid token")
 
 
+@dataclass
+class LogoutContext(Context):
+    "The page asking the actor to confirm that they want to log out, at ``/-/logout``. It has no variables of its own - the actor is the ``actor`` variable available on every page."
+
+    documented_template = "logout.html"
+
+    select_templates: list[str] = select_templates_field()
+
+
 class LogoutView(BaseView):
     name = "logout"
     has_json_alternate = False
@@ -224,11 +319,7 @@ class LogoutView(BaseView):
     async def get(self, request):
         if not request.actor:
             return Response.redirect(self.ds.urls.instance())
-        return await self.render(
-            ["logout.html"],
-            request,
-            {"actor": request.actor},
-        )
+        return await self.render(["logout.html"], request, LogoutContext())
 
     async def post(self, request):
         response = Response.redirect(self.ds.urls.instance())
@@ -236,6 +327,36 @@ class LogoutView(BaseView):
         self.ds.add_message(request, "You are now logged out", self.ds.WARNING)
         await self.ds.track_event(LogoutEvent(actor=request.actor))
         return response
+
+
+@dataclass
+class PermissionsDebugContext(Context):
+    "The permissions playground at ``/-/permissions``, which lists recent permission checks and has a form for testing a permission check against any actor."
+
+    documented_template = "debug_permissions_playground.html"
+    stable = False
+
+    permission_checks: list = field(
+        metadata={
+            "help": "Recent permission checks, most recent first. Each has ``when``, ``actor``, ``action``, ``parent``, ``child`` and ``result`` attributes. ``result`` is None if no rule had an opinion"
+        }
+    )
+    filter: str = field(
+        metadata={
+            "help": "Which checks are listed, from ``?filter=``: ``all``, ``exclude-yours`` or ``only-yours``"
+        }
+    )
+    permissions: list[dict] = field(
+        metadata={
+            "help": "Every registered action, each with ``name``, ``abbr``, ``description``, ``takes_parent`` and ``takes_child`` keys"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class PermissionsDebugView(BaseView):
@@ -262,12 +383,13 @@ class PermissionsDebugView(BaseView):
         return await self.render(
             ["debug_permissions_playground.html"],
             request,
-            # list() avoids error if check is performed during template render:
-            {
-                "permission_checks": permission_checks,
-                "filter": filter_,
-                "has_debug_permission": True,
-                "permissions": [
+            PermissionsDebugContext(
+                # A list, so checks performed while the template renders
+                # do not change it
+                permission_checks=permission_checks,
+                filter=filter_,
+                has_debug_permission=True,
+                permissions=[
                     {
                         "name": p.name,
                         "abbr": p.abbr,
@@ -277,7 +399,7 @@ class PermissionsDebugView(BaseView):
                     }
                     for p in self.ds.actions.values()
                 ],
-            },
+            ),
         )
 
     async def post(self, request):
@@ -292,7 +414,33 @@ class PermissionsDebugView(BaseView):
         response, status = await _check_permission_for_actor(
             self.ds, permission, parent, child, actor
         )
+        if response.get("ok"):
+            response = {
+                "ok": True,
+                "unstable": UNSTABLE_API_MESSAGE,
+                **response,
+            }
         return Response.json(response, status=status)
+
+
+@dataclass
+class AllowedResourcesContext(Context):
+    "A tool for listing the resources the current actor can access for a given action, at ``/-/allowed``."
+
+    documented_template = "debug_allowed.html"
+    stable = False
+
+    supported_actions: list[str] = field(
+        metadata={
+            "help": "Names of every registered action, with the most commonly used ones first"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class AllowedResourcesView(BaseView):
@@ -300,6 +448,7 @@ class AllowedResourcesView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         await self.ds.refresh_schemas()
 
         # Check if user has permissions-debug (to show sensitive fields)
@@ -333,10 +482,10 @@ class AllowedResourcesView(BaseView):
             return await self.render(
                 ["debug_allowed.html"],
                 request,
-                {
-                    "supported_actions": sorted_actions,
-                    "has_debug_permission": has_debug_permission,
-                },
+                AllowedResourcesContext(
+                    supported_actions=sorted_actions,
+                    has_debug_permission=has_debug_permission,
+                ),
             )
 
         payload, status = await self._allowed_payload(request, has_debug_permission)
@@ -348,29 +497,32 @@ class AllowedResourcesView(BaseView):
     async def _allowed_payload(self, request, has_debug_permission):
         action = request.args.get("action")
         if not action:
-            return {"error": "action parameter is required"}, 400
+            return error_body("action parameter is required", 400), 400
         if action not in self.ds.actions:
-            return {"error": f"Unknown action: {action}"}, 404
+            return error_body(f"Unknown action: {action}", 404), 404
 
         actor = request.actor if isinstance(request.actor, dict) else None
         actor_id = actor.get("id") if actor else None
         parent_filter = request.args.get("parent")
         child_filter = request.args.get("child")
         if child_filter and not parent_filter:
-            return {"error": "parent must be provided when child is specified"}, 400
+            return (
+                error_body("parent must be provided when child is specified", 400),
+                400,
+            )
 
         try:
-            page = int(request.args.get("page", "1"))
-            page_size = int(request.args.get("page_size", "50"))
+            page = int(request.args.get("_page", "1"))
+            if page < 1:
+                raise ValueError
         except ValueError:
-            return {"error": "page and page_size must be integers"}, 400
-        if page < 1:
-            return {"error": "page must be >= 1"}, 400
-        if page_size < 1:
-            return {"error": "page_size must be >= 1"}, 400
-        max_page_size = 200
-        if page_size > max_page_size:
-            page_size = max_page_size
+            return error_body("_page must be a positive integer", 400), 400
+        try:
+            page_size = parse_size_limit(
+                request.args.get("_size"), default=50, maximum=200
+            )
+        except ValueError as ex:
+            return error_body(str(ex), 400), 400
         offset = (page - 1) * page_size
 
         # Use the simplified allowed_resources method
@@ -406,10 +558,14 @@ class AllowedResourcesView(BaseView):
                     row["reason"] = resource.reasons
 
                 allowed_rows.append(row)
-        except Exception:
-            # If catalog tables don't exist yet, return empty results
+        except Exception:  # noqa: BLE001
+            # Returns empty results if the catalog tables don't exist yet, but
+            # also swallows the AttributeError raised for instance-level actions
+            # such as view-instance, which have no resource_class.
+            # TODO: handle that case explicitly and narrow this to sqlite3.Error
             return (
                 {
+                    "ok": True,
                     "action": action,
                     "actor_id": actor_id,
                     "page": page,
@@ -434,16 +590,17 @@ class AllowedResourcesView(BaseView):
         def build_page_url(page_number):
             pairs = []
             for key in request.args:
-                if key in {"page", "page_size"}:
+                if key in {"_page", "_size"}:
                     continue
                 for value in request.args.getlist(key):
                     pairs.append((key, value))
-            pairs.append(("page", str(page_number)))
-            pairs.append(("page_size", str(page_size)))
+            pairs.append(("_page", str(page_number)))
+            pairs.append(("_size", str(page_size)))
             query = urllib.parse.urlencode(pairs)
             return f"{request.path}?{query}"
 
         response = {
+            "ok": True,
             "action": action,
             "actor_id": actor_id,
             "page": page,
@@ -458,6 +615,24 @@ class AllowedResourcesView(BaseView):
             response["previous_url"] = build_page_url(page - 1)
 
         return response, 200
+
+
+@dataclass
+class PermissionRulesContext(Context):
+    "A tool for viewing the permission rules that apply to the current actor for a given action, at ``/-/rules``."
+
+    documented_template = "debug_rules.html"
+    stable = False
+
+    sorted_actions: list[str] = field(
+        metadata={"help": "Names of every registered action, in alphabetical order"}
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class PermissionRulesView(BaseView):
@@ -476,40 +651,38 @@ class PermissionRulesView(BaseView):
             return await self.render(
                 ["debug_rules.html"],
                 request,
-                {
-                    "sorted_actions": sorted(self.ds.actions.keys()),
-                    "has_debug_permission": True,
-                },
+                PermissionRulesContext(
+                    sorted_actions=sorted(self.ds.actions.keys()),
+                    has_debug_permission=True,
+                ),
             )
 
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return Response.error("action parameter is required", 400)
         if action not in self.ds.actions:
-            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+            return Response.error(f"Unknown action: {action}", 404)
 
         actor = request.actor if isinstance(request.actor, dict) else None
 
         try:
-            page = int(request.args.get("page", "1"))
-            page_size = int(request.args.get("page_size", "50"))
+            page = int(request.args.get("_page", "1"))
+            if page < 1:
+                raise ValueError
         except ValueError:
-            return Response.json(
-                {"error": "page and page_size must be integers"}, status=400
+            return Response.error("_page must be a positive integer", 400)
+        try:
+            page_size = parse_size_limit(
+                request.args.get("_size"), default=50, maximum=200
             )
-        if page < 1:
-            return Response.json({"error": "page must be >= 1"}, status=400)
-        if page_size < 1:
-            return Response.json({"error": "page_size must be >= 1"}, status=400)
-        max_page_size = 200
-        if page_size > max_page_size:
-            page_size = max_page_size
+        except ValueError as ex:
+            return Response.error(str(ex), 400)
         offset = (page - 1) * page_size
 
         from datasette.utils.actions_sql import build_permission_rules_sql
 
-        union_sql, union_params, restriction_sqls = await build_permission_rules_sql(
+        union_sql, union_params, _restriction_sqls = await build_permission_rules_sql(
             self.ds, actor, action
         )
         await self.ds.refresh_schemas()
@@ -555,16 +728,17 @@ class PermissionRulesView(BaseView):
         def build_page_url(page_number):
             pairs = []
             for key in request.args:
-                if key in {"page", "page_size"}:
+                if key in {"_page", "_size"}:
                     continue
                 for value in request.args.getlist(key):
                     pairs.append((key, value))
-            pairs.append(("page", str(page_number)))
-            pairs.append(("page_size", str(page_size)))
+            pairs.append(("_page", str(page_number)))
+            pairs.append(("_size", str(page_size)))
             query = urllib.parse.urlencode(pairs)
             return f"{request.path}?{query}"
 
         response = {
+            "ok": True,
             "action": action,
             "actor_id": (actor or {}).get("id") if actor else None,
             "page": page,
@@ -585,17 +759,17 @@ class PermissionRulesView(BaseView):
 
 
 async def _check_permission_for_actor(ds, action, parent, child, actor):
-    """Shared logic for checking permissions. Returns a dict with check results."""
+    """Shared logic for checking and explaining a permission decision."""
     if action not in ds.actions:
-        return {"error": f"Unknown action: {action}"}, 404
+        return error_body(f"Unknown action: {action}", 404), 404
 
     if child and not parent:
-        return {"error": "parent is required when child is provided"}, 400
+        return error_body("parent is required when child is provided", 400), 400
 
     # Use the action's properties to create the appropriate resource object
     action_obj = ds.actions.get(action)
     if not action_obj:
-        return {"error": f"Unknown action: {action}"}, 400
+        return error_body(f"Unknown action: {action}", 400), 400
 
     # Global actions (no resource_class) don't have a resource
     if action_obj.resource_class is None:
@@ -610,24 +784,63 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
         resource_obj = action_obj.resource_class(parent)
     else:
         # This shouldn't happen given validation in Action.__post_init__
-        return {"error": f"Invalid action configuration: {action}"}, 500
+        return error_body(f"Invalid action configuration: {action}", 500), 500
 
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 
+    from datasette.utils.actions_sql import explain_permission_for_resource
+
+    explanation = await explain_permission_for_resource(
+        datasette=ds,
+        actor=actor,
+        action=action,
+        parent=parent,
+        child=child,
+    )
+
     response = {
+        "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
         "action": action,
         "allowed": bool(allowed),
+        "actor": actor,
         "resource": {
             "parent": parent,
             "child": child,
             "path": _resource_path(parent, child),
         },
+        "explanation": explanation,
     }
 
     if actor and "id" in actor:
         response["actor_id"] = actor["id"]
 
     return response, 200
+
+
+@dataclass
+class PermissionCheckContext(Context):
+    "A tool for testing whether an actor can perform an action against a resource, with an explanation of the result, at ``/-/check``."
+
+    documented_template = "debug_check.html"
+    stable = False
+
+    actions: list[dict] = field(
+        metadata={
+            "help": "Every registered action in alphabetical order, each with ``name``, ``description``, ``takes_parent``, ``takes_child`` and ``also_requires`` keys"
+        }
+    )
+    actor_json: str = field(
+        metadata={
+            "help": "JSON for the actor to test, from ``?actor=`` or otherwise the current actor"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class PermissionCheckView(BaseView):
@@ -639,27 +852,81 @@ class PermissionCheckView(BaseView):
         as_format = request.url_vars.get("format")
 
         if not as_format:
+            actions = [
+                {
+                    "name": action.name,
+                    "description": action.description,
+                    "takes_parent": action.takes_parent,
+                    "takes_child": action.takes_child,
+                    "also_requires": action.also_requires,
+                }
+                for action in sorted(
+                    self.ds.actions.values(), key=lambda action: action.name
+                )
+            ]
             return await self.render(
                 ["debug_check.html"],
                 request,
-                {
-                    "sorted_actions": sorted(self.ds.actions.keys()),
-                    "has_debug_permission": True,
-                },
+                PermissionCheckContext(
+                    actions=actions,
+                    actor_json=request.args.get("actor")
+                    or json.dumps(request.actor, indent=2),
+                    has_debug_permission=True,
+                ),
             )
 
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return Response.error("action parameter is required", 400)
 
         parent = request.args.get("parent")
         child = request.args.get("child")
+        actor = request.actor
+        actor_json = request.args.get("actor")
+        if actor_json is not None:
+            try:
+                actor = json.loads(actor_json)
+            except json.JSONDecodeError as ex:
+                return Response.error(f"Invalid actor JSON: {ex}", 400)
+            if actor is not None and not isinstance(actor, dict):
+                return Response.error("actor must be a JSON object or null", 400)
 
         response, status = await _check_permission_for_actor(
-            self.ds, action, parent, child, request.actor
+            self.ds, action, parent, child, actor
         )
         return Response.json(response, status=status)
+
+
+@dataclass
+class AllowDebugContext(Context):
+    "A tool for testing an actor against an ``allow`` block, at ``/-/allow-debug``."
+
+    documented_template = "allow_debug.html"
+    stable = False
+
+    actor_input: str = field(
+        metadata={"help": "JSON for the actor to test, from ``?actor=``"}
+    )
+    allow_input: str = field(
+        metadata={"help": "JSON for the allow block to test, from ``?allow=``"}
+    )
+    result: str | None = field(
+        metadata={
+            "help": '``"True"`` if the actor matches the allow block, ``"False"`` if it does not, or None if either input was not valid JSON'
+        }
+    )
+    error: str = field(
+        metadata={
+            "help": "Error messages for input that was not valid JSON, or an empty string"
+        }
+    )
+    has_debug_permission: bool = field(
+        metadata={
+            "help": "True if the actor has the ``permissions-debug`` permission, in which case links to the other permission debugging tools are shown"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class AllowDebugView(BaseView):
@@ -688,16 +955,26 @@ class AllowDebugView(BaseView):
         return await self.render(
             ["allow_debug.html"],
             request,
-            {
-                "result": result,
-                "error": "\n\n".join(errors) if errors else "",
-                "actor_input": actor_input,
-                "allow_input": allow_input,
-                "has_debug_permission": await self.ds.allowed(
+            AllowDebugContext(
+                result=result,
+                error="\n\n".join(errors) if errors else "",
+                actor_input=actor_input,
+                allow_input=allow_input,
+                has_debug_permission=await self.ds.allowed(
                     action="permissions-debug", actor=request.actor
                 ),
-            },
+            ),
         )
+
+
+@dataclass
+class MessagesDebugContext(Context):
+    "A tool for setting a message to be shown on the next page, at ``/-/messages``. It has no variables of its own."
+
+    documented_template = "messages_debug.html"
+    stable = False
+
+    select_templates: list[str] = select_templates_field()
 
 
 class MessagesDebugView(BaseView):
@@ -706,7 +983,9 @@ class MessagesDebugView(BaseView):
 
     async def get(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
-        return await self.render(["messages_debug.html"], request)
+        return await self.render(
+            ["messages_debug.html"], request, MessagesDebugContext()
+        )
 
     async def post(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
@@ -722,6 +1001,51 @@ class MessagesDebugView(BaseView):
         else:
             datasette.add_message(request, message, getattr(datasette, message_type))
         return Response.redirect(self.ds.urls.instance())
+
+
+@dataclass
+class CreateTokenContext(Context):
+    "The form for creating an API token, at ``/-/create-token``."
+
+    documented_template = "create_token.html"
+
+    all_actions: list[str] = field(
+        metadata={
+            "help": "Names of every action, which the token can be restricted to across the whole instance"
+        }
+    )
+    database_actions: list[str] = field(
+        metadata={
+            "help": "Names of the actions that can be restricted to a specific database"
+        }
+    )
+    child_actions: list[str] = field(
+        metadata={
+            "help": "Names of the actions that can be restricted to a specific table or other resource in a database"
+        }
+    )
+    database_with_tables: list[dict] = field(
+        metadata={
+            "help": "The databases the actor can see. Each has ``name``, ``encoded`` (the name encoded for use in a form field) and ``tables``, a list of dictionaries with ``name`` and ``encoded`` keys"
+        }
+    )
+    errors: list[str] = field(
+        default_factory=list,
+        metadata={"help": "Error messages from validating the submitted form"},
+    )
+    token: str | None = field(
+        default=None,
+        metadata={
+            "help": "The token that was created, or None if the form has not been successfully submitted"
+        },
+    )
+    token_bits: dict | None = field(
+        default=None,
+        metadata={
+            "help": "The decoded contents of the token that was created, or None"
+        },
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class CreateTokenView(BaseView):
@@ -741,6 +1065,8 @@ class CreateTokenView(BaseView):
             raise Forbidden(
                 "Token authentication cannot be used to create additional tokens"
             )
+        if "_r" in request.actor:
+            raise Forbidden("Restricted actors cannot create API tokens")
 
     async def shared(self, request):
         self.check_permission(request)
@@ -777,8 +1103,7 @@ class CreateTokenView(BaseView):
                 }
             )
         return {
-            "actor": request.actor,
-            "all_actions": self.ds.actions.keys(),
+            "all_actions": list(self.ds.actions.keys()),
             "database_actions": [
                 key for key, value in self.ds.actions.items() if value.takes_parent
             ],
@@ -791,7 +1116,9 @@ class CreateTokenView(BaseView):
     async def get(self, request):
         self.check_permission(request)
         return await self.render(
-            ["create_token.html"], request, await self.shared(request)
+            ["create_token.html"],
+            request,
+            CreateTokenContext(**await self.shared(request)),
         )
 
     async def post(self, request):
@@ -817,6 +1144,13 @@ class CreateTokenView(BaseView):
                     expires_after = int(duration_string) * 60 * 60 * 24
                 else:
                     errors.append("Invalid expire duration unit")
+
+        if errors:
+            return await self.render(
+                ["create_token.html"],
+                request,
+                CreateTokenContext(**await self.shared(request), errors=errors),
+            )
 
         # Are there any restrictions?
         from datasette.tokens import TokenRestrictions
@@ -851,9 +1185,39 @@ class CreateTokenView(BaseView):
                 restrict_resource=restrictions.resource,
             )
         )
-        context = await self.shared(request)
-        context.update({"errors": errors, "token": token, "token_bits": token_bits})
-        return await self.render(["create_token.html"], request, context)
+        return await self.render(
+            ["create_token.html"],
+            request,
+            CreateTokenContext(
+                **await self.shared(request),
+                errors=errors,
+                token=token,
+                token_bits=token_bits,
+            ),
+        )
+
+
+@dataclass
+class ApiExplorerContext(Context):
+    "The API explorer, a tool for trying out the JSON API, at ``/-/api``."
+
+    documented_template = "api_explorer.html"
+    documented_title = "API explorer page"
+
+    example_links: list[dict] = field(
+        metadata={
+            "help": "Example API calls for the databases the actor can see. Each database has ``name``, ``links`` and ``tables`` keys, and each table has ``name`` and ``links``. A link has ``label``, ``method`` and ``path`` keys, plus ``json`` holding an example request body for write APIs"
+        }
+    )
+    api_path: Callable = field(
+        metadata={
+            "help": "Function that takes one of those links and returns the URL of the API explorer with the form filled in for it"
+        }
+    )
+    private: bool = field(
+        metadata={"help": "True if anonymous users cannot view this instance"}
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class ApiExplorerView(BaseView):
@@ -884,7 +1248,7 @@ class ApiExplorerView(BaseView):
                 tables.append({"name": table, "links": table_links})
                 table_links.append(
                     {
-                        "label": "Get rows for {}".format(table),
+                        "label": f"Get rows for {table}",
                         "method": "GET",
                         "path": self.ds.urls.table(name, table, format="json"),
                     }
@@ -904,7 +1268,7 @@ class ApiExplorerView(BaseView):
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/insert",
                                 "method": "POST",
-                                "label": "Insert rows into {}".format(table),
+                                "label": f"Insert rows into {table}",
                                 "json": {
                                     "rows": [
                                         {
@@ -918,7 +1282,7 @@ class ApiExplorerView(BaseView):
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/upsert",
                                 "method": "POST",
-                                "label": "Upsert rows into {}".format(table),
+                                "label": f"Upsert rows into {table}",
                                 "json": {
                                     "rows": [
                                         {
@@ -948,7 +1312,7 @@ class ApiExplorerView(BaseView):
                     table_links.append(
                         {
                             "path": self.ds.urls.table(name, table) + "/-/drop",
-                            "label": "Drop table {}".format(table),
+                            "label": f"Drop table {table}",
                             "json": {"confirm": False},
                             "method": "POST",
                         }
@@ -965,7 +1329,7 @@ class ApiExplorerView(BaseView):
                 database_links.append(
                     {
                         "path": self.ds.urls.database(name) + "/-/create",
-                        "label": "Create table in {}".format(name),
+                        "label": f"Create table in {name}",
                         "json": {
                             "table": "new_table",
                             "columns": [
@@ -998,6 +1362,7 @@ class ApiExplorerView(BaseView):
             raise Forbidden("You do not have permission to view this instance")
 
         def api_path(link):
+            "URL of the API explorer with the form filled in for the given link"
             return "{}#{}".format(
                 self.ds.urls.path("/-/api"),
                 urllib.parse.urlencode(
@@ -1012,11 +1377,11 @@ class ApiExplorerView(BaseView):
         return await self.render(
             ["api_explorer.html"],
             request,
-            {
-                "example_links": await self.example_links(request),
-                "api_path": api_path,
-                "private": private,
-            },
+            ApiExplorerContext(
+                example_links=await self.example_links(request),
+                api_path=api_path,
+                private=private,
+            ),
         )
 
 
@@ -1052,8 +1417,9 @@ class JumpView(BaseView):
         return fragments
 
     def _resolve_url(self, url):
+        """Returns (url, kwargs) - kwargs are the datasette.urls arguments, if any"""
         if not url or url.startswith("/"):
-            return url
+            return url, {}
 
         descriptor = json.loads(url)
         if not isinstance(descriptor, dict):
@@ -1073,7 +1439,7 @@ class JumpView(BaseView):
             raise TypeError(f"datasette.urls.{method_name} is not callable")
         kwargs = {key: value for key, value in descriptor.items() if key != "method"}
         try:
-            return method(**kwargs)
+            return method(**kwargs), kwargs
         except TypeError as ex:
             raise TypeError(
                 f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
@@ -1097,7 +1463,15 @@ class JumpView(BaseView):
         }.get(row["type"], 50)
         return (relevance, type_sort, len(display_label), row["label"])
 
-    async def _rows_for_database(self, database_name, indexed_fragments, q, pattern):
+    async def _rows_for_database(
+        self,
+        database_name,
+        indexed_fragments,
+        q,
+        pattern,
+        types=None,
+        exclude_types=None,
+    ):
         params = {"q": q, "pattern": pattern}
         union_parts = []
         for index, fragment in indexed_fragments:
@@ -1119,6 +1493,13 @@ class JumpView(BaseView):
                 )
             """)
             params.update(fragment_params)
+        types_clause = ""
+        if types:
+            types_clause = "\n        AND type IN (SELECT value FROM json_each(:types))"
+            params["types"] = json.dumps(types)
+        if exclude_types:
+            types_clause += "\n        AND type NOT IN (SELECT value FROM json_each(:exclude_types))"
+            params["exclude_types"] = json.dumps(exclude_types)
         sql = f"""
         WITH jump_items AS (
             {" UNION ALL ".join(union_parts)}
@@ -1131,8 +1512,10 @@ class JumpView(BaseView):
             search_text,
             display_name
         FROM jump_items
-        WHERE :q = ''
-           OR search_text LIKE :pattern COLLATE NOCASE
+        WHERE (
+            :q = ''
+            OR search_text LIKE :pattern COLLATE NOCASE
+        ){types_clause}
         ORDER BY
             CASE
                 WHEN lower(COALESCE(display_name, label)) = lower(:q) THEN 0
@@ -1158,8 +1541,14 @@ class JumpView(BaseView):
         result = await db.execute(sql, params)
         return list(result.rows)
 
-    async def get(self, request):
-        q = request.args.get("q", "").strip()
+    async def matches(self, request, q, *, types=None, exclude_types=None, limit=100):
+        """
+        Jump items matching q that request.actor can see, best first.
+
+        Returns (matches, truncated). Also used by the homepage search to
+        include items that plugins add with jump_items_sql.
+        """
+        q = (q or "").strip()
         terms = q.split()
         pattern = "%" + "%".join(terms) + "%" if terms else "%"
         fragments = await self._fragments(request)
@@ -1174,7 +1563,7 @@ class JumpView(BaseView):
         truncated = False
         for database_name, indexed_fragments in fragments_by_database.items():
             database_rows = await self._rows_for_database(
-                database_name, indexed_fragments, q, pattern
+                database_name, indexed_fragments, q, pattern, types, exclude_types
             )
             if len(database_rows) > 100:
                 truncated = True
@@ -1182,23 +1571,54 @@ class JumpView(BaseView):
             rows.extend(database_rows)
         rows.sort(key=lambda row: self._sort_key(row, q))
 
-        if len(rows) > 100:
+        if len(rows) > limit:
             truncated = True
-            rows = rows[:100]
+            rows = rows[:limit]
 
         matches = []
         for row in rows:
+            url, url_kwargs = self._resolve_url(row["url"])
             match = {
                 "name": row["label"],
-                "url": self._resolve_url(row["url"]),
+                "url": url,
                 "type": row["type"],
                 "description": row["description"],
             }
             if row["display_name"]:
                 match["display_name"] = row["display_name"]
+            # Expose datasette.urls arguments such as database and table as fields
+            for key, value in url_kwargs.items():
+                if key not in match and key != "format":
+                    match[key] = value
             matches.append(match)
+        return matches, truncated
 
-        return Response.json({"matches": matches, "truncated": truncated})
+    async def get(self, request):
+        types = [t.strip() for t in request.args.getlist("type") if t.strip()]
+        matches, truncated = await self.matches(
+            request, request.args.get("q", ""), types=types
+        )
+        return Response.json({"ok": True, "matches": matches, "truncated": truncated})
+
+
+@dataclass
+class SchemaContext(Context):
+    "The schema pages: ``/-/schema`` for every database, ``/<database>/-/schema`` for one database and ``/<database>/<table>/-/schema`` for one table."
+
+    documented_template = "schema.html"
+
+    schemas: list[dict] = field(
+        metadata={
+            "help": "One dictionary per database, with ``database`` (its name) and ``schema`` (the SQL that creates the tables and views the actor can see). The table page has a single item holding the SQL for just that table"
+        }
+    )
+    is_instance: bool = field(
+        metadata={"help": "True on the page showing the schema of every database"}
+    )
+    table_name: str | None = field(
+        metadata={"help": "Name of the table on the page for a single table, or None"}
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class SchemaBaseView(BaseView):
@@ -1206,21 +1626,28 @@ class SchemaBaseView(BaseView):
 
     has_json_alternate = False
 
-    async def get_database_schema(self, database_name):
+    async def get_database_schema(self, database_name, actor):
         """Get schema SQL for a database."""
         db = self.ds.databases[database_name]
-        result = await db.execute(
-            "select group_concat(sql, ';' || CHAR(10)) as schema from sqlite_master where sql is not null"
+        allowed_tables_page = await self.ds.allowed_resources(
+            "view-table", actor, parent=database_name
         )
-        row = result.first()
-        return row["schema"] if row and row["schema"] else ""
+        allowed_table_names = {
+            resource.child async for resource in allowed_tables_page.all()
+        }
+        result = await db.execute(
+            "select tbl_name, sql from sqlite_master where sql is not null"
+        )
+        return ";\n".join(
+            row["sql"] for row in result.rows if row["tbl_name"] in allowed_table_names
+        )
 
     def format_json_response(self, data):
         """Format data as JSON response with CORS headers if needed."""
         headers = {}
         if self.ds.cors:
             add_cors_headers(headers)
-        return Response.json(data, headers=headers)
+        return Response.json({"ok": True, **data}, headers=headers)
 
     def format_error_response(self, error_message, format_, status=404):
         """Format error response based on requested format."""
@@ -1229,7 +1656,7 @@ class SchemaBaseView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response.json(
-                {"ok": False, "error": error_message}, status=status, headers=headers
+                error_body(error_message, status), status=status, headers=headers
             )
         else:
             return Response.text(error_message, status=status)
@@ -1245,13 +1672,15 @@ class SchemaBaseView(BaseView):
         self, request, schemas, is_instance=False, table_name=None
     ):
         """Format schema as HTML response."""
-        context = {
-            "schemas": schemas,
-            "is_instance": is_instance,
-        }
-        if table_name:
-            context["table_name"] = table_name
-        return await self.render(["schema.html"], request=request, context=context)
+        return await self.render(
+            ["schema.html"],
+            request=request,
+            context=SchemaContext(
+                schemas=schemas,
+                is_instance=is_instance,
+                table_name=table_name or None,
+            ),
+        )
 
 
 class InstanceSchemaView(SchemaBaseView):
@@ -1275,7 +1704,7 @@ class InstanceSchemaView(SchemaBaseView):
         # Get schema for each database
         schemas = []
         for database_name in allowed_databases:
-            schema = await self.get_database_schema(database_name)
+            schema = await self.get_database_schema(database_name, request.actor)
             schemas.append({"database": database_name, "schema": schema})
 
         if format_ == "json":
@@ -1305,18 +1734,18 @@ class DatabaseSchemaView(SchemaBaseView):
         database_name = request.url_vars["database"]
         format_ = request.url_vars.get("format") or "html"
 
-        # Check if database exists
-        if database_name not in self.ds.databases:
-            return self.format_error_response("Database not found", format_)
-
-        # Check view-database permission
+        # Permission check comes first, so actors without view-database
+        # cannot distinguish existing databases from missing ones
         await self.ds.ensure_permission(
             action="view-database",
             resource=DatabaseResource(database=database_name),
             actor=request.actor,
         )
 
-        schema = await self.get_database_schema(database_name)
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
+
+        schema = await self.get_database_schema(database_name, request.actor)
 
         if format_ == "json":
             return self.format_json_response(
@@ -1349,10 +1778,14 @@ class TableSchemaView(SchemaBaseView):
             actor=request.actor,
         )
 
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
+
         # Get schema for the table
         db = self.ds.databases[database_name]
         result = await db.execute(
-            "select sql from sqlite_master where name = ? and sql is not null",
+            "select sql from sqlite_master where name = ? "
+            "and type in ('table', 'view') and sql is not null",
             [table_name],
         )
         row = result.first()

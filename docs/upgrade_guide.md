@@ -29,6 +29,257 @@ The URL for executing a SQL query now looks like this:
 
 **This isn't a breaking change.** API calls to the older ``/databasename?sql=...`` endpoint will redirect to the new ``databasename/-/query?sql=...`` endpoint. Upgrading to the new URL is recommended to avoid the overhead of the additional redirect.
 
+(upgrade_guide_v1_view_name_query)=
+### `view_name` is now `"query"` for SQL query pages
+
+Plugin hooks that accept a `view_name` argument - `extra_template_vars()`, `extra_css_urls()`, `extra_js_urls()`, `extra_body_script()` and the `render` and `can_render` functions of `register_output_renderer()` - are now passed `"query"` for pages that show the results of a SQL query. This applies to arbitrary SQL at `/databasename/-/query?sql=...` and to stored queries.
+
+Previously those pages used `"database"`, the same value as the page listing the tables in a database, except for the output renderer `render` function which was passed `"table"`.
+
+If your plugin checks `view_name == "database"` and should still run on query pages, update it to check for both:
+
+```python
+if view_name in ("database", "query"):
+    ...
+```
+
+(upgrade_guide_v1_row_json)=
+### Row JSON returns a single `"row"` object
+
+The JSON for an individual row, such as `/databasename/tablename/1.json`, previously returned that row as the only item in a `"rows"` list. It now returns it as an object in a `"row"` key:
+
+```json
+{
+  "ok": true,
+  "row": {
+    "id": 1,
+    "content": "hello"
+  }
+}
+```
+
+Two other keys changed to match. The response no longer includes `"truncated"`, which was always `false`. If you request `?_extra=render_cell`, the `"render_cell"` key is now a single object keyed by column name instead of a list containing one object.
+
+Add `?_shape=objects` to the URL to get the previous format, with a `"rows"` list containing that row, a `"truncated"` key and `"render_cell"` as a list. Any other `?_shape=` option returns the same shape as table JSON. See {ref}`json_api_row`.
+
+Output renderer plugins are not affected: on row pages they are still passed a `rows` list containing the one row.
+
+(upgrade_guide_v1_renderer_response)=
+### Output renderers must return a `Response`
+
+The `render` function of an output renderer registered using `register_output_renderer()` must now return a `Response` object, or `None` if it cannot render the data. Returning a dictionary, which was deprecated in Datasette 0.49, is now an error.
+
+Change this:
+
+```python
+def render_demo():
+    return {
+        "body": "Hello",
+        "content_type": "text/plain",
+        "status_code": 200,
+        "headers": {"x-demo": "1"},
+    }
+```
+
+To this:
+
+```python
+from datasette import Response
+
+
+def render_demo():
+    return Response(
+        "Hello",
+        content_type="text/plain",
+        status=200,
+        headers={"x-demo": "1"},
+    )
+```
+
+The dictionary returned by `register_output_renderer()` itself must use the `"render"` key for that function. The older `"callback"` key is no longer accepted.
+
+(upgrade_guide_v1_rows)=
+### Rows are now `datasette.Row` objects
+
+The rows returned by {ref}`db.execute() <database_execute>` are now {ref}`datasette.Row <internals_row>` objects. They were previously `sqlite3.Row` objects. The rows passed to the `render_cell()`, `row_actions()` and `top_row()` plugin hooks and to output renderers are `datasette.Row` objects too.
+
+The same is true for rows your own code fetches from the connection passed to a {ref}`db.execute_fn() <database_execute_fn>` or {ref}`db.execute_write_fn() <database_execute_write_fn>` function.
+
+`Row` is not tied to SQLite, so that Datasette can support other databases in the future.
+
+Most code does not need to change. These all work as before:
+
+```python
+row["name"]
+row[0]
+id, name = row
+len(row)
+row.keys()
+dict(row)
+tuple(row)
+```
+
+Check your code for the following, each of which behaves differently:
+
+- **`isinstance(row, sqlite3.Row)`** is now `False`. Use `isinstance(row, datasette.Row)`, or remove the check.
+- **Column names are case-sensitive.** `sqlite3.Row` ignored case, so `row["Name"]` could find a column called `name`. Use the name exactly as the query returns it.
+- **A missing column name raises `KeyError`.** It previously raised `IndexError`. A position that is out of range still raises `IndexError`.
+
+  ```python
+  # Before
+  try:
+      value = row["optional_column"]
+  except IndexError:
+      value = None
+
+  # After
+  try:
+      value = row["optional_column"]
+  except KeyError:
+      value = None
+  ```
+
+  You can also check `"optional_column" in row.columns`.
+
+The connection passed to a {ref}`db.execute_isolated_fn() <database_execute_isolated_fn>` function is not configured by Datasette, so its rows are plain tuples. That has not changed.
+
+(upgrade_guide_v1_results_columns)=
+#### `results.columns` is no longer a list of strings
+
+The `.columns` property of the {ref}`Results <database_results>` object returned by `db.execute()` is now a {ref}`Columns <internals_row_columns>` object, containing a `Column` object for each column. Use `.names` to get the names:
+
+```python
+results = await db.execute("select id, name from dogs")
+
+# Before
+names = results.columns
+
+# After
+names = results.columns.names
+```
+
+`results.columns.names` is a tuple. Wrap it in `list()` if your code needs a list.
+
+The `columns` argument passed to output renderers is unchanged. It is still a list of strings.
+
+(upgrade_guide_v1_table_column_details)=
+#### `db.table_column_details()` returns `datasette.Column` objects
+
+{ref}`db.table_column_details(table) <database_table_column_details>` previously returned a list of `datasette.utils.Column` named tuples. It now returns a {ref}`Columns <internals_row_columns>` object containing `datasette.Column` objects, the same class that describes the columns of a row. `datasette.utils.Column` has been removed.
+
+Reading `column.name`, `column.type`, `column.notnull` and `column.default_value` works as before. These have changed:
+
+- **`is_pk` is now `pk_position`.** It holds the position of the column in the primary key, starting at 1, or 0 if the column is not part of it.
+- **`type` is `None` for a column declared without a type.** It was previously an empty string.
+- **`hidden` is now a boolean, and generated columns have their own attribute.** `hidden` was previously the integer reported by SQLite: 1 for a hidden column of a virtual table, 2 or 3 for a generated column. It is now `True` only for a hidden column of a virtual table. `column.generated` is `"virtual"` or `"stored"` for a generated column and `None` otherwise. Code that used `if column.hidden` to skip columns that cannot be written to should use `if column.hidden or column.generated`.
+- **`cid` has been removed.** Use the position of the column in the result, for example with `enumerate()`.
+- **Columns are no longer tuples.** They cannot be unpacked or indexed by position.
+
+```python
+columns = await db.table_column_details("dogs")
+
+# Before
+pks = [column.name for column in columns if column.is_pk]
+for cid, name, type_, *rest in columns:
+    print(cid, name, type_.upper())
+
+# After
+pks = [
+    column.name for column in columns if column.pk_position
+]
+for cid, column in enumerate(columns):
+    print(cid, column.name, (column.type or "").upper())
+```
+
+The value returned is no longer a list. It can be looped over and indexed in the same way, and `columns["name"]` now looks up a column by name.
+
+(upgrade_guide_v1_render_cell)=
+#### `render_cell()` is always passed the stored value
+
+The {ref}`render_cell() <plugin_hook_render_cell>` plugin hook previously received different things depending on the page. For a foreign key column that Datasette had expanded to a label, `value` was a dictionary such as `{"value": 3, "label": "Natalie"}` and `row` was an undocumented `CustomRow` object. On other pages `value` was the plain value and `row` was a `sqlite3.Row`.
+
+`value` is now always the value stored in the database, and `row` is always a `datasette.Row`. The label is available in the new `row.labels` dictionary, keyed by column name. A column is only present in `row.labels` if Datasette found a label for the value in that row.
+
+Change this:
+
+```python
+@hookimpl
+def render_cell(value, column):
+    if isinstance(value, dict):
+        label = value["label"]
+        value = value["value"]
+        return f"{label} (#{value})"
+```
+
+To this:
+
+```python
+@hookimpl
+def render_cell(row, value, column):
+    label = row.labels.get(column)
+    if label is not None:
+        return f"{label} (#{value})"
+```
+
+If your plugin needs to work with both older and newer versions of Datasette:
+
+```python
+@hookimpl
+def render_cell(row, value, column):
+    if isinstance(value, dict):
+        # Older versions of Datasette
+        label = value["label"]
+        value = value["value"]
+    else:
+        label = getattr(row, "labels", {}).get(column)
+    ...
+```
+
+The same applies to the `render_cell()` method of a {ref}`column type <datasette_column_types>`, which is now always passed the stored value. If a column is a foreign key and also has a column type assigned, the column type now renders the cell. Previously the cell showed a link to the referenced row, because the column type was passed the label dictionary and did not recognize it. The `transform_value()` method of a column type is likewise passed the stored value.
+
+On the row page, the `row` passed to `render_cell()` now has its values in the order they were selected, the same as on the table page. Previously the primary key columns were moved to the start, so `row[0]` could refer to a different column on the two pages. The row page still displays primary keys first.
+
+(upgrade_guide_v1_renderer_labels)=
+#### Output renderers and `?_labels=on`
+
+When a request uses `?_labels=on` or `?_label=column`, the `rows` passed to an {ref}`output renderer <plugin_register_output_renderer>` previously contained `{"value": ..., "label": ...}` dictionaries in place of the expanded values. Those rows now contain the stored values, with the labels in `row.labels`:
+
+```python
+async def render_demo(rows, columns):
+    lines = []
+    for row in rows:
+        for column, value in zip(columns, row):
+            # Before: value could be {"value": 3, "label": "Natalie"}
+            # After: value is 3 and the label is in row.labels
+            label = row.labels.get(column)
+            lines.append(f"{column}: {value} {label or ''}")
+    return Response.text("\n".join(lines))
+```
+
+(upgrade_guide_v1_labels_no_label_column)=
+#### `?_labels=on` only expands values that have a label
+
+{ref}`Expanding foreign keys <expand_foreign_keys>` with `?_labels=on` previously expanded a foreign key that refers to a table with no {ref}`label column <table_configuration_label_column>`, using the value as its own label:
+
+```json
+{"id": 1, "owner_id": {"value": 3, "label": "3"}}
+```
+
+Those values are now returned as they are stored:
+
+```json
+{"id": 1, "owner_id": 3}
+```
+
+The column is no longer listed in the `expanded_columns` extra, and CSV exports no longer add an `owner_id_label` column for it. Foreign keys to tables that do have a label column are expanded as before.
+
+In the HTML interface the value is still a link to the row it refers to.
+
+(upgrade_guide_v1_customrow)=
+#### `datasette.utils.CustomRow` has been removed
+
+This undocumented class was used for rows with expanded labels. Use {ref}`datasette.Row <internals_row>` in its place. `Row.from_dict({"id": 1, "owner_id": 3}, labels={"owner_id": "Natalie"})` constructs a row with labels, which is useful for testing a `render_cell()` implementation.
+
 (upgrade_guide_v1_metadata)=
 ### Metadata changes
 

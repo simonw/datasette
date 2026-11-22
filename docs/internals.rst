@@ -26,7 +26,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The request scheme - usually ``https`` or ``http``.
 
 ``.headers`` - dictionary (str -> str)
-    A dictionary of incoming HTTP request headers. Header names have been converted to lowercase.
+    A dictionary of incoming HTTP request headers. Header lookups using ``request.headers["Content-Type"]``, ``request.headers.get("Content-Type")`` and ``"Content-Type" in request.headers`` are case-insensitive. Header names are lowercase when iterating over the dictionary.
 
 ``.cookies`` - dictionary (str -> str)
     A dictionary of incoming cookies
@@ -51,6 +51,9 @@ The request object is passed to various plugin hooks. It represents an incoming 
 
 ``.actor`` - dictionary (str -> Any) or None
     The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
+
+``.max_post_body_bytes`` - integer
+    The maximum number of bytes ``await request.post_body()`` will read into memory, or ``0`` for no limit. Set from the :ref:`setting_max_post_body_bytes` setting (default 10MB) for requests created by Datasette. Can be passed to the ``Request`` constructor as a keyword argument.
 
 The object also has the following awaitable methods:
 
@@ -109,12 +112,14 @@ The object also has the following awaitable methods:
 ``await request.json()`` - Any
     Returns the parsed JSON body of a request submitted by ``POST``.
 
-``await request.post_body()`` - bytes
+``await request.post_body(max_bytes=None)`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
+
+    The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 10MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
 
 And a class method that can be used to create fake request objects for use in tests:
 
-``fake(path_with_query_string, method="GET", scheme="http", url_vars=None)``
+``fake(path_with_query_string, *, method="GET", scheme="http", url_vars=None)``
     Returns a ``Request`` instance for the specified path and method. For example:
 
     .. code-block:: python
@@ -142,9 +147,9 @@ And a class method that can be used to create fake request objects for use in te
 .. _internals_multiparams:
 
 The MultiParams class
-=====================
+---------------------
 
-``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values.
+``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values. The class can be imported using ``from datasette.utils import MultiParams``.
 
 Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
 
@@ -172,7 +177,7 @@ Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` a
 .. _internals_formdata:
 
 The FormData class
-==================
+------------------
 
 ``await request.form()`` returns a ``FormData`` object - a dictionary-like object which provides access to form fields and uploaded files. It has a similar interface to ``MultiParams``.
 
@@ -200,7 +205,7 @@ The FormData class
 .. _internals_uploadedfile:
 
 The UploadedFile class
-======================
+----------------------
 
 When parsing multipart form data with ``files=True``, file uploads are returned as ``UploadedFile`` objects with the following properties and methods:
 
@@ -254,7 +259,7 @@ Response class
 
 The ``Response`` class can be returned from view functions that have been registered using the :ref:`plugin_register_routes` hook.
 
-The ``Response()`` constructor takes the following arguments:
+The ``Response()`` constructor takes the following arguments. ``body`` can be passed positionally; ``status``, ``headers`` and ``content_type`` are keyword-only:
 
 ``body`` - string
     The body of the response.
@@ -279,7 +284,7 @@ For example:
         content_type="application/xml; charset=utf-8",
     )
 
-The quickest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
+The quickest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)``, ``Response.error(...)`` or ``Response.redirect(...)`` helper methods:
 
 .. code-block:: python
 
@@ -290,6 +295,8 @@ The quickest way to create responses is using the ``Response.text(...)``, ``Resp
     text_response = Response.text(
         "This will become utf-8 encoded text"
     )
+    # A JSON error in Datasette's standard error format:
+    error_response = Response.error("Cannot do that", 400)
     # Redirects are served as 302, unless you pass status=301:
     redirect_response = Response.redirect(
         "https://latest.datasette.io/"
@@ -298,6 +305,53 @@ The quickest way to create responses is using the ``Response.text(...)``, ``Resp
 Each of these responses will use the correct corresponding content-type - ``text/html; charset=utf-8``, ``application/json; charset=utf-8`` or ``text/plain; charset=utf-8`` respectively.
 
 Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
+
+``Response.error(messages, status=400)`` returns a JSON error in the :ref:`standard Datasette error format <json_api_errors>`. ``messages`` can be a single string or a list of strings. Use this for JSON-only endpoints; if your error should content-negotiate between JSON and HTML, raise ``Forbidden``, ``NotFound``, ``BadRequest`` or ``DatasetteError`` instead and Datasette's error handling will build the appropriate response.
+
+.. _internals_response_stream:
+
+Streaming responses with Response.stream()
+------------------------------------------
+
+Use ``Response.stream(body)`` to send a response a piece at a time, without first building all of it in memory. This is useful for large exports, and for responses that take a long time to generate.
+
+``body`` is an async iterator - usually an async generator - that yields strings or bytes. Strings are encoded as UTF-8.
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+
+    async def all_rows(datasette, request):
+        db = datasette.get_database()
+
+        async def body():
+            last_id = 0
+            while True:
+                rows = (
+                    await db.execute(
+                        "select id, name from items where id > ? order by id limit 100",
+                        [last_id],
+                    )
+                ).rows
+                if not rows:
+                    break
+                for row in rows:
+                    yield f"{row['id']}\t{row['name']}\n"
+                last_id = rows[-1]["id"]
+
+        return Response.stream(
+            body(),
+            content_type="text/tab-separated-values; charset=utf-8",
+        )
+
+``Response.stream()`` also accepts the optional ``status=`` and ``headers=`` arguments. ``content_type=`` defaults to ``text/plain; charset=utf-8``. ``response.set_cookie()`` works as it does for any other response.
+
+Three things to keep in mind when streaming:
+
+- The status and headers are sent before the first chunk, so they cannot depend on anything the iterator works out later. Code that might fail in a way the client should see as an error - checking permissions, validating arguments, running the first query - should run in the view function before it returns the response, where raising an exception still produces a regular error page.
+- If the iterator raises an exception part way through, Datasette cannot send an error page because the response has already started. The exception is passed on to the server, which drops the connection without completing the response, so the client sees a failed request instead of a truncated response that looks complete.
+- If the client disconnects, Datasette closes the iterator. For an async generator this runs any ``finally:`` blocks, which is the place to release resources.
 
 .. _internals_response_asgi_send:
 
@@ -413,8 +467,8 @@ The dictionary keys are the action names - e.g. ``view-instance`` - and the valu
 
 .. _datasette_plugin_config:
 
-.plugin_config(plugin_name, database=None, table=None)
-------------------------------------------------------
+.plugin_config(plugin_name, \*, database=None, table=None)
+----------------------------------------------------------
 
 ``plugin_name`` - string
     The name of the plugin to look up configuration for. Usually this is something similar to ``datasette-cluster-map``.
@@ -433,8 +487,8 @@ If the plugin is not configured the return value will be ``None``.
 
 .. _datasette_render_template:
 
-await .render_template(template, context=None, request=None)
-------------------------------------------------------------
+await .render_template(template, context=None, \*, request=None)
+----------------------------------------------------------------
 
 ``template`` - string, list of strings or jinja2.Template
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.
@@ -732,8 +786,8 @@ Example:
 await .check_visibility(actor, action, resource=None)
 -----------------------------------------------------
 
-``actor`` - dictionary
-    The authenticated actor. This is usually ``request.actor``.
+``actor`` - dictionary or None
+    The authenticated actor, or ``None`` for an anonymous request. This is usually ``request.actor``.
 
 ``action`` - string
     The name of the action that is being permission checked.
@@ -1306,8 +1360,8 @@ Removes the column type assignment for the specified column.
 
 .. _datasette_add_database:
 
-.add_database(db, name=None, route=None)
-----------------------------------------
+.add_database(db, name=None, \*, route=None)
+--------------------------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
@@ -1350,8 +1404,8 @@ Use ``is_mutable=False`` to add an immutable database.
 
 .. _datasette_add_memory_database:
 
-.add_memory_database(memory_name, name=None, route=None)
---------------------------------------------------------
+.add_memory_database(memory_name, name=None, \*, route=None)
+------------------------------------------------------------
 
 Adds a shared in-memory database with the specified name:
 
@@ -1394,7 +1448,31 @@ Release all resources held by this ``Datasette`` instance. This calls :ref:`data
 
 If a call to ``Database.close()`` on one of the attached databases raises an exception, ``Datasette.close()`` will continue trying to close the remaining databases and will re-raise the first exception after every database has been processed.
 
-When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``.
+When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``. See :ref:`datasette_lifecycle` for where ``close()`` fits into the full startup-to-shutdown sequence.
+
+.. _datasette_add_background_task:
+
+.add_background_task(func, name=None)
+-------------------------------------
+
+``func`` - async callable
+    A coroutine function taking one positional argument, the ``Datasette`` instance. Core calls ``await func(datasette)``.
+
+``name`` - string, optional
+    A name for the task, used to identify it in the ``/-/tasks`` introspection endpoint (:ref:`JsonDataView_tasks`) and in log messages. Defaults to ``func.__qualname__``. If the resulting name collides with an already-registered task, a ``-2``, ``-3``, ... suffix is appended.
+
+Registers supervised background work and returns a :ref:`BackgroundTask <BackgroundTask>` handle. Tasks registered during startup launch after all startup hooks finish; tasks registered after launch start immediately.
+
+See :ref:`internals_background_tasks` for examples, launch behavior, task supervision and cancellation.
+
+.. _datasette_start_background_tasks:
+
+await .start_background_tasks()
+-------------------------------
+
+Runs startup (if it has not already run) and launches every task registered with :ref:`datasette_add_background_task`.
+
+See :ref:`internals_background_tasks` for when tasks launch automatically, and :ref:`internals_background_tasks_explicit` for examples and startup considerations in tests and headless programs.
 
 .. _datasette_track_event:
 
@@ -1498,7 +1576,32 @@ For example:
 
 .. code-block:: python
 
-    downloads_are_allowed = datasette.setting("allow_download")
+    downloads_are_allowed = datasette.setting(
+        "default_allow_download"
+    )
+
+.. _datasette_capped_time_limit_ms:
+
+.capped_time_limit_ms(time_limit_ms)
+------------------------------------
+
+``time_limit_ms`` - integer
+    A time limit in milliseconds.
+
+Returns ``time_limit_ms``, or the value of the :ref:`setting_sql_time_limit_ms` setting if that is lower.
+
+The ``custom_time_limit=`` argument to :ref:`db.execute() <database_execute>` can set a time limit that is longer than ``sql_time_limit_ms``. Use this method for a time limit that should only ever shorten that setting, such as one that comes from a request or from plugin configuration:
+
+.. code-block:: python
+
+    time_limit_ms = datasette.capped_time_limit_ms(
+        int(request.args["_timelimit"])
+    )
+    results = await db.execute(
+        sql, custom_time_limit=time_limit_ms
+    )
+
+Datasette uses this method for the ``?_timelimit=`` query string argument and for the :ref:`setting_facet_time_limit_ms` and :ref:`setting_facet_suggest_time_limit_ms` settings.
 
 .. _datasette_resolve_database:
 
@@ -1569,7 +1672,7 @@ It returns a ``ResolvedRow`` named tuple instance with the following fields:
 ``pk_values`` - list
     List of primary key values decoded from the URL
 
-``row`` - ``sqlite3.Row``
+``row`` - :ref:`Row <internals_row>`
     The row itself
 
 If the database or table cannot be found it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception.
@@ -1585,32 +1688,32 @@ datasette.client
 
 Plugins can make internal simulated HTTP requests to the Datasette instance within which they are running. This ensures that all of Datasette's external JSON APIs are also available to plugins, while avoiding the overhead of making an external HTTP call to access those APIs.
 
-The ``datasette.client`` object is a wrapper around the `HTTPX Python library <https://www.python-httpx.org/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
+The ``datasette.client`` object is a wrapper around the `HTTPX2 Python library <https://httpx2.pydantic.dev/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
 
 It offers the following methods:
 
-``await datasette.client.get(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.get(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal GET request against that path.
 
-``await datasette.client.post(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.post(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal POST request. Use ``data={"name": "value"}`` to pass form parameters.
 
-``await datasette.client.options(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.options(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal OPTIONS request.
 
-``await datasette.client.head(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.head(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal HEAD request.
 
-``await datasette.client.put(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.put(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal PUT request.
 
-``await datasette.client.patch(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.patch(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal PATCH request.
 
-``await datasette.client.delete(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.delete(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal DELETE request.
 
-``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal request with the given HTTP method against that path.
 
 These methods can be used with :ref:`internals_datasette_urls` - for example:
@@ -1627,7 +1730,7 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
 ``datasette.client`` methods automatically take the current :ref:`setting_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
 
-For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
+For documentation on available ``**kwargs`` options and the shape of the HTTPX2 Response object refer to the `HTTPX2 Async documentation <https://httpx2.pydantic.dev/async/>`__.
 
 .. _internals_datasette_client_actor:
 
@@ -1712,10 +1815,10 @@ datasette.urls
 
 The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`setting_base_url` configuration setting that might be in effect.
 
-``datasette.urls.instance(format=None)``
+``datasette.urls.instance(*, format=None)``
     Returns the URL to the Datasette instance root page. This is usually ``"/"``.
 
-``datasette.urls.path(path, format=None)``
+``datasette.urls.path(path, *, format=None)``
     Takes a path and returns the full path, taking ``base_url`` into account.
 
     For example, ``datasette.urls.path("-/logout")`` will return the path to the logout page, which will be ``"/-/logout"`` by default or ``/prefix-path/-/logout`` if ``base_url`` is set to ``/prefix-path/``
@@ -1731,17 +1834,72 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
-``datasette.urls.static(path)``
-    Returns the URL of one of Datasette's default static assets, for example ``"/-/static/app.css"``
-
-``datasette.urls.database(database_name, format=None)``
+``datasette.urls.database(database_name, *, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
-``datasette.urls.table(database_name, table_name, format=None)``
+``datasette.urls.table(database_name, table_name, *, format=None)``
     Returns the URL to a table page, for example ``"/fixtures/facetable"``
 
-``datasette.urls.query(database_name, query_name, format=None)``
+``datasette.urls.query(database_name, query_name, *, format=None)``
     Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
+
+``datasette.urls.row(database_name, table_name, row_path, *, format=None)``
+    Returns the URL to a row page, for example ``"/fixtures/facetable/1"``
+
+    ``row_path`` should be a list or tuple of the primary key values for the row, in the order of the table's primary key columns. Datasette will :ref:`tilde-encode <internals_tilde_encoding>` each value and join them with commas. For a table without a primary key, pass the ``rowid``.
+
+    .. code-block:: python
+
+        datasette.urls.row("fixtures", "facetable", [1])
+        # "/fixtures/facetable/1"
+        datasette.urls.row(
+            "fixtures", "compound_primary_key", ["a/b", "c"]
+        )
+        # "/fixtures/compound_primary_key/a~2Fb,c"
+
+    ``row_path`` can also be a string. Strings are used as they are, without any encoding, so they must already be tilde-encoded.
+
+``datasette.urls.row_blob(database_name, table_name, row_path, column)``
+    Returns the URL that serves the binary content of a single ``BLOB`` column for a row, for example ``"/fixtures/binary_data/1.blob?_blob_column=data"``
+
+    ``row_path`` accepts the same values as ``datasette.urls.row()``. The column name is URL-encoded for you.
+
+.. _internals_datasette_urls_modify:
+
+``datasette.urls.modify(target, *, add=None, replace=None, remove=None, format=None)``
+    Returns a modified copy of a URL. Use this to build links that change the query string of the current page, such as sort, filter and pagination links.
+
+    ``target`` is either the current :ref:`request <internals_request>` or a path string, which can include a query string. A request uses the path and query string of that request, with any ``base_url`` prefix handled for you. A string should be a path without the ``base_url`` prefix, or a ``PrefixedUrlString`` returned by another ``datasette.urls`` method.
+
+    The changes are applied in this order:
+
+    - ``remove`` - a key, or a list or set of keys and ``(key, value)`` tuples, or a ``{key: value}`` dictionary. A key removes every value for that key. A key and value pair removes only that value, leaving other values for the same key in place.
+    - ``replace`` - a dictionary or list of ``(key, value)`` tuples. Any existing values for each key are dropped and the new value is used in their place. A value of ``None`` removes the key.
+    - ``add`` - a dictionary or list of ``(key, value)`` tuples. These are added to the end of the query string, keeping any existing values for the same key.
+
+    In ``add`` and ``replace`` a value can be a list, which sets several values for that key. Query string arguments with blank values, such as ``?name=``, are preserved. Existing arguments are left exactly as they were unless something is removed or replaced, in which case the whole query string is re-encoded.
+
+    ``format`` works like the ``format=`` argument to the other methods. When ``target`` is a request for a page such as ``/fixtures/facetable.json`` the existing ``.json`` extension is replaced. Pass ``format=False`` to remove the extension from a request without adding a new one, which gives the path to the HTML version of the page.
+
+    .. code-block:: python
+
+        # request is for /fixtures/facetable?_sort=state&_facet=state&_next=10
+        datasette.urls.modify(
+            request, replace={"_sort_desc": "city"}, remove="_sort"
+        )
+        # "/fixtures/facetable?_facet=state&_next=10&_sort_desc=city"
+        datasette.urls.modify(
+            request,
+            add={"_facet": "city"},
+            remove=["_next", ("_facet", "state")],
+        )
+        # "/fixtures/facetable?_sort=state&_facet=city"
+        datasette.urls.modify(
+            "/fixtures/facetable?_size=10", add={"_labels": "on"}
+        )
+        # "/fixtures/facetable?_size=10&_labels=on"
+
+    The same operations are available for a query string on its own as ``datasette.utils.modify_query_string(query_string, add=None, replace=None, remove=None)``.
 
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
 
@@ -1751,10 +1909,141 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.database("fixtures") }}">Fixtures database</a>
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
+    <a href="{{ urls.row("fixtures", "facetable", [1]) }}">facetable row 1</a>
+    <a href="{{ urls.modify(request, replace={"_size": 50}, remove="_next") }}">50 rows per page</a>
 
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
+
+.. _datasette_lifecycle:
+
+Application lifecycle
+=====================
+
+Datasette guarantees a fixed sequence of events between the moment a ``Datasette`` instance is constructed and the moment its resources are released:
+
+1. ``Datasette(...)`` — the constructor runs synchronously and does not run plugin hooks.
+2. **Startup** — ``await datasette.invoke_startup()`` runs once: it populates the internal database's catalog of table schemas (:ref:`internals_internal`), loads canned queries and column type configuration, then calls every registered :ref:`plugin_hook_startup` hook, in plugin registration order. When Datasette is being served, table-count precomputation for immutable databases runs immediately before this, as part of the same startup sequence.
+3. **Background-task launch** — once *every* ``startup`` hook has finished (not before), every task registered with :ref:`datasette_add_background_task` — by any plugin — is launched. A task registered by one plugin's ``startup`` hook can safely depend on state set up by another plugin's ``startup`` hook, because launch only happens after the whole round of hooks completes.
+4. **Serving** — the instance handles requests (or, for headless or CLI use, does whatever the embedding program does with it).
+5. **Shutdown** — triggered by the ASGI ``lifespan.shutdown`` event (Ctrl-C, ``SIGTERM``) or the end of a ``datasette serve`` process: every :ref:`plugin_hook_shutdown` hook runs first, while background tasks are still alive, so a plugin can tell its own task to wind down gracefully; every still-running background task is then cancelled and given a five-second grace period to actually stop; finally every database connection is released via :ref:`datasette_close`.
+
+.. admonition:: Startup hooks run on the event loop that serves requests
+
+   In every trigger path below, ``startup`` hooks run on the same ``asyncio`` event loop that goes on to accept connections. It is safe to create loop-bound primitives — ``asyncio.Lock``, ``asyncio.Queue``, ``asyncio.Event``, a raw ``asyncio.create_task()`` call — inside a ``startup`` hook, and to register long-lived background work with :ref:`datasette_add_background_task` there.
+
+Three trigger paths
+-------------------
+
+- ``datasette serve`` (CLI) — startup and ``uvicorn.Server.serve()`` both run inside a single ``asyncio.run()`` call, so there is exactly one event loop for the whole life of the process.
+- **ASGI lifespan** — ``Datasette.app()`` wires startup and background-task launch into the ``on_startup`` list, and shutdown into the ``on_shutdown`` list, of an internal ``AsgiLifespan`` wrapper. A spec-compliant ASGI server (uvicorn, hypercorn, and others) sends the ``lifespan.startup`` message and waits for ``lifespan.startup.complete`` before delivering any ``http`` or ``websocket`` scope, so startup — including every plugin's own internal-database migrations — is guaranteed to have finished before any request reaches Datasette, including requests seen by plugin :ref:`asgi_wrapper <plugin_asgi_wrapper>` middleware. If a ``startup`` hook raises, ``AsgiLifespan`` sends ``lifespan.startup.failed`` with the exception message instead of hanging or crashing ambiguously, so the host can abort the boot cleanly.
+- **First-request fallback** — an internal ``AsgiRunOnFirstRequest`` wrapper runs the same startup work as a safety net for hosts that never send ASGI lifespan events at all: some ASGI mounts, a bare ``app()`` embedded inside another framework, and :ref:`datasette.client <internals_datasette_client>` / test clients, which drive requests directly over ``httpx2.ASGITransport`` without ever emitting ``lifespan.startup``. It runs startup exactly once, the first time any non-lifespan scope arrives, guarded by a lock so that concurrent early requests can't run it twice.
+
+All three paths call the same idempotent internal methods, so it is safe for more than one of them to fire — lifespan startup completing and then a first request arriving afterwards is a no-op the second time. A host that never sends lifespan events and never goes through the CLI degrades to first-request timing: startup runs on the first request instead of before it, exactly as Datasette always worked prior to this lifecycle guarantee. This is a deliberate fallback rather than a regression — see :ref:`internals_background_tasks` for how to opt out of launching background tasks (the ``--get`` CLI path) or drive startup and launch explicitly (tests, headless embedders).
+
+.. _internals_background_tasks:
+
+Background tasks
+================
+
+Datasette can supervise long-lived background work for plugins, such as polling for updates. Register work using :ref:`datasette_add_background_task` and use the returned :ref:`BackgroundTask <BackgroundTask>` handle to inspect or cancel it. See :ref:`datasette_lifecycle` for how background tasks fit into the application's startup and shutdown sequence.
+
+Registering tasks
+-----------------
+
+Use :ref:`datasette_add_background_task` to register an async callable, typically from a :ref:`plugin_hook_startup` hook. The callable takes one argument, the ``Datasette`` instance. Tasks can also be registered later, including from a request handler.
+
+Registration is separate from launch. Calling this from a ``startup`` hook — the common case — buffers the task; core launches every registered task once *all* ``startup`` hooks have completed, as described in :ref:`datasette_lifecycle`. Calling it after launch has already happened — for example from a request handler, to start a per-job task dynamically — starts the task immediately instead.
+
+.. code-block:: python
+
+    import asyncio
+    from datasette import hookimpl
+
+
+    async def poll_for_updates(datasette):
+        while True:
+            await do_one_poll(datasette)
+            await asyncio.sleep(60)
+
+
+    @hookimpl
+    def startup(datasette):
+        datasette.add_background_task(
+            poll_for_updates, name="my-plugin-poller"
+        )
+
+Datasette supervises each registered task:
+
+- Keeps the task alive.
+- Logs exceptions other than ``asyncio.CancelledError``, with their tracebacks, to the ``datasette.background_tasks`` logger. The exception is recorded on the handle's ``.exception``, and its ``.state`` becomes ``crashed``.
+- Cancels running tasks during shutdown and gives them five seconds to stop. See :ref:`datasette_lifecycle`.
+
+.. _internals_background_tasks_launch:
+
+Launch matrix
+-------------
+
+Whether registered tasks actually launch depends on how the instance is being run:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Trigger
+     - Launches registered tasks?
+   * - ASGI lifespan (real server deployments)
+     - Yes, after ``lifespan.startup`` completes
+   * - First-request fallback (lifespan-less hosts)
+     - Yes, on the first request — parity with the lifespan case
+   * - ``datasette serve --get``
+     - Never
+   * - Tests / headless embedders
+     - Only if you call :ref:`datasette_start_background_tasks` explicitly
+
+``datasette --get`` never launches background tasks, even though its one-shot request flows through the same first-request fallback as everything else: it sets an internal flag before making that request specifically to suppress the launch, since a one-shot CLI invocation has no server loop left running afterwards to keep any launched tasks alive.
+
+.. _internals_background_tasks_explicit:
+
+Starting tasks explicitly
+-------------------------
+
+Call :ref:`datasette_start_background_tasks` to run startup (if it has not already run) and launch every task registered with :ref:`datasette_add_background_task`. This is the explicit equivalent of what happens automatically via ASGI lifespan or the first-request fallback in a served deployment — the entry point for tests and headless embedders (a cron-style CLI command that wants supervised background work without running a server) that need background tasks without going through either of those paths.
+
+.. code-block:: python
+
+    datasette = Datasette(memory=True)
+    await datasette.start_background_tasks()
+
+.. _BackgroundTask:
+
+BackgroundTask objects
+----------------------
+
+:ref:`datasette_add_background_task` returns a ``BackgroundTask`` handle with the following attributes:
+
+``.name`` - string
+    The task's (unique) name.
+
+``.state`` - string
+    One of ``registered`` (added but not yet launched), ``running``, ``completed`` (returned cleanly), ``crashed`` (raised an exception) or ``cancelled``.
+
+``.task`` - ``asyncio.Task`` or ``None``
+    The underlying ``asyncio.Task``, once launched. ``None`` while still ``registered``.
+
+``.exception`` - ``BaseException`` or ``None``
+    The exception that crashed the task, if ``.state`` is ``crashed``.
+
+``.started_at`` - string or ``None``
+    ISO 8601 UTC timestamp of when the task was launched.
+
+``.function`` - string
+    The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
+
+``.cancel()``
+    Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.
+
+This is also the shape of each entry returned by the ``/-/tasks`` JSON introspection endpoint — see :ref:`JsonDataView_tasks`.
 
 .. _internals_permission_classes:
 
@@ -1891,8 +2180,8 @@ Instances of the ``Database`` class can be used to execute queries against attac
 
 .. _database_constructor:
 
-Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None, is_temp_disk=False)
------------------------------------------------------------------------------------------------
+Database(ds, path=None, \*, is_mutable=True, is_memory=False, memory_name=None, mode=None, is_temp_disk=False)
+--------------------------------------------------------------------------------------------------------------
 
 The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
 
@@ -1913,6 +2202,9 @@ The arguments are as follows:
 ``memory_name`` - string or ``None``
     Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
 
+``mode`` - string or ``None``
+    The ``mode`` to use in the `SQLite URI <https://www.sqlite.org/uri.html>`__ when opening the file at ``path``. Use ``"rwc"`` to create the file if it does not exist yet. Every connection to the file is opened using this mode, including those used to run read queries. The default of ``None`` opens read connections as read-only, or as immutable if ``is_mutable`` is ``False``. This has no effect on in-memory databases.
+
 ``is_temp_disk`` - boolean
     Set this to ``True`` to create a temporary file-backed database. This creates a SQLite database in a temporary file on disk (using Python's ``tempfile.mkstemp()``) with WAL mode enabled for better concurrent read/write performance. The temporary file is automatically cleaned up when the database is closed or when the process exits.
 
@@ -1920,7 +2212,17 @@ The arguments are as follows:
 
     When ``is_temp_disk=True``, the ``path``, ``is_mutable``, and ``mode`` parameters are set automatically and should not be provided.
 
-The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
+The first argument is the ``datasette`` instance you are attaching to and the second is the ``path``. Every other argument is optional and must be passed as a keyword argument:
+
+.. code-block:: python
+
+    from datasette.database import Database
+
+    db = datasette.add_database(
+        Database(
+            datasette, "/path/to/data.db", is_mutable=False
+        )
+    )
 
 .. _database_hash:
 
@@ -1946,10 +2248,10 @@ Executes a SQL query against the database and returns the resulting rows (see :r
     Should the rows returned by the query be truncated at the maximum page size? Defaults to ``True``, set this to ``False`` to disable truncation.
 
 ``custom_time_limit`` - integer ms
-    A custom time limit for this query. This can be set to a lower value than the Datasette configured default. If a query takes longer than this it will be terminated early and raise a ``dataette.database.QueryInterrupted`` exception.
+    A custom time limit for this query, used instead of the :ref:`setting_sql_time_limit_ms` setting. This can be lower or higher than that setting. If a query takes longer than this it will be terminated early and raise a ``datasette.database.QueryInterrupted`` exception. Do not pass a value from an untrusted source without capping it first using :ref:`datasette.capped_time_limit_ms() <datasette_capped_time_limit_ms>`, as Datasette does for the ``?_timelimit=`` query string argument.
 
 ``page_size`` - integer
-    Set a custom page size for truncation, over-riding the configured Datasette default.
+    The page size of a paginated query, which fetches one more row than this to find out if there is a next page. If this is the same as :ref:`setting_max_returned_rows`, a truncated query returns that extra row. Without it, a truncated query returns at most ``max_returned_rows`` rows.
 
 ``log_sql_errors`` - boolean
     Should any SQL errors be logged to the console in addition to being raised as an error? Defaults to ``True``.
@@ -1961,7 +2263,7 @@ Results
 
 The ``db.execute()`` method returns a single ``Results`` object. This can be used to access the rows returned by the query.
 
-Iterating over a ``Results`` object will yield SQLite `Row objects <https://docs.python.org/3/library/sqlite3.html#row-objects>`__. Each of these can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
+Iterating over a ``Results`` object will yield :ref:`Row objects <internals_row>`. Each of these can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
 
 .. code-block:: python
 
@@ -1975,11 +2277,14 @@ The ``Results`` object also has the following properties and methods:
 ``.truncated`` - boolean
     Indicates if this query was truncated - if it returned more results than the specified ``page_size``. If this is true then the results object will only provide access to the first ``page_size`` rows in the query result. You can disable truncation by passing ``truncate=False`` to the ``db.query()`` method.
 
-``.columns`` - list of strings
-    A list of column names returned by the query.
+``.columns`` - :ref:`Columns <internals_row_columns>`
+    The columns returned by the query. ``results.columns.names`` is a tuple of the column names. Every row in ``.rows`` shares this same object as its ``row.columns``.
 
-``.rows`` - list of ``sqlite3.Row``
+``.rows`` - list of :ref:`Row <internals_row>`
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
+
+``.with_columns(columns)`` - ``Results``
+    Returns a copy of these results that uses a different :ref:`Columns <internals_row_columns>` object. Datasette uses this on table and row pages to attach the details of the table's columns to the rows.
 
 ``.dicts()`` - list of ``dict``
     This method returns a list of Python dictionaries, one for each row.
@@ -1992,6 +2297,92 @@ The ``Results`` object also has the following properties and methods:
 
 ``.__len__()``
     Calling ``len(results)`` returns the (truncated) number of returned results.
+
+.. _internals_row:
+
+Row
+---
+
+Datasette represents each row returned by a query as a ``datasette.Row`` object. These are returned by :ref:`db.execute() <database_execute>` and passed to plugin hooks such as :ref:`render_cell() <plugin_hook_render_cell>`.
+
+``Row`` is not specific to SQLite. It describes the row in terms that apply to any database, so code written against it does not depend on the ``sqlite3`` module.
+
+Values can be read by column name or by position, and a row behaves as a sequence of its values:
+
+.. code-block:: python
+
+    row = (
+        await db.execute("select id, name from dogs")
+    ).first()
+    row["name"]  # By column name
+    row[1]  # By position
+    id, name = row  # Iterating yields the values
+    len(row)
+    "Cleo" in row  # True if any value equals "Cleo"
+    dict(row)  # {"id": 1, "name": "Cleo"}
+
+``row["column"]`` raises a ``KeyError`` if there is no column with that name, and ``row[5]`` raises an ``IndexError`` if there are not that many values. Column names are case-sensitive. If a query returns two columns with the same name, ``row["name"]`` returns the first and both are available by position.
+
+Rows are immutable, and two rows are equal if they have the same values and the same column names.
+
+``row.keys()`` - list of strings
+    The names of the columns.
+
+``row.columns`` - :ref:`Columns <internals_row_columns>`
+    The columns for this row. Every row from the same query shares the same object.
+
+``row.labels`` - dictionary
+    A read-only dictionary of labels for the foreign keys in this row that Datasette has resolved, mapping the column name to the label of the row it refers to. The value in the row itself is always the stored key.
+
+    A column is only included if a label was found, so ``"owner_id" in row.labels`` tells you whether that foreign key was resolved for this row. The dictionary is empty for rows returned by ``db.execute()``. Datasette adds labels on table and row pages, see :ref:`expand_foreign_keys`.
+
+``Row.from_dict(d, labels=None)`` - ``Row``
+    Builds a row from a ``{column_name: value}`` dictionary, with an optional ``{column_name: label}`` dictionary of labels. Use this to construct rows in the tests for a plugin.
+
+.. _internals_row_columns:
+
+Columns and Column
+~~~~~~~~~~~~~~~~~~
+
+``datasette.Columns`` is an immutable sequence of ``datasette.Column`` objects. It is used for the columns in a set of results, and :ref:`db.table_column_details() <database_table_column_details>` returns one describing the columns of a table.
+
+.. code-block:: python
+
+    columns = results.columns
+    columns.names  # ("id", "name")
+    columns[0]  # Column(name="id", ...)
+    columns["name"]  # Column(name="name", ...)
+    "name" in columns  # True
+    for column in columns:
+        print(column.name, column.type)
+
+``columns.names`` - tuple of strings
+    The names of the columns.
+
+Each ``Column`` has the following attributes. Only ``name`` is always available. The others describe a column of a table, and are ``None`` for the columns of an arbitrary SQL query. Datasette fills them in on table and row pages.
+
+``column.name`` - string
+    The name of the column.
+
+``column.type`` - string or None
+    The type the column was declared with, exactly as the database reports it, for example ``INTEGER`` or ``varchar(30)``. ``None`` if the column was declared without a type.
+
+    This is separate from the :ref:`column types <datasette_column_types>` that Datasette itself can assign to a column. It describes the column, not the values in it: SQLite will store a string in a column declared as ``INTEGER``. SQLite accepts any name as a declared type, and the capitalization of the string can differ between SQLite versions, with older versions reporting ``integer`` where newer versions report ``INTEGER``.
+
+``column.notnull`` - integer or None
+    ``1`` if the column has a ``NOT NULL`` constraint, otherwise ``0``.
+
+``column.default_value`` - string or None
+    The default value for the column, as a SQL expression. ``None`` if it has no default.
+
+``column.pk_position`` - integer or None
+    The position of the column in the primary key of its table, starting at ``1``, or ``0`` if it is not part of the primary key. A table with a compound primary key has columns with positions ``1``, ``2`` and so on.
+
+``column.hidden`` - boolean or None
+    ``True`` for a hidden column of a virtual table, such as the column an FTS table names after itself. Hidden columns are not returned by ``select *``. Always ``False`` on versions of SQLite before 3.26, which do not report them.
+
+``column.generated`` - string or None
+    ``"virtual"`` or ``"stored"`` if this is a `generated column <https://www.sqlite.org/gencol.html>`__, otherwise ``None``. A generated column cannot be written to.
 
 .. _database_execute_fn:
 
@@ -2012,10 +2403,14 @@ Example usage:
 
     version = await db.execute_fn(get_version)
 
+Rows fetched from this connection are :ref:`Row <internals_row>` objects, the same as those returned by ``db.execute()``.
+
+The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
+
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10)
---------------------------------------------------------------------------------------------------------
+await db.execute_write(sql, params=None, \*, block=True, request=None, return_all=False, returning_limit=10, transaction=True, time_limit_ms=2000)
+--------------------------------------------------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -2040,7 +2435,7 @@ The method will block until the operation is completed, and the return value wil
     ``True`` if the statement returned more rows than ``returning_limit``.
 
 ``.fetchall()``
-    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
+    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause, as a list of :ref:`Row <internals_row>` objects. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
 
 SQLite statements using ``RETURNING`` must have their rows consumed before the transaction can commit. Datasette will fetch up to ``returning_limit + 1`` rows before committing, store up to ``returning_limit`` rows on the result object and set ``.truncated`` if there were more. The default ``returning_limit`` is ``10``.
 
@@ -2050,12 +2445,21 @@ If you need to retrieve every row returned by a statement, pass ``return_all=Tru
 
 If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
-Each call to ``execute_write()`` will be executed inside a transaction.
+Each call to ``execute_write()`` will be executed inside a transaction. Pass
+``transaction=False`` for statements such as ``VACUUM`` that cannot run inside
+a transaction.
+
+Write statements have a default time limit of 2,000ms. Pass a different value
+using ``time_limit_ms=`` or use ``time_limit_ms=None`` to allow the statement to
+run without a time limit.
+
+This write limit is independent of the ``sql_time_limit_ms`` setting used for
+read queries. Changing that setting does not change the default write limit.
 
 .. _database_execute_write_script:
 
-await db.execute_write_script(sql, block=True)
-----------------------------------------------
+await db.execute_write_script(sql, \*, block=True)
+--------------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
 
@@ -2063,8 +2467,8 @@ Each call to ``execute_write_script()`` will be executed inside a transaction.
 
 .. _database_execute_write_many:
 
-await db.execute_write_many(sql, params_seq, block=True)
---------------------------------------------------------
+await db.execute_write_many(sql, params_seq, \*, block=True)
+------------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
 
@@ -2079,12 +2483,16 @@ Each call to ``execute_write_many()`` will be executed inside a transaction.
 
 .. _database_execute_write_fn:
 
-await db.execute_write_fn(fn, block=True, transaction=True)
------------------------------------------------------------
+await db.execute_write_fn(fn, \*, block=True, transaction=True)
+---------------------------------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
+
+Rows fetched from this connection are :ref:`Row <internals_row>` objects.
+
+Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. warning::
 
@@ -2142,7 +2550,25 @@ The value returned from ``await database.execute_write_fn(...)`` will be the ret
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
 
-By default your function will be executed inside a transaction. You can pass ``transaction=False`` to disable this behavior, though if you do that you should be careful to manually apply transactions - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
+By default Datasette manages the transaction. For nested transactions, use `sqlite_utils.Database(conn).atomic() <https://sqlite-utils.datasette.io/en/stable/python-api.html#grouping-changes-with-db-atomic>`__. Pass ``transaction=False`` to manage transactions yourself.
+
+For example, archive an article and record the change in an audit log:
+
+.. code-block:: python
+
+    import sqlite_utils
+
+
+    def archive_article(conn):
+        db = sqlite_utils.Database(conn)
+        with db.atomic():
+            db["articles"].update(1, {"archived": True})
+            db["audit_log"].insert(
+                {"article_id": 1, "action": "archive"}
+            )
+
+
+    await database.execute_write_fn(archive_article)
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 
@@ -2153,7 +2579,7 @@ await db.execute_isolated_fn(fn)
 
 This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method.
 
-The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection.
+The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection, and Datasette does not configure it in any other way. Rows fetched from it are plain tuples, not :ref:`Row <internals_row>` objects.
 
 This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
 
@@ -2219,8 +2645,10 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.table_columns(table)`` - list of strings
     Names of columns in a specific table.
 
-``await db.table_column_details(table)`` - list of named tuples
-    Full details of the columns in a specific table. Each column is represented by a ``Column`` named tuple with fields ``cid`` (integer representing the column position), ``name`` (string), ``type`` (string, e.g. ``REAL`` or ``VARCHAR(30)``), ``notnull`` (integer 1 or 0), ``default_value`` (string or None), ``is_pk`` (integer 1 or 0).
+.. _database_table_column_details:
+
+``await db.table_column_details(table)`` - :ref:`Columns <internals_row_columns>`
+    Full details of the columns in a specific table or view, as a ``Columns`` object containing a ``datasette.Column`` for each one. Each has ``name``, ``type``, ``notnull``, ``default_value``, ``pk_position``, ``hidden`` and ``generated`` attributes, described in :ref:`internals_row_columns`. ``columns["name"]`` looks up a column by name.
 
 ``await db.primary_keys(table)`` - list of strings
     Names of the columns that are part of the primary key for this table.
@@ -2302,6 +2730,259 @@ The ``Database`` class also provides properties and methods for introspecting th
           }
         }
 
+.. _internals_telemetry:
+
+OpenTelemetry
+=============
+
+Datasette uses the `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ library to provide `OpenTelemetry <https://opentelemetry.io>`__ traces and metrics for Datasette applications.
+
+Datasette emits telemetry under the ``datasette`` instrumentation scope. To enable tracing, run Datasette under the ``opentelemetry-instrument`` agent.
+
+Plugins can emit their own spans and metrics alongside these, using the same registry classes and test helpers core uses - see :ref:`plugin_telemetry`.
+
+.. _internals_telemetry_turning_on:
+
+Turning tracing on
+------------------
+
+Install an OpenTelemetry SDK, an exporter and the instrumentation agent, then launch Datasette through ``opentelemetry-instrument``:
+
+.. code-block:: bash
+
+    pip install opentelemetry-distro opentelemetry-exporter-otlp
+
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_METRICS_EXPORTER=console \
+    OTEL_LOGS_EXPORTER=console \
+    OTEL_TRACES_EXPORTER=console \
+      opentelemetry-instrument datasette mydb.db
+
+Or using ``uv run``:
+
+.. code-block:: bash
+
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_METRICS_EXPORTER=console \
+    OTEL_LOGS_EXPORTER=console \
+    OTEL_TRACES_EXPORTER=console \
+    uv run \
+      --with opentelemetry-distro \
+      --with opentelemetry-exporter-otlp \
+      opentelemetry-instrument datasette mydb.db
+
+This will output pretty-printed JSON telemetry to your console, representing requests and database queries executed by Datasette.
+
+To use an exporter endpoint, set ``OTEL_EXPORTER_OTLP_ENDPOINT`` to a URL, set ``OTEL_TRACES_EXPORTER`` to ``otlp``, and set the other exporters to ``none``:
+
+.. code-block:: bash
+
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_TRACES_EXPORTER=otlp \
+      opentelemetry-instrument datasette mydb.db
+
+On macOS one easy option for a port 4317 OTLP endpoint is `otel-tui <https://github.com/ymtdzzz/otel-tui>`__:
+
+.. code-block:: bash
+
+    brew install ymtdzzz/tap/otel-tui
+    otel-tui
+
+Traces sent to port 4317 by Datasette will now display in a TUI in your terminal.
+
+A few things catch people out:
+
+- **You must use "opentelemetry-instrument datasette"**. Running just ``OTEL_TRACES_EXPORTER=console datasette mydb.db`` produces no telemetry.
+- **Spans do not appear immediately.** The SDK's default ``BatchSpanProcessor`` flushes on a timer, every 5 seconds. Either wait, or stop the process - shutdown triggers a final flush - or set ``OTEL_BSP_SCHEDULE_DELAY=1000`` while you are experimenting.
+- **Always set** ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
+
+.. _internals_telemetry_requests:
+
+Span reference
+--------------
+
+Datasette emits six spans. One covers the HTTP request, and is the root everything else raised while serving that request hangs from. Four describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue. The sixth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+
+A request to a table page produces a span named, in full::
+
+    GET /(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$
+
+.. [[[cog
+    from telemetry_doc import spans
+    spans(cog)
+.. ]]]
+
+``{http.request.method} {http.route}``
+    One span per HTTP request, containing spans from plugin middleware and database operations. Named for the HTTP method and matched route, or just the method if no route matches. Incoming ``traceparent`` headers are extracted using the global propagator to continue the caller's trace. Incoming ``baggage`` is not propagated into plugin or downstream context in this release. Set ``OTEL_PROPAGATORS=none`` to disable extraction. For public instances, strip trace context headers at your proxy if callers should not supply trace context.
+
+    Kind: ``SERVER``.
+
+    Attributes:
+
+    - ``http.request.method`` - The HTTP request method. Methods outside the nine defined by RFC 9110 and RFC 5789 are recorded as ``_OTHER``.
+    - ``http.route`` *(optional)* - The regular expression for the matched route, for example ``/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$`` for a table page. Use this attribute to group requests by route. Omitted when no route matches.
+    - ``url.path`` - The URL path, excluding the query string.
+    - ``url.scheme`` - ``http`` or ``https``.
+    - ``server.address`` *(optional)* - The ``Host`` header, including any ``:port`` suffix. This value is supplied by the client.
+    - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none.
+    - ``http.response.status_code`` *(optional)* - The HTTP response status code. Omitted if no response was started.
+    - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
+    - ``datasette.internal_client`` *(optional)* - ``True`` for requests made through ``datasette.client``. Calls made inside another request produce a nested ``SERVER`` span. Filter on this attribute to exclude internal requests from request counts. Omitted for requests received over the network.
+
+``db.query``
+    A SQL operation, including time spent queued for a worker thread. For ``block=False`` writes, the span ends after the write is queued. Callback methods record ``datasette.callback`` in place of ``db.query.text``.
+
+    Kind: ``CLIENT``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Bound parameter values are not recorded. For callback methods, ``datasette.callback`` is recorded instead.
+    - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()``, for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``. Lambdas appear as ``<lambda>``; use a named function for a more descriptive span.
+    - ``db.operation.name`` *(optional)* - The statement's leading keyword, such as ``SELECT``, ``INSERT`` or ``CREATE``, if it matches the supported allowlist. Statements beginning with a common table expression report ``WITH``. Omitted for unrecognized keywords and ``execute_write_script()``.
+    - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
+    - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. The parameter values are not recorded.
+    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or the ``custom_time_limit`` passed by the caller.
+    - ``datasette.rows_returned`` *(optional)* - Number of rows returned by a successful read query.
+    - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
+    - ``datasette.interrupted`` *(optional)* - True if the query exceeded its time limit. The span status is set to ``ERROR`` unless the caller used a ``custom_time_limit`` shorter than :ref:`setting_sql_time_limit_ms`, in which case the status is left unset.
+    - ``datasette.sql_error_suppressed`` *(optional)* - True for a non-timeout SQL error with ``log_sql_errors=False``. The exception is still raised, but the span status is left unset.
+    - ``datasette.executescript`` *(optional)* - True for ``execute_write_script()``, which runs multiple statements.
+    - ``datasette.executemany`` *(optional)* - True for ``execute_write_many()``, which runs one statement against many parameter sets.
+
+``db.query.execute``
+    The read executing inside a SQL worker thread. Child of ``db.query``; the gap between the two is time spent waiting for a thread.
+
+    No attributes.
+
+``db.write.queue_wait``
+    Time a write spent waiting in its database's write queue. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write, since the write can outlive that request.
+
+    No attributes.
+
+``db.write.execute``
+    The write executing on the write thread. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write.
+
+    Attributes:
+
+    - ``datasette.isolated_connection`` - True if the write ran on its own connection rather than the shared write connection.
+    - ``datasette.transaction`` - False for statements such as ``VACUUM`` that cannot run inside a transaction.
+
+``datasette.startup``
+    Startup work performed by ``invoke_startup()``, including registration hooks, schema catalog updates, saved queries, column type configuration and the ``startup`` hook. Runs during instance startup, either before serving requests or as part of the first request.
+
+    No attributes.
+
+.. [[[end]]]
+
+.. _internals_telemetry_metrics:
+
+Metric reference
+----------------
+
+Spans describe events; metrics describe levels and rates. Metrics can be used to answer questions like "Am I saturating my :ref:`setting_num_sql_threads` threads right now?". Trace sampling drops a portion of traces but does not drop any metrics.
+
+Datasette configures duration histograms in **seconds**. OpenTelemetry's default boundaries are tuned for milliseconds but these would file every SQLite query into a single bucket, making quantile queries meaningless.
+
+This reference is also generated from ``datasette/telemetry_registry.py``:
+
+.. [[[cog
+    from telemetry_doc import metrics
+    metrics(cog)
+.. ]]]
+
+``db.client.operation.duration``
+    Histogram, unit ``s``. Duration of a SQL operation, including callback-based calls such as ``execute_fn()``. For ``block=False`` writes, measures enqueue time.
+
+    Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``datasette.operation`` - Whether the operation was a read or a write. One of: ``read``, ``write``.
+    - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
+
+``datasette.write.queue_wait``
+    Histogram, unit ``s``. Time each write waited in its database's write queue.
+
+    Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.sql.queries.interrupted``
+    Counter, unit ``{query}``. Queries cancelled for exceeding :ref:`setting_sql_time_limit_ms`. A rising rate can indicate that queries need optimization or a higher time limit. Caller-selected timeouts shorter than this limit, such as those used for facet suggestion, are excluded.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.sql.threads.limit``
+    Observable gauge, unit ``{thread}``. Maximum concurrent read queries, configured by :ref:`setting_num_sql_threads`. Not reported when ``num_sql_threads`` is ``0``.
+
+    No attributes.
+
+``datasette.sql.threads.queue_depth``
+    Observable gauge, unit ``{query}``. Read queries waiting for a free SQL thread. Sustained values above zero indicate a saturated read pool.
+
+    No attributes.
+
+``datasette.sql.queries.pending``
+    Observable gauge, unit ``{query}``. Read queries submitted to the pool and not yet complete. Sum across databases and compare with ``datasette.sql.threads.limit`` to assess pool usage.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.write.queue_depth``
+    Observable gauge, unit ``{write}``. Writes waiting for a database's single write thread. Increasing ``num_sql_threads`` does not increase write concurrency. Not reported for databases that have never been written to.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.connections.open``
+    Observable gauge, unit ``{connection}``. Open SQLite connections managed by Datasette.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+.. [[[end]]]
+
+Exemplars
+~~~~~~~~~
+
+An OpenTelemetry `exemplar <https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exemplars>`__ attaches a trace ID and span ID to one sample backing a histogram measurement. Where a spike in ``db.client.operation.duration`` alone tells you "queries were slow sometime in this minute", the exemplar attached to one of the samples in that spike gives you the trace ID of an actual slow query to open:
+
+.. code-block:: text
+
+    db.client.operation.duration count=4
+      exemplars: 4
+        value=0.001564s trace_id=ddfaf45fd4e14913497d7efeac95f381 span_id=fd5792bdbb01e533
+        value=0.006320s trace_id=34aea775ade11a3c5f716695731000fe span_id=25ed9e29dd84dbee
+        value=0.045253s trace_id=a65cb58d1460a179f0d04046ff51ed0d span_id=7f34d6378c85d062
+        value=0.305240s trace_id=6089f4c515c221c0ca7bb53667b37ac8 span_id=0516f4a6641eaa0b
+
+.. _internals_telemetry_privacy:
+
+Privacy and safety
+------------------
+
+Datasette does not configure a telemetry exporter itself. If you enable one, traces may contain sensitive information:
+
+- **SQL text is truncated to 2048 characters.** Literal values in that text are retained. Bound SQL parameter values are not added as attributes; ``datasette.param_count`` records only their count.
+- **Request spans include URL paths, host names and User-Agent headers.** Paths can include identifying values such as row primary keys. Core does not add actor identifiers, cookies, authorization headers, client IP addresses or a ``url.query`` attribute.
+- **Exception messages and tracebacks may be recorded.** These can contain data from requests or database operations.
+
+Review what your application and plugins record before exporting telemetry to an external service. Restrict access to exported data and configure redaction or filtering where needed.
+
 .. _internals_csrf:
 
 CSRF protection
@@ -2323,9 +3004,22 @@ No token, cookie, or hidden form field is needed. Any ``<form method="POST">`` i
 Datasette's internal database
 =============================
 
-Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a ``--internal`` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
+Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown.
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+To persist internal data across Datasette instances, use the ``--internal`` option to specify the path to a SQLite database:
+
+.. code-block:: bash
+
+    datasette mydatabase.db --internal internal.db
+
+You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this path without passing ``--internal`` each time:
+
+.. code-block:: bash
+
+    export DATASETTE_INTERNAL=/path/to/internal.db
+    datasette mydatabase.db
+
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. The ``hidden`` column on ``catalog_tables`` is ``1`` for :ref:`hidden tables <DatabaseView_hidden>`. These tables should not be considered a stable API - they may change between Datasette releases.
 
 Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
@@ -2354,6 +3048,14 @@ The internal database schema is as follows:
 
 .. code-block:: sql
 
+    CREATE TABLE "_sqlite_migrations" (
+       "id" INTEGER PRIMARY KEY,
+       "migration_set" TEXT,
+       "name" TEXT,
+       "applied_at" TEXT
+    );
+    CREATE UNIQUE INDEX "idx__sqlite_migrations_migration_set_name"
+        ON "_sqlite_migrations" ("migration_set", "name");
     CREATE TABLE catalog_databases (
         database_name TEXT PRIMARY KEY,
         path TEXT,
@@ -2365,6 +3067,7 @@ The internal database schema is as follows:
         table_name TEXT,
         rootpage INTEGER,
         sql TEXT,
+        hidden INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );
@@ -2494,6 +3197,10 @@ If the metadata cannot be parsed as either JSON or YAML the function will raise 
 
 .. autofunction:: datasette.utils.parse_metadata
 
+.. _internals_utils_BadMetadataError:
+
+.. autoclass:: datasette.utils.BadMetadataError
+
 .. _internals_utils_await_me_maybe:
 
 await_me_maybe(value)
@@ -2577,6 +3284,129 @@ Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_
 
 .. autofunction:: datasette.utils.async_call_with_supported_arguments
 
+.. _internals_utils_escape_sqlite:
+
+escape_sqlite(s)
+----------------
+
+Use this to safely include a table or column name in a SQL query. Values should still be passed as query parameters - this function is only for identifiers.
+
+.. code-block:: python
+
+    from datasette.utils import escape_sqlite
+
+    sql = "select * from {} where {} = :value".format(
+        escape_sqlite(table), escape_sqlite(column)
+    )
+
+.. autofunction:: datasette.utils.escape_sqlite
+
+.. _internals_utils_escape_fts:
+
+escape_fts(query)
+-----------------
+
+Escapes a search string provided by a user for use with SQLite full-text search. The same logic is available to SQL queries as the ``escape_fts()`` SQL function, see :ref:`full_text_search_custom_sql`.
+
+.. autofunction:: datasette.utils.escape_fts
+
+.. _internals_utils_to_css_class:
+
+to_css_class(s)
+---------------
+
+Datasette uses this function to derive the CSS classes and custom template names for databases, tables and columns, as described in :ref:`customization`.
+
+.. autofunction:: datasette.utils.to_css_class
+
+.. _internals_utils_modify_query_string:
+
+modify_query_string(query_string, add=None, replace=None, remove=None)
+----------------------------------------------------------------------
+
+Add, replace or remove arguments in a query string. :ref:`datasette.urls.modify() <internals_datasette_urls>` offers the same operations for a full path or a request.
+
+.. code-block:: python
+
+    from datasette.utils import modify_query_string
+
+    modify_query_string(
+        "_size=10&_next=20",
+        replace={"_size": 50},
+        remove="_next",
+    )
+    # "_size=50"
+
+.. autofunction:: datasette.utils.modify_query_string
+
+.. _internals_utils_actor_matches_allow:
+
+actor_matches_allow(actor, allow)
+---------------------------------
+
+Checks an actor against an ``"allow"`` block. See :ref:`authentication_actor_matches_allow`. This can also be imported using ``from datasette import actor_matches_allow``.
+
+.. autofunction:: datasette.utils.actor_matches_allow
+
+.. _internals_utils_add_cors_headers:
+
+add_cors_headers(headers)
+-------------------------
+
+Plugins that return their own JSON responses can use this to send the same headers as Datasette's ``--cors`` option, listed in :ref:`json_api_cors`.
+
+.. code-block:: python
+
+    from datasette import Response
+    from datasette.utils import add_cors_headers
+
+
+    async def my_view(request):
+        headers = {}
+        add_cors_headers(headers)
+        return Response.json({"ok": True}, headers=headers)
+
+.. autofunction:: datasette.utils.add_cors_headers
+
+.. _internals_utils_StartupError:
+
+StartupError
+------------
+
+.. autoclass:: datasette.utils.StartupError
+
+.. _internals_utils_PrefixedUrlString:
+
+PrefixedUrlString
+-----------------
+
+.. autoclass:: datasette.utils.PrefixedUrlString
+
+.. _internals_utils_PaginatedResources:
+
+PaginatedResources
+------------------
+
+.. autoclass:: datasette.utils.PaginatedResources
+
+.. _internals_utils_sqlite3:
+
+sqlite3
+-------
+
+``datasette.utils.sqlite3`` is the SQLite module that Datasette itself is using. This is `pysqlite3 <https://github.com/coleifer/pysqlite3>`__ if that package is installed, otherwise it is the ``sqlite3`` module from the Python standard library.
+
+Plugins should import this in place of the standard library module, so that their connections and exception handling use the same SQLite library as Datasette:
+
+.. code-block:: python
+
+    from datasette.utils import sqlite3
+
+    try:
+        conn.execute(sql)
+    except sqlite3.OperationalError as ex:
+        ...
+
 .. _internals_tracer:
 
 JSON encoding
@@ -2593,7 +3423,7 @@ Running Datasette with ``--setting trace_debug 1`` enables trace debug output, w
 
 You can see an example of this at the bottom of `latest.datasette.io/fixtures/facetable?_trace=1 <https://latest.datasette.io/fixtures/facetable?_trace=1>`__. The JSON output shows full details of every SQL query that was executed to generate the page.
 
-The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information. You can see `a demo of that here <https://latest-with-plugins.datasette.io/github/commits?_trace=1>`__.
+The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information.
 
 You can add your own custom traces to the JSON output using the ``trace()`` context manager. This takes a string that identifies the type of trace being recorded, and records any keyword arguments as additional JSON keys on the resulting trace object.
 
@@ -2604,12 +3434,12 @@ This example uses trace to record the start, end and duration of any HTTP GET re
 .. code-block:: python
 
     from datasette.tracer import trace
-    import httpx
+    import httpx2
 
 
     async def fetch_url(url):
         with trace("fetch-url", url=url):
-            async with httpx.AsyncClient() as client:
+            async with httpx2.AsyncClient() as client:
                 return await client.get(url)
 
 .. _internals_tracer_trace_child_tasks:

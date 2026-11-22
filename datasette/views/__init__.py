@@ -1,7 +1,8 @@
-from dataclasses import dataclass
 import dataclasses
+import re
 import types
 import typing
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,31 @@ def _type_name(type_):
     return getattr(type_, "__name__", str(type_).removeprefix("typing."))
 
 
+def select_templates_field():
+    """
+    The select_templates field of a Context rendered by BaseView.render(),
+    which fills it in. Has a default, so declare it after the other fields.
+    """
+    return dataclasses.field(
+        default=None,
+        metadata={
+            "help": "The template names Datasette considered, with an asterisk next to the one that was used"
+        },
+    )
+
+
+def alternate_url_json_field():
+    """
+    The alternate_url_json field of a Context rendered by BaseView.render()
+    for a view that has a JSON alternate. Has a default, so declare it after
+    the other fields.
+    """
+    return dataclasses.field(
+        default=None,
+        metadata={"help": "URL of the JSON version of this page"},
+    )
+
+
 def from_extra():
     """
     Declare a Context dataclass field whose value comes from a registered
@@ -41,6 +67,23 @@ class Context:
     # Set on subclasses whose from_extra() fields should be resolved
     # against the extras registry for this scope
     extras_scope = None
+
+    # False for debugging tools. Their variables are documented, but are
+    # not part of the contract that custom templates can rely on until the
+    # next major version
+    stable = True
+
+    # Heading used for this page in the documentation. Defaults to the
+    # class name, so QueryListContext becomes "Query list page"
+    documented_title = None
+
+    @classmethod
+    def page_title(cls):
+        "Title of this page in the template context documentation"
+        if cls.documented_title:
+            return cls.documented_title
+        words = re.findall(r"[A-Z][a-z0-9]*", cls.__name__.removesuffix("Context"))
+        return " ".join([words[0]] + [w.lower() for w in words[1:]]) + " page"
 
     @classmethod
     def documented_fields(cls):
@@ -74,16 +117,14 @@ class Context:
             extra_class = table_extra_registry.classes_by_name[name]
         except KeyError:
             raise KeyError(
-                "{}.{} is declared with from_extra() but there is no "
-                "registered extra of that name".format(cls.__name__, name)
+                f"{cls.__name__}.{name} is declared with from_extra() but there is no "
+                "registered extra of that name"
             )
         if cls.extras_scope is not None and not extra_class.available_for(
             cls.extras_scope
         ):
             raise ValueError(
-                "{}.{} is declared with from_extra() but the {} extra is "
-                "not available for scope {}".format(
-                    cls.__name__, name, name, cls.extras_scope
-                )
+                f"{cls.__name__}.{name} is declared with from_extra() but the {name} extra is "
+                f"not available for scope {cls.extras_scope}"
             )
         return extra_class.description or ""

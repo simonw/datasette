@@ -1,0 +1,39 @@
+name: "Setup SQLite version"
+description: "Build and activate a specific SQLite version from its amalgamation archive"
+inputs:
+  version:
+    description: "The SQLite version to install"
+    required: true
+  cflags:
+    description: "CFLAGS to use when compiling SQLite"
+    required: false
+    default: ""
+  skip-activate:
+    description: "Set to true to skip modifying the library path"
+    required: false
+    default: "false"
+  fallback-urls:
+    description: "Whitespace-separated fallback download URLs to try after sqlite.org"
+    required: false
+    default: ""
+outputs:
+  sqlite-location:
+    description: "Directory containing the compiled SQLite library"
+    value: ${{ steps.build.outputs.sqlite-location }}
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: mkdir -p "$RUNNER_TEMP/sqlite-versions/downloads"
+    - uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/sqlite-versions/downloads
+        key: setup-sqlite-version-${{ inputs.version }}-amalgamation-v1
+    - id: build
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/setup-sqlite-version.sh"
+      env:
+        SQLITE_VERSION: ${{ inputs.version }}
+        SQLITE_CFLAGS: ${{ inputs.cflags }}
+        SQLITE_SKIP_ACTIVATE: ${{ inputs.skip-activate }}
+        SQLITE_EXTRA_FALLBACK_URLS: ${{ inputs.fallback-urls }}

@@ -8,12 +8,12 @@ These tests verify:
 4. That SQL does the heavy lifting (no Python filtering)
 """
 
-import pytest
 import pytest_asyncio
+
+from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.resources import DatabaseResource, QueryResource, TableResource
-from datasette import hookimpl
 
 
 def test_resource_string_representations():
@@ -67,7 +67,6 @@ async def test_ds():
     return ds
 
 
-@pytest.mark.asyncio
 async def test_allowed_resources_global_allow(test_ds):
     """Test allowed_resources() with a global allow rule"""
 
@@ -90,7 +89,7 @@ async def test_allowed_resources_global_allow(test_ds):
         assert all(isinstance(t, TableResource) for t in tables)
 
         # Check specific tables are present
-        table_set = set((t.parent, t.child) for t in tables)
+        table_set = {(t.parent, t.child) for t in tables}
         assert ("analytics", "events") in table_set
         assert ("analytics", "users") in table_set
         assert ("analytics", "sensitive") in table_set
@@ -101,7 +100,6 @@ async def test_allowed_resources_global_allow(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_allowed_specific_resource(test_ds):
     """Test allowed() method checks specific resource efficiently"""
 
@@ -144,7 +142,6 @@ async def test_allowed_specific_resource(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_allowed_resources_include_reasons(test_ds):
     def rules_callback(datasette, actor, action):
         if actor and actor.get("role") == "analyst":
@@ -184,7 +181,6 @@ async def test_allowed_resources_include_reasons(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_child_deny_overrides_parent_allow(test_ds):
     """Test that child-level DENY beats parent-level ALLOW"""
 
@@ -233,7 +229,6 @@ async def test_child_deny_overrides_parent_allow(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_child_allow_overrides_parent_deny(test_ds):
     """Test that child-level ALLOW beats parent-level DENY"""
 
@@ -278,7 +273,6 @@ async def test_child_allow_overrides_parent_deny(test_ds):
         test_ds.pm.unregister(plugin, name="test_plugin")
 
 
-@pytest.mark.asyncio
 async def test_sql_does_filtering_not_python(test_ds):
     """
     Verify that allowed() uses SQL WHERE clause, not Python filtering.

@@ -12,7 +12,12 @@ Datasette includes special handling for these binary values. The Datasette inter
    :width: 311px
    :alt: Screenshot showing download links next to binary data in the table view
 
-Binary data is represented in ``.json`` exports using Base64 encoding.
+.. _binary_json_format:
+
+Binary values in JSON
+---------------------
+
+Binary data is represented in ``.json`` exports using Base64 encoding. Datasette uses this representation for every ``BLOB`` value, including binary values that could also be decoded as UTF-8 text.
 
 https://latest.datasette.io/fixtures/binary_data.json?_shape=array
 
@@ -39,6 +44,48 @@ https://latest.datasette.io/fixtures/binary_data.json?_shape=array
         }
     ]
 
+The same format can be used with the :ref:`JSON write API <json_api_write>`.
+If a column value in a ``row``, ``rows`` or ``update`` object is a JSON object with exactly ``"$base64"`` set to ``true`` and an ``"encoded"`` string, Datasette will decode that Base64 string and store the resulting bytes:
+
+.. code-block:: json
+
+    {
+        "data": {
+            "$base64": true,
+            "encoded": "FRwCx60F/g=="
+        }
+    }
+
+This works for inserts, upserts and updates. It also works when creating a table from example ``row`` or ``rows`` data: Datasette decodes the value before inferring the schema, allowing that column to be created as a ``BLOB`` column.
+
+To store a JSON object with that exact shape literally, wrap it in a ``"$raw"`` object:
+
+.. code-block:: json
+
+    {
+        "data": {
+            "$raw": {
+                "$base64": true,
+                "encoded": "FRwCx60F/g=="
+            }
+        }
+    }
+
+``"$raw"`` unwraps exactly one layer. To store a literal ``"$raw"`` object containing a Base64 object, wrap it again:
+
+.. code-block:: json
+
+    {
+        "data": {
+            "$raw": {
+                "$raw": {
+                    "$base64": true,
+                    "encoded": "FRwCx60F/g=="
+                }
+            }
+        }
+    }
+
 .. _binary_linking:
 
 Linking to binary downloads
@@ -50,13 +97,13 @@ https://latest.datasette.io/fixtures/binary_data/1.blob?_blob_column=data
 
 This output format can also be used to return binary data from an arbitrary SQL query. Since such queries do not specify an exact row, an additional ``?_blob_hash=`` parameter can be used to specify the SHA-256 hash of the value that is being linked to.
 
-Consider the query ``select data from binary_data`` - `demonstrated here <https://latest.datasette.io/fixtures?sql=select+data+from+binary_data>`__.
+Consider the query ``select data from binary_data`` - `demonstrated here <https://latest.datasette.io/fixtures/-/query?sql=select+data+from+binary_data>`__.
 
 That page links to the binary value downloads. Those links look like this:
 
-https://latest.datasette.io/fixtures.blob?sql=select+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d
+https://latest.datasette.io/fixtures/-/query.blob?sql=select+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d
 
-These ``.blob`` links are also returned in the ``.csv`` exports Datasette provides for binary tables and queries, since the CSV format does not have a mechanism for representing binary data.
+These ``.blob`` links are also returned in the ``.csv`` and ``.tsv`` exports Datasette provides for binary tables and queries, since those formats do not have a mechanism for representing binary data.
 
 Binary plugins
 --------------

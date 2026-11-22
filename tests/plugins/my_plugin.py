@@ -1,15 +1,14 @@
 import asyncio
-from datasette import hookimpl
-from datasette.facets import Facet
-from datasette.tokens import TokenHandler
-from datasette import tracer
-from datasette.permissions import Action
-from datasette.resources import DatabaseResource
-from datasette.utils import path_with_added_args
-from datasette.utils.asgi import asgi_send_json, Response
 import base64
 import json
 import urllib.parse
+
+from datasette import hookimpl, tracer
+from datasette.facets import Facet
+from datasette.permissions import Action
+from datasette.resources import DatabaseResource
+from datasette.tokens import TokenHandler
+from datasette.utils.asgi import Response, asgi_send_json
 
 
 @hookimpl
@@ -178,7 +177,7 @@ class DummyFacet(Facet):
                     "name": column,
                     "toggle_url": self.ds.absolute_url(
                         self.request,
-                        path_with_added_args(self.request, {"_facet_dummy": column}),
+                        self.ds.urls.modify(self.request, add={"_facet_dummy": column}),
                     ),
                     "type": "dummy",
                 }
@@ -305,11 +304,7 @@ def startup(datasette):
     datasette._startup_hook_fired = True
 
     # And test some import shortcuts too
-    from datasette import Response
-    from datasette import Forbidden
-    from datasette import NotFound
-    from datasette import hookimpl
-    from datasette import actor_matches_allow
+    from datasette import Forbidden, NotFound, Response, actor_matches_allow, hookimpl
 
     _ = (Response, Forbidden, NotFound, hookimpl, actor_matches_allow)
 
@@ -373,7 +368,7 @@ def table_actions(datasette, database, table, actor, request):
                     "label": "Plugin button",
                     "description": "Runs JavaScript from a plugin",
                     "attrs": {
-                        "aria-label": "Plugin button for {}".format(table),
+                        "aria-label": f"Plugin button for {table}",
                         "data-plugin-action": "plugin-button",
                         "data-database": database,
                         "data-table": table,

@@ -86,6 +86,22 @@ def decision_for_write_sql_operation(
     if (
         operation.operation == "read"
         and operation.target_type == "table"
+        and operation.table is not None
+        and operation.table_kind is None
+        and operation.table.lower().startswith("pragma_")
+    ):
+        # Eponymous table-valued PRAGMA functions (e.g. pragma_table_info("secret"))
+        # report a read of the synthetic "pragma_table_info" table, not of the
+        # table passed as an argument. That means a view-table denial on the real
+        # table is never consulted, so these could otherwise be used to read
+        # schema metadata (column names, table lists, ...) for tables the actor
+        # is not allowed to view. Reject them outright in untrusted write SQL,
+        # including inside CREATE VIEW bodies (whose reads are discovered here
+        # via the rolled-back dependency-read analysis above).
+        return UnsupportedWriteSqlOperation(unsupported_message)
+    if (
+        operation.operation == "read"
+        and operation.target_type == "table"
         and operation.database is not None
         and operation.table is not None
     ):
@@ -135,6 +151,33 @@ def decision_for_write_sql_operation(
                 PermissionRequirement(
                     action="create-table",
                     resource=DatabaseResource(database=operation.database),
+                ),
+            )
+        )
+    if operation.operation == "create" and operation.target_type == "view":
+        if operation.database is None:
+            return UnsupportedWriteSqlOperation(unsupported_message)
+        return RequireWriteSqlPermissions(
+            (
+                PermissionRequirement(
+                    action="create-view",
+                    resource=DatabaseResource(database=operation.database),
+                ),
+            )
+        )
+    if (
+        operation.operation == "drop"
+        and operation.target_type == "view"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return RequireWriteSqlPermissions(
+            (
+                PermissionRequirement(
+                    action="drop-view",
+                    resource=TableResource(
+                        database=operation.database, table=operation.table
+                    ),
                 ),
             )
         )

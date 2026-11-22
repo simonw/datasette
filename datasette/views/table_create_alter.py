@@ -1,9 +1,9 @@
 import json
 import re
 import time
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
-from datasette.database import QueryInterrupted
+import sqlite_utils
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -13,21 +13,31 @@ from pydantic import (
     model_validator,
 )
 from pydantic_core import PydanticCustomError
-import sqlite_utils
 from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
 
 from datasette.column_types import SQLiteType
+from datasette.database import QueryInterrupted
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
+    WriteJsonValueError,
+    decode_write_json_rows,
     escape_sqlite,
     get_outbound_foreign_keys,
     table_column_details,
 )
-from datasette.utils.asgi import NotFound, Response
-from datasette.utils.sqlite import sqlite_hidden_table_names
+from datasette.utils.asgi import NotFound, PayloadTooLarge, Response
+from datasette.utils.permissions import (
+    SKIP_PERMISSION_CHECKS,
+    gather_permission_sql_from_hooks,
+    resolve_permissions_with_candidates,
+)
+from datasette.utils.sqlite import (
+    check_structured_write_table,
+    sqlite_hidden_table_names,
+)
 
-from .base import BaseView, _error
+from .base import BaseView
 
 CREATE_TABLE_COLUMN_TYPES = ["text", "integer", "float", "blob"]
 CREATE_TABLE_SQLITE_TYPES = {
@@ -120,6 +130,30 @@ def _public_foreign_key_target(target):
     }
 
 
+async def _filter_visible_foreign_key_targets(datasette, actor, database_name, targets):
+    if not targets:
+        return []
+
+    permission_sqls = await gather_permission_sql_from_hooks(
+        datasette=datasette,
+        actor=actor,
+        action="view-table",
+    )
+    if permission_sqls is SKIP_PERMISSION_CHECKS:
+        return targets
+
+    candidate_tables = list(dict.fromkeys(target["fk_table"] for target in targets))
+    permission_rows = await resolve_permissions_with_candidates(
+        datasette.get_internal_database(),
+        actor,
+        permission_sqls,
+        [(database_name, table_name) for table_name in candidate_tables],
+        "view-table",
+    )
+    visible_tables = {row["child"] for row in permission_rows if bool(row["allow"])}
+    return [target for target in targets if target["fk_table"] in visible_tables]
+
+
 def _singular(name):
     if name.endswith("ies") and len(name) > 3:
         return name[:-3] + "y"
@@ -134,14 +168,14 @@ def _foreign_key_name_reasons(source_column, target):
     singular_table = _singular(table)
     column = target["fk_column"].lower()
     possible_names = {
-        "{}_{}".format(table, column),
-        "{}_{}".format(singular_table, column),
+        f"{table}_{column}",
+        f"{singular_table}_{column}",
     }
     if column == "id":
         possible_names.update(
             {
-                "{}_id".format(table),
-                "{}_id".format(singular_table),
+                f"{table}_id",
+                f"{singular_table}_id",
             }
         )
     return ["name_match"] if source in possible_names else []
@@ -165,7 +199,7 @@ def _foreign_key_suggestion_metadata(conn, table_name):
             "affinity": _sqlite_type_affinity(column.type),
         }
         for column in table_column_details(conn, table_name)
-        if not column.hidden
+        if not (column.hidden or column.generated)
     ]
     current_by_column = {
         fk["column"]: {
@@ -186,8 +220,12 @@ def _foreign_key_suggestion_metadata(conn, table_name):
         if candidate_table == table_name or candidate_table in hidden_tables:
             continue
         columns = [column for column in table_column_details(conn, candidate_table)]
-        pks = [column for column in columns if column.is_pk and not column.hidden]
-        pks.sort(key=lambda column: column.is_pk)
+        pks = [
+            column
+            for column in columns
+            if column.pk_position and not (column.hidden or column.generated)
+        ]
+        pks.sort(key=lambda column: column.pk_position)
         if len(pks) != 1:
             continue
         pk = pks[0]
@@ -213,7 +251,9 @@ async def _foreign_key_suggestion_samples(db, table_name, columns):
     try:
         results = await db.execute(
             sql,
-            custom_time_limit=FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS,
+            custom_time_limit=db.ds.capped_time_limit_ms(
+                FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS
+            ),
             log_sql_errors=False,
         )
     except QueryInterrupted as e:
@@ -243,7 +283,7 @@ async def _foreign_key_suggestion_values_exist(db, target, values, time_limit_ms
         results = await db.execute(
             sql,
             params=values,
-            custom_time_limit=time_limit_ms,
+            custom_time_limit=db.ds.capped_time_limit_ms(time_limit_ms),
             log_sql_errors=False,
         )
     except QueryInterrupted as e:
@@ -260,13 +300,16 @@ async def _create_table_ui_context(
     if not database_action_permissions.get("create-table"):
         return None
     data = {
-        "path": "{}/-/create".format(datasette.urls.database(database_name)),
-        "foreignKeyTargetsPath": "{}/-/foreign-key-targets".format(
-            datasette.urls.database(database_name)
-        ),
+        "path": f"{datasette.urls.database(database_name)}/-/create",
+        "foreignKeyTargetsPath": f"{datasette.urls.database(database_name)}/-/foreign-key-targets",
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
         "defaultExpressions": default_expression_options(),
+        "canInsertRows": await datasette.allowed(
+            action="insert-row",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        ),
     }
     can_set_column_type = await datasette.allowed(
         action="set-column-type",
@@ -391,15 +434,15 @@ def default_expr_for_sql(expression):
 
 def _quoted_options(options):
     if len(options) == 1:
-        return "'{}'".format(options[0])
+        return f"'{options[0]}'"
     return "{} or '{}'".format(
-        ", ".join("'{}'".format(option) for option in options[:-1]),
+        ", ".join(f"'{option}'" for option in options[:-1]),
         options[-1],
     )
 
 
 def _default_expr_error_message():
-    return "Input should be {}".format(_quoted_options(list(DEFAULT_EXPRESSIONS)))
+    return f"Input should be {_quoted_options(list(DEFAULT_EXPRESSIONS))}"
 
 
 def default_expression_options():
@@ -708,18 +751,16 @@ class SetForeignKeysOperation(_StrictPydanticModel):
 
 
 AlterTableOperation = Annotated[
-    Union[
-        AddColumnOperation,
-        RenameColumnOperation,
-        RenameTableOperation,
-        AlterColumnOperation,
-        DropColumnOperation,
-        SetPrimaryKeyOperation,
-        ReorderColumnsOperation,
-        AddForeignKeyOperation,
-        DropForeignKeyOperation,
-        SetForeignKeysOperation,
-    ],
+    AddColumnOperation
+    | RenameColumnOperation
+    | RenameTableOperation
+    | AlterColumnOperation
+    | DropColumnOperation
+    | SetPrimaryKeyOperation
+    | ReorderColumnsOperation
+    | AddForeignKeyOperation
+    | DropForeignKeyOperation
+    | SetForeignKeysOperation,
     Field(discriminator="op"),
 ]
 
@@ -733,7 +774,7 @@ def _pydantic_errors(validation_error):
     for error in validation_error.errors():
         location = ".".join(str(item) for item in error["loc"])
         message = error["msg"]
-        errors.append("{}: {}".format(location, message) if location else message)
+        errors.append(f"{location}: {message}" if location else message)
     return errors
 
 
@@ -754,7 +795,7 @@ def _create_table_pydantic_errors(validation_error):
             output.append(message)
             continue
         location = ".".join(str(item) for item in error["loc"])
-        output.append("{}: {}".format(location, message) if location else message)
+        output.append(f"{location}: {message}" if location else message)
     return output
 
 
@@ -798,35 +839,38 @@ class TableCreateView(BaseView):
             resource=DatabaseResource(database=database_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied"], 403)
+            return Response.error(["Permission denied"], 403)
 
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)])
+            return Response.error([f"Invalid JSON: {e}"])
+        except PayloadTooLarge as e:
+            return Response.error([str(e)], 413)
 
         if not isinstance(data, dict):
-            return _error(["JSON must be an object"])
+            return Response.error(["JSON must be an object"])
 
         try:
             create_request = CreateTableRequest.model_validate(data)
         except ValidationError as e:
-            return _error(_create_table_pydantic_errors(e))
+            return Response.error(_create_table_pydantic_errors(e))
 
         ignore = create_request.ignore
         replace = create_request.replace
 
-        if replace:
-            # Must have update-row permission
-            if not await self.ds.allowed(
-                action="update-row",
-                resource=DatabaseResource(database=database_name),
-                actor=request.actor,
-            ):
-                return _error(["Permission denied: need update-row"], 403)
-
         table_name = create_request.table
         table_exists = await db.table_exists(table_name)
+        table_resource = TableResource(database=database_name, table=table_name)
+
+        # Replacing rows requires update-row permission
+        if replace and not await self.ds.allowed(
+            action="update-row",
+            resource=table_resource,
+            actor=request.actor,
+        ):
+            return Response.error(["Permission denied: need update-row"], 403)
+
         columns = create_request.columns
         rows = create_request.rows_list
 
@@ -834,10 +878,14 @@ class TableCreateView(BaseView):
             # Must have insert-row permission
             if not await self.ds.allowed(
                 action="insert-row",
-                resource=DatabaseResource(database=database_name),
+                resource=table_resource,
                 actor=request.actor,
             ):
-                return _error(["Permission denied: need insert-row"], 403)
+                return Response.error(["Permission denied: need insert-row"], 403)
+            try:
+                rows = decode_write_json_rows(rows)
+            except WriteJsonValueError as e:
+                return Response.error([str(e)], 400)
 
         alter = False
         if rows:
@@ -849,10 +897,12 @@ class TableCreateView(BaseView):
                 if create_request.alter:
                     if not await self.ds.allowed(
                         action="alter-table",
-                        resource=DatabaseResource(database=database_name),
+                        resource=table_resource,
                         actor=request.actor,
                     ):
-                        return _error(["Permission denied: need alter-table"], 403)
+                        return Response.error(
+                            ["Permission denied: need alter-table"], 403
+                        )
                     alter = True
 
         pk = create_request.pk
@@ -863,12 +913,17 @@ class TableCreateView(BaseView):
             actual_pks = await db.primary_keys(table_name)
             # if pk passed and table already exists check it does not change
             bad_pks = False
-            if len(actual_pks) == 1 and pk and pk != actual_pks[0]:
-                bad_pks = True
-            elif len(actual_pks) > 1 and pks and set(pks) != set(actual_pks):
+            if (
+                len(actual_pks) == 1
+                and pk
+                and pk != actual_pks[0]
+                or len(actual_pks) > 1
+                and pks
+                and set(pks) != set(actual_pks)
+            ):
                 bad_pks = True
             if bad_pks:
-                return _error(["pk cannot be changed for existing table"])
+                return Response.error(["pk cannot be changed for existing table"])
             pks = actual_pks
 
         initial_schema = None
@@ -878,6 +933,7 @@ class TableCreateView(BaseView):
             )
 
         def create_table(conn):
+            check_structured_write_table(conn, table_name, allow_missing=True)
             db_for_write = sqlite_utils.Database(conn)
             table = db_for_write[table_name]
             if rows:
@@ -910,8 +966,9 @@ class TableCreateView(BaseView):
 
         try:
             schema = await db.execute_write_fn(create_table, request=request)
-        except Exception as e:
-            return _error([str(e)])
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
+            return Response.error([str(e)])
 
         if initial_schema is not None and initial_schema != schema:
             await self.ds.track_event(
@@ -986,7 +1043,7 @@ class DatabaseForeignKeyTargetsView(BaseView):
                 actor=request.actor,
             )
         if not (can_create_table or can_alter_table):
-            return _error(["Permission denied: need create-table"], 403)
+            return Response.error(["Permission denied: need create-table"], 403)
 
         hidden_tables = await db.execute_fn(
             lambda conn: set(sqlite_hidden_table_names(conn))
@@ -996,6 +1053,9 @@ class DatabaseForeignKeyTargetsView(BaseView):
             for target in (await db.execute(FOREIGN_KEY_TARGETS_SQL)).dicts()
             if target["fk_table"] not in hidden_tables
         ]
+        targets = await _filter_visible_foreign_key_targets(
+            self.ds, request.actor, database_name, targets
+        )
         return Response.json(
             {
                 "ok": True,
@@ -1015,25 +1075,34 @@ class TableForeignKeySuggestionsView(BaseView):
         try:
             resolved = await self.ds.resolve_table(request)
         except NotFound as e:
-            return _error([e.args[0]], 404)
+            return Response.error([e.args[0]], 404)
 
         db = resolved.db
         database_name = db.name
         table_name = resolved.table
 
         if resolved.is_view:
-            return _error(["Cannot suggest foreign keys for a view"], 400)
+            return Response.error(["Cannot suggest foreign keys for a view"], 400)
 
         if not await self.ds.allowed(
             action="alter-table",
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need alter-table"], 403)
+            return Response.error(["Permission denied: need alter-table"], 403)
 
         source_columns, targets, current_by_column = await db.execute_fn(
             lambda conn: _foreign_key_suggestion_metadata(conn, table_name)
         )
+        targets = await _filter_visible_foreign_key_targets(
+            self.ds, request.actor, database_name, targets
+        )
+        visible_target_tables = {target["fk_table"] for target in targets}
+        current_by_column = {
+            column: current
+            for column, current in current_by_column.items()
+            if current["fk_table"] in visible_target_tables
+        }
 
         columns = []
         options_by_column = {}
@@ -1137,7 +1206,7 @@ class TableAlterView(BaseView):
         try:
             resolved = await self.ds.resolve_table(request)
         except NotFound as e:
-            return _error([e.args[0]], 404)
+            return Response.error([e.args[0]], 404)
 
         db = resolved.db
         database_name = db.name
@@ -1148,27 +1217,25 @@ class TableAlterView(BaseView):
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need alter-table"], 403)
+            return Response.error(["Permission denied: need alter-table"], 403)
 
         if not db.is_mutable:
-            return _error(["Database is immutable"], 403)
-
-        content_type = request.headers.get("content-type") or ""
-        if not content_type.startswith("application/json"):
-            return _error(["Invalid content-type, must be application/json"], 400)
+            return Response.error(["Database is immutable"], 403)
 
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)], 400)
+            return Response.error([f"Invalid JSON: {e}"], 400)
+        except PayloadTooLarge as e:
+            return Response.error([str(e)], 413)
 
         if not isinstance(data, dict):
-            return _error(["JSON must be a dictionary"], 400)
+            return Response.error(["JSON must be a dictionary"], 400)
 
         try:
             alter_request = AlterTableRequest.model_validate(data)
         except ValidationError as e:
-            return _error(_pydantic_errors(e), 400)
+            return Response.error(_pydantic_errors(e), 400)
 
         def alter_table(conn):
             before_schema = _table_schema_from_conn(conn, table_name)
@@ -1248,7 +1315,9 @@ class TableAlterView(BaseView):
                     elif operation.op == "set_foreign_keys":
                         foreign_keys = [fk.tuple for fk in args.foreign_keys]
 
-                with operation_conn:
+                # Use a savepoint inside execute_write_fn's transaction so
+                # write_wrapper hooks can still reject and roll back the write.
+                with db_for_write.atomic():
                     for column in add_columns:
                         not_null_default = None
                         if column.not_null:
@@ -1298,10 +1367,7 @@ class TableAlterView(BaseView):
                         and rename_table_to != current_table_name
                     ):
                         operation_conn.execute(
-                            "alter table {} rename to {}".format(
-                                escape_sqlite(current_table_name),
-                                escape_sqlite(rename_table_to),
-                            )
+                            f"alter table {escape_sqlite(current_table_name)} rename to {escape_sqlite(rename_table_to)}"
                         )
                         current_table_name = rename_table_to
 
@@ -1316,8 +1382,9 @@ class TableAlterView(BaseView):
             before_schema, after_schema, after_table_name = await db.execute_write_fn(
                 alter_table, request=request
             )
-        except Exception as e:
-            return _error([str(e)], 400)
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
+            return Response.error([str(e)], 400)
 
         altered = before_schema != after_schema
         if altered:

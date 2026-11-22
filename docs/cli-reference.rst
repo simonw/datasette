@@ -76,6 +76,8 @@ Or since this is the default command you can run this instead::
 
 Once started you can access it at ``http://localhost:8001``
 
+Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to persist :ref:`Datasette's internal database <internals_internal>` to a SQLite file.
+
 .. [[[cog
     help(["serve", "--help"])
 .. ]]]
@@ -244,6 +246,9 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    custom query (default=1000)
       max_insert_rows              Maximum rows that can be inserted at a time using
                                    the bulk insert API (default=100)
+      max_post_body_bytes          Maximum size in bytes for a POST body read into
+                                   memory, e.g. JSON API requests - set 0 to disable
+                                   this limit (default=10485760)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
@@ -254,9 +259,9 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=200)
       facet_suggest_time_limit_ms  Time limit for calculating a suggested facet
                                    (default=50)
-      allow_facet                  Allow users to specify columns to facet using
+      default_allow_facet          Allow users to specify columns to facet using
                                    ?_facet= parameter (default=True)
-      allow_download               Allow users to download the original SQLite
+      default_allow_download       Allow users to download the original SQLite
                                    database files (default=True)
       allow_signed_tokens          Allow users to create and use signed API tokens
                                    (default=True)
@@ -270,10 +275,10 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    max-age= header) (default=5)
       cache_size_kb                SQLite cache size in KB (0 == use SQLite default)
                                    (default=0)
-      allow_csv_stream             Allow .csv?_stream=1 to download all rows
-                                   (ignoring max_returned_rows) (default=True)
-      max_csv_mb                   Maximum size allowed for CSV export in MB - set 0
-                                   to disable this limit (default=100)
+      default_allow_stream         Allow ?_stream=1 to export all rows (ignoring
+                                   max_returned_rows) (default=True)
+      max_stream_mb                Maximum size allowed for a streamed export in MB
+                                   - set 0 to disable this limit (default=100)
       truncate_cells_html          Truncate cells longer than this in HTML table
                                    view - set 0 to disable (default=2048)
       force_https_urls             Force URLs in API output to always use https://

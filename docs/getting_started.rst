@@ -9,7 +9,7 @@ Play with a live demo
 The best way to experience Datasette for the first time is with a demo:
 
 * `datasette.io/global-power-plants <https://datasette.io/global-power-plants/global-power-plants>`__ provides a searchable database of power plants around the world, using data from the `World Resources Institude <https://www.wri.org/publication/global-power-plant-database>`__ rendered using the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ plugin.
-* `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__ shows Datasette running against over 400 datasets imported from the `FiveThirtyEight GitHub repository <https://github.com/fivethirtyeight/data>`__.
+* `latest.datasette.io <https://latest.datasette.io/>`__ runs the latest version of Datasette from the main branch against the test fixtures database, demonstrating most of Datasette's features.
 
 .. _getting_started_tutorial:
 
@@ -85,45 +85,40 @@ JSON:
 ::
 
     {
-        "database": "History",
-        "columns": [
-            "id",
-            "current_path",
-            "target_path",
-            "start_time",
-            "received_bytes",
-            "total_bytes",
-            ...
-        ],
+        "ok": true,
+        "next": null,
+        "next_url": null,
         "rows": [
-            [
-                1,
-                "/Users/simonw/Downloads/DropboxInstaller.dmg",
-                "/Users/simonw/Downloads/DropboxInstaller.dmg",
-                13097290269022132,
-                626688,
-                0,
+            {
+                "id": 1,
+                "current_path": "/Users/simonw/Downloads/DropboxInstaller.dmg",
+                "target_path": "/Users/simonw/Downloads/DropboxInstaller.dmg",
+                "start_time": 13097290269022132,
+                "received_bytes": 626688,
+                "total_bytes": 0,
                 ...
-            ]
-        ]
+            }
+        ],
+        "truncated": false
     }
 
-http://localhost:8001/History/downloads.json?_shape=objects will return that data as
-JSON in a more convenient format:
+Each row is an object mapping column names to values. ``"next"`` and ``"next_url"`` are used for :ref:`pagination <json_api_pagination>` - they are ``null`` here because all of the rows fit on a single page.
+
+http://localhost:8001/History/downloads.json?_shape=array will return just
+the rows, as a JSON array:
 
 ::
 
-    {
-        ...
-        "rows": [
-            {
-                "start_time": 13097290269022132,
-                "interrupt_reason": 0,
-                "hash": "",
-                "id": 1,
-                "site_url": "",
-                "referrer": "https://www.dropbox.com/downloading?src=index",
-                ...
-            }
-        ]
-    }
+    [
+        {
+            "id": 1,
+            "current_path": "/Users/simonw/Downloads/DropboxInstaller.dmg",
+            "target_path": "/Users/simonw/Downloads/DropboxInstaller.dmg",
+            "start_time": 13097290269022132,
+            "received_bytes": 626688,
+            "total_bytes": 0,
+            ...
+        }
+    ]
+
+See :ref:`json_api_shapes` for the other available formats, and the :ref:`JSON API documentation <json_api>` for everything else the API can do.

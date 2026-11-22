@@ -1,11 +1,14 @@
-from datasette.cli import cli
-from click.testing import CliRunner
-import urllib
 import sqlite3
+import urllib
+
+from click.testing import CliRunner
+
+from datasette.cli import cli
 
 
-def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
-    app_client = app_client_two_attached_databases_crossdb_enabled
+async def test_crossdb_join(ds_on_disk_two_databases_crossdb):
+    # --crossdb attaches database files, so this uses the on-disk fixture
+    client = ds_on_disk_two_databases_crossdb.client
     sql = """
     select
       'extra database' as db,
@@ -23,12 +26,12 @@ def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
     from
       fixtures.searchable
     """
-    response = app_client.get(
+    response = await client.get(
         "/_memory/-/query.json?"
         + urllib.parse.urlencode({"sql": sql, "_shape": "array"})
     )
-    assert response.status == 200
-    assert response.json == [
+    assert response.status_code == 200
+    assert response.json() == [
         {"db": "extra database", "pk": 1, "text1": "barry cat", "text2": "terry dog"},
         {"db": "extra database", "pk": 2, "text1": "terry dog", "text2": "sara weasel"},
         {"db": "fixtures", "pk": 1, "text1": "barry cat", "text2": "terry dog"},
@@ -40,7 +43,7 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
     db_dir = tmp_path_factory.mktemp("dbs")
     dbs = []
     for i in range(11):
-        path = str(db_dir / "db_{}.db".format(i))
+        path = str(db_dir / f"db_{i}.db")
         conn = sqlite3.connect(path)
         conn.execute("vacuum")
         conn.close()
@@ -63,12 +66,11 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
     )
 
 
-def test_crossdb_attached_database_list_display(
-    app_client_two_attached_databases_crossdb_enabled,
+async def test_crossdb_attached_database_list_display(
+    ds_on_disk_two_databases_crossdb,
 ):
-    app_client = app_client_two_attached_databases_crossdb_enabled
-    response = app_client.get("/_memory")
-    app_client.get("/")
+    client = ds_on_disk_two_databases_crossdb.client
+    response = await client.get("/_memory")
     for fragment in (
         "databases are attached to this connection",
         "<li><strong>fixtures</strong> - ",

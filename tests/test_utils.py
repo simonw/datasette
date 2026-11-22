@@ -2,22 +2,24 @@
 Tests for various datasette helper functions.
 """
 
-from datasette.app import Datasette
-from datasette import utils
-from datasette.utils.asgi import Request
-from datasette.utils.sqlite import (
-    sqlite3,
-    sqlite_hidden_table_names,
-    sqlite_table_type,
-    supports_returning,
-)
 import hashlib
 import json
 import os
 import pathlib
-import pytest
-import tempfile
 from unittest.mock import patch
+
+import pytest
+
+from datasette import utils
+from datasette.app import Datasette
+from datasette.rows import Row
+from datasette.utils.sqlite import (
+    sqlite3,
+    sqlite_derived_table_dependencies,
+    sqlite_hidden_table_names,
+    sqlite_table_type,
+    supports_returning,
+)
 
 
 @pytest.mark.parametrize(
@@ -31,69 +33,47 @@ from unittest.mock import patch
     ],
 )
 def test_urlsafe_components(path, expected):
-    assert expected == utils.urlsafe_components(path)
+    assert utils.urlsafe_components(path) == expected
 
 
 @pytest.mark.parametrize(
-    "path,added_args,expected",
+    "query_string,kwargs,expected",
     [
-        ("/foo", {"bar": 1}, "/foo?bar=1"),
-        ("/foo?bar=1", {"baz": 2}, "/foo?bar=1&baz=2"),
-        ("/foo?bar=1&bar=2", {"baz": 3}, "/foo?bar=1&bar=2&baz=3"),
-        ("/foo?bar=1", {"bar": None}, "/foo"),
-        # Test order is preserved
+        ("", {}, ""),
+        ("a=1&b=", {}, "a=1&b="),
+        # add keeps existing values, accepts dicts, pairs and list values
+        ("a=1", {"add": {"a": 2}}, "a=1&a=2"),
+        ("a=1", {"add": [("b", 2), ("b", 3)]}, "a=1&b=2&b=3"),
+        ("a=1", {"add": {"b": [2, 3]}}, "a=1&b=2&b=3"),
+        ("a=1", {"add": {"b": None}}, "a=1"),
+        # replace drops every existing value, None removes the key
+        ("a=1&b=2&a=3", {"replace": {"a": 9}}, "b=2&a=9"),
+        ("a=1&b=2", {"replace": {"a": None}}, "b=2"),
+        ("a=1&b=2", {"replace": {"a": [5, 6]}}, "b=2&a=5&a=6"),
+        # remove takes a key, keys, (key, value) pairs or a dictionary
+        ("a=1&b=2", {"remove": "a"}, "b=2"),
+        ("a=1&b=2&c=3", {"remove": ["a", "c"]}, "b=2"),
+        ("a=1&b=2&c=3", {"remove": {"a", "c"}}, "b=2"),
+        ("a=1&a=2&b=2", {"remove": [("a", 2)]}, "a=1&b=2"),
+        ("a=1&a=2&b=2", {"remove": {"a": "1"}}, "a=2&b=2"),
+        ("a=1&a=2&b=2", {"remove": ["b", ("a", "1")]}, "a=2"),
+        ("a=&a=2", {"remove": [("a", "")]}, "a=2"),
+        # Order is remove, then replace, then add
         (
-            "/?_facet=prim_state&_facet=area_name",
-            (("prim_state", "GA"),),
-            "/?_facet=prim_state&_facet=area_name&prim_state=GA",
+            "a=1&b=2&c=3",
+            {"add": {"a": 4}, "replace": {"b": 5}, "remove": "a"},
+            "c=3&b=5&a=4",
         ),
-        (
-            "/?_facet=state&_facet=city&state=MI",
-            (("city", "Detroit"),),
-            "/?_facet=state&_facet=city&state=MI&city=Detroit",
-        ),
-        (
-            "/?_facet=state&_facet=city",
-            (("_facet", "planet_int"),),
-            "/?_facet=state&_facet=city&_facet=planet_int",
-        ),
+        ("q=a+b%26c", {"add": {"x": "d e"}}, "q=a+b%26c&x=d+e"),
+        # Existing arguments are left exactly as they are unless something
+        # is removed or replaced, when the whole query string is re-encoded
+        ("q=a%20b&n=3,7", {"add": {"x": 1}}, "q=a%20b&n=3,7&x=1"),
+        ("q=a%20b&n=3,7", {}, "q=a%20b&n=3,7"),
+        ("q=a%20b&n=3,7&z=1", {"remove": "z"}, "q=a+b&n=3%2C7"),
     ],
 )
-def test_path_with_added_args(path, added_args, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_added_args(request, added_args)
-    assert expected == actual
-
-
-@pytest.mark.parametrize(
-    "path,args,expected",
-    [
-        ("/foo?bar=1", {"bar"}, "/foo"),
-        ("/foo?bar=1&baz=2", {"bar"}, "/foo?baz=2"),
-        ("/foo?bar=1&bar=2&bar=3", {"bar": "2"}, "/foo?bar=1&bar=3"),
-    ],
-)
-def test_path_with_removed_args(path, args, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_removed_args(request, args)
-    assert expected == actual
-    # Run the test again but this time use the path= argument
-    request = Request.fake("/")
-    actual = utils.path_with_removed_args(request, args, path=path)
-    assert expected == actual
-
-
-@pytest.mark.parametrize(
-    "path,args,expected",
-    [
-        ("/foo?bar=1", {"bar": 2}, "/foo?bar=2"),
-        ("/foo?bar=1&baz=2", {"bar": None}, "/foo?baz=2"),
-    ],
-)
-def test_path_with_replaced_args(path, args, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_replaced_args(request, args)
-    assert expected == actual
+def test_modify_query_string(query_string, kwargs, expected):
+    assert utils.modify_query_string(query_string, **kwargs) == expected
 
 
 @pytest.mark.parametrize(
@@ -103,13 +83,18 @@ def test_path_with_replaced_args(path, args, expected):
         ({"A": "f,o", "B": "bar"}, ["A", "B"], "f~2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
-            utils.CustomRow(
-                ["searchable_id", "tag"],
-                [
-                    ("searchable_id", {"value": 1, "label": "1"}),
-                    ("tag", {"value": "feline", "label": "feline"}),
-                ],
+            Row.from_dict(
+                {"searchable_id": 1, "tag": "feline"}, labels={"tag": "Feline"}
             ),
+            ["searchable_id", "tag"],
+            "1,feline",
+        ),
+        (
+            # Rows as represented in JSON, with expanded foreign key labels
+            {
+                "searchable_id": {"value": 1, "label": "1"},
+                "tag": {"value": "feline", "label": "feline"},
+            },
             ["searchable_id", "tag"],
             "1,feline",
         ),
@@ -117,7 +102,29 @@ def test_path_with_replaced_args(path, args, expected):
 )
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = utils.path_from_row_pks(row, pks, False)
-    assert expected_path == actual_path
+    assert actual_path == expected_path
+
+
+@pytest.mark.parametrize(
+    "row,pks,expected",
+    [
+        ({"A": "foo", "B": "bar"}, ["A", "B"], False),
+        ({"A": None}, ["A"], True),
+        ({"A": "foo", "B": None}, ["A", "B"], True),
+        # Falsey values that are not null still identify a row
+        ({"A": ""}, ["A"], False),
+        ({"A": 0}, ["A"], False),
+        # Only primary key columns count
+        ({"A": 1, "B": None}, ["A"], False),
+        # Tables with no primary key use rowid, which is never null
+        ({"rowid": 1, "A": None}, [], False),
+        # Foreign key columns expanded to a label
+        ({"A": {"value": None, "label": None}}, ["A"], True),
+        ({"A": {"value": 1, "label": "One"}}, ["A"], False),
+    ],
+)
+def test_row_has_null_primary_key(row, pks, expected):
+    assert utils.row_has_null_primary_key(row, pks) is expected
 
 
 @pytest.mark.parametrize(
@@ -132,12 +139,16 @@ def test_path_from_row_pks(row, pks, expected_path):
             """
         {"CategoryID": 1, "Description": "Soft drinks", "Picture": {"$base64": true, "encoded": "FRwCx60F/g=="}}
     """.strip(),
-        )
+        ),
+        (
+            {"message": b"hello"},
+            '{"message": {"$base64": true, "encoded": "aGVsbG8="}}',
+        ),
     ],
 )
 def test_custom_json_encoder(obj, expected):
     actual = json.dumps(obj, cls=utils.CustomJSONEncoder, sort_keys=True)
-    assert expected == actual
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -188,9 +199,12 @@ def test_validate_sql_select_good(good_sql):
     utils.validate_sql_select(good_sql)
 
 
-@pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
+@pytest.mark.parametrize(
+    "open_quote,close_quote",
+    [('"', '"'), ("[", "]"), ("'", "'"), ("`", "`"), ("", "")],
+)
 def test_detect_fts(open_quote, close_quote):
-    sql = """
+    sql = f"""
     CREATE TABLE "Dumb_Table" (
       "TreeID" INTEGER,
       "qSpecies" TEXT
@@ -205,15 +219,16 @@ def test_detect_fts(open_quote, close_quote):
       "qCaretaker" TEXT
     );
     CREATE VIEW Test_View AS SELECT * FROM Dumb_Table;
-    CREATE VIRTUAL TABLE {open}Street_Tree_List_fts{close} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open}Street_Tree_List{close});
+    CREATE VIRTUAL TABLE {open_quote}Street_Tree_List_fts{close_quote} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open_quote}Street_Tree_List{close_quote});
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
-    """.format(open=open_quote, close=close_quote)
+    """
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, "Dumb_Table")
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
-    assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
+    assert None is utils.detect_fts(conn, "Street_Tree")
+    assert utils.detect_fts(conn, "Street_Tree_List") == "Street_Tree_List_fts"
     conn.close()
 
 
@@ -221,6 +236,8 @@ def test_detect_fts(open_quote, close_quote):
     "identifier,expected",
     (
         ("plain", "plain"),
+        ("plain\n", '"plain\n"'),
+        ("select\n", '"select\n"'),
         ("select", '"select"'),
         ("has space", '"has space"'),
         ("has'quote", '"has\'quote"'),
@@ -258,8 +275,8 @@ def test_escape_sqlite_prevents_injection():
     conn.execute("CREATE TABLE users (id INTEGER, password TEXT)")
     conn.execute("INSERT INTO users VALUES (1, 'super_secret_password')")
     malicious = "users] UNION SELECT password FROM users--"
-    conn.execute('CREATE TABLE "{}" (id INTEGER)'.format(malicious))
-    sql = "select count(*) from {}".format(utils.escape_sqlite(malicious))
+    conn.execute(f'CREATE TABLE "{malicious}" (id INTEGER)')
+    sql = f"select count(*) from {utils.escape_sqlite(malicious)}"
     results = conn.execute(sql).fetchall()
     conn.close()
     # The injected UNION must not execute - only the empty malicious table
@@ -269,16 +286,16 @@ def test_escape_sqlite_prevents_injection():
 
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
 def test_detect_fts_different_table_names(table):
-    sql = """
+    sql = f"""
     CREATE TABLE [{table}] (
       "TreeID" INTEGER,
       "qSpecies" TEXT
     );
     CREATE VIRTUAL TABLE [{table}_fts] USING FTS4 ("qSpecies", content="{table}");
-    """.format(table=table)
+    """
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
-    assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+    assert f"{table}_fts" == utils.detect_fts(conn, table)
     conn.close()
 
 
@@ -363,6 +380,46 @@ def test_sqlite_hidden_table_names_hides_multiline_content_fts_table():
         conn.close()
 
 
+def test_sqlite_derived_table_dependencies():
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table docs(id integer primary key, body text);
+            create virtual table external_fts5 using fts5(
+                body, content='docs', content_rowid='id'
+            );
+            create virtual table internal_fts5 using fts5(body);
+            create virtual table contentless_fts5 using fts5(body, content='');
+            create virtual table external_fts4 using fts4(body, content="docs");
+            create virtual table internal_fts4 using fts4(body);
+            create virtual table contentless_fts4 using fts4(body, content="");
+            create table [docs, archive](body text);
+            create virtual table commented_fts5 using fts5(
+                body, tokenize='porter unicode61',
+                /* Comments and commas in quoted values must not confuse parsing. */
+                content='docs, archive'
+            );
+            create virtual table boxes using rtree(id, minx, maxx, miny, maxy);
+        """)
+
+        dependencies = sqlite_derived_table_dependencies(conn)
+
+        assert dependencies["external_fts5"] == "docs"
+        assert dependencies["external_fts4"] == "docs"
+        assert dependencies["commented_fts5"] == "docs, archive"
+        assert "contentless_fts5" not in dependencies
+        assert "contentless_fts4" not in dependencies
+        assert dependencies["internal_fts5_content"] == "internal_fts5"
+        assert dependencies["internal_fts4_content"] == "internal_fts4"
+        assert dependencies["external_fts5_data"] == "external_fts5"
+        assert dependencies["external_fts4_segments"] == "external_fts4"
+        assert dependencies["boxes_node"] == "boxes"
+        assert dependencies["boxes_parent"] == "boxes"
+        assert dependencies["boxes_rowid"] == "boxes"
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [
@@ -373,7 +430,7 @@ def test_sqlite_hidden_table_names_hides_multiline_content_fts_table():
     ],
 )
 def test_is_url(url, expected):
-    assert expected == utils.is_url(url)
+    assert utils.is_url(url) == expected
 
 
 @pytest.mark.parametrize(
@@ -389,95 +446,94 @@ def test_is_url(url, expected):
     ],
 )
 def test_to_css_class(s, expected):
-    assert expected == utils.to_css_class(s)
+    assert utils.to_css_class(s) == expected
 
 
-def test_temporary_docker_directory_uses_hard_link():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        # Default usage of this should use symlink
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options=None,
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note=None,
-            secret="secret",
-        ) as temp_docker:
-            hello = os.path.join(temp_docker, "hello")
-            with open(hello) as fp:
-                assert "world" == fp.read()
-            # It should be a hard link
-            assert 2 == os.stat(hello).st_nlink
+def test_temporary_docker_directory_uses_hard_link(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    # Default usage of this should use symlink
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options=None,
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note=None,
+        secret="secret",
+    ) as temp_docker:
+        hello = os.path.join(temp_docker, "hello")
+        with open(hello) as fp:
+            assert fp.read() == "world"
+        # It should be a hard link
+        assert os.stat(hello).st_nlink == 2
 
 
 @patch("os.link")
-def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
+def test_temporary_docker_directory_uses_copy_if_hard_link_fails(
+    mock_link, tmp_path, monkeypatch
+):
     # Copy instead if os.link raises OSError (normally due to different device)
     mock_link.side_effect = OSError
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        # Default usage of this should use symlink
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options=None,
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note=None,
-            secret=None,
-        ) as temp_docker:
-            hello = os.path.join(temp_docker, "hello")
-            with open(hello) as fp:
-                assert "world" == fp.read()
-            # It should be a copy, not a hard link
-            assert 1 == os.stat(hello).st_nlink
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    # Default usage of this should use symlink
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options=None,
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note=None,
+        secret=None,
+    ) as temp_docker:
+        hello = os.path.join(temp_docker, "hello")
+        with open(hello) as fp:
+            assert fp.read() == "world"
+        # It should be a copy, not a hard link
+        assert os.stat(hello).st_nlink == 1
 
 
-def test_temporary_docker_directory_quotes_args():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options="--$HOME",
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note="$PWD",
-            secret="secret",
-        ) as temp_docker:
-            df = os.path.join(temp_docker, "Dockerfile")
-            with open(df) as fp:
-                df_contents = fp.read()
-            assert "'$PWD'" in df_contents
-            assert "'--$HOME'" in df_contents
-            assert "ENV DATASETTE_SECRET 'secret'" in df_contents
+def test_temporary_docker_directory_quotes_args(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options="--$HOME",
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note="$PWD",
+        secret="secret",
+    ) as temp_docker:
+        df = os.path.join(temp_docker, "Dockerfile")
+        with open(df) as fp:
+            df_contents = fp.read()
+        assert "'$PWD'" in df_contents
+        assert "'--$HOME'" in df_contents
+        assert "ENV DATASETTE_SECRET 'secret'" in df_contents
 
 
 def test_compound_keys_after_sql():
-    assert "((a > :p0))" == utils.compound_keys_after_sql(["a"])
+    assert utils.compound_keys_after_sql(["a"]) == "((a > :p0))"
     assert """
 ((a > :p0)
   or
@@ -492,56 +548,72 @@ def test_compound_keys_after_sql():
     """.strip() == utils.compound_keys_after_sql(["a", "b", "c"])
 
 
+def test_compound_keys_at_or_before_sql():
+    assert utils.compound_keys_at_or_before_sql(["a"]) == "((a <= :p0))"
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b <= :p1))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b"])
+    assert """
+((a < :p3)
+  or
+(a = :p3 and b < :p4)
+  or
+(a = :p3 and b = :p4 and c <= :p5))
+    """.strip() == utils.compound_keys_at_or_before_sql(["a", "b", "c"], 3)
+
+
 def test_table_columns():
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
     create table places (id integer primary key, name text, bob integer)
     """)
-    assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
+    assert utils.table_columns(conn, "places") == ["id", "name", "bob"]
     conn.close()
 
 
-@pytest.mark.parametrize(
-    "path,format,extra_qs,expected",
-    [
-        ("/foo?sql=select+1", "csv", {}, "/foo.csv?sql=select+1"),
-        ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
-        ("/foo/bar", "json", {}, "/foo/bar.json"),
-        ("/foo/bar", "csv", {}, "/foo/bar.csv"),
-        ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
-        (
-            "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
-            "csv",
-            {"_dl": 1},
-            "/sf-trees/Street_Tree_List.csv?_search=cherry&_size=1000&_dl=1",
-        ),
-    ],
-)
-def test_path_with_format(path, format, extra_qs, expected):
-    request = Request.fake(path)
-    actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
-    assert expected == actual
-
-
-def test_path_with_format_can_override_request_path():
-    request = Request.fake("/prefix/foo?x=1")
-    actual = utils.path_with_format(request=request, path="/foo", format="json")
-    assert "/foo.json?x=1" == actual
-
-
-@pytest.mark.parametrize(
-    "bytes,expected",
-    [
-        (120, "120 bytes"),
-        (1024, "1.0 KB"),
-        (1024 * 1024, "1.0 MB"),
-        (1024 * 1024 * 1024, "1.0 GB"),
-        (1024 * 1024 * 1024 * 1.3, "1.3 GB"),
-        (1024 * 1024 * 1024 * 1024, "1.0 TB"),
-    ],
-)
-def test_format_bytes(bytes, expected):
-    assert expected == utils.format_bytes(bytes)
+def test_introspection_sees_table_created_by_another_connection(tmp_path):
+    # A connection that has already loaded the schema must still see tables
+    # that are created afterwards by a different connection
+    # https://github.com/simonw/datasette/issues/2356
+    path = str(tmp_path / "data.db")
+    writer = sqlite3.connect(path)
+    writer.execute("create table docs (id integer primary key, title text)")
+    writer.commit()
+    reader = sqlite3.connect(path)
+    # Cause the reader to load and cache the schema
+    assert reader.execute("select count(*) from docs").fetchone()[0] == 0
+    writer.execute(
+        "create table notes (type text, key text, "
+        "doc_id integer references docs(id), primary key (type, key))"
+    )
+    writer.commit()
+    try:
+        assert utils.get_outbound_foreign_keys(reader, "notes") == [
+            {"column": "doc_id", "other_table": "docs", "other_column": "id"}
+        ]
+    finally:
+        reader.close()
+    # Fresh stale reader for each check, since any check refreshes the schema
+    for fn, expected in (
+        (utils.detect_primary_keys, ["type", "key"]),
+        (utils.table_columns, ["type", "key", "doc_id"]),
+    ):
+        writer.execute("drop table notes")
+        writer.commit()
+        reader = sqlite3.connect(path)
+        assert reader.execute("select count(*) from docs").fetchone()[0] == 0
+        writer.execute(
+            "create table notes (type text, key text, "
+            "doc_id integer references docs(id), primary key (type, key))"
+        )
+        writer.commit()
+        try:
+            assert fn(reader, "notes") == expected
+        finally:
+            reader.close()
+    writer.close()
 
 
 @pytest.mark.parametrize(
@@ -559,7 +631,7 @@ def test_format_bytes(bytes, expected):
     ],
 )
 def test_escape_fts(query, expected):
-    assert expected == utils.escape_fts(query)
+    assert utils.escape_fts(query) == expected
 
 
 @pytest.mark.parametrize(
@@ -571,7 +643,7 @@ def test_escape_fts(query, expected):
     ],
 )
 def test_escape_css_string(input, expected):
-    assert expected == utils.escape_css_string(input)
+    assert utils.escape_css_string(input) == expected
 
 
 def test_check_connection_spatialite_raises():
@@ -592,8 +664,8 @@ def test_call_with_supported_arguments():
     def foo(a, b):
         return f"{a}+{b}"
 
-    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2)
-    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2, c=3)
+    assert utils.call_with_supported_arguments(foo, a=1, b=2) == "1+2"
+    assert utils.call_with_supported_arguments(foo, a=1, b=2, c=3) == "1+2"
 
     with pytest.raises(TypeError):
         utils.call_with_supported_arguments(foo, a=1)
@@ -617,8 +689,8 @@ def test_multi_params(data, should_raise):
             utils.MultiParams(data)
         return
     p1 = utils.MultiParams(data)
-    assert "bar" == p1["foo"]
-    assert ["bar", "baz"] == list(p1.getlist("foo"))
+    assert p1["foo"] == "bar"
+    assert list(p1.getlist("foo")) == ["bar", "baz"]
 
 
 @pytest.mark.parametrize(
@@ -664,7 +736,7 @@ def test_multi_params(data, should_raise):
     ],
 )
 def test_actor_matches_allow(actor, allow, expected):
-    assert expected == utils.actor_matches_allow(actor, allow)
+    assert utils.actor_matches_allow(actor, allow) == expected
 
 
 @pytest.mark.parametrize(
@@ -678,14 +750,13 @@ def test_actor_matches_allow(actor, allow, expected):
     ],
 )
 def test_resolve_env_secrets(config, expected):
-    assert expected == utils.resolve_env_secrets(config, {"FOO": "x"})
+    assert utils.resolve_env_secrets(config, {"FOO": "x"}) == expected
 
 
 @pytest.mark.parametrize(
     "actor,expected",
     [
         ({"id": "blah"}, "blah"),
-        ({"id": "blah", "login": "l"}, "l"),
         ({"id": "blah", "login": "l"}, "l"),
         ({"id": "blah", "login": "l", "username": "u"}, "u"),
         ({"login": "l", "name": "n"}, "n"),
@@ -697,10 +768,9 @@ def test_resolve_env_secrets(config, expected):
     ],
 )
 def test_display_actor(actor, expected):
-    assert expected == utils.display_actor(actor)
+    assert utils.display_actor(actor) == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dbs,expected_path",
     [
@@ -743,7 +813,6 @@ def test_parse_metadata(content, expected):
         assert utils.parse_metadata(content) == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sql,expected",
     (
@@ -752,6 +821,21 @@ def test_parse_metadata(content, expected):
         ("select 1 + :one + :two", ["one", "two"]),
         ("select 'bob' || '0:00' || :cat", ["cat"]),
         ("select this is invalid :one, :two, :three", ["one", "two", "three"]),
+        # A string literal containing a comment marker should not hide
+        # parameters that come after it
+        ("select * from t where note = '-- TODO' and id = :id", ["id"]),
+        ("select '--' || :y", ["y"]),
+        ("select * from t where note = '/* x */' and id = :id", ["id"]),
+        # Parameters that live inside a comment should be ignored
+        ("select :x -- and :ignored", ["x"]),
+        ("select :x /* and :ignored */ from t", ["x"]),
+        ("select :x /* and :ignored", ["x"]),
+        # Parameters inside quoted identifiers should be ignored
+        ("select [a:b] from t where id = :id", ["id"]),
+        ("select `a:b` from t where id = :id", ["id"]),
+        ("select `a``:b` from t where id = :id", ["id"]),
+        # Parameters inside a string literal should be ignored
+        ("select ':ignored' || :real", ["real"]),
     ),
 )
 @pytest.mark.parametrize("use_async_version", (False, True))
@@ -860,7 +944,6 @@ def test_sha256_file(tmp_path):
     assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
 
 
-@pytest.mark.asyncio
 async def test_calculate_etag(tmp_path):
     path = tmp_path / "test.txt"
     path.write_text("hello")
@@ -868,7 +951,7 @@ async def test_calculate_etag(tmp_path):
     assert etag == await utils.calculate_etag(path)
     assert utils._etag_cache[path] == etag
     utils._etag_cache[path] = "hash"
-    assert "hash" == await utils.calculate_etag(path)
+    assert await utils.calculate_etag(path) == "hash"
     utils._etag_cache.clear()
 
 
@@ -902,3 +985,110 @@ def test_deep_dict_update(dict1, dict2, expected):
     assert result == expected
     # Check that the original dict1 was modified
     assert dict1 == expected
+
+
+@pytest.mark.parametrize(
+    "install,branch,expected",
+    [
+        # Defaults to the version of Datasette running the command
+        ([], None, ["datasette==VERSION"]),
+        (["datasette-vega"], None, ["datasette==VERSION", "datasette-vega"]),
+        # --branch installs from GitHub instead
+        (
+            ["datasette-vega"],
+            "main",
+            ["https://github.com/simonw/datasette/archive/main.zip", "datasette-vega"],
+        ),
+        # A requirement for Datasette in --install replaces the default
+        (["datasette==0.65.5"], None, ["datasette==0.65.5"]),
+        (["datasette>=1.0a0", "datasette-vega"], None, None),
+        (["Datasette[rich]"], None, None),
+        (["datasette @ https://example.com/d.zip"], None, None),
+        (["/app/plugins/datasette-1.0a42-py3-none-any.whl"], None, None),
+        (["https://example.com/datasette-1.0a42.tar.gz"], None, None),
+        # Plugins that merely start with datasette do not
+        (
+            ["datasette-vega==0.6", "/tmp/datasette-vega-0.6.whl"],
+            None,
+            [
+                "datasette==VERSION",
+                "datasette-vega==0.6",
+                "/tmp/datasette-vega-0.6.whl",
+            ],
+        ),
+    ],
+)
+def test_datasette_install_requirements(install, branch, expected):
+    from datasette.version import __version__
+
+    if expected is None:
+        expected = install
+    expected = [item.replace("VERSION", __version__) for item in expected]
+    assert utils.datasette_install_requirements(install, branch) == expected
+
+
+@pytest.mark.parametrize(
+    "value,typed,expected",
+    [
+        ("foo", False, "foo"),
+        ("f,o/o", False, "f~2Co~2Fo"),
+        (None, False, "$null"),
+        ("", False, "$empty"),
+        (b"\x00\xff", False, "b:00ff"),
+        (b"", False, "b:"),
+        # Text that looks like a marker is tilde-encoded, so it stays text
+        ("$null", False, "~24null"),
+        ("$empty", False, "~24empty"),
+        ("i:2", False, "i~3A2"),
+        ("b:ff", False, "b~3Aff"),
+        # Numbers are text unless the column needs their type
+        (345, False, "345"),
+        (1.5, False, "1~2E5"),
+        (345, True, "i:345"),
+        (-345, True, "i:-345"),
+        # No "." or "+", which mean other things in a URL
+        (1.5, True, "f:0x1~2E8000000000000p0"),
+        (1e100, True, "f:0x1~2E249ad2594c37dp332"),
+    ],
+)
+def test_encode_key_value(value, typed, expected):
+    encoded = utils.encode_key_value(value, typed)
+    assert encoded == expected
+    decoded = utils.decode_key_value(encoded)
+    if isinstance(value, (int, float)) and not typed:
+        # SQLite converts this back to a number for a typed column
+        assert decoded == str(value)
+    else:
+        assert decoded == value
+        assert type(decoded) is type(value)
+
+
+@pytest.mark.parametrize(
+    "component,expected",
+    [
+        # Paths and cursors from before $empty existed
+        ("", ""),
+        # float.hex() as written by Datasette 1.0a43 cursors
+        ("f:0x1.8p+0", 1.5),
+        ("f:0x1.8p0", 1.5),
+    ],
+)
+def test_decode_key_value_accepts_older_forms(component, expected):
+    assert utils.decode_key_value(component) == expected
+
+
+@pytest.mark.parametrize(
+    "component", ["i:no", "i:9223372036854775808", "f:no", "f:nan", "b:zz"]
+)
+def test_decode_key_value_invalid(component):
+    with pytest.raises(ValueError):
+        utils.decode_key_value(component)
+
+
+def test_path_from_row_pks_typed_columns():
+    row = {"a": 1, "b": 1, "c": "", "d": b"\x01"}
+    assert (
+        utils.path_from_row_pks(row, ["a", "b", "c", "d"], False, typed_columns={"b"})
+        == "1,i:1,$empty,b:01"
+    )
+    assert utils.decode_key_path("1,i:1,$empty,b:01") == ["1", 1, "", b"\x01"]

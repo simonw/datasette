@@ -1,14 +1,17 @@
+from collections.abc import Callable
+
 import pytest
+
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.utils.permissions import resolve_permissions_from_catalog
-from typing import Callable, List
 
 
 @pytest.fixture
 def db():
     ds = Datasette()
     import tempfile
+
     from datasette.database import Database
 
     path = tempfile.mktemp(suffix="demo.db")
@@ -127,7 +130,7 @@ def plugin_root_deny_for_all() -> Callable[[str], PermissionSQL]:
 
 def plugin_conflicting_same_child_rules(
     user: str, parent: str, child: str
-) -> List[Callable[[str], PermissionSQL]]:
+) -> list[Callable[[str], PermissionSQL]]:
     def allow_provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             """
@@ -258,7 +261,6 @@ def res_denied(rows, parent=None):
 
 
 # ---------- Tests ----------
-@pytest.mark.asyncio
 async def test_alice_global_allow_with_specific_denies_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -277,15 +279,12 @@ async def test_alice_global_allow_with_specific_denies_catalog(db):
     # Alice can see everything except accounting/sales and hr/*
     assert "/accounting/sales" in res_denied(rows)
     for r in rows:
-        if r["parent"] == "hr":
-            assert r["allow"] == 0
-        elif r["resource"] == "/accounting/sales":
+        if r["parent"] == "hr" or r["resource"] == "/accounting/sales":
             assert r["allow"] == 0
         else:
             assert r["allow"] == 1
 
 
-@pytest.mark.asyncio
 async def test_carol_parent_allow_but_child_conflict_deny_wins_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -309,7 +308,6 @@ async def test_carol_parent_allow_but_child_conflict_deny_wins_catalog(db):
     assert len(allowed_analytics) == 9
 
 
-@pytest.mark.asyncio
 async def test_specificity_child_allow_overrides_parent_deny_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -336,7 +334,6 @@ async def test_specificity_child_allow_overrides_parent_deny_catalog(db):
     )
 
 
-@pytest.mark.asyncio
 async def test_root_deny_all_but_parent_allow_rescues_specific_parent_catalog(db):
     await seed_catalog(db)
     plugins = [
@@ -355,7 +352,6 @@ async def test_root_deny_all_but_parent_allow_rescues_specific_parent_catalog(db
             assert r["allow"] == 0
 
 
-@pytest.mark.asyncio
 async def test_parent_scoped_candidates(db):
     await seed_catalog(db)
     plugins = [
@@ -375,7 +371,6 @@ async def test_parent_scoped_candidates(db):
     assert d["/hr"] == 0
 
 
-@pytest.mark.asyncio
 async def test_implicit_deny_behavior(db):
     await seed_catalog(db)
     plugins = []  # no rules at all
@@ -403,7 +398,6 @@ async def test_implicit_deny_behavior(db):
     assert all(r["allow"] is None and r["reason"] is None for r in rows2)
 
 
-@pytest.mark.asyncio
 async def test_candidate_filters_via_params(db):
     await seed_catalog(db)
     # Add some metadata to test filtering
@@ -461,7 +455,6 @@ async def test_candidate_filters_via_params(db):
     assert all(r["allow"] in (0, 1) for r in rows2)
 
 
-@pytest.mark.asyncio
 async def test_action_specific_rules(db):
     await seed_catalog(db)
     plugins = [plugin_allow_all_for_action("dana", VIEW_TABLE)]
@@ -490,7 +483,6 @@ async def test_action_specific_rules(db):
     assert all(r["action"] == "insert-row" for r in insert_rows)
 
 
-@pytest.mark.asyncio
 async def test_actor_actor_id_action_parameters_available(db):
     """Test that :actor (JSON), :actor_id, and :action are all available in SQL"""
     await seed_catalog(db)
@@ -532,7 +524,6 @@ async def test_actor_actor_id_action_parameters_available(db):
     assert "Actor JSON:" in reason
 
 
-@pytest.mark.asyncio
 async def test_multiple_plugins_with_own_parameters(db):
     """
     Test that multiple plugins can use their own parameter names without conflict.

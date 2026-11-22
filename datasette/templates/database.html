@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_catalog_cards.html" as catalog_cards with context %}
 
 {% block title %}{{ database }}{% endblock %}
 
@@ -8,7 +9,7 @@
 {% include "_sql_parameter_styles.html" %}
 {% if database_page_data.createTable %}
 <script>window._datasetteDatabaseData = {{ database_page_data|tojson }};</script>
-<script src="{{ static('edit-tools.js') }}" defer></script>
+<script src="{{ static('edit-tools-loader.js') }}" data-edit-tools-src="{{ static('edit-tools.js') }}" defer></script>
 {% endif %}
 {% endblock %}
 
@@ -18,7 +19,11 @@
 {{ crumbs.nav(request=request, database=database) }}
 {% endblock %}
 
+{% block recent_item %}{% with recent_type="database", recent_name=database, recent_title=metadata.title, recent_url=urls.database(database) %}{% include "_recent_item.html" %}{% endwith %}{% endblock %}
+
 {% block content %}
+{% set shown_tables = (tables if show_hidden else tables|rejectattr("hidden"))|list %}
+<div class="homepage database-page">
 <div class="page-header" style="border-color: #{{ database_color }}">
     <h1>{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
 </div>
@@ -28,6 +33,13 @@
 {{ top_database() }}
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
+
+<p class="homepage-summary">
+    <span>{{ "{:,}".format(shown_tables|length) }} table{% if shown_tables|length != 1 %}s{% endif %}</span>
+    {%- if views %}<span>{{ "{:,}".format(views|length) }} view{% if views|length != 1 %}s{% endif %}</span>{% endif -%}
+    {%- if queries %}<span>{{ "{:,}".format(queries_count) }} quer{% if queries_count != 1 %}ies{% else %}y{% endif %}</span>{% endif -%}
+    {%- if size %}<span>{{ size|filesizeformat }}</span>{% endif -%}
+</p>
 
 {% if allow_execute_sql %}
     <form class="sql core" action="{{ urls.database(database) }}/-/query" method="get" data-parameters-url="{{ urls.database(database) }}/-/query/parameters">
@@ -56,48 +68,87 @@
 {% endif %}
 
 {% if queries %}
-    <h2 id="queries">Queries</h2>
-    <ul class="bullets">
+<section class="homepage-queries" aria-labelledby="queries">
+    <div class="homepage-section-header">
+        <h2 id="queries">Queries</h2>
+        <a class="homepage-section-link" href="{{ urls.database(database) }}/-/queries">{{ "{:,}".format(queries_count) }} quer{% if queries_count != 1 %}ies{% else %}y{% endif %} →</a>
+    </div>
+    <ul class="query-list">
         {% for query in queries %}
-            <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
+        <li class="query-row">
+            <a class="query-row-name" href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}">{{ query.title or query.name }}</a>
+            {%- if query.private %} 🔒{% endif %}
+            {% if query.is_write %}<span class="type-tag type-tag-write">writes</span>{% endif %}
+            <span class="query-row-detail">
+                {%- if query.description %}{{ query.description }}{% elif query.sql and not query.hide_sql %}<code>{{ query.sql|truncate(120) }}</code>{% endif -%}
+            </span>
+        </li>
         {% endfor %}
     </ul>
-    {% if queries_more %}
-        <p><a href="{{ urls.database(database) }}/-/queries">View {{ "{:,}".format(queries_count) }} quer{% if queries_count == 1 %}y{% else %}ies{% endif %}</a></p>
-    {% endif %}
+</section>
 {% endif %}
 
-{% if tables %}
-<h2 id="tables">Tables <a style="font-weight: normal; font-size: 0.75em; padding-left: 0.5em;" href="{{ urls.database(database) }}/-/schema">schema</a></h2>
+{% if shown_tables or views %}
+<section class="homepage-tables" aria-labelledby="tables">
+    <div class="homepage-section-header">
+        <h2 id="tables">Tables{% if views %} and views{% endif %}</h2>
+        <a class="homepage-section-link" href="{{ urls.database(database) }}/-/schema">Schema →</a>
+    </div>
+    {% set shown_names = shown_tables|map(attribute="name")|list %}
+    {% call catalog_cards.list() %}
+    {% for table in shown_tables %}
+        {% set linked_tables = (table.foreign_keys.incoming + table.foreign_keys.outgoing)|map(attribute="other_table")|select("in", shown_names)|reject("equalto", table.name)|unique|sort %}
+        {% if table.count is none %}{% set count_text = "Many" %}
+        {% elif table.count_truncated %}{% set count_text = ">" ~ "{:,}".format(table.count - 1) %}
+        {% else %}{% set count_text = "{:,}".format(table.count) %}{% endif %}
+        {{- catalog_cards.card({
+            "url": urls.table(database, table.name),
+            "name": table.name,
+            "database": database,
+            "type": "table",
+            "private": table.private,
+            "hidden": table.hidden,
+            "count": table.count,
+            "columns": table.columns[:8],
+            "more_columns": table.columns[8:],
+            "column_count": table.columns|length,
+            "has_fts": table.fts_table,
+            "linked_tables": linked_tables,
+        }, count_text=count_text) }}
+    {% endfor %}
+    {% for view in views %}
+        {{- catalog_cards.card({
+            "url": urls.table(database, view.name),
+            "name": view.name,
+            "type": "view",
+            "private": view.private,
+        }) }}
+    {% endfor %}
+    {% endcall %}
+</section>
 {% endif %}
-
-{% for table in tables %}
-{% if show_hidden or not table.hidden %}
-<div class="db-table">
-    <h3><a href="{{ urls.table(database, table.name) }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h3>
-    <p><em>{% for column in table.columns %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}</em></p>
-    <p>{% if table.count is none %}Many rows{% elif table.count_truncated %}&gt;{{ "{:,}".format(table.count - 1) }} rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
-</div>
-{% endif %}
-{% endfor %}
 
 {% if hidden_count and not show_hidden %}
-    <p>... and <a href="{{ urls.database(database) }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
-{% endif %}
-
-{% if views %}
-    <h2 id="views">Views</h2>
-    <ul class="bullets">
-        {% for view in views %}
-            <li><a href="{{ urls.database(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
-        {% endfor %}
-    </ul>
+    <p class="homepage-more">… and <a href="{{ urls.database(database) }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
 {% endif %}
 
 {% if allow_download %}
-    <p class="download-sqlite">Download SQLite DB: <a href="{{ urls.database(database) }}.db" rel="nofollow">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
+    <p class="download-sqlite">
+        <a class="quiet-button" href="{{ urls.database(database) }}.db" rel="nofollow" title="Download {{ database }}.db">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 15V3"></path>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <path d="m7 10 5 5 5-5"></path>
+            </svg>
+            <span>Download SQLite database</span>
+            <span class="download-sqlite-size">{{ size|filesizeformat }}</span>
+        </a>
+    </p>
 {% endif %}
 
+</div>
+
+<script src="{{ static('catalog-cards.js') }}" defer></script>
 {% include "_codemirror_foot.html" %}
 {% include "_sql_parameter_scripts.html" %}
 <script>

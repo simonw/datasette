@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
 from .utils import tilde_encode, urlsafe_components
 
@@ -62,7 +63,6 @@ def stored_query_to_dict(query: StoredQuery) -> dict[str, Any]:
         "description_html": query.description_html,
         "hide_sql": query.hide_sql,
         "fragment": query.fragment,
-        "params": list(query.parameters),
         "parameters": list(query.parameters),
         "is_write": query.is_write,
         "is_private": query.is_private,
@@ -84,7 +84,6 @@ def stored_query_page_to_dict(page: StoredQueryPage) -> dict[str, Any]:
     return {
         "queries": [stored_query_to_dict(query) for query in page.queries],
         "next": page.next,
-        "has_more": page.has_more,
         "limit": page.limit,
     }
 
@@ -388,7 +387,7 @@ async def count_queries(
                 OR q.sql LIKE :query_search
             )
             """)
-        params["query_search"] = "%{}%".format(q)
+        params["query_search"] = f"%{q}%"
     if is_write is not None:
         where_clauses.append("q.is_write = :query_is_write")
         params["query_is_write"] = int(bool(is_write))
@@ -402,8 +401,11 @@ async def count_queries(
         where_clauses.append("q.source = :query_source")
         params["query_source"] = source
     if owner_id is not None:
-        where_clauses.append("q.owner_id = :query_owner_id")
-        params["query_owner_id"] = owner_id
+        # This must not be called :query_owner_id, because allowed_params
+        # already uses that name for the actor the private query rules in
+        # default_query_permissions_sql() are evaluated against
+        where_clauses.append("q.owner_id = :query_filter_owner_id")
+        params["query_filter_owner_id"] = owner_id
 
     row = (
         await datasette.get_internal_database().execute(
@@ -464,7 +466,7 @@ async def list_queries(
         except ValueError:
             components = []
         if database is None and len(components) == 3:
-            where_clauses.append("""
+            where_clauses.append(f"""
                 (
                     q.database_name > :cursor_database
                     OR (
@@ -478,12 +480,12 @@ async def list_queries(
                         )
                     )
                 )
-                """.format(sort_key_sql=sort_key_sql))
+                """)
             params["cursor_database"] = components[0]
             params["cursor_sort_key"] = components[1]
             params["cursor_name"] = components[2]
         elif database is not None and len(components) == 2:
-            where_clauses.append("""
+            where_clauses.append(f"""
                 (
                     {sort_key_sql} > :cursor_sort_key
                     OR (
@@ -491,7 +493,7 @@ async def list_queries(
                         AND q.name > :cursor_name
                     )
                 )
-                """.format(sort_key_sql=sort_key_sql))
+                """)
             params["cursor_sort_key"] = components[0]
             params["cursor_name"] = components[1]
 
@@ -504,7 +506,7 @@ async def list_queries(
                 OR q.sql LIKE :query_search
             )
             """)
-        params["query_search"] = "%{}%".format(q)
+        params["query_search"] = f"%{q}%"
     if is_write is not None:
         where_clauses.append("q.is_write = :query_is_write")
         params["query_is_write"] = int(bool(is_write))
@@ -518,8 +520,11 @@ async def list_queries(
         where_clauses.append("q.source = :query_source")
         params["query_source"] = source
     if owner_id is not None:
-        where_clauses.append("q.owner_id = :query_owner_id")
-        params["query_owner_id"] = owner_id
+        # This must not be called :query_owner_id, because allowed_params
+        # already uses that name for the actor the private query rules in
+        # default_query_permissions_sql() are evaluated against
+        where_clauses.append("q.owner_id = :query_filter_owner_id")
+        params["query_filter_owner_id"] = owner_id
 
     private_select = ", allowed.is_private AS private" if include_private else ""
     rows = list(

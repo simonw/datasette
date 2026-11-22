@@ -9,6 +9,54 @@ through the Datasette user interface can also be accessed as JSON via the API.
 To access the API for a page, either click on the ``.json`` link on that page or
 edit the URL and add a ``.json`` extension to it.
 
+.. _json_api_stability:
+
+API stability
+-------------
+
+Datasette 1.0 makes a stability promise for its JSON API: the endpoints,
+parameters and response keys documented here and on the pages this
+documentation links to will not change in backwards-incompatible ways for
+the duration of the 1.x release series.
+
+Stability means:
+
+- Documented endpoints will keep their URLs, methods, parameters and
+  permission requirements.
+- Documented response keys will keep their names and types. New keys may be
+  **added** in any release - clients should ignore keys they do not
+  recognize.
+- The documented ``?_extra=`` names, ``?_shape=`` values and
+  :ref:`column filter operators <table_arguments>` are stable.
+- Pagination tokens - the ``"next"`` key and ``?_next=`` parameter - are
+  **opaque strings**. Pass them back exactly as you received them; their
+  internal structure is not part of the API and can change at any time.
+- The :ref:`standard error format <json_api_errors>` and the
+  :ref:`API token format and restriction semantics <CreateTokenView>` are
+  stable, including the action abbreviations stored inside signed tokens.
+
+Some JSON endpoints are **exempt** from this promise:
+
+- Endpoints that are not documented include this marker key in their
+  responses and can change at any time::
+
+      "unstable": "This API is not part of Datasette's stable interface and may change at any time"
+
+  This currently covers the instance homepage (``/.json``), the stored
+  query ``analyze``/``store``/``definition`` endpoints, ``/-/query/parameters``,
+  ``/-/execute-write/analyze`` and the JSON returned by the ``/-/permissions``
+  debug playground.
+- Debug and support endpoints are documented so you can use them, but their
+  JSON shapes are not frozen: :ref:`/-/threads <JsonDataView_threads>`,
+  :ref:`/-/tasks <JsonDataView_tasks>`,
+  :ref:`/-/actions <JsonDataView_actions>`,
+  the :ref:`permission debug endpoints <PermissionsDebugView>`
+  (``/-/allowed``, ``/-/rules``, ``/-/check``) and the
+  :ref:`table autocomplete endpoint <TableAutocompleteView>`.
+- Response keys explicitly labeled as unstable in this documentation, such
+  as the ``"analysis"`` block returned by :ref:`execute-write <ExecuteWriteView>`
+  and the ``debug`` and ``request`` extras.
+
 .. _json_api_default:
 
 Default representation
@@ -42,13 +90,50 @@ looks like this:
       "truncated": false
     }
 
-``"ok"`` is always ``true`` if an error did not occur.
+``"ok"`` is always ``true`` if an error did not occur. Every Datasette JSON endpoint that returns an object includes this key on success.
 
 The ``"rows"`` key is a list of objects, each one representing a row.
 
-The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
+The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting). Query responses also return this as a ``Datasette-Truncated: true`` or ``Datasette-Truncated: false`` HTTP header, in JSON and in every other format - see :ref:`csv_export_truncated`.
 
-For table pages, an additional key ``"next"`` may be present. This indicates that the next page in the pagination set can be retrieved using ``?_next=VALUE``.
+For table pages, two additional keys are present: ``"next"``, an opaque token that can be used to retrieve the next page using ``?_next=TOKEN``, and ``"next_url"``, the full URL of that next page. Both are ``null`` on the final page. See :ref:`json_api_pagination`.
+
+.. _json_api_errors:
+
+Error responses
+---------------
+
+Every JSON error response from Datasette uses the same format:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "error": "Table not found",
+        "errors": [
+            "Table not found"
+        ],
+        "status": 404
+    }
+
+- ``"ok"`` is always ``false`` for an error.
+- ``"errors"`` is a list of one or more error message strings. Endpoints that
+  validate multiple things at once - such as the :ref:`insert API <TableInsertView>` -
+  may return several messages here.
+- ``"error"`` is all of those messages joined with ``"; "``, for
+  convenience when displaying a single string.
+- ``"status"`` matches the HTTP status code of the response.
+
+Some endpoints add extra context keys. For example, a SQL error from a
+:ref:`custom query <json_api_custom_sql>` also includes the empty
+``"rows"`` and ``"truncated"`` keys of the response it was unable to
+produce.
+
+Errors handled by Datasette's exception and permission handlers use this
+format when the URL ends in ``.json`` or the request sends an
+``Accept: application/json`` or ``Content-Type: application/json`` header.
+Without one of these signals, an error on an HTML page is rendered as HTML.
+Errors on explicit ``.csv`` URLs remain plain text, regardless of headers.
 
 .. _json_api_custom_sql:
 
@@ -69,6 +154,34 @@ Values for named SQL parameters can be provided as additional query string param
 
 The response uses the same default representation described above.
 
+.. _json_api_row:
+
+Rows
+----
+
+Every row in a table has its own JSON URL, see :ref:`RowView`. The row is returned as an object in the ``"row"`` key:
+
+::
+
+    GET /fixtures/simple_primary_key/1.json
+
+.. code-block:: json
+
+    {
+      "ok": true,
+      "database": "fixtures",
+      "table": "simple_primary_key",
+      "primary_keys": ["id"],
+      "primary_key_values": ["1"],
+      "query_ms": 1.2,
+      "row": {
+        "id": 1,
+        "content": "hello"
+      }
+    }
+
+Pass any :ref:`?_shape= option <json_api_shapes>` to return the row using the same shapes as table JSON instead. ``?_shape=objects`` returns the table default representation, with the row as the only item in the ``"rows"`` list.
+
 .. _json_api_shapes:
 
 Different shapes
@@ -78,7 +191,7 @@ The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
 options:
 
-* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default for tables and queries
 * ``?_shape=arrays`` - ``"rows"`` is a list of lists, where the order of values in each list matches the order of the columns
 * ``?_shape=array`` - a JSON array of objects - effectively just the ``"rows"`` key from the default representation
 * ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
@@ -92,6 +205,7 @@ options:
     {
       "ok": true,
       "next": null,
+      "next_url": null,
       "rows": [
         [3, "Detroit"],
         [2, "Los Angeles"],
@@ -192,6 +306,10 @@ Here is an example Python function built using `requests <https://requests.readt
 Special JSON arguments
 ----------------------
 
+Boolean query string arguments - such as ``?_labels=`` and
+``?_json_infinity=`` - accept ``on``, ``true`` or ``1`` for true and
+``off``, ``false`` or ``0`` for false.
+
 Every Datasette endpoint that can return JSON also accepts the following
 query string arguments:
 
@@ -207,7 +325,10 @@ query string arguments:
     JSON. Without this argument those columns will be returned as JSON objects
     that have been double-encoded into a JSON string value.
 
-    Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
+    With ``_shape=object``, the object keys still use the original database
+    primary-key values, even when a primary-key column is decoded using ``_json``.
+
+    Compare `this query without the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array>`_ to `this query using the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``
     If your data contains infinity or -infinity values, Datasette will replace
@@ -219,7 +340,9 @@ query string arguments:
     Sets a custom time limit for the query in ms. You can use this for optimistic
     queries where you would like Datasette to give up if the query takes too
     long, for example if you want to implement autocomplete search but only if
-    it can be executed in less than 10ms.
+    it can be executed in less than 10ms. This can only shorten the time limit:
+    a value higher than the :ref:`setting_sql_time_limit_ms` setting is
+    reduced to that setting.
 
 ``?_ttl=SECONDS``
     For how many seconds should this response be cached by HTTP proxies? Use
@@ -245,7 +368,9 @@ These can be repeated or comma-separated:
 
 ::
 
-    ?_extra=columns&_extra=count,next_url
+    ?_extra=columns&_extra=count,count_sql
+
+Requesting an ``_extra`` name that does not exist returns a ``400`` error in the :ref:`standard error format <json_api_errors>`, for example ``{"ok": false, "error": "Unknown _extra: nope", ...}``.
 
 .. [[[cog
     from json_api_doc import table_extras
@@ -265,6 +390,15 @@ The available table extras are listed below.
     .. code-block:: json
 
         15
+
+``count_truncated``
+    True if the count hit Datasette's counting limit, meaning the real number of matching rows is at least the reported count. (May execute additional queries.)
+
+    ``GET /fixtures/facetable.json?_extra=count,count_truncated``
+
+    .. code-block:: json
+
+        false
 
 ``count_sql``
     SQL query string used to calculate the total count for the current table view, including active filters.
@@ -338,17 +472,6 @@ The available table extras are listed below.
 
         "where state = \"CA\" sorted by pk"
 
-``next_url``
-    Full URL for the next page of results
-
-    ``GET /fixtures/facetable.json?_size=1&_extra=next_url``
-
-    ``null`` if there are no more pages of results. See :ref:`json_api_pagination`.
-
-    .. code-block:: json
-
-        "http://localhost/fixtures/facetable.json?_size=1&_extra=next_url&_next=1"
-
 ``columns``
     List of column names returned by this table, row or query.
 
@@ -402,8 +525,27 @@ The available table extras are listed below.
           "pk"
         ]
 
+``column_details``
+    SQLite schema details for columns in this table. The dictionary maps column names to objects describing the schema for each column. (Each object has ``type`` as the declared type string returned by SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` as the raw SQL default expression string, such as ``"42"``, ``"'hello'"`` or ``"datetime('now')"``, or ``null`` if there is no default; ``is_pk`` as a boolean; ``pk_position`` as the integer primary key position reported by SQLite, or ``0`` for columns that are not part of the primary key; and ``hidden`` as the integer value reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for normal columns, ``1`` for hidden virtual table columns, ``2`` for virtual generated columns and ``3`` for stored generated columns.)
+
+    ``GET /fixtures/binary_data.json?_size=0&_extra=column_details``
+
+    .. code-block:: json
+
+        {
+          "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": false,
+            "default": null,
+            "is_pk": false,
+            "pk_position": 0,
+            "hidden": 0
+          }
+        }
+
 ``display_columns``
-    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.
 
     Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
 
@@ -468,7 +610,7 @@ The available table extras are listed below.
             "table": "facetable",
             "format": "json"
           },
-          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=274432)>, table='facetable', is_view=False)",
           "nofacet": null,
           "nosuggest": null
         }
@@ -645,7 +787,9 @@ The available table extras are listed below.
     .. code-block:: json
 
         {
-          "json": "/fixtures/facetable.json?_extra=renderers&_format=json&_labels=on"
+          "json": "/fixtures/facetable.json?_extra=renderers&_labels=on",
+          "tsv": "/fixtures/facetable.tsv?_extra=renderers&_labels=on",
+          "csv": "/fixtures/facetable.csv?_extra=renderers&_labels=on"
         }
 
 ``custom_table_templates``
@@ -757,6 +901,17 @@ The available table extras are listed below.
           ]
         ]
 
+``expanded_columns``
+    List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects. (See :ref:`expand_foreign_keys` for how to expand these labels.)
+
+    ``GET /fixtures/facetable.json?_labels=on&_extra=expanded_columns``
+
+    .. code-block:: json
+
+        [
+          "_city_id"
+        ]
+
 ``form_hidden_args``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
 
@@ -807,25 +962,40 @@ The following extras are available for row JSON responses.
           "id"
         ]
 
-``render_cell``
-    Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
+``column_details``
+    SQLite schema details for columns in this table. The dictionary maps column names to objects describing the schema for each column. (Each object has ``type`` as the declared type string returned by SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` as the raw SQL default expression string, such as ``"42"``, ``"'hello'"`` or ``"datetime('now')"``, or ``null`` if there is no default; ``is_pk`` as a boolean; ``pk_position`` as the integer primary key position reported by SQLite, or ``0`` for columns that are not part of the primary key; and ``hidden`` as the integer value reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for normal columns, ``1`` for hidden virtual table columns, ``2`` for virtual generated columns and ``3`` for stored generated columns.)
 
-    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+    ``GET /fixtures/binary_data/1.json?_extra=column_details``
 
     .. code-block:: json
 
         {
-          "rows": [
-            {
-              "id": 4,
-              "content": "RENDER_CELL_DEMO"
-            }
-          ],
-          "render_cell": [
-            {
-              "content": "<strong>Custom rendered HTML</strong>"
-            }
-          ]
+          "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": false,
+            "default": null,
+            "is_pk": false,
+            "pk_position": 0,
+            "hidden": 0
+          }
+        }
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
+
+    The ``render_cell`` object is keyed by column name. Only columns whose rendered value differs from the default are included. If a ``?_shape=`` is specified ``render_cell`` is instead a list with one item, matching the ``rows`` list.
+
+    .. code-block:: json
+
+        {
+          "row": {
+            "id": 4,
+            "content": "RENDER_CELL_DEMO"
+          },
+          "render_cell": {
+            "content": "<strong>Custom rendered HTML</strong>"
+          }
         }
 
 ``debug``
@@ -1137,7 +1307,6 @@ The following extras are available for arbitrary SQL query responses and stored,
           "description_html": null,
           "hide_sql": false,
           "fragment": null,
-          "params": [],
           "parameters": [],
           "is_write": false,
           "is_private": false,
@@ -1201,6 +1370,23 @@ The following extras are available for arbitrary SQL query responses and stored,
 
 .. [[[end]]]
 
+.. _TableCountView:
+
+Counting all matching rows
+--------------------------
+
+``POST /<database>/<table>/-/count`` returns an exact count of the rows matching the table's query string filters::
+
+    POST /fixtures/facetable/-/count?state=CA
+
+    {"ok": true, "count": 10}
+
+The endpoint supports the same column, search and plugin filters as the table page. Pagination and display options such as ``_next``, ``_size`` and ``_sort`` do not affect the count.
+
+This requires ``view-table`` permission. ``execute-sql`` permission is only needed if using ``_where`` filters.
+
+Unlike the ``count`` extra, this count is not capped by the row count limit. The usual SQL time limit still applies; a timed-out count returns a 400 JSON error.
+
 .. _TableAutocompleteView:
 
 Table autocomplete
@@ -1218,8 +1404,11 @@ The ``q`` parameter is required. If it is omitted or blank, the endpoint returns
 an empty ``"rows"`` list.
 
 The response includes a ``"pks"`` object containing the primary key value or
-values for each row. If Datasette can detect a label column, or one has been
-configured using ``label_column``, each row will also include ``"label"``:
+values for each row, and a ``"path"`` which is the last part of the URL to that
+row's page, ``/<database>/<table>/<path>``. ``"path"`` is ``null`` for a row
+with a null primary key, which has no page. If Datasette can detect a label
+column, or one has been configured using ``label_column``, each row will also
+include ``"label"``:
 
 .. code-block:: json
 
@@ -1229,6 +1418,7 @@ configured using ``label_column``, each row will also include ``"label"``:
                 "pks": {
                     "id": 1
                 },
+                "path": "1",
                 "label": "Example row"
             }
         ]
@@ -1257,6 +1447,8 @@ You can filter the data returned by the table based on column values using a que
 
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
+
+    A value that looks like a number matches numbers as well as text if the column has no declared type, which is the case for a column in a view that is calculated by an expression such as ``count(*)`` or ``sum(amount)``. ``?total=5`` returns rows where ``total`` is the number ``5`` or the text ``"5"``. The same applies to ``__not``, ``__in`` and ``__notin``.
 
 ``?column__not=value``
     Returns rows where the column does not match the value.
@@ -1467,6 +1659,10 @@ looks like:
 The column in the foreign key table that is used for the label can be specified
 in ``datasette.yaml`` - see :ref:`table_configuration_label_column`.
 
+A value is only expanded if a label was found for it. A foreign key that refers
+to a table with no label column is returned as the plain value, as is a value
+that does not match a row in the other table.
+
 .. _json_api_discover_alternate:
 
 Discovering the JSON for a page
@@ -1509,7 +1705,7 @@ served with the following additional HTTP headers:
 
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization, Content-Type
-    Access-Control-Expose-Headers: Link
+    Access-Control-Expose-Headers: Link, Datasette-Truncated, Datasette-Max-Returned-Rows
     Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
     Access-Control-Max-Age: 3600
 
@@ -1531,6 +1727,12 @@ The JSON write API
 ------------------
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
+
+The request body is always parsed as JSON, regardless of the request's ``Content-Type`` header - a body that is not valid JSON returns a ``400`` error. Cross-site request forgery is prevented by Datasette's ``Origin`` and ``Sec-Fetch-Site`` header checks rather than by content type requirements.
+
+The row-based write APIs can write :ref:`binary values in JSON <binary_json_format>` using Datasette's Base64 representation for BLOB data.
+
+Structured inserts, upserts, updates and deletes only support ordinary SQLite tables. Virtual tables and their internal shadow tables are rejected, including when adding rows to an existing table through the create-table API. Writes to ordinary content tables can still update full-text search indexes through configured triggers.
 
 .. _ExecuteWriteView:
 
@@ -1565,7 +1767,7 @@ Unsupported SQL operations are rejected by default. ``VACUUM`` is not allowed in
 A successful response includes a message, the SQLite ``rowcount``, a ``"rows"``
 list, a ``"truncated"`` flag and a summary of the operations that were executed:
 
-The shape of the ``"analysis"`` block is not yet considered a stable API and may change in future Datasette releases.
+The shape of the ``"analysis"`` block is not part of the :ref:`stable API <json_api_stability>` and may change in future Datasette releases.
 
 .. code-block:: json
 
@@ -1625,15 +1827,17 @@ the execute-write returning row limit, which defaults to 10:
         ]
     }
 
-Errors use the standard Datasette error format:
+Errors use the :ref:`standard Datasette error format <json_api_errors>`:
 
 .. code-block:: json
 
     {
         "ok": false,
+        "error": "Permission denied: need execute-write-sql",
         "errors": [
             "Permission denied: need execute-write-sql"
-        ]
+        ],
+        "status": 403
     }
 
 .. _TableInsertView:
@@ -1659,6 +1863,8 @@ A single row can be inserted using the ``"row"`` key:
             "column2": "value2"
         }
     }
+
+Column values can use the :ref:`binary value JSON format <binary_json_format>` to write BLOB data.
 
 If successful, this will return a ``201`` status code and the newly inserted row, for example:
 
@@ -1727,9 +1933,11 @@ If any of your rows have a primary key that is already in use, you will get an e
 
     {
         "ok": false,
+        "error": "UNIQUE constraint failed: new_table.id",
         "errors": [
             "UNIQUE constraint failed: new_table.id"
-        ]
+        ],
+        "status": 400
     }
 
 Pass ``"ignore": true`` to ignore these errors and insert the other rows:
@@ -1764,6 +1972,8 @@ Upserting rows
 An upsert is an insert or update operation. If a row with a matching primary key already exists it will be updated - otherwise a new row will be inserted.
 
 The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView>`. It requires both the :ref:`actions_insert_row` and :ref:`actions_update_row` permissions.
+
+It also accepts the same :ref:`binary value JSON format <binary_json_format>`.
 
 ::
 
@@ -1802,7 +2012,7 @@ The above example will:
 
 Similar to ``/-/insert``, a ``row`` key with an object can be used instead of a ``rows`` array to upsert a single row.
 
-If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body. This is deliberately different from the ``201`` returned by :ref:`insert <TableInsertView>`: an upsert may update existing rows without creating anything, so it does not claim resource creation.
 
 Add ``"return": true`` to the request body to return full copies of the affected rows after they have been inserted or updated:
 
@@ -1859,9 +2069,11 @@ When using upsert you must provide the primary key column (or columns if the tab
 
     {
         "ok": false,
+        "error": "Row 0 is missing primary key column(s): \"id\"",
         "errors": [
             "Row 0 is missing primary key column(s): \"id\""
-        ]
+        ],
+        "status": 400
     }
 
 If your table does not have an explicit primary key you should pass the SQLite ``rowid`` key instead.
@@ -1895,6 +2107,8 @@ To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. 
 
 You only need to pass the columns you want to update. Any other columns will be left unchanged.
 
+Updated values can use the :ref:`binary value JSON format <binary_json_format>`.
+
 If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
 
 Add ``"return": true`` to the request body to return the updated row:
@@ -1914,14 +2128,16 @@ The returned JSON will look like this:
 
     {
         "ok": true,
-        "row": {
-            "id": 1,
-            "title": "New title",
-            "other_column": "Will be present here too"
-        }
+        "rows": [
+            {
+                "id": 1,
+                "title": "New title",
+                "other_column": "Will be present here too"
+            }
+        ]
     }
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
@@ -1942,7 +2158,7 @@ To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. 
 
 If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableCreateView:
 
@@ -2098,6 +2314,8 @@ Datasette will create a table with a schema that matches those rows and insert t
         "pk": "id"
     }
 
+Example rows can use the :ref:`binary value JSON format <binary_json_format>`, allowing Datasette to infer ``BLOB`` columns.
+
 Doing this requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions.
 
 The ``201`` response here will be similar to the ``columns`` form, but will also include the number of rows that were inserted as ``row_count``:
@@ -2122,9 +2340,11 @@ If you pass a row to the create endpoint with a primary key that already exists 
 
     {
         "ok": false,
+        "error": "UNIQUE constraint failed: creatures.id",
         "errors": [
             "UNIQUE constraint failed: creatures.id"
-        ]
+        ],
+        "status": 400
     }
 
 You can avoid this error by passing the same ``"ignore": true`` or ``"replace": true`` options to the create endpoint as you can to the :ref:`insert endpoint <TableInsertView>`.
@@ -2360,7 +2580,7 @@ A successful response returns the new schema and the previous schema. If the req
         "operations_applied": 11
     }
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableSetColumnTypeView:
 
@@ -2424,7 +2644,7 @@ To clear an existing column type assignment, set ``column_type`` to ``null``:
 
 This API stores the assignment in Datasette's internal database, so it can be used with immutable databases as well as mutable ones.
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableDropView:
 
@@ -2461,4 +2681,4 @@ If you pass the following POST body:
 
 Then the table will be dropped and a status ``200`` response of ``{"ok": true}`` will be returned.
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

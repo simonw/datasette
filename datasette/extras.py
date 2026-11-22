@@ -5,6 +5,8 @@ from typing import ClassVar
 
 from asyncinject import Registry
 
+from datasette.utils.asgi import BadRequest
+
 
 def extra_names_from_request(request):
     extra_bits = request.args.getlist("_extra")
@@ -112,6 +114,17 @@ class ExtraRegistry:
             }
             self._allowed_names[key] = names
         return names
+
+    def validate_requested(self, requested, scope):
+        """
+        Raise BadRequest if any requested extra name is not a public extra
+        for this scope. Used by data formats such as .json - HTML pages
+        silently ignore unknown names instead.
+        """
+        allowed = self._allowed_names_for_scope(scope, include_internal=False)
+        unknown = sorted(name for name in requested if name not in allowed)
+        if unknown:
+            raise BadRequest("Unknown _extra: {}".format(", ".join(unknown)))
 
     async def resolve(self, requested, context, scope, include_internal=False):
         allowed_names = self._allowed_names_for_scope(scope, include_internal)

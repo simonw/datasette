@@ -2,11 +2,17 @@
 Tests for the register_token_handler plugin hook.
 """
 
+import pytest
+
 from datasette.app import Datasette
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.tokens import TokenHandler, TokenRestrictions, SignedTokenHandler
-import pytest
+from datasette.tokens import (
+    SignedTokenHandler,
+    TokenHandler,
+    TokenInvalid,
+    TokenRestrictions,
+)
 
 
 @pytest.fixture
@@ -14,7 +20,6 @@ def datasette():
     return Datasette()
 
 
-@pytest.mark.asyncio
 async def test_default_signed_handler_registered(datasette):
     """The default SignedTokenHandler should be registered automatically."""
     handlers = datasette._token_handlers()
@@ -23,14 +28,12 @@ async def test_default_signed_handler_registered(datasette):
     assert any(h.name == "signed" for h in handlers)
 
 
-@pytest.mark.asyncio
 async def test_create_token_default(datasette):
     """create_token() with handler='signed' should create a signed token."""
     token = await datasette.create_token("test_actor", handler="signed")
     assert token.startswith("dstok_")
 
 
-@pytest.mark.asyncio
 async def test_create_token_with_restrictions(datasette):
     """create_token() should handle restriction parameters."""
     token = await datasette.create_token(
@@ -48,7 +51,6 @@ async def test_create_token_with_restrictions(datasette):
     assert "a" in decoded["_r"]
 
 
-@pytest.mark.asyncio
 async def test_verify_token_default(datasette):
     """verify_token() should verify signed tokens."""
     token = await datasette.create_token("test_actor", handler="signed")
@@ -58,35 +60,30 @@ async def test_verify_token_default(datasette):
     assert actor["token"] == "dstok"
 
 
-@pytest.mark.asyncio
 async def test_verify_token_unknown_returns_none(datasette):
     """verify_token() should return None for unrecognized tokens."""
     result = await datasette.verify_token("unknown_token_format_xyz")
     assert result is None
 
 
-@pytest.mark.asyncio
-async def test_verify_token_bad_signature_returns_none(datasette):
-    """verify_token() should return None for tokens with bad signatures."""
-    result = await datasette.verify_token("dstok_tampered_data_here")
-    assert result is None
+async def test_verify_token_bad_signature_raises(datasette):
+    """verify_token() should raise TokenInvalid for tokens with bad signatures."""
+    with pytest.raises(TokenInvalid):
+        await datasette.verify_token("dstok_tampered_data_here")
 
 
-@pytest.mark.asyncio
 async def test_create_token_with_named_handler(datasette):
     """create_token(handler='signed') should select the signed handler."""
     token = await datasette.create_token("test_actor", handler="signed")
     assert token.startswith("dstok_")
 
 
-@pytest.mark.asyncio
 async def test_create_token_unknown_handler_raises(datasette):
     """create_token(handler='nonexistent') should raise ValueError."""
     with pytest.raises(ValueError, match="Token handler 'nonexistent' not found"):
         await datasette.create_token("test_actor", handler="nonexistent")
 
 
-@pytest.mark.asyncio
 async def test_custom_token_handler(datasette):
     """A custom token handler should be usable for both create and verify."""
 
@@ -133,7 +130,6 @@ async def test_custom_token_handler(datasette):
         pm.unregister(name="test_custom_handler")
 
 
-@pytest.mark.asyncio
 async def test_verify_token_tries_all_handlers(datasette):
     """verify_token() should try each handler until one matches."""
 
@@ -196,7 +192,6 @@ async def test_verify_token_tries_all_handlers(datasette):
         pm.unregister(name="test_handler_b")
 
 
-@pytest.mark.asyncio
 async def test_token_handler_via_http(datasette):
     """Default signed tokens should work through HTTP auth."""
     token = await datasette.create_token("http_user", handler="signed")
@@ -210,7 +205,6 @@ async def test_token_handler_via_http(datasette):
     assert actor["token"] == "dstok"
 
 
-@pytest.mark.asyncio
 async def test_custom_handler_via_http(datasette):
     """Custom handler tokens should work through HTTP auth."""
 
@@ -248,7 +242,6 @@ async def test_custom_handler_via_http(datasette):
         pm.unregister(name="test_custom_http")
 
 
-@pytest.mark.asyncio
 async def test_token_handler_base_class_raises():
     """TokenHandler base class methods should raise NotImplementedError."""
     handler = TokenHandler()
@@ -259,7 +252,6 @@ async def test_token_handler_base_class_raises():
         await handler.verify_token(ds, "test")
 
 
-@pytest.mark.asyncio
 async def test_restrictions_round_trip(datasette):
     """Tokens with database/resource restrictions should round-trip correctly."""
     restrictions = (
@@ -279,7 +271,6 @@ async def test_restrictions_round_trip(datasette):
     assert actor["_r"]["r"] == {"docs": {"attachments": ["insert-row"]}}
 
 
-@pytest.mark.asyncio
 async def test_expires_after_round_trip(datasette):
     """Tokens with expires_after should include token_expires in the actor."""
     token = await datasette.create_token(
@@ -291,7 +282,6 @@ async def test_expires_after_round_trip(datasette):
     assert "token_expires" in actor
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "build_restrictions,expected",
     [
@@ -328,11 +318,11 @@ async def test_token_restrictions_abbreviated(datasette, build_restrictions, exp
     assert restrictions.abbreviated(datasette) == expected
 
 
-@pytest.mark.asyncio
 async def test_signed_tokens_disabled():
     """create_token and verify_token should fail/skip when signed tokens are disabled."""
     ds = Datasette(settings={"allow_signed_tokens": False})
     with pytest.raises(ValueError, match="Signed tokens are not enabled"):
         await ds.create_token("test_actor", handler="signed")
-    # verify_token should return None rather than raising
-    assert await ds.verify_token("dstok_anything") is None
+    # verify_token should raise TokenInvalid for a dstok_ token
+    with pytest.raises(TokenInvalid, match="not enabled"):
+        await ds.verify_token("dstok_anything")

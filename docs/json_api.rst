@@ -610,7 +610,7 @@ The available table extras are listed below.
             "table": "facetable",
             "format": "json"
           },
-          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=274432)>, table='facetable', is_view=False)",
           "nofacet": null,
           "nosuggest": null
         }

@@ -40,7 +40,11 @@ async def test_homepage(ds_client_two_attached_databases):
     assert f"--db-color: #{extra_color}" in chips[1]["style"]
     # Tables and views from every database are in one list, tagged with
     # their database; hidden FTS tables are left out
+    # The list is paginated, so search for the ones this looks for
+    response = await client.get("/?q=searchable")
+    soup = Soup(response.content, "html.parser")
     item_links = [a["href"] for a in soup.select("a.catalog-item-name")]
+    assert "/fixtures/searchable" in item_links
     assert "/extra+database/searchable" in item_links
     assert "/extra+database/searchable_view" in item_links
     assert not any("searchable_fts" in href for href in item_links)

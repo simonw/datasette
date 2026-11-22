@@ -1,7 +1,9 @@
 # perm_utils.py
 from __future__ import annotations
 
+import dataclasses
 import json
+import re
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -14,12 +16,70 @@ from datasette.utils import await_me_maybe
 SKIP_PERMISSION_CHECKS = object()
 
 
+_sql_param_re = re.compile(r":([A-Za-z0-9_]+)")
+
+
+def namespace_permission_sql_params(
+    permission_sql: PermissionSQL, prefix: str
+) -> PermissionSQL:
+    """
+    Return a copy of ``permission_sql`` with every one of its params renamed
+    to ``prefix + name``, in ``params``, ``sql`` and ``restriction_sql``.
+
+    Rules from every plugin are combined into one query, which the calling
+    code then wraps in SQL of its own with more parameters. Without this a
+    plugin param called ``:limit`` or ``:database`` is silently replaced by
+    the value Datasette binds under that name, or by another plugin's.
+    """
+    params = permission_sql.params or {}
+    if not params:
+        return dataclasses.replace(permission_sql, params={})
+
+    def rename(sql):
+        if not sql:
+            return sql
+        # Matching whole names means :actor is not renamed inside :actor_id
+        return _sql_param_re.sub(
+            lambda match: (
+                ":" + prefix + match.group(1)
+                if match.group(1) in params
+                else match.group(0)
+            ),
+            sql,
+        )
+
+    return dataclasses.replace(
+        permission_sql,
+        sql=rename(permission_sql.sql),
+        restriction_sql=rename(permission_sql.restriction_sql),
+        params={prefix + name: value for name, value in params.items()},
+    )
+
+
+def _permission_sql_param_prefix(datasette, action: str) -> str:
+    # Followed by the position of each PermissionSQL, this is distinct for
+    # every PermissionSQL of every action, so the rules for an action can be
+    # combined with those for the action it also_requires. It is the same
+    # on every call, so the SQL that is built does not change.
+    try:
+        action_key = f"a{list(datasette.actions).index(action)}"
+    except ValueError:
+        action_key = f"x{action.encode('utf-8').hex()}"
+    return f"_ds_{action_key}_"
+
+
 async def gather_permission_sql_from_hooks(
-    *, datasette, actor: dict | None, action: str
+    *, datasette, actor: dict | None, action: str, namespace_params: bool = True
 ) -> list[PermissionSQL] | object:
     """Collect PermissionSQL objects from the permission_resources_sql hook.
 
-    Ensures that each returned PermissionSQL has a populated ``source``.
+    Ensures that each returned PermissionSQL has a populated ``source``, and
+    that ``:actor``, ``:actor_id`` and ``:action`` are bound for it.
+
+    The params of each one are renamed to names that Datasette owns, see
+    namespace_permission_sql_params(). Pass ``namespace_params=False`` to
+    keep the names the plugin used, which is only safe if each PermissionSQL
+    is then executed on its own.
 
     Returns SKIP_PERMISSION_CHECKS sentinel if skip_permission_checks context variable
     is set, signaling that all permission checks should be bypassed.
@@ -36,6 +96,7 @@ async def gather_permission_sql_from_hooks(
     hook_results = list(hook_caller(datasette=datasette, actor=actor, action=action))
 
     collected: list[PermissionSQL] = []
+    prefix = _permission_sql_param_prefix(datasette, action)
     actor_json = json.dumps(actor) if actor is not None else None
     actor_id = actor.get("id") if isinstance(actor, dict) else None
 
@@ -44,12 +105,20 @@ async def gather_permission_sql_from_hooks(
         resolved = await await_me_maybe(result)
         default_source = _plugin_name_from_hookimpl(hookimpl)
         for permission_sql in _iter_permission_sql_from_result(resolved, action=action):
-            if not permission_sql.source:
-                permission_sql.source = default_source
-            params = permission_sql.params or {}
+            # Work on a copy: a plugin may return the same object every time
+            params = dict(permission_sql.params or {})
             params.setdefault("action", action)
             params.setdefault("actor", actor_json)
             params.setdefault("actor_id", actor_id)
+            permission_sql = dataclasses.replace(
+                permission_sql,
+                source=permission_sql.source or default_source,
+                params=params,
+            )
+            if namespace_params:
+                permission_sql = namespace_permission_sql_params(
+                    permission_sql, f"{prefix}{len(collected)}_"
+                )
             collected.append(permission_sql)
 
     return collected
@@ -99,9 +168,9 @@ def build_rules_union(
       union_sql: a SELECT with columns (parent, child, allow, reason, source_plugin)
       params:    dict of bound parameters including :actor (JSON), :actor_id, and plugin params
 
-    Note: Plugins are responsible for ensuring their parameter names don't conflict.
-    The system reserves these parameter names: :actor, :actor_id, :action, :filter_parent
-    Plugin parameters should be prefixed with a unique identifier (e.g., source name).
+    Plugin params are expected to have been renamed already, which
+    gather_permission_sql_from_hooks() does, so that they cannot clash with
+    each other or with :actor, :actor_id and the caller's own parameters.
     """
     parts: list[str] = []
     actor_json = json.dumps(actor) if actor else None
@@ -109,7 +178,6 @@ def build_rules_union(
     params: dict[str, Any] = {"actor": actor_json, "actor_id": actor_id}
 
     for p in plugins:
-        # No namespacing - just use plugin params as-is
         params.update(p.params or {})
 
         # Skip plugins that only provide restriction_sql (no permission rules)

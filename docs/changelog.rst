@@ -9,7 +9,7 @@ Changelog
 Unreleased
 ----------
 
-This alpha settles more of the API that plugins and custom templates depend on. Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``, optional arguments to the documented internal methods are keyword-only, a new ``datasette.urls.modify()`` method replaces the ``path_with_*()`` helpers and the template context is now documented for every page, with a new debug page for exploring it. ``?_stream=1`` exports are also several times faster. Rows with a null, empty string or binary primary key now work correctly, and so do filters and facets against calculated columns in views.
+This alpha includes three security fixes, and settles more of the API that plugins and custom templates depend on. Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``, optional arguments to the documented internal methods are keyword-only, a new ``datasette.urls.modify()`` method replaces the ``path_with_*()`` helpers and the template context is now documented for every page, with a new debug page for exploring it. ``?_stream=1`` exports are also several times faster. Rows with a null, empty string or binary primary key now work correctly, and so do filters and facets against calculated columns in views.
 
 Several of these changes are backwards incompatible. The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins for the new rows and columns.
 
@@ -17,6 +17,7 @@ Security fixes
 ~~~~~~~~~~~~~~
 
 - Fixed a security issue where the :ref:`/-/config <JsonDataView_config>` introspection endpoint showed anonymous visitors the ``allow`` blocks, the names of private tables and the name and SQL of private stored queries defined in configuration, on an instance that was otherwise public. **Backwards incompatible:** the endpoint now requires the ``permissions-debug`` permission, which by default is only granted to the :ref:`root user <authentication_root>`. It previously needed only ``view-instance``.
+- Fixed a security issue where a SQL parameter returned by a :ref:`permission_resources_sql() <plugin_hook_permission_resources_sql>` plugin could be replaced by a value from Datasette, or from another plugin, that used the same parameter name. A plugin with a parameter called ``:database``, ``:q``, ``:pattern``, ``:allowed_dbs`` or ``:limit`` had it overwritten on the homepage and database page, which could list the names, columns and row counts of tables the visitor was not allowed to view. Row data was not exposed. Datasette now renames the parameters of each ``PermissionSQL`` before combining them, so plugins no longer need to choose names that are unique.
 - Fixed a security issue where a stored query could be given a name ending in a newline, such as ``"dogs\n"``, which got past the check that a query name does not conflict with a table or view. Those names are now rejected.
 
 Features

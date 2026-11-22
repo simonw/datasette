@@ -1595,10 +1595,11 @@ Datasette's action-based permission resolver calls this hook to gather SQL rows 
 resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
 Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns.
 
-**Parameter naming convention:** Plugin parameters in ``PermissionSQL.params`` should use unique names
-to avoid conflicts with other plugins. The recommended convention is to prefix parameters with your
-plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
-``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
+**Parameter names:** Datasette renames the parameters in ``PermissionSQL.params`` before it combines your SQL
+with the SQL from other plugins, so a name you choose cannot clash with a parameter used by another plugin
+or by Datasette itself. Refer to each parameter in your SQL as ``:name``. Datasette provides these
+parameters to every SQL snippet: ``:actor`` (the actor as JSON, or ``NULL``), ``:actor_id`` and ``:action``.
+A value you supply in ``params`` under one of those three names is used in place of Datasette's, for your SQL only.
 
 You can also use return ``PermissionSQL.allow(reason="reason goes here")`` or ``PermissionSQL.deny(reason="reason goes here")`` as shortcuts for simple root-level allow or deny rules. These will create SQL snippets that look like this:
 

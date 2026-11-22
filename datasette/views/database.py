@@ -824,7 +824,10 @@ class QueryView(View):
 
         extra_args = {}
         if params.get("_timelimit"):
-            extra_args["custom_time_limit"] = int(params["_timelimit"])
+            # ?_timelimit= can shorten the time limit but not extend it
+            extra_args["custom_time_limit"] = min(
+                int(params["_timelimit"]), datasette.sql_time_limit_ms
+            )
 
         format_ = request.url_vars.get("format") or "html"
 

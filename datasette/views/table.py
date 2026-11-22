@@ -2554,7 +2554,10 @@ async def table_view_data(
     sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
 
     if request.args.get("_timelimit"):
-        extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
+        # ?_timelimit= can shorten the time limit but not extend it
+        extra_args["custom_time_limit"] = min(
+            int(request.args.get("_timelimit")), datasette.sql_time_limit_ms
+        )
 
     # Execute the main query!
     try:

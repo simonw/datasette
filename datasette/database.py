@@ -761,12 +761,14 @@ class Database:
         """Executes sql against db_name in a thread"""
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
-        time_limit_ms = self.ds.sql_time_limit_ms
+        default_time_limit_ms = self.ds.sql_time_limit_ms
+        # custom_time_limit can be shorter or longer than the setting. Limits
+        # that come from a request, such as ?_timelimit=, are capped by the
+        # code that reads them.
+        time_limit_ms = custom_time_limit or default_time_limit_ms
         # Callers that pass a shorter custom_time_limit, such as table counts
         # and facet suggestions, expect timeouts, so they are not span errors
-        timeout_expected = bool(custom_time_limit) and custom_time_limit < time_limit_ms
-        if timeout_expected:
-            time_limit_ms = custom_time_limit
+        timeout_expected = time_limit_ms < default_time_limit_ms
 
         def sql_operation_in_thread(conn):
             # Expected timeouts and errors with log_sql_errors=False are not

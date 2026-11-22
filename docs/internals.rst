@@ -2212,7 +2212,7 @@ Executes a SQL query against the database and returns the resulting rows (see :r
     Should the rows returned by the query be truncated at the maximum page size? Defaults to ``True``, set this to ``False`` to disable truncation.
 
 ``custom_time_limit`` - integer ms
-    A custom time limit for this query. This can be set to a lower value than the Datasette configured default. If a query takes longer than this it will be terminated early and raise a ``dataette.database.QueryInterrupted`` exception.
+    A custom time limit for this query, used instead of the :ref:`setting_sql_time_limit_ms` setting. This can be lower or higher than that setting. If a query takes longer than this it will be terminated early and raise a ``datasette.database.QueryInterrupted`` exception. Do not pass a value from an untrusted source without capping it first, as Datasette does for the ``?_timelimit=`` query string argument.
 
 ``page_size`` - integer
     Set a custom page size for truncation, over-riding the configured Datasette default.
@@ -2810,7 +2810,7 @@ A request to a table page produces a span named, in full::
     - ``db.operation.name`` *(optional)* - The statement's leading keyword, such as ``SELECT``, ``INSERT`` or ``CREATE``, if it matches the supported allowlist. Statements beginning with a common table expression report ``WITH``. Omitted for unrecognized keywords and ``execute_write_script()``.
     - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
     - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. The parameter values are not recorded.
-    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or a shorter ``custom_time_limit``.
+    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or the ``custom_time_limit`` passed by the caller.
     - ``datasette.rows_returned`` *(optional)* - Number of rows returned by a successful read query.
     - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
     - ``datasette.interrupted`` *(optional)* - True if the query exceeded its time limit. The span status is set to ``ERROR`` unless the caller used a ``custom_time_limit`` shorter than :ref:`setting_sql_time_limit_ms`, in which case the status is left unset.

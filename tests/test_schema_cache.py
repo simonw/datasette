@@ -296,7 +296,9 @@ async def test_attached_database_table_is_not_cached(tmp_path, trips):
     # main database says nothing about those, so they are not cached.
     main_path = tmp_path / "data.db"
     other_path = tmp_path / "other.db"
-    sqlite3.connect(main_path).close()
+    conn = sqlite3.connect(main_path)
+    conn.execute("create table here (id integer primary key)")
+    conn.close()
     conn = sqlite3.connect(other_path)
     conn.execute("create table elsewhere (id integer primary key)")
     conn.close()
@@ -311,11 +313,18 @@ async def test_attached_database_table_is_not_cached(tmp_path, trips):
     ds._prepare_connection = prepare_and_attach
     db = ds.get_database("data")
     with request_scope():
+        assert await db.table_columns("here") == ["id"]
         assert await db.table_columns("elsewhere") == ["id"]
-        conn = sqlite3.connect(other_path)
-        conn.execute("alter table elsewhere add column name text")
-        conn.close()
-        assert await db.table_columns("elsewhere") == ["id", "name"]
+        # This does not check that a change to the attached file shows up.
+        # SQLite 3.25 does not notice one until a statement reads that file.
+        del trips[:]
+        assert await db.table_columns("here") == ["id"]
+        assert trips == []
+        assert await db.table_columns("elsewhere") == ["id"]
+        assert await db.primary_keys("elsewhere") == ["id"]
+        assert trips == ["data", "data"]
+    assert ("column_details", "here") in db._schema_cache
+    assert ("column_details", "elsewhere") not in db._schema_cache
     ds.close()
 
 

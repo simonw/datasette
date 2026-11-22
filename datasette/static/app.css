@@ -851,6 +851,13 @@ table.rows-and-columns td em {
     font-size: 0.8125em;
     font-style: normal;
 }
+/* The link for a row with an empty string primary key - a link like any
+   other, in italics to show that "empty" is not the value. */
+table.rows-and-columns td em.row-link-empty {
+    color: inherit;
+    font-size: inherit;
+    font-style: italic;
+}
 /* Links keep Datasette's colour and its no-underline table style, with an
    underline on hover. Visited is darkened from #54AC8E to pass AA. */
 table.rows-and-columns td a:link {

@@ -308,6 +308,31 @@ async def test_autocomplete_path(ds_client):
         assert data["row"]["id"] == row["pks"]["id"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("qs", ("_initial=1", "q=0102"))
+async def test_autocomplete_binary_primary_key(ds_client, qs):
+    # A binary primary key made this endpoint return a 500 error, because
+    # bytes cannot be serialized as JSON
+    response = await ds_client.get(
+        "/fixtures/primary_key_edge_cases/-/autocomplete?" + qs
+    )
+    assert response.status_code == 200, response.text
+    binary_rows = [
+        row for row in response.json()["rows"] if isinstance(row["pks"]["id"], dict)
+    ]
+    if qs == "_initial=1":
+        # Encoded the same way as binary values elsewhere in the JSON API
+        encoded = {"$base64": True, "encoded": "AQI="}
+        assert binary_rows == [
+            # The primary key is also the label for this table
+            {"pks": {"id": encoded}, "path": "b:0102", "label": encoded}
+        ]
+        data = (
+            await ds_client.get("/fixtures/primary_key_edge_cases/b:0102.json")
+        ).json()
+        assert data["row"]["id"] == binary_rows[0]["pks"]["id"]
+
+
 def test_autocomplete_path_is_null_for_null_primary_key():
     from datasette.views.table import _autocomplete_response_rows
 

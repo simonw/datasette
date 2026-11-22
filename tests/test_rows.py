@@ -345,9 +345,9 @@ async def test_table_column_details_constraints():
     db = ds.add_memory_database("test_table_column_details_constraints")
     await db.execute_write_script("""
         create table t (
-            b text not null default 'x',
-            a integer,
-            c text,
+            b TEXT not null default 'x',
+            a INTEGER,
+            c TEXT,
             primary key (c, a)
         );
         """)

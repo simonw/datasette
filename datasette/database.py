@@ -19,6 +19,7 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
+from .permissions import _SQLITE_IDENTIFIER_CASE
 from .rows import (
     Column,
     Columns,
@@ -939,16 +940,47 @@ class Database:
         ]
 
     async def table_exists(self, table):
+        cache = await self._get_schema_cache()
+        if cache is not None:
+            return (await self._table_and_view_types(cache)).get(table) == "table"
         results = await self.execute(
             "select 1 from sqlite_master where type='table' and name=?", params=(table,)
         )
         return bool(results.rows)
 
     async def view_exists(self, table):
+        cache = await self._get_schema_cache()
+        if cache is not None:
+            return (await self._table_and_view_types(cache)).get(table) == "view"
         results = await self.execute(
             "select 1 from sqlite_master where type='view' and name=?", params=(table,)
         )
         return bool(results.rows)
+
+    async def _table_name_nocase(self, table):
+        """
+        Returns the name of the table that SQLite would find for ``table``,
+        which it matches without regard to ASCII case, or None if there is
+        no such table.
+        """
+        cache = await self._get_schema_cache()
+        if cache is None:
+            row = (
+                await self.execute(
+                    "select name from sqlite_master"
+                    " where type='table' and name=? collate nocase",
+                    [table],
+                )
+            ).first()
+            return row[0] if row else None
+        names = cache.get("table_names_nocase")
+        if names is None:
+            names = cache["table_names_nocase"] = {
+                name.translate(_SQLITE_IDENTIFIER_CASE): name
+                for name, type_ in (await self._table_and_view_types(cache)).items()
+                if type_ == "table"
+            }
+        return names.get(table.translate(_SQLITE_IDENTIFIER_CASE))
 
     async def table_names(self):
         results = await self.execute(
@@ -1015,18 +1047,23 @@ class Database:
         # If the schema changes while this is running then self._schema_cache
         # is replaced, and this result is stored in the discarded dictionary
         result = await self.execute_fn(fn)
-        if table is not None:
-            # Only kept if that table or view exists. Table names can come
-            # from a query string, so without this any number of names that
-            # match nothing could be used to fill the cache.
-            names = cache.get("table_and_view_names")
-            if names is None:
-                names = await self.execute_fn(_table_and_view_names)
-                cache["table_and_view_names"] = names
-            if table not in names:
-                return result
-        cache[key] = result
+        # A lookup about a table is only kept if that table or view exists.
+        # Table names can come from a query string, so without this any
+        # number of names that match nothing could be used to fill the cache.
+        if table is None or table in await self._table_and_view_types(cache):
+            cache[key] = result
         return result
+
+    async def _table_and_view_types(self, cache) -> dict[str, str]:
+        """
+        Returns {name: "table" or "view"} for everything in the main
+        database, kept in ``cache``, the result of _get_schema_cache()
+        """
+        types = cache.get("table_and_view_types")
+        if types is None:
+            types = await self.execute_fn(_table_and_view_types)
+            cache["table_and_view_types"] = types
+        return types
 
     # Named functions rather than lambdas give more useful datasette.callback
     # span attributes
@@ -1173,25 +1210,28 @@ class Database:
         return await self.execute_fn(get_all_foreign_keys)
 
     async def get_table_definition(self, table, type_="table"):
-        table_definition_rows = list(
-            await self.execute(
+        def _get_table_definition(conn):
+            definition = conn.execute(
                 "select sql from sqlite_master where name = :n and type=:t",
                 {"n": table, "t": type_},
+            ).fetchone()
+            if definition is None:
+                return None
+            bits = [definition[0] + ";"]
+            # Add on any indexes
+            bits.extend(
+                row[0] + ";"
+                for row in conn.execute(
+                    "select sql from sqlite_master where tbl_name = :n"
+                    " and type='index' and sql is not null",
+                    {"n": table},
+                ).fetchall()
             )
+            return "\n".join(bits)
+
+        return await self._cached_schema_lookup(
+            ("definition", table, type_), _get_table_definition, table
         )
-        if not table_definition_rows:
-            return None
-        bits = [table_definition_rows[0][0] + ";"]
-        # Add on any indexes
-        index_rows = list(
-            await self.execute(
-                "select sql from sqlite_master where tbl_name = :n and type='index' and sql is not null",
-                {"n": table},
-            )
-        )
-        for index_row in index_rows:
-            bits.append(index_row[0] + ";")
-        return "\n".join(bits)
 
     async def get_view_definition(self, view):
         return await self.get_table_definition(view, "view")
@@ -1220,13 +1260,12 @@ def _schema_version(conn):
     return conn.execute("PRAGMA schema_version").fetchone()[0]
 
 
-def _table_and_view_names(conn):
+def _table_and_view_types(conn):
     # Tables in the main database only, matching _schema_version()
-    return frozenset(
-        row[0]
-        for row in conn.execute(
-            "select name from sqlite_master where type in ('table', 'view')"
-        )
+    return dict(
+        conn.execute(
+            "select name, type from sqlite_master where type in ('table', 'view')"
+        ).fetchall()
     )
 
 

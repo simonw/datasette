@@ -395,3 +395,176 @@ async def test_table_page_reflects_change_by_another_process(ds, monkeypatch):
     response = await ds.client.get("/data/books.json?_extra=columns")
     assert response.json()["columns"] == ["id", "title", "author_id", "pages"]
     assert 'data-column="pages"' in (await ds.client.get("/data/books")).text
+
+
+async def test_table_exists_and_view_exists(db, trips):
+    await db.execute_write("create view titles as select title from books")
+    with request_scope():
+        assert await db.table_exists("books") is True
+        assert await db.view_exists("books") is False
+        assert await db.table_exists("titles") is False
+        assert await db.view_exists("titles") is True
+        assert await db.table_exists("nope") is False
+        assert await db.view_exists("nope") is False
+        # Matching is exact, as it is for a query against sqlite_master
+        assert await db.table_exists("BOOKS") is False
+        assert await db.view_exists("Titles") is False
+        del trips[:]
+        size = len(db._schema_cache)
+        for i in range(50):
+            assert await db.table_exists(f"no_such_table_{i}") is False
+            assert await db.view_exists(f"no_such_view_{i}") is False
+        assert await db.table_exists("books") is True
+        assert trips == []
+        assert len(db._schema_cache) == size
+
+
+async def test_table_exists_follows_schema_changes(ds, db):
+    with request_scope():
+        assert await db.table_exists("publishers") is False
+        await db.execute_write("create table publishers (id integer primary key)")
+        assert await db.table_exists("publishers") is True
+        await db.execute_write("drop table publishers")
+        assert await db.table_exists("publishers") is False
+        await db.execute_write("create view publishers as select 1")
+        assert await db.table_exists("publishers") is False
+        assert await db.view_exists("publishers") is True
+    alter_from_outside(ds, "drop view publishers; drop table authors;")
+    with request_scope():
+        assert await db.view_exists("publishers") is False
+        assert await db.table_exists("authors") is False
+    # Outside of a request a change by another process is seen straight away
+    alter_from_outside(ds, "create table authors (id integer primary key)")
+    assert await db.table_exists("authors") is True
+
+
+async def test_table_exists_on_private_memory_database(trips):
+    ds = Datasette(memory=True)
+    db = ds.get_database("_memory")
+    with request_scope():
+        assert await db.table_exists("books") is False
+        assert await db.view_exists("books") is False
+    assert trips == ["_memory", "_memory"]
+
+
+async def test_get_table_definition(ds, db, trips):
+    await db.execute_write("create index books_title on books(title)")
+    await db.execute_write("create view titles as select title from books")
+    with request_scope():
+        definition = await db.get_table_definition("books")
+        assert definition.startswith("CREATE TABLE books (")
+        assert definition.endswith(";\nCREATE INDEX books_title on books(title);")
+        assert await db.get_table_definition("books", "view") is None
+        assert await db.get_view_definition("titles") == (
+            "CREATE VIEW titles as select title from books;"
+        )
+        assert await db.get_table_definition("nope") is None
+        del trips[:]
+        assert await db.get_table_definition("books") == definition
+        assert await db.get_view_definition("titles") is not None
+        assert trips == []
+        size = len(db._schema_cache)
+        for i in range(50):
+            assert await db.get_table_definition(f"no_such_table_{i}") is None
+        assert len(db._schema_cache) == size
+
+        await db.execute_write("create index books_author on books(author_id)")
+        assert (await db.get_table_definition("books")).endswith(
+            "CREATE INDEX books_author on books(author_id);"
+        )
+    alter_from_outside(ds, "drop index books_title")
+    with request_scope():
+        assert "books_title" not in await db.get_table_definition("books")
+
+
+async def test_table_name_nocase_matches_sqlite(db, trips):
+    await db.execute_write('create table "École" (id integer primary key)')
+    await db.execute_write("create view Titles as select title from books")
+    spellings = (
+        "books",
+        "BOOKS",
+        "Books",
+        "authors",
+        "nope",
+        # A view is not a table
+        "Titles",
+        "titles",
+        # SQLite folds ASCII case only
+        "École",
+        "ÉCOLE",
+        "école",
+        "éCOLE",
+    )
+    with request_scope():
+        for spelling in spellings:
+            from_sqlite = (
+                await db.execute(
+                    "select name from sqlite_master"
+                    " where type='table' and name=? collate nocase",
+                    [spelling],
+                )
+            ).first()
+            expected = from_sqlite[0] if from_sqlite else None
+            assert await db._table_name_nocase(spelling) == expected, spelling
+        assert await db._table_name_nocase("BOOKS") == "books"
+        assert await db._table_name_nocase("ÉCOLE") == "École"
+        assert await db._table_name_nocase("école") is None
+        del trips[:]
+        size = len(db._schema_cache)
+        for spelling in spellings:
+            await db._table_name_nocase(spelling)
+        assert trips == []
+        assert len(db._schema_cache) == size
+        await db.execute_write("drop table books")
+        assert await db._table_name_nocase("BOOKS") is None
+
+
+async def test_foreign_key_to_differently_cased_table(tmp_path):
+    db_path = tmp_path / "data.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        create table Authors (id integer primary key, name text);
+        create table books (
+            id integer primary key,
+            author_id integer references AUTHORS(id),
+            ghost_id integer references nowhere(id)
+        );
+        """)
+    conn.close()
+    ds = Datasette([str(db_path)])
+    await ds.invoke_startup()
+    with request_scope():
+        assert await ds._foreign_key_target(None, "data", "books", "author_id") == (
+            "Authors",
+            "id",
+        )
+        assert await ds._foreign_key_target(None, "data", "books", "ghost_id") is None
+    ds.close()
+
+
+async def test_warm_table_page_makes_no_sqlite_master_queries(ds):
+    conn = sqlite3.connect(ds._test_db_path)
+    conn.execute("insert into authors values (1, 'Ursula')")
+    conn.execute("insert into books values (1, 'Earthsea', 1)")
+    conn.commit()
+    conn.close()
+    statements = []
+    original = ds._prepare_connection
+
+    def prepare_and_trace(conn, database):
+        original(conn, database)
+        if database == "data":
+            conn.set_trace_callback(statements.append)
+
+    ds._prepare_connection = prepare_and_trace
+    response = await ds.client.get("/data/books")
+    assert response.status_code == 200
+    assert ">Ursula<" in response.text
+    del statements[:]
+    response = await ds.client.get("/data/books")
+    assert response.status_code == 200
+    schema_statements = [
+        s for s in statements if "sqlite_master" in s or "table_xinfo" in s
+    ]
+    assert schema_statements == []
+    assert (await ds.client.get("/data/nope")).status_code == 404

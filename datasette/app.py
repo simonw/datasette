@@ -2370,17 +2370,11 @@ ORDER BY allowed.parent, allowed.child
 
         other_table = fk["other_table"]
         # Foreign key declarations can spell the target with different casing.
-        target_table = (
-            await db.execute(
-                "select name from sqlite_master where type='table' and name=? collate nocase",
-                [other_table],
-            )
-        ).first()
-        if target_table is None:
+        other_table = await db._table_name_nocase(other_table)
+        if other_table is None:
             # SQLite accepts a foreign key to a table that does not exist, and
             # linking to it would only lead to a 404
             return None
-        other_table = target_table[0]
         other_column = fk["other_column"]
         if other_column is None:
             other_pks = await db.primary_keys(other_table)

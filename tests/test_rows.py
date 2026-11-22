@@ -5,12 +5,16 @@ import sqlite3
 
 import pytest
 
-from datasette import Column, Columns, ForeignKey, Row
+from datasette import Column, Columns, Row
 from datasette.app import Datasette
-from datasette.database import Results
+from datasette.database import Results, columns_for_results
 from datasette.rows import label_rows
-from datasette.utils import CustomJSONEncoder
-from datasette.utils.sqlite import supports_returning
+from datasette.utils import CustomJSONEncoder, table_xinfo_hidden
+from datasette.utils.sqlite import (
+    supports_generated_columns,
+    supports_returning,
+    supports_table_xinfo,
+)
 
 
 @pytest.fixture
@@ -140,7 +144,7 @@ def test_row_pickle_and_deepcopy(duplicate):
     "columns",
     (
         Columns(["id", "owner_id"]),
-        Columns(["id", Column("owner_id", foreign_key=ForeignKey("owners", "id"))]),
+        Columns(["id", Column("owner_id", type="INTEGER", notnull=1)]),
     ),
 )
 def test_columns_pickle_and_deepcopy(duplicate, columns):
@@ -159,15 +163,27 @@ def test_row_json_encoding(row):
 
 
 def test_columns():
-    fk = ForeignKey(table="owners", column="id")
-    columns = Columns(["id", Column("owner_id", table="dogs", foreign_key=fk)])
+    owner_id = Column(
+        "owner_id", type="INTEGER", notnull=1, pk_position=0, hidden=False
+    )
+    columns = Columns(["id", owner_id])
     assert len(columns) == 2
     assert columns.names == ("id", "owner_id")
     assert [column.name for column in columns] == ["id", "owner_id"]
     assert columns[0] == Column("id")
-    assert columns["owner_id"].foreign_key == fk
-    assert columns["owner_id"].table == "dogs"
-    assert columns["id"].type is None
+    assert columns["owner_id"] is owner_id
+    assert columns["owner_id"].type == "INTEGER"
+    assert columns["owner_id"].notnull == 1
+    # A column given by name alone has no details
+    assert columns["id"] == Column(
+        "id",
+        type=None,
+        notnull=None,
+        default_value=None,
+        pk_position=None,
+        hidden=None,
+        generated=None,
+    )
     assert columns[-1] is columns["owner_id"]
     assert "id" in columns
     assert "nope" not in columns
@@ -176,7 +192,12 @@ def test_columns():
         columns["nope"]
     with pytest.raises(IndexError):
         columns[2]
-    assert columns == Columns(["id", Column("owner_id", table="dogs", foreign_key=fk)])
+    assert columns == Columns(
+        [
+            "id",
+            Column("owner_id", type="INTEGER", notnull=1, pk_position=0, hidden=False),
+        ]
+    )
     assert columns != Columns(["id", "owner_id"])
     assert repr(columns) == "<Columns: id, owner_id>"
 
@@ -306,9 +327,10 @@ async def ds_with_dogs():
 
 
 @pytest.mark.asyncio
-async def test_describe_columns(ds_with_dogs):
+async def test_table_column_details_returns_columns(ds_with_dogs):
     db = ds_with_dogs.get_database("row_types")
-    columns = await db.describe_columns("dogs")
+    columns = await db.table_column_details("dogs")
+    assert isinstance(columns, Columns)
     assert columns.names == (
         "id",
         "name",
@@ -318,7 +340,6 @@ async def test_describe_columns(ds_with_dogs):
         "photo",
         "anything",
     )
-    assert all(column.table == "dogs" for column in columns)
     # The type is the declared type, exactly as SQLite reports it
     assert columns["id"].type == "INTEGER"
     assert columns["name"].type == "varchar(30)"
@@ -326,20 +347,92 @@ async def test_describe_columns(ds_with_dogs):
     assert columns["photo"].type == "BLOB"
     # A column declared without a type has none
     assert columns["anything"].type is None
-    assert columns["owner_id"].foreign_key == ForeignKey("owners", "id")
-    # This one was declared without naming the column it refers to
-    assert columns["breed"].foreign_key == ForeignKey("breeds", None)
-    assert columns["name"].foreign_key is None
+    assert columns["id"].pk_position == 1
+    assert columns["name"].pk_position == 0
+    assert all(column.notnull == 0 for column in columns)
+    assert all(column.hidden is False for column in columns)
+    assert all(column.generated is None for column in columns)
+    assert all(column.default_value is None for column in columns)
 
 
 @pytest.mark.asyncio
-async def test_describe_columns_for_names(ds_with_dogs):
+async def test_table_column_details_constraints():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_table_column_details_constraints")
+    await db.execute_write_script("""
+        create table t (
+            b TEXT not null default 'x',
+            a INTEGER,
+            c TEXT,
+            primary key (c, a)
+        );
+        """)
+    columns = await db.table_column_details("t")
+    assert columns["b"] == Column(
+        "b", type="TEXT", notnull=1, default_value="'x'", pk_position=0, hidden=False
+    )
+    # pk_position is the position in the primary key, not in the table
+    assert columns["c"].pk_position == 1
+    assert columns["a"].pk_position == 2
+    assert await db.primary_keys("t") == ["c", "a"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not supports_generated_columns(), reason="Needs SQLite generated columns"
+)
+async def test_table_column_details_generated():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_table_column_details_generated")
+    await db.execute_write_script("""
+        create table t (
+            id INTEGER primary key,
+            body TEXT,
+            virt INTEGER generated always as (length(body)) virtual,
+            kept INTEGER generated always as (length(body)) stored
+        );
+        """)
+    columns = await db.table_column_details("t")
+    assert [(column.name, column.generated) for column in columns] == [
+        ("id", None),
+        ("body", None),
+        ("virt", "virtual"),
+        ("kept", "stored"),
+    ]
+    # A generated column is not a hidden one
+    assert all(column.hidden is False for column in columns)
+    # These are the numbers SQLite itself uses, still shown in the JSON API
+    assert [table_xinfo_hidden(column) for column in columns] == [0, 0, 2, 3]
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not supports_table_xinfo(), reason="Needs SQLite PRAGMA table_xinfo"
+)
+async def test_table_column_details_hidden():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_table_column_details_hidden")
+    await db.execute_write("create virtual table docs using fts5(title)")
+    columns = await db.table_column_details("docs")
+    # FTS5 adds hidden columns named after the table and "rank", which
+    # select * does not return
+    assert columns["title"].hidden is False
+    assert columns["docs"].hidden is True
+    assert columns["rank"].hidden is True
+    assert all(column.generated is None for column in columns)
+    assert [table_xinfo_hidden(column) for column in columns] == [0, 1, 1]
+
+
+@pytest.mark.asyncio
+async def test_columns_for_results(ds_with_dogs):
     db = ds_with_dogs.get_database("row_types")
-    columns = await db.describe_columns("no_pk", ["rowid", "owner_id", "nope"])
+    table_columns = await db.table_column_details("no_pk")
+    columns = columns_for_results(table_columns, ["rowid", "owner_id", "nope"])
     assert columns.names == ("rowid", "owner_id", "nope")
-    assert columns["rowid"].type == "INTEGER"
-    assert columns["rowid"].table == "no_pk"
-    assert columns["owner_id"].foreign_key == ForeignKey("owners", "id")
+    # The implicit rowid is described as an integer
+    assert columns["rowid"] == Column("rowid", type="INTEGER")
+    assert columns["owner_id"] is table_columns["owner_id"]
+    # A name that is not a column of the table has no details
     assert columns["nope"] == Column("nope")
 
 
@@ -456,8 +549,8 @@ async def test_render_cell_row_columns_are_described(
     )
     if typed:
         assert row.columns["born"].type == "DATE"
-        assert row.columns["owner_id"].foreign_key == ForeignKey("owners", "id")
-        assert row.columns["id"].table == "dogs"
+        assert row.columns["id"].pk_position == 1
+        assert row.columns["owner_id"].notnull == 0
     else:
         # SQLite cannot describe the columns of an arbitrary query
         assert all(column == Column(column.name) for column in row.columns)

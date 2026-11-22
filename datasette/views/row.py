@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import markupsafe
 import sqlite_utils
 
-from datasette.database import QueryInterrupted
+from datasette.database import QueryInterrupted, columns_for_results
 from datasette.events import DeleteRowEvent, UpdateRowEvent
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.plugins import pm
@@ -404,9 +404,12 @@ class RowView(BaseView):
         results = await resolved.db.execute(
             resolved.sql, resolved.params, truncate=True
         )
-        # Describe the columns using the types and foreign keys of the table
+        # Describe the columns of the results using the details of the table
         results = results.with_columns(
-            await resolved.db.describe_columns(resolved.table, results.columns.names)
+            columns_for_results(
+                await resolved.db.table_column_details(resolved.table),
+                results.columns.names,
+            )
         )
         columns = list(results.columns.names)
         rows = list(results.rows)

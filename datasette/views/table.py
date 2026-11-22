@@ -13,7 +13,7 @@ from jinja2.filters import do_filesizeformat
 
 from datasette import tracer
 from datasette.column_types import SQLiteType
-from datasette.database import QueryInterrupted, describe_columns
+from datasette.database import QueryInterrupted, columns_for_results
 from datasette.events import (
     AlterTableEvent,
     DropTableEvent,
@@ -538,7 +538,7 @@ async def _table_insert_ui(
     bulk_columns = []
     column_details = await db.table_column_details(table_name)
     for column in column_details:
-        if column.hidden:
+        if column.hidden or column.generated:
             continue
         is_pk = column.name in pks
         is_auto_pk = (
@@ -614,9 +614,8 @@ async def _execute_sql_ui(
         columns.extend(
             {"name": column.name, "type": (column.type or "").lower()}
             for column in await db.table_column_details(table_name)
-            # hidden == 1 is a hidden virtual table column, 2 and 3 are
-            # generated columns which can be queried
-            if column.hidden != 1
+            # Generated columns are included, since they can be queried
+            if not column.hidden
         )
         data["columns"] = columns
     if filter_where:
@@ -667,7 +666,7 @@ async def _table_alter_ui(
         }
     columns = []
     for column in await db.table_column_details(table_name):
-        if column.hidden:
+        if column.hidden or column.generated:
             continue
         sqlite_type = SQLiteType.from_declared_type(column.type)
         column_type = column_types_map.get(column.name)
@@ -790,7 +789,7 @@ async def display_columns_and_rows(
             type_ = "integer"
             notnull = 0
         else:
-            type_ = column_details[r[0]].type
+            type_ = column_details[r[0]].type or ""
             notnull = column_details[r[0]].notnull
         col_dict = {
             "name": r[0],
@@ -1027,7 +1026,7 @@ async def display_columns_and_rows(
                 "name": pks[0],
                 "sortable": pks[0] in sortable_columns,
                 "is_pk": True,
-                "type": column_details[pks[0]].type,
+                "type": column_details[pks[0]].type or "",
                 "notnull": column_details[pks[0]].notnull,
             }
         else:
@@ -2563,12 +2562,10 @@ async def table_view_data(
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-    # Describe the columns using the types and foreign keys of the table
+    # Describe the columns of the results using the details of the table
     column_details, foreign_keys = await db._column_details_and_foreign_keys(table_name)
     results = results.with_columns(
-        describe_columns(
-            table_name, column_details, foreign_keys, results.columns.names
-        )
+        columns_for_results(column_details, results.columns.names)
     )
     columns = list(results.columns.names)
     rows = list(results.rows)

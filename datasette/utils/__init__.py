@@ -18,7 +18,7 @@ import time
 import types
 import typing
 import urllib
-from collections import Counter, namedtuple
+from collections import Counter
 from collections.abc import Iterable
 from contextlib import contextmanager
 from shutil import copytree
@@ -29,7 +29,7 @@ import markupsafe
 import mergedeep
 import yaml
 
-from ..rows import Row
+from ..rows import Column, Columns, Row
 from ..version import __version__
 from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
@@ -283,12 +283,6 @@ SPATIALITE_FUNCTIONS = (
 )
 # Length of hash subset used in hashed URLs:
 HASH_LENGTH = 7
-
-
-# Can replace this with Column from sqlite_utils when I add that dependency
-Column = namedtuple(
-    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
-)
 
 
 @documented
@@ -814,10 +808,15 @@ def temporary_docker_directory(
 
 def detect_primary_keys(conn, table):
     """Figure out primary keys for a table."""
-    columns = table_column_details(conn, table)
-    pks = [column for column in columns if column.is_pk]
-    pks.sort(key=lambda column: column.is_pk)
-    return [column.name for column in pks]
+    # Sorted by position in the primary key, which starts at 1
+    pks = sorted(
+        (pk_position, name)
+        for _cid, name, _type, _notnull, _default, pk_position, _hidden in _table_xinfo(
+            conn, table
+        )
+        if pk_position
+    )
+    return [name for _, name in pks]
 
 
 def get_outbound_foreign_keys(conn, table):
@@ -954,29 +953,64 @@ def detect_json1(conn=None):
 
 
 def table_columns(conn, table):
-    return [column.name for column in table_column_details(conn, table)]
+    return [row[1] for row in _table_xinfo(conn, table)]
+
+
+def _table_xinfo(conn, table):
+    """
+    Returns a row for each column of a table or view, as
+    (cid, name, type, notnull, default_value, pk_position, hidden)
+    """
+    if supports_table_xinfo():
+        # table_xinfo was added in 3.26.0
+        return conn.execute(f"PRAGMA table_xinfo({escape_sqlite(table)});").fetchall()
+    # First trigger a query against sqlite_master to fix an intermittent
+    # test failure, see https://github.com/simonw/datasette/issues/2632
+    conn.execute("select 1 from sqlite_master limit 1").fetchall()
+    # table_info does not report hidden, so treat it as 0 for all columns
+    return [
+        (*row, 0)
+        for row in conn.execute(
+            f"PRAGMA table_info({escape_sqlite(table)});"
+        ).fetchall()
+    ]
+
+
+# The values PRAGMA table_xinfo reports as "hidden" for generated columns
+_XINFO_GENERATED = {2: "virtual", 3: "stored"}
+_XINFO_HIDDEN_FOR_GENERATED = {"virtual": 2, "stored": 3}
+
+
+def table_xinfo_hidden(column):
+    """
+    The integer PRAGMA table_xinfo reports as "hidden" for this column: 1 for
+    a hidden column of a virtual table, 2 for a virtual generated column, 3
+    for a stored generated column, otherwise 0.
+    """
+    if column.hidden:
+        return 1
+    return _XINFO_HIDDEN_FOR_GENERATED.get(column.generated, 0)
 
 
 def table_column_details(conn, table):
-    if supports_table_xinfo():
-        # table_xinfo was added in 3.26.0
-        return [
-            Column(*r)
-            for r in conn.execute(
-                f"PRAGMA table_xinfo({escape_sqlite(table)});"
-            ).fetchall()
-        ]
-    else:
-        # First trigger a query against sqlite_master to fix an intermittent
-        # test failure, see https://github.com/simonw/datasette/issues/2632
-        conn.execute("select 1 from sqlite_master limit 1").fetchall()
-        return [
-            # Treat hidden as 0 for all columns.
-            Column(*(list(r) + [0]))
-            for r in conn.execute(
-                f"PRAGMA table_info({escape_sqlite(table)});"
-            ).fetchall()
-        ]
+    """
+    Returns a ``Columns`` object describing every column of a table or view.
+    """
+    return Columns(
+        Column(
+            name=name,
+            # SQLite reports a column declared without a type as ""
+            type=type_ or None,
+            notnull=notnull,
+            default_value=default_value,
+            pk_position=pk_position,
+            hidden=hidden == 1,
+            generated=_XINFO_GENERATED.get(hidden),
+        )
+        for _cid, name, type_, notnull, default_value, pk_position, hidden in _table_xinfo(
+            conn, table
+        )
+    )
 
 
 filter_column_re = re.compile(r"^_filter_column_\d+$")

@@ -11,6 +11,7 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
+    table_xinfo_hidden,
     to_css_class,
 )
 
@@ -368,13 +369,13 @@ class PrimaryKeysExtra(Extra):
 
 def column_detail_as_json(column):
     return {
-        "type": column.type,
+        "type": column.type or "",
         "sqlite_type": SQLiteType.from_declared_type(column.type).value,
         "notnull": bool(column.notnull),
         "default": column.default_value,
-        "is_pk": bool(column.is_pk),
-        "pk_position": column.is_pk,
-        "hidden": column.hidden,
+        "is_pk": bool(column.pk_position),
+        "pk_position": column.pk_position,
+        "hidden": table_xinfo_hidden(column),
     }
 
 

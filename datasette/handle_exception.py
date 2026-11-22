@@ -65,7 +65,7 @@ def handle_exception(datasette, request, exception):
             body = dict(info)
             body.update(error_body(plain_message or message, status))
             return Response.json(body, status=status, headers=headers)
-        context = ErrorContext(ok=False, error=message, status=status, title=title)
+        context = ErrorContext(error=message, status=status, title=title)
         environment = datasette.get_jinja_environment(request)
         template = environment.select_template(templates)
         # Rendered directly rather than using datasette.render_template(),

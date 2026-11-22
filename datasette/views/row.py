@@ -66,9 +66,6 @@ class RowContext(Context):
     table: str = from_extra()
 
     # Fields added by the view code
-    ok: bool = field(
-        metadata={"help": "True if the data for this page was retrieved without errors"}
-    )
     rows: list = field(
         metadata={
             "help": "A single-item list containing this row as a dictionary mapping column name to raw value."
@@ -321,7 +318,6 @@ class RowView(BaseView):
                     primary_keys=context["primary_keys"],
                     private=context["private"],
                     table=context["table"],
-                    ok=context["ok"],
                     rows=context["rows"],
                     primary_key_values=context["primary_key_values"],
                     query_ms=context["query_ms"],

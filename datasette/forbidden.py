@@ -19,7 +19,7 @@ def forbidden(datasette, request, message):
         return Response.html(
             await datasette.render_template(
                 "error.html",
-                ErrorContext(ok=False, error=message, status=403, title="Forbidden"),
+                ErrorContext(error=message, status=403, title="Forbidden"),
                 request=request,
             ),
             status=403,

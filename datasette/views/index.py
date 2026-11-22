@@ -65,7 +65,6 @@ class IndexContext(Context):
         metadata={"help": "The current page of tables and views, from ``?page=``"}
     )
     page_count: int = field(metadata={"help": "The total number of pages"})
-    page_size: int = field(metadata={"help": "The number of tables and views per page"})
     previous_url: str | None = field(
         metadata={"help": "URL of the previous page, or None on the first page"}
     )
@@ -187,7 +186,6 @@ class IndexView(BaseView):
             "database_url": database_url,
             "page": page,
             "page_count": page_count,
-            "page_size": PAGE_SIZE,
             "previous_url": page_url(page - 1) if page > 1 else None,
             "next_url": page_url(page + 1) if page < page_count else None,
         }

@@ -2931,7 +2931,38 @@ def test_column_menu_actions_and_dialog_focus(page, datasette_server):
 
 
 @pytest.mark.playwright
-def test_menu_switching_and_header_alignment(page, datasette_server):
+@pytest.mark.parametrize(
+    "path,first_column,column,expect_facet",
+    (
+        # The first column of a view is an ordinary column, see #2045
+        ("fixtures/simple_view", "content", "content", True),
+        # The first column of a table with a single primary key is that key
+        ("fixtures/simple_primary_key", "id", "id", False),
+        # A compound primary key table starts with a link column, which has
+        # no menu, so its first primary key column can still be faceted
+        ("fixtures/compound_primary_key", "Link", "pk1", True),
+    ),
+)
+def test_column_menu_facet_by_this_for_first_column(
+    page, datasette_server, path, first_column, column, expect_facet
+):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + path)
+    first_th = page.locator("table.rows-and-columns thead th[data-column]").first
+    expect(first_th).to_have_attribute("data-column", first_column)
+    expect(
+        page.locator('th[data-is-link-column="1"] .column-menu-trigger')
+    ).to_have_count(0)
+    page.locator(f'th[data-column="{column}"] .column-menu-trigger').click()
+    panel = page.locator("#column-actions-menu")
+    expect(panel).to_be_visible()
+    facet_item = panel.get_by_role("menuitem", name="Facet by this", exact=True)
+    if not expect_facet:
+        expect(facet_item).to_have_count(0)
+        return
+    facet_item.click()
+    expect(page).to_have_url(re.compile(rf"[?&]_facet={column}(&|$)"))
     from playwright.sync_api import expect
 
     page.goto(datasette_server + "data/projects")

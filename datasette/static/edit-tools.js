@@ -4147,13 +4147,17 @@ function autocompleteRowPk(row) {
   return pks[keys[0]];
 }
 
-function foreignKeyRowUrl(autocompleteUrl, pk) {
+function foreignKeyRowUrl(autocompleteUrl, row) {
   var url = new URL(autocompleteUrl, location.href);
   if (!/\/-\/autocomplete\/?$/.test(url.pathname)) {
     return null;
   }
+  // The server encodes the row path, as only it knows the column types
+  if (!row || !row.path) {
+    return null;
+  }
   url.pathname =
-    url.pathname.replace(/\/-\/autocomplete\/?$/, "") + "/" + tildeEncode(pk);
+    url.pathname.replace(/\/-\/autocomplete\/?$/, "") + "/" + row.path;
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -4222,7 +4226,7 @@ function setForeignKeyMetaLink(meta, autocompleteUrl, row) {
   var url =
     pk === null || typeof pk === "undefined"
       ? null
-      : foreignKeyRowUrl(autocompleteUrl, pk);
+      : foreignKeyRowUrl(autocompleteUrl, row);
   if (!url) {
     wrap.hidden = true;
     pkSpan.textContent = "";

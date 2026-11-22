@@ -815,10 +815,17 @@ async def display_columns_and_rows(
             col_dict["column_type_config"] = ct.config
         columns.append(col_dict)
 
+    foreign_keys = await db.foreign_keys_for_table(table_name)
     column_to_foreign_key_table = {
-        fk["column"]: fk["other_table"]
-        for fk in await db.foreign_keys_for_table(table_name)
+        fk["column"]: fk["other_table"] for fk in foreign_keys
     }
+    # Foreign key columns that reference a column with no declared type, where
+    # the link to the other row has to say if its value is a number
+    typed_foreign_keys = set()
+    for fk in foreign_keys:
+        other_columns = await db.table_column_details(fk["other_table"])
+        if fk["other_column"] in untyped_columns(other_columns):
+            typed_foreign_keys.add(fk["column"])
 
     typed_pks = untyped_columns(column_details.values())
     cell_rows = []
@@ -958,8 +965,8 @@ async def display_columns_and_rows(
                         database=tilde_encode(database_name),
                         base_url=base_url,
                         table=tilde_encode(other_table),
-                        link_id=tilde_encode(str(value)),
-                        id=str(markupsafe.escape(value)),
+                        link_id=encode_key_value(value, column in typed_foreign_keys),
+                        id=str(markupsafe.escape(key_value_display(value))),
                         label=str(markupsafe.escape(label)) or "-",
                     )
                 )
@@ -1746,10 +1753,19 @@ def _autocomplete_initial_order_by(pks):
     return ", ".join(order_by)
 
 
-def _autocomplete_response_rows(rows, pks, label_column):
+def _autocomplete_response_rows(rows, pks, label_column, typed_columns=()):
     response_rows = []
     for row in rows:
-        item = {"pks": {pk: row[pk] for pk in pks}}
+        item = {
+            "pks": {pk: row[pk] for pk in pks},
+            # The row's page is at /database/table/path - null if a null
+            # primary key means it does not have one
+            "path": (
+                None
+                if row_has_null_primary_key(row, pks)
+                else path_from_row_pks(row, pks, False, typed_columns=typed_columns)
+            ),
+        }
         if label_column:
             item["label"] = row[label_column]
         response_rows.append(item)
@@ -1854,7 +1870,12 @@ class TableAutocompleteView(BaseView):
         return Response.json(
             {
                 "ok": True,
-                "rows": _autocomplete_response_rows(results.rows, pks, label_column),
+                "rows": _autocomplete_response_rows(
+                    results.rows,
+                    pks,
+                    label_column,
+                    untyped_columns(await db.table_column_details(table_name)),
+                ),
             }
         )
 

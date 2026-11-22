@@ -9,6 +9,7 @@ from datasette.utils import (
     path_from_row_pks,
     remove_infinites,
     row_has_null_primary_key,
+    untyped_columns,
     value_as_boolean,
 )
 from datasette.utils.asgi import Response
@@ -150,6 +151,13 @@ async def json_renderer(
         json_cols = args.getlist("_json")
     object_keys = None
     pks = data.get("primary_keys")
+    # Primary key columns where a number in a row path has to carry its type,
+    # so that the integer 1 and the text "1" are different keys
+    typed_columns = ()
+    if not error and args.get("_shape") == "object" and pks and table:
+        typed_columns = untyped_columns(
+            await datasette.get_database(database).table_column_details(table)
+        )
     # Checked here, before ?_json= can turn the text "null" into a null
     object_has_null_key = (
         not error
@@ -177,7 +185,9 @@ async def json_renderer(
         for row in data["rows"]:
             if columns and not isinstance(row, dict):
                 row = dict(zip(columns, row))
-            object_keys.append(path_from_row_pks(row, pks, False))
+            object_keys.append(
+                path_from_row_pks(row, pks, False, typed_columns=typed_columns)
+            )
     if json_cols:
         data["rows"] = convert_specific_columns_to_json(
             data["rows"], columns, json_cols
@@ -240,7 +250,9 @@ async def json_renderer(
                         pk_string = (
                             object_keys[index]
                             if object_keys is not None
-                            else path_from_row_pks(row, pks, not pks)
+                            else path_from_row_pks(
+                                row, pks, not pks, typed_columns=typed_columns
+                            )
                         )
                         object_rows[pk_string] = row
                     data = object_rows

@@ -381,3 +381,133 @@ async def test_null_key_check_runs_once_for_a_streamed_export(
     ).single_value()
     assert len(rows) == count > 1
     assert len(checks) == expected_checks
+
+
+FOREIGN_KEYS_SCHEMA = """
+create table targets (id primary key, name text);
+insert into targets values
+    (1, 'integer one'), ('1', 'text one'), (x'0102', 'blob'), ('', 'empty');
+create table plain_targets (id primary key);
+insert into plain_targets values (1), ('1'), (x'0102'), ('');
+create table sources (
+    id integer primary key,
+    target references targets(id),
+    plain references plain_targets(id),
+    data blob
+);
+insert into sources values
+    (1, 1, 1, x'aa'), (2, '1', '1', null), (3, x'0102', x'0102', null),
+    (4, '', '', null);
+create table blobs (id primary key, data blob);
+insert into blobs values (1, x'aa'), ('1', x'bb');
+"""
+
+
+@pytest.fixture
+async def fk_ds():
+    ds = Datasette()
+    db = ds.add_database(Database(ds, memory_name="test_row_keys_fks"), name="data")
+    await db.execute_write_script(
+        "".join(
+            f"drop table if exists {table};"
+            for table in ("sources", "targets", "plain_targets", "blobs")
+        )
+        + FOREIGN_KEYS_SCHEMA
+    )
+    try:
+        yield ds
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_row_page", [False, True])
+async def test_foreign_key_links_lead_to_the_referenced_row(fk_ds, on_row_page):
+    expected = {
+        "1": ("i:1", "integer one"),
+        "2": ("1", "text one"),
+        "3": ("b:0102", "blob"),
+    }
+    for source_id, (path, name) in expected.items():
+        url = f"/data/sources/{source_id}" if on_row_page else "/data/sources"
+        soup = Soup((await fk_ds.client.get(url)).text, "html.parser")
+        if on_row_page:
+            links = {
+                column: soup.select_one(f".row-field-{column} a, .col-{column} a")
+                for column in ("target", "plain")
+            }
+        else:
+            tr = soup.select_one(f'tr[data-row="{source_id}"]')
+            links = {
+                column: tr.select_one(f"td.col-{column} a")
+                for column in ("target", "plain")
+            }
+        assert links["target"]["href"] == f"/data/targets/{path}"
+        assert links["plain"]["href"] == f"/data/plain_targets/{path}"
+        row = (await fk_ds.client.get(f"/data/targets/{path}.json")).json()["row"]
+        assert row["name"] == name
+    # A binary value is displayed as hex
+    soup = Soup((await fk_ds.client.get("/data/sources")).text, "html.parser")
+    assert soup.select_one('tr[data-row="3"] td.col-plain a').text == "binary 0102"
+
+
+@pytest.mark.asyncio
+async def test_autocomplete_path(fk_ds):
+    response = await fk_ds.client.get("/data/targets/-/autocomplete?q=1")
+    rows = response.json()["rows"]
+    assert sorted((repr(row["pks"]["id"]), row["path"]) for row in rows) == [
+        ("'1'", "1"),
+        ("1", "i:1"),
+    ]
+    for row in rows:
+        data = (await fk_ds.client.get(f"/data/targets/{row['path']}.json")).json()
+        assert data["row"]["id"] == row["pks"]["id"]
+
+
+def test_autocomplete_path_is_null_for_null_primary_key():
+    from datasette.views.table import _autocomplete_response_rows
+
+    rows = [
+        {"id": None, "name": "n"},
+        {"id": "None", "name": "s"},
+        {"id": "", "name": "e"},
+    ]
+    assert _autocomplete_response_rows(rows, ["id"], "name") == [
+        {"pks": {"id": None}, "path": None, "label": "n"},
+        {"pks": {"id": "None"}, "path": "None", "label": "s"},
+        {"pks": {"id": ""}, "path": "$empty", "label": "e"},
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("format_", ["csv", "tsv"])
+async def test_csv_blob_links_for_untyped_primary_keys(fk_ds, format_):
+    # CSV and TSV link to binary values by their content, not by row
+    response = await fk_ds.client.get(f"/data/blobs.{format_}")
+    assert response.status_code == 200
+    urls = [
+        line.replace("\t", ",").split(",", 1)[1]
+        for line in response.text.strip().splitlines()[1:]
+    ]
+    assert all("/data/blobs.blob?_blob_column=data&_blob_hash=" in url for url in urls)
+    contents = [
+        (await fk_ds.client.get(url.replace("http://localhost", ""))).content
+        for url in urls
+    ]
+    assert contents == [b"\xaa", b"\xbb"]
+
+
+@pytest.mark.asyncio
+async def test_shape_object_keeps_numbers_and_text_apart(ds):
+    data = (await ds.client.get("/data/untyped.json?_shape=object")).json()
+    assert {key: row["name"] for key, row in data.items()} == {
+        "i:1": "integer",
+        "1": "text",
+        "f:0x1~2E8000000000000p0": "float",
+        "b:0102": "blob",
+        "$empty": "empty",
+        "i~3A1": "text that looks typed",
+    }
+    # Keys of a table with a typed primary key are unchanged
+    data = (await ds.client.get("/data/integers.json?_shape=object")).json()
+    assert list(data) == ["1", "2"]

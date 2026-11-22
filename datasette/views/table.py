@@ -40,6 +40,7 @@ from datasette.utils import (
     escape_sqlite,
     filters_should_redirect,
     is_url,
+    key_value_display,
     make_slot_function,
     path_from_row_pks,
     request_route_path,
@@ -312,7 +313,7 @@ def row_label_from_label_column(row, label_column):
     value = getattr(row, "labels", {}).get(label_column, value)
     if value is None or value == "":
         return None
-    return str(value)
+    return key_value_display(value)
 
 
 async def run_sequential(*args):
@@ -1637,7 +1638,7 @@ class TableCountView(BaseView):
                 pks,
                 use_rowid,
                 params,
-                has_null_keys=await _has_null_keys(db, table_name, pks),
+                has_null_keys=await _has_null_keys(db, table_name, pks, request),
             )
             if before_clause is None:
                 return Response.error("Invalid _next", status=400)
@@ -2198,11 +2199,27 @@ def _parse_next(_next, sort, sort_desc):
     return sort_value, [_decode_next_component(component) for component in components]
 
 
-async def _has_null_keys(db, table_name, pks):
+async def _has_null_keys(db, table_name, pks, request=None):
     """True if any row in the table has a null primary key value.
 
     SQLite allows those in most tables that have a rowid, and allows several
-    rows to share one, so paginating past them needs rowid as a tie-breaker."""
+    rows to share one, so paginating past them needs rowid as a tie-breaker.
+
+    The answer is kept for the rest of the request, so that streaming every
+    page of a table only asks once - and sorts every page the same way."""
+    if request is None:
+        return await _has_null_keys_query(db, table_name, pks)
+    cache = request.scope.setdefault(_HAS_NULL_KEYS_SCOPE, {})
+    key = (db.name, table_name)
+    if key not in cache:
+        cache[key] = await _has_null_keys_query(db, table_name, pks)
+    return cache[key]
+
+
+_HAS_NULL_KEYS_SCOPE = "datasette.has_null_keys"
+
+
+async def _has_null_keys_query(db, table_name, pks):
     details = {
         column.name: column for column in await db.table_column_details(table_name)
     }
@@ -2405,7 +2422,9 @@ def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid)
         position["after_value"] = None if sort_value is None else str(sort_value)
     else:
         position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
-        position["after_value"] = ", ".join(str(c) for c in components)
+        position["after_value"] = ", ".join(
+            key_value_display(component) for component in components
+        )
     return position
 
 
@@ -2517,7 +2536,9 @@ async def table_view_data(
     # rowid tables (no specified primary key) need a different SELECT
     use_rowid = not pks and not is_view
     has_null_keys = (
-        not is_view and not use_rowid and await _has_null_keys(db, table_name, pks)
+        not is_view
+        and not use_rowid
+        and await _has_null_keys(db, table_name, pks, request)
     )
     order_by = ""
     if use_rowid:

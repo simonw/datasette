@@ -2483,23 +2483,13 @@ function encodeKeyValue(value, typed) {
   return value === "" ? "$empty" : tildeEncode(value);
 }
 
-function decodeKeyPathForDisplay(path) {
-  return path
-    .split(",")
-    .map(function (component) {
-      if (component === "$empty") {
-        return "";
-      }
-      if (/^[ifb]:/.test(component)) {
-        return component.slice(2);
-      }
-      return tildeDecode(component);
-    })
-    .join(",");
-}
-
 function rowDisplayLabel(row) {
-  return decodeKeyPathForDisplay(row.getAttribute("data-row") || "");
+  // The server writes the primary key as text for people to read. Custom
+  // templates from before data-row-display only have the encoded row path.
+  if (row.hasAttribute("data-row-display")) {
+    return row.getAttribute("data-row-display");
+  }
+  return tildeDecode(row.getAttribute("data-row") || "");
 }
 
 function rowTitleLabel(row) {
@@ -6788,7 +6778,7 @@ async function saveRowEditDialog(state) {
       }
       if (insertedRow) {
         var insertedStatusMessage = insertedRowStatusMessage(
-          decodeKeyPathForDisplay(insertedRowId),
+          rowDisplayLabel(insertedRow),
           rowTitleLabel(insertedRow),
         );
         var addedRow = addInsertedRowToPage(insertedRow);

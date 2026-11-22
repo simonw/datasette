@@ -2,7 +2,7 @@
 <div class="above-table-panel"> </div>
 {% if display_columns and display_rows %}
 {% set row = display_rows[0] %}
-<dl class="row-fields"{% if row.row_path %} data-row="{{ row.row_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
+<dl class="row-fields"{% if row.row_path %} data-row="{{ row.row_path }}" data-row-display="{{ row.pk_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
     {% for column, cell in zip(display_columns, row) %}
     {% set raw = cell.raw %}
     {% set is_text = raw is string %}

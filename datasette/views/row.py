@@ -23,6 +23,7 @@ from datasette.utils import (
     call_with_supported_arguments,
     decode_write_json_row,
     escape_sqlite,
+    key_value_display,
     make_slot_function,
     path_from_row_pks,
     sqlite3,
@@ -73,7 +74,9 @@ class RowContext(Context):
         }
     )
     primary_key_values: list = field(
-        metadata={"help": "Values of the primary keys for this row, from the URL"}
+        metadata={
+            "help": "Values of the primary keys for this row, decoded from the URL. Most are strings. A binary value is ``bytes``, and a number in a primary key column with no declared type is an ``int`` or ``float``. Use the ``key_value_display`` filter to show one."
+        }
     )
     query_ms: float = field(
         metadata={
@@ -585,8 +588,7 @@ class RowView(BaseView):
             "rows": rows,
             "columns": columns,
             "primary_keys": resolved.pks,
-            # Always strings, as they were when they came straight from the URL
-            "primary_key_values": [str(value) for value in pk_values],
+            "primary_key_values": pk_values,
         }
 
         extras = extra_names_from_request(request)
@@ -702,7 +704,7 @@ def _truncated_row_flash_label(label):
 async def _row_flash_message(
     datasette, request, action, resolved, row=None, *, refresh_row=False
 ):
-    pk_label = ", ".join(str(value) for value in resolved.pk_values)
+    pk_label = ", ".join(key_value_display(value) for value in resolved.pk_values)
     # Mutation permission does not grant access to stored row labels.
     if not await datasette.allowed(
         action="view-table",

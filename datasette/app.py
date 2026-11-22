@@ -81,6 +81,7 @@ from .utils import (
     escape_css_string,
     escape_sqlite,
     find_spatialite,
+    key_value_display,
     module_from_path,
     move_plugins_and_allow,
     move_table_config,
@@ -701,6 +702,7 @@ class Datasette:
         self._jinja_env = environment
         environment.filters["escape_sqlite"] = escape_sqlite
         environment.filters["to_css_class"] = to_css_class
+        environment.filters["key_value_display"] = key_value_display
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)

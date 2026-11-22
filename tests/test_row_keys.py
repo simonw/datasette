@@ -98,7 +98,6 @@ async def test_every_row_link_leads_to_its_own_row(ds, table):
         assert html.status_code == 200, path
         data = (await ds.client.get(f"/data/{table}/{path}.json")).json()
         assert str(data["row"][name_column]) == name, path
-        assert all(isinstance(v, str) for v in data["primary_key_values"])
 
 
 @pytest.mark.asyncio
@@ -291,3 +290,94 @@ async def test_row_fragment_for_binary_and_typed_primary_keys(ds):
         rows = Soup(response.text, "html.parser").select("tr[data-row]")
         assert [tr["data-row"] for tr in rows] == [path]
         assert rows[0].select_one("td.col-name").text == name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        # Text, and numbers in a column with a declared type, are strings
+        ("/data/typed/a.json", ["a"]),
+        ("/data/typed/$empty.json", [""]),
+        ("/data/integers/1.json", ["1"]),
+        # Typed values in the URL are the value itself
+        ("/data/untyped/i:1.json", [1]),
+        ("/data/untyped/f:0x1~2E8000000000000p0.json", [1.5]),
+        ("/data/untyped/b:0102.json", [{"$base64": True, "encoded": "AQI="}]),
+        (
+            "/data/fts_idx/i:3,b:ff.json",
+            [3, {"$base64": True, "encoded": "/w=="}],
+        ),
+    ],
+)
+async def test_primary_key_values_in_row_json(ds, path, expected):
+    assert (await ds.client.get(path)).json()["primary_key_values"] == expected
+
+
+@pytest.mark.asyncio
+async def test_binary_primary_key_is_displayed_as_hex(ds):
+    response = await ds.client.get("/data/fts_idx", actor={"id": "root"})
+    soup = Soup(response.text, "html.parser")
+    tr = soup.select_one('tr[data-row="i:3,b:ff"]')
+    assert tr["data-row-display"] == "3,binary ff"
+    assert tr.select_one("td.type-pk a").text == "3,binary ff"
+    assert (
+        tr.select_one('button[data-row-action="edit"]')["aria-label"]
+        == "Edit row 3,binary ff"
+    )
+
+    response = await ds.client.get("/data/fts_idx/i:3,b:ff", actor={"id": "root"})
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("h1.row-heading").text.strip() == "fts_idx: 3, binary ff"
+    assert soup.select_one("dl.row-fields")["data-row-display"] == "3,binary ff"
+    assert "b'" not in soup.select_one("h1.row-heading").text
+
+
+@pytest.mark.asyncio
+async def test_shape_object_keys(ds):
+    data = (await ds.client.get("/data/typed.json?_shape=object")).json()
+    assert {key: row["name"] for key, row in data.items()} == {
+        "$empty": "empty",
+        "~24empty": "literal $empty",
+        "a": "a",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table", ["single", "pair"])
+async def test_shape_object_is_an_error_for_null_primary_keys(null_keys_ds, table):
+    response = await null_keys_ds.client.get(f"/data/{table}.json?_shape=object")
+    assert response.status_code == 400
+    assert response.json()["error"] == (
+        "_shape=object not available for rows with a null primary key"
+    )
+    # Other shapes still work
+    response = await null_keys_ds.client.get(f"/data/{table}.json?_shape=array")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table,expected_checks", [("single", 1), ("integers", 0)])
+async def test_null_key_check_runs_once_for_a_streamed_export(
+    ds, null_keys_ds, monkeypatch, table, expected_checks
+):
+    datasette = null_keys_ds if table == "single" else ds
+    checks = []
+    original = Database.execute
+
+    async def execute(self, sql, *args, **kwargs):
+        if " is null limit 1" in sql:
+            checks.append(sql)
+        return await original(self, sql, *args, **kwargs)
+
+    monkeypatch.setattr(Database, "execute", execute)
+    response = await datasette.client.get(f"/data/{table}.csv?_stream=1&_size=1")
+    assert response.status_code == 200
+    rows = response.text.strip().splitlines()[1:]
+    # Several pages were fetched, and every row is there
+    count = (
+        await datasette.get_database("data").execute(f"select count(*) from {table}")
+    ).single_value()
+    assert len(rows) == count > 1
+    assert len(checks) == expected_checks

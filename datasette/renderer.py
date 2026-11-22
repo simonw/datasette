@@ -8,6 +8,7 @@ from datasette.utils import (
     error_body,
     path_from_row_pks,
     remove_infinites,
+    row_has_null_primary_key,
     value_as_boolean,
 )
 from datasette.utils.asgi import Response
@@ -149,6 +150,23 @@ async def json_renderer(
         json_cols = args.getlist("_json")
     object_keys = None
     pks = data.get("primary_keys")
+    # Checked here, before ?_json= can turn the text "null" into a null
+    object_has_null_key = (
+        not error
+        and args.get("_shape") == "object"
+        and bool(pks)
+        and any(
+            row_has_null_primary_key(
+                (
+                    row
+                    if isinstance(row, dict) or not columns
+                    else dict(zip(columns, row))
+                ),
+                pks,
+            )
+            for row in data["rows"]
+        )
+    )
     if (
         not error
         and args.get("_shape") == "object"
@@ -226,6 +244,12 @@ async def json_renderer(
                         )
                         object_rows[pk_string] = row
                     data = object_rows
+                    if object_has_null_key:
+                        # Rows that share a null key cannot each have one
+                        shape_error = (
+                            "_shape=object not available for rows with "
+                            "a null primary key"
+                        )
             if shape_error:
                 status_code = 400
                 data = error_body(shape_error, status_code)

@@ -369,6 +369,14 @@ def decode_key_value(component):
     return tilde_decode(component)
 
 
+def key_value_display(value):
+    """A primary key value as text for people to read, in a link or a
+    message. Binary values are shown as hex, labelled as binary."""
+    if isinstance(value, bytes):
+        return f"binary {value.hex()}"
+    return str(value)
+
+
 def decode_key_path(path):
     "Split a row path on commas and decode_key_value() each component"
     return [decode_key_value(component) for component in path.split(",")]
@@ -401,7 +409,7 @@ def path_from_row_pks(row, pks, use_rowid, quote=True, typed_columns=()):
     if quote:
         bits = [encode_key_value(value, pk in typed_columns) for pk, value in values]
     else:
-        bits = [str(value) for _, value in values]
+        bits = [key_value_display(value) for _, value in values]
 
     return ",".join(bits)
 

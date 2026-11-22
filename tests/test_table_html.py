@@ -1217,6 +1217,7 @@ async def test_row_delete_action_data_attributes():
         assert row["data-row-label"] == "One"
         assert {key for key in row.attrs if key.startswith("data-row")} == {
             "data-row",
+            "data-row-display",
             "data-row-label",
         }
 
@@ -1772,6 +1773,7 @@ async def test_table_fragment_endpoint(ds_client):
     assert rows[0]["data-row-label"] == "hello"
     assert {key for key in rows[0].attrs if key.startswith("data-row")} == {
         "data-row",
+        "data-row-display",
         "data-row-label",
     }
 

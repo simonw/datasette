@@ -976,6 +976,22 @@ def _table_xinfo(conn, table):
     ]
 
 
+# The values PRAGMA table_xinfo reports as "hidden" for generated columns
+_XINFO_GENERATED = {2: "virtual", 3: "stored"}
+_XINFO_HIDDEN_FOR_GENERATED = {"virtual": 2, "stored": 3}
+
+
+def table_xinfo_hidden(column):
+    """
+    The integer PRAGMA table_xinfo reports as "hidden" for this column: 1 for
+    a hidden column of a virtual table, 2 for a virtual generated column, 3
+    for a stored generated column, otherwise 0.
+    """
+    if column.hidden:
+        return 1
+    return _XINFO_HIDDEN_FOR_GENERATED.get(column.generated, 0)
+
+
 def table_column_details(conn, table):
     """
     Returns a ``Columns`` object describing every column of a table or view.
@@ -988,7 +1004,8 @@ def table_column_details(conn, table):
             notnull=notnull,
             default_value=default_value,
             pk_position=pk_position,
-            hidden=hidden,
+            hidden=hidden == 1,
+            generated=_XINFO_GENERATED.get(hidden),
         )
         for _cid, name, type_, notnull, default_value, pk_position, hidden in _table_xinfo(
             conn, table

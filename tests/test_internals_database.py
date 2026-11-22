@@ -220,7 +220,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=1,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="created",
@@ -228,7 +228,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="planet_int",
@@ -236,7 +236,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="on_earth",
@@ -244,7 +244,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="state",
@@ -252,7 +252,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="_city_id",
@@ -260,7 +260,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="_neighborhood",
@@ -268,7 +268,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="tags",
@@ -276,7 +276,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="complex_array",
@@ -284,7 +284,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="distinct_some_null",
@@ -292,7 +292,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="n",
@@ -300,7 +300,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
             ],
         ),
@@ -313,7 +313,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=1,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="pk2",
@@ -321,7 +321,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=2,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="content",
@@ -329,7 +329,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="sortable",
@@ -337,7 +337,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="sortable_with_nulls",
@@ -345,7 +345,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="sortable_with_nulls_2",
@@ -353,7 +353,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
                 Column(
                     name="text",
@@ -361,7 +361,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     pk_position=0,
-                    hidden=0,
+                    hidden=False,
                 ),
             ],
         ),

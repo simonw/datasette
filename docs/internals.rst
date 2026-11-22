@@ -2342,8 +2342,11 @@ Each ``Column`` has the following attributes. Only ``name`` is always available.
 ``column.pk_position`` - integer or None
     The position of the column in the primary key of its table, starting at ``1``, or ``0`` if it is not part of the primary key. A table with a compound primary key has columns with positions ``1``, ``2`` and so on.
 
-``column.hidden`` - integer or None
-    ``0`` for a normal column, ``1`` for a hidden column of a virtual table, ``2`` or ``3`` for a generated column. This is the value SQLite reports. It is always ``0`` on versions of SQLite before 3.26.
+``column.hidden`` - boolean or None
+    ``True`` for a hidden column of a virtual table, such as the column an FTS table names after itself. Hidden columns are not returned by ``select *``. Always ``False`` on versions of SQLite before 3.26, which do not report them.
+
+``column.generated`` - string or None
+    ``"virtual"`` or ``"stored"`` if this is a `generated column <https://www.sqlite.org/gencol.html>`__, otherwise ``None``. A generated column cannot be written to.
 
 .. _database_execute_fn:
 
@@ -2609,7 +2612,7 @@ The ``Database`` class also provides properties and methods for introspecting th
 .. _database_table_column_details:
 
 ``await db.table_column_details(table)`` - :ref:`Columns <internals_row_columns>`
-    Full details of the columns in a specific table or view, as a ``Columns`` object containing a ``datasette.Column`` for each one. Each has ``name``, ``type``, ``notnull``, ``default_value``, ``pk_position`` and ``hidden`` attributes, described in :ref:`internals_row_columns`. ``columns["name"]`` looks up a column by name.
+    Full details of the columns in a specific table or view, as a ``Columns`` object containing a ``datasette.Column`` for each one. Each has ``name``, ``type``, ``notnull``, ``default_value``, ``pk_position``, ``hidden`` and ``generated`` attributes, described in :ref:`internals_row_columns`. ``columns["name"]`` looks up a column by name.
 
 ``await db.primary_keys(table)`` - list of strings
     Names of the columns that are part of the primary key for this table.

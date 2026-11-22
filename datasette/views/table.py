@@ -538,7 +538,7 @@ async def _table_insert_ui(
     bulk_columns = []
     column_details = await db.table_column_details(table_name)
     for column in column_details:
-        if column.hidden:
+        if column.hidden or column.generated:
             continue
         is_pk = column.name in pks
         is_auto_pk = (
@@ -614,9 +614,8 @@ async def _execute_sql_ui(
         columns.extend(
             {"name": column.name, "type": (column.type or "").lower()}
             for column in await db.table_column_details(table_name)
-            # hidden == 1 is a hidden virtual table column, 2 and 3 are
-            # generated columns which can be queried
-            if column.hidden != 1
+            # Generated columns are included, since they can be queried
+            if not column.hidden
         )
         data["columns"] = columns
     if filter_where:
@@ -667,7 +666,7 @@ async def _table_alter_ui(
         }
     columns = []
     for column in await db.table_column_details(table_name):
-        if column.hidden:
+        if column.hidden or column.generated:
             continue
         sqlite_type = SQLiteType.from_declared_type(column.type)
         column_type = column_types_map.get(column.name)

@@ -11,6 +11,7 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
+    table_xinfo_hidden,
     to_css_class,
 )
 
@@ -374,7 +375,7 @@ def column_detail_as_json(column):
         "default": column.default_value,
         "is_pk": bool(column.pk_position),
         "pk_position": column.pk_position,
-        "hidden": column.hidden,
+        "hidden": table_xinfo_hidden(column),
     }
 
 

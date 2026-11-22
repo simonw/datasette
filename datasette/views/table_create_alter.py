@@ -199,7 +199,7 @@ def _foreign_key_suggestion_metadata(conn, table_name):
             "affinity": _sqlite_type_affinity(column.type),
         }
         for column in table_column_details(conn, table_name)
-        if not column.hidden
+        if not (column.hidden or column.generated)
     ]
     current_by_column = {
         fk["column"]: {
@@ -220,7 +220,11 @@ def _foreign_key_suggestion_metadata(conn, table_name):
         if candidate_table == table_name or candidate_table in hidden_tables:
             continue
         columns = [column for column in table_column_details(conn, candidate_table)]
-        pks = [column for column in columns if column.pk_position and not column.hidden]
+        pks = [
+            column
+            for column in columns
+            if column.pk_position and not (column.hidden or column.generated)
+        ]
         pks.sort(key=lambda column: column.pk_position)
         if len(pks) != 1:
             continue

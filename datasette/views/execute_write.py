@@ -171,7 +171,7 @@ async def _write_template_tables(
         column_details = [
             column
             for column in await db.table_column_details(table)
-            if not column.hidden
+            if not (column.hidden or column.generated)
         ]
         if not column_details:
             continue

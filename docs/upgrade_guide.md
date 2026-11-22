@@ -167,10 +167,11 @@ The `columns` argument passed to output renderers is unchanged. It is still a li
 
 {ref}`db.table_column_details(table) <database_table_column_details>` previously returned a list of `datasette.utils.Column` named tuples. It now returns a {ref}`Columns <internals_row_columns>` object containing `datasette.Column` objects, the same class that describes the columns of a row. `datasette.utils.Column` has been removed.
 
-Reading `column.name`, `column.type`, `column.notnull`, `column.default_value` and `column.hidden` works as before. These have changed:
+Reading `column.name`, `column.type`, `column.notnull` and `column.default_value` works as before. These have changed:
 
 - **`is_pk` is now `pk_position`.** It holds the position of the column in the primary key, starting at 1, or 0 if the column is not part of it.
 - **`type` is `None` for a column declared without a type.** It was previously an empty string.
+- **`hidden` is now a boolean, and generated columns have their own attribute.** `hidden` was previously the integer reported by SQLite: 1 for a hidden column of a virtual table, 2 or 3 for a generated column. It is now `True` only for a hidden column of a virtual table. `column.generated` is `"virtual"` or `"stored"` for a generated column and `None` otherwise. Code that used `if column.hidden` to skip columns that cannot be written to should use `if column.hidden or column.generated`.
 - **`cid` has been removed.** Use the position of the column in the result, for example with `enumerate()`.
 - **Columns are no longer tuples.** They cannot be unpacked or indexed by position.
 

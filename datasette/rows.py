@@ -37,8 +37,10 @@ class Column:
     - ``default_value``: the default for the column as a SQL expression.
     - ``pk_position``: the position of the column in the primary key of its
       table, starting at 1, or 0 if it is not part of the primary key.
-    - ``hidden``: 0 for a normal column, 1 for a hidden column of a virtual
-      table, 2 or 3 for a generated column.
+    - ``hidden``: ``True`` for a hidden column of a virtual table, which is
+      left out of ``select *``.
+    - ``generated``: ``"virtual"`` or ``"stored"`` for a generated column,
+      otherwise ``None``.
     """
 
     name: str
@@ -46,7 +48,8 @@ class Column:
     notnull: int | None = None
     default_value: str | None = None
     pk_position: int | None = None
-    hidden: int | None = None
+    hidden: bool | None = None
+    generated: str | None = None
 
 
 class Columns:

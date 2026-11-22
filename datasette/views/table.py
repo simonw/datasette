@@ -966,7 +966,10 @@ async def display_columns_and_rows(
                         base_url=base_url,
                         table=tilde_encode(other_table),
                         link_id=encode_key_value(value, column in typed_foreign_keys),
-                        id=str(markupsafe.escape(key_value_display(value))),
+                        # A reference to an empty string primary key still
+                        # needs something to click on
+                        id=str(markupsafe.escape(key_value_display(value)))
+                        or '<em class="row-link-empty">empty</em>',
                         label=str(markupsafe.escape(label)) or "-",
                     )
                 )

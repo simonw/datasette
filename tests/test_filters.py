@@ -293,18 +293,83 @@ async def test_in_filter_json_array_status(ds_client, qs, expected_status):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "qs,expected_states",
+    [
+        # The facetable_by_state view in the fixtures database has three
+        # columns calculated by aggregate functions, which have no type
+        # affinity: row_count, planet_total and avg_on_earth.
+        # Refs #1671, #2073, #2713
+        ("row_count=4", ["MI"]),
+        ("row_count__exact=10", ["CA"]),
+        ("row_count__not=4", ["CA", "MC"]),
+        ("row_count__in=1,4", ["MC", "MI"]),
+        ('row_count__in=["1","4"]', ["MC", "MI"]),
+        ("row_count__in=[1,4]", ["MC", "MI"]),
+        ("row_count__notin=10", ["MC", "MI"]),
+        ("row_count__notin=1,4", ["CA"]),
+        ("planet_total=2", ["MC"]),
+        ("planet_total=4&row_count=4", ["MI"]),
+        # Integers and floating point numbers match each other
+        ("avg_on_earth=1", ["CA", "MI"]),
+        ("avg_on_earth=1.0", ["CA", "MI"]),
+        ("avg_on_earth=0", ["MC"]),
+        ("avg_on_earth__not=1", ["MC"]),
+        ("row_count=4.0", ["MI"]),
+        # A value that is not a number matches nothing
+        ("row_count=four", []),
+        # These already worked, because the value is converted in Python
+        ("row_count__gt=3", ["CA", "MI"]),
+        ("row_count__lte=4", ["MC", "MI"]),
+        # state is passed straight through the view and keeps its affinity
+        ("state=MI", ["MI"]),
+    ],
+)
+async def test_filters_against_view_columns_with_no_affinity(
+    ds_client, qs, expected_states
+):
+    response = await ds_client.get(
+        "/fixtures/facetable_by_state.json?_sort=state&" + qs
+    )
+    assert response.status_code == 200
+    assert [row["state"] for row in response.json()["rows"]] == expected_states
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "column,expected_facet_values",
+    [
+        ("row_count", [(1, 1), (4, 1), (10, 1)]),
+        ("planet_total", [(2, 1), (4, 1), (10, 1)]),
+        ("avg_on_earth", [(0.0, 1), (1.0, 2)]),
+    ],
+)
+async def test_facet_links_work_for_view_expression_columns(
+    ds_client, column, expected_facet_values
+):
+    # https://github.com/simonw/datasette/issues/2073
+    response = await ds_client.get(f"/fixtures/facetable_by_state.json?_facet={column}")
+    facet_values = response.json()["facet_results"]["results"][column]["results"]
+    assert (
+        sorted((v["value"], v["count"]) for v in facet_values) == expected_facet_values
+    )
+    for facet_value in facet_values:
+        path = facet_value["toggle_url"].replace("http://localhost", "")
+        filtered = (await ds_client.get(path)).json()
+        assert len(filtered["rows"]) == facet_value["count"]
+        selected = filtered["facet_results"]["results"][column]["results"]
+        assert [
+            v["selected"] for v in selected if v["value"] == facet_value["value"]
+        ] == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "path,expected_ids",
     [
-        # Expression columns in a view, refs #1671, #2073, #2713
-        ("/data/v.json?n_calc=1", [2]),
-        ("/data/v.json?n_calc__exact=0", [1, 3]),
-        ("/data/v.json?n_calc__not=0", [2]),
-        ("/data/v.json?n_calc__in=0,1", [1, 2, 3]),
-        ("/data/v.json?n_calc__notin=0", [2]),
+        # Cases the fixtures database has no data for. Expression columns
+        # in a view can hold numbers that are not whole
         ("/data/v.json?score_calc=1.5", [1, 2]),
-        ("/data/v.json?score_calc=2", [3]),
-        ("/data/v.json?score_calc=2.0", [3]),
-        # ... which can still hold text
+        # ... or text
         ("/data/v.json?n_text=1", [2]),
         ("/data/v.json?n_text=0", [1, 3]),
         ("/data/v.json?label=dog", [3]),
@@ -314,19 +379,17 @@ async def test_in_filter_json_array_status(ds_client, qs, expected_status):
         ("/data/v.json?code_calc=1.0", [2]),
         ("/data/v.json?code_calc=01", [3]),
         ("/data/v.json?code_calc__not=1", [2, 3]),
-        # Columns passed straight through a view keep their affinity
-        ("/data/v.json?n=1", [2]),
-        ("/data/v.json?code=1", [1]),
         # Table columns declared without a type
         ("/data/t.json?untyped=1", [2]),
         ("/data/t.json?untyped=dog", [3]),
         ("/data/t.json?untyped__not=1", [1, 3]),
         ("/data/t.json?untyped_text=1", [1]),
+        # Table columns with a declared type are not affected
         ("/data/t.json?n=1", [2]),
         ("/data/t.json?code=1", [1]),
     ],
 )
-async def test_filters_against_columns_with_no_affinity(path, expected_ids):
+async def test_filters_against_untyped_table_columns_and_text(path, expected_ids):
     from datasette.app import Datasette
 
     ds = Datasette()
@@ -340,8 +403,7 @@ async def test_filters_against_columns_with_no_affinity(path, expected_ids):
         insert into t values (2, 1, 1.5, '2', 1, '1.0');
         insert into t values (3, 0, 2.0, '3', 'dog', '01');
         create view v as select
-            id, n, code,
-            n + 0 as n_calc,
+            id,
             score * 1 as score_calc,
             '' || n as n_text,
             '' || untyped_text as code_calc,
@@ -352,29 +414,3 @@ async def test_filters_against_columns_with_no_affinity(path, expected_ids):
     response = await ds.client.get(path)
     assert response.status_code == 200
     assert [row["id"] for row in response.json()["rows"]] == expected_ids
-
-
-@pytest.mark.asyncio
-async def test_facet_links_work_for_view_expression_columns():
-    # https://github.com/simonw/datasette/issues/2073
-    from datasette.app import Datasette
-
-    ds = Datasette()
-    db = ds.add_memory_database("data")
-    await db.execute_write_script("""
-        create table t (id integer primary key, n integer);
-        insert into t values (1, 0), (2, 1), (3, 0);
-        create view v as select id, case when n then 1 else 0 end as flag from t;
-    """)
-    await ds.invoke_startup()
-    response = await ds.client.get("/data/v.json?_facet=flag")
-    facet_values = response.json()["facet_results"]["results"]["flag"]["results"]
-    assert [(v["value"], v["count"]) for v in facet_values] == [(0, 2), (1, 1)]
-    for facet_value in facet_values:
-        path = facet_value["toggle_url"].replace("http://localhost", "")
-        filtered = (await ds.client.get(path)).json()
-        assert len(filtered["rows"]) == facet_value["count"]
-        selected = filtered["facet_results"]["results"]["flag"]["results"]
-        assert [
-            v["selected"] for v in selected if v["value"] == facet_value["value"]
-        ] == [True]

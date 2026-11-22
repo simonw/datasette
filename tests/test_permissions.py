@@ -178,14 +178,16 @@ async def test_database_list_respects_view_table():
         ">names</a> 🔒",
         ">v</a> 🔒",
     ]
-    anon_response_text = (await ds.client.get("/")).text
+    # ?database=data keeps this to one page of the homepage catalog, however
+    # many tables and views the fixtures database has
+    anon_response_text = (await ds.client.get("/?database=data")).text
     assert "/data/names" not in homepage_item_links(anon_response_text)
     assert "/data/v" not in homepage_item_links(anon_response_text)
     for html_fragment in html_fragments:
         assert html_fragment not in anon_response_text
     auth_response_text = (
         await ds.client.get(
-            "/",
+            "/?database=data",
             cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
         )
     ).text

@@ -481,6 +481,7 @@ async def test_view_names(db):
         "searchable_view",
         "searchable_view_configured_by_metadata",
         "binary_data_view",
+        "facetable_by_state",
     ]
 
 

@@ -1580,6 +1580,29 @@ For example:
         "default_allow_download"
     )
 
+.. _datasette_capped_time_limit_ms:
+
+.capped_time_limit_ms(time_limit_ms)
+------------------------------------
+
+``time_limit_ms`` - integer
+    A time limit in milliseconds.
+
+Returns ``time_limit_ms``, or the value of the :ref:`setting_sql_time_limit_ms` setting if that is lower.
+
+The ``custom_time_limit=`` argument to :ref:`db.execute() <database_execute>` can set a time limit that is longer than ``sql_time_limit_ms``. Use this method for a time limit that should only ever shorten that setting, such as one that comes from a request or from plugin configuration:
+
+.. code-block:: python
+
+    time_limit_ms = datasette.capped_time_limit_ms(
+        int(request.args["_timelimit"])
+    )
+    results = await db.execute(
+        sql, custom_time_limit=time_limit_ms
+    )
+
+Datasette uses this method for the ``?_timelimit=`` query string argument and for the :ref:`setting_facet_time_limit_ms` and :ref:`setting_facet_suggest_time_limit_ms` settings.
+
 .. _datasette_resolve_database:
 
 .resolve_database(request)
@@ -2212,7 +2235,7 @@ Executes a SQL query against the database and returns the resulting rows (see :r
     Should the rows returned by the query be truncated at the maximum page size? Defaults to ``True``, set this to ``False`` to disable truncation.
 
 ``custom_time_limit`` - integer ms
-    A custom time limit for this query, used instead of the :ref:`setting_sql_time_limit_ms` setting. This can be lower or higher than that setting. If a query takes longer than this it will be terminated early and raise a ``datasette.database.QueryInterrupted`` exception. Do not pass a value from an untrusted source without capping it first, as Datasette does for the ``?_timelimit=`` query string argument.
+    A custom time limit for this query, used instead of the :ref:`setting_sql_time_limit_ms` setting. This can be lower or higher than that setting. If a query takes longer than this it will be terminated early and raise a ``datasette.database.QueryInterrupted`` exception. Do not pass a value from an untrusted source without capping it first using :ref:`datasette.capped_time_limit_ms() <datasette_capped_time_limit_ms>`, as Datasette does for the ``?_timelimit=`` query string argument.
 
 ``page_size`` - integer
     Set a custom page size for truncation, over-riding the configured Datasette default.

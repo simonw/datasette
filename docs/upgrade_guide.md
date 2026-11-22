@@ -280,6 +280,241 @@ In the HTML interface the value is still a link to the row it refers to.
 
 This undocumented class was used for rows with expanded labels. Use {ref}`datasette.Row <internals_row>` in its place. `Row.from_dict({"id": 1, "owner_id": 3}, labels={"owner_id": "Natalie"})` constructs a row with labels, which is useful for testing a `render_cell()` implementation.
 
+(upgrade_guide_v1_urls_modify)=
+### `datasette.urls.modify()` replaces the `path_with_*()` functions
+
+These undocumented functions have been removed from `datasette.utils`:
+
+- `path_with_added_args()`
+- `path_with_removed_args()`
+- `path_with_replaced_args()`
+- `path_with_format()`
+- `path_without_format()`
+- `append_querystring()`
+
+Use the new {ref}`datasette.urls.modify() <internals_datasette_urls_modify>` method in their place. It takes the current request, or a path as a string, and returns that URL with changes made to its query string or its format.
+
+```python
+# Before
+from datasette.utils import (
+    append_querystring,
+    path_with_added_args,
+    path_with_format,
+    path_with_removed_args,
+    path_with_replaced_args,
+    path_without_format,
+)
+
+path_with_added_args(request, {"_facet": "city"})
+path_with_removed_args(request, {"_next"})
+path_with_replaced_args(request, {"_sort": "city"})
+path_with_format(
+    request=request,
+    format="json",
+    extra_qs={"_shape": "array"},
+)
+path_without_format(request, include_query_string=True)
+append_querystring(url, "_shape=array")
+
+# After
+datasette.urls.modify(request, add={"_facet": "city"})
+datasette.urls.modify(request, remove="_next")
+datasette.urls.modify(request, replace={"_sort": "city"})
+datasette.urls.modify(
+    request, format="json", add={"_shape": "array"}
+)
+datasette.urls.modify(request, format=False)
+datasette.urls.modify(url, add={"_shape": "array"})
+```
+
+Two things behave differently:
+
+- **The result already includes the `base_url` prefix.** The old functions returned a path without it, which then had to be passed to `datasette.urls.path()`. Do not add the prefix to the result of `modify()` yourself.
+- **Passing `None` as a value to `path_with_added_args()` removed that key.** Use `remove="key"` for that, or `replace={"key": None}`.
+
+A plugin that needs to work with both older and newer versions of Datasette can check for the new method:
+
+```python
+if hasattr(datasette.urls, "modify"):
+    url = datasette.urls.modify(
+        request, add={"_facet": "city"}
+    )
+else:
+    from datasette.utils import path_with_added_args
+
+    url = datasette.urls.path(
+        path_with_added_args(request, {"_facet": "city"})
+    )
+```
+
+#### In custom templates
+
+The `path_with_replaced_args()`, `fix_path()` and `append_querystring()` functions are no longer passed to the table and query templates. Use `urls.modify()`, which is available in every template:
+
+```jinja
+{# Before #}
+<a href="{{ fix_path(path_with_replaced_args(request, {"_sort": "name"})) }}">Sort by name</a>
+<a href="{{ append_querystring(renderers.json, "_shape=array") }}">JSON array</a>
+
+{# After #}
+<a href="{{ urls.modify(request, replace={"_sort": "name"}) }}">Sort by name</a>
+<a href="{{ urls.modify(renderers.json, add={"_shape": "array"}) }}">JSON array</a>
+```
+
+`fix_path(path)` on its own can be replaced with `urls.path(path)`.
+
+(upgrade_guide_v1_keyword_only)=
+### Optional arguments are now keyword-only
+
+Many of the {ref}`documented internal methods <internals>` now only accept their optional arguments as keywords. Passing one of them by position raises a `TypeError`, for example `Datasette.render_template() takes from 2 to 3 positional arguments but 4 were given`.
+
+```python
+# Before
+html = await datasette.render_template(
+    "my_plugin.html", context, request
+)
+config = datasette.plugin_config(
+    "my-plugin", "fixtures", "facetable"
+)
+url = datasette.urls.table("fixtures", "facetable", "json")
+results = await db.execute(sql, params, True)
+response = Response.html(body, 200, {"x-my-plugin": "1"})
+db = Database(datasette, "/path/to/data.db", False)
+
+# After
+html = await datasette.render_template(
+    "my_plugin.html", context, request=request
+)
+config = datasette.plugin_config(
+    "my-plugin", database="fixtures", table="facetable"
+)
+url = datasette.urls.table(
+    "fixtures", "facetable", format="json"
+)
+results = await db.execute(sql, params, truncate=True)
+response = Response.html(
+    body, 200, headers={"x-my-plugin": "1"}
+)
+db = Database(
+    datasette, "/path/to/data.db", is_mutable=False
+)
+```
+
+The names of the arguments have not changed, so code that passes them as keywords also works with earlier versions of Datasette.
+
+These are the affected signatures:
+
+- `Datasette(files=None, *, ...)` - every argument other than `files` is keyword-only.
+- `datasette.render_template(templates, context=None, *, request=None, view_name=None)`
+- `datasette.execute(db_name, sql, params=None, *, ...)` and `db.execute(sql, params=None, *, ...)`
+- `db.execute_write(sql, params=None, *, ...)`, `db.execute_write_script(sql, *, ...)`, `db.execute_write_many(sql, params_seq, *, ...)` and `db.execute_write_fn(fn, *, ...)`
+- `datasette.get_database(name=None, *, route=None)`, `datasette.add_database(db, name=None, *, route=None)` and `datasette.add_memory_database(memory_name, name=None, *, route=None)`
+- `Database(ds, path=None, *, ...)` - every argument after `path` is keyword-only.
+- `datasette.plugin_config(plugin_name, *, database=None, table=None, fallback=True)`
+- `datasette.set_actor_cookie(response, actor, *, expire_after=None)`
+- `datasette.client.get(path, *, skip_permission_checks=False, **kwargs)` and the other `datasette.client` methods.
+- `datasette.urls.instance()`, `.path()`, `.database()`, `.database_query()`, `.table()`, `.query()` and `.row()` now require `format=` as a keyword.
+- `Request.fake(path_with_query_string, *, method="GET", scheme="http", url_vars=None)`
+- `Response(body=None, *, status=200, headers=None, content_type="text/plain")`
+- `Response.html()`, `.text()`, `.json()`, `.stream()`, `.error()` and `.redirect()` still accept `status` as a second positional argument, so `Response.json(data, 400)` continues to work. Their `headers`, `default` and `content_type` arguments are keyword-only.
+- `response.set_cookie(key, value="", *, max_age=None, ...)`
+
+(upgrade_guide_v1_format_bytes)=
+### `format_bytes()` has been removed
+
+The `format_bytes()` function is no longer available in templates, and `datasette.utils.format_bytes()` has been removed. Use Jinja's built-in [filesizeformat](https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat) filter in their place.
+
+In a custom template:
+
+```jinja
+{# Before #}
+{{ format_bytes(size) }}
+
+{# After #}
+{{ size|filesizeformat }}
+```
+
+In Python code:
+
+```python
+# Before
+from datasette.utils import format_bytes
+
+label = format_bytes(size)
+
+# After
+from jinja2.filters import do_filesizeformat
+
+label = do_filesizeformat(size)
+```
+
+The output is not identical. `filesizeformat` uses decimal units, where 1 MB is 1,000,000 bytes. `format_bytes()` used 1 MB to mean 1,048,576 bytes, so 5,242,880 bytes was displayed as `5.0 MB` and is now `5.2 MB`. Kilobytes are now written as `kB`, and sizes under 1,000 bytes as `999 Bytes`.
+
+(upgrade_guide_v1_test_client)=
+### `datasette.utils.testing.TestClient` has been removed
+
+The undocumented `datasette.utils.testing` module has been removed, along with its `TestClient` and `TestResponse` classes. Tests that used them should use {ref}`datasette.client <internals_datasette_client>`, as described in {ref}`testing_plugins`.
+
+The methods of `TestClient` were synchronous. The methods of `datasette.client` are `async`, so each test needs to be an `async def` function run by `pytest-asyncio`:
+
+```python
+# Before
+from datasette.app import Datasette
+from datasette.utils.testing import TestClient
+
+
+def test_versions():
+    client = TestClient(Datasette(memory=True))
+    response = client.get("/-/versions.json")
+    assert response.status == 200
+    assert "python" in response.json
+
+
+# After
+import pytest
+from datasette.app import Datasette
+
+
+@pytest.mark.asyncio
+async def test_versions():
+    datasette = Datasette(memory=True)
+    response = await datasette.client.get(
+        "/-/versions.json"
+    )
+    assert response.status_code == 200
+    assert "python" in response.json()
+```
+
+The response is now an `httpx` response object:
+
+- `response.status` is now `response.status_code`.
+- `response.json` was a property. It is now a method, `response.json()`.
+- `response.body` is now `response.content`.
+
+`client.actor_cookie(actor)` has moved to `datasette.client.actor_cookie(actor)`.
+
+(upgrade_guide_v1_primary_key_values)=
+### Primary key values in row URLs and templates
+
+Datasette now supports rows with a primary key that is an empty string or a binary value, and primary key columns with no declared type. Row URLs for ordinary integer and text primary keys have not changed.
+
+Three things may need attention:
+
+- **`primary_key_values` on the row page is no longer always a list of strings.** A custom `row.html` template is passed the values decoded from the URL. A binary key is `bytes`, and a number in a primary key column with no declared type is an `int` or `float`. Use the new `key_value_display` filter to display one:
+
+  ```jinja
+  {# Before #}
+  {{ primary_key_values|join(", ") }}
+
+  {# After #}
+  {% for value in primary_key_values %}{{ value|key_value_display }}{% if not loop.last %}, {% endif %}{% endfor %}
+  ```
+
+- **`?_shape=object` returns a 400 error if any row has a `null` primary key.** Those rows have no key to be filed under. Use the default `?_shape=objects` for tables that contain them.
+- **Rows with a `null` primary key have no row page.** They previously linked to `/database/table/None`, which did not show that row. Code that builds a row URL for every row in a table needs to skip them.
+
+Build row URLs with {ref}`datasette.urls.row() <internals_datasette_urls>`, passing a list of primary key values, in place of formatting the values into a path yourself. It encodes empty strings and binary values for you.
+
 (upgrade_guide_v1_metadata)=
 ### Metadata changes
 

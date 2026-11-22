@@ -9,12 +9,22 @@ Changelog
 Unreleased
 ----------
 
-This alpha settles more of the API that plugins and custom templates depend on. Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``, optional arguments to the documented internal methods are keyword-only, a new ``datasette.urls.modify()`` method replaces the ``path_with_*()`` helpers and the template context is now documented for every page, with a new debug page for exploring it. ``?_stream=1`` exports are also several times faster.
+This alpha settles more of the API that plugins and custom templates depend on. Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``, optional arguments to the documented internal methods are keyword-only, a new ``datasette.urls.modify()`` method replaces the ``path_with_*()`` helpers and the template context is now documented for every page, with a new debug page for exploring it. ``?_stream=1`` exports are also several times faster. Rows with a null, empty string or binary primary key now work correctly, and so do filters and facets against calculated columns in views.
 
 Several of these changes are backwards incompatible. The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins for the new rows and columns.
 
 Features
 ~~~~~~~~
+
+- Datasette now handles rows with a primary key that is ``null``, an empty string or a binary value, and primary key columns with no declared type. (:issue:`2145`, :issue:`2805`, :issue:`2419`, :pr:`3112`)
+
+  - A row with an empty string primary key has a row page at ``/database/table/$empty``, with working edit and delete buttons.
+  - A row with a binary primary key has a row page at a URL such as ``/database/table/b:0102``. Binary keys are displayed as ``binary 0102``.
+  - In a primary key column with no declared type the integer ``1`` and the text ``"1"`` are different rows. They now have different URLs, ``/database/table/i:1`` and ``/database/table/1``, where previously the integer row could not be reached.
+  - A row with a ``null`` primary key cannot be told apart from other rows, so it no longer has a link, a row page or edit and delete buttons. It previously linked to ``/database/table/None``, where the delete button could delete a different row with the text ``None`` as its key.
+  - Pagination now works for tables with any of these keys. Following ``next_url`` through a table with a binary primary key previously returned the same page for ever.
+  - Foreign key links to these rows, and the links in the edit row dialog, use the same row URLs. The :ref:`autocomplete API <TableAutocompleteView>` returns a new ``"path"`` key for each row, the last part of the URL to its row page, or ``null`` for a row with a null primary key.
+  - New ``primary_key_edge_cases``, ``compound_primary_key_edge_cases`` and ``primary_key_edge_case_references`` tables in the fixtures database demonstrate these.
 
 - New ``datasette.urls.modify(target, add=, replace=, remove=, format=)`` method for building links that change the query string of the current page or of any other path. It applies ``base_url`` for you and is available in templates as ``urls.modify()``. See :ref:`internals_datasette_urls_modify`. (:issue:`1342`)
 - ``datasette.urls.row()`` and ``datasette.urls.row_blob()`` now accept a list or tuple of primary key values, which are tilde-encoded and joined with commas. A string is still used exactly as it is given. See :ref:`internals_datasette_urls`. (:issue:`1048`)
@@ -47,7 +57,7 @@ Rows and columns
 Breaking changes
 ~~~~~~~~~~~~~~~~
 
-- **Backwards incompatible:** optional arguments to many of the :ref:`documented internal methods <internals>` are now keyword-only, so they can no longer be passed positionally. (:issue:`1822`) The affected signatures are:
+- **Backwards incompatible:** optional arguments to many of the :ref:`documented internal methods <internals>` are now keyword-only, so they can no longer be passed positionally. See :ref:`the upgrade guide <upgrade_guide_v1_keyword_only>`. (:issue:`1822`) The affected signatures are:
 
   - ``Datasette(files=None, *, ...)`` - every argument other than ``files`` is keyword-only.
   - ``datasette.render_template(templates, context=None, *, request=None, view_name=None)``
@@ -64,12 +74,14 @@ Breaking changes
   - ``Response.html()``, ``.text()``, ``.json()``, ``.stream()``, ``.error()`` and ``.redirect()`` still accept ``status`` as a second positional argument - ``Response.json(data, 400)`` continues to work - but ``headers``, ``default`` and ``content_type`` are keyword-only.
   - ``response.set_cookie(key, value="", *, max_age=None, ...)``
 
-- **Backwards incompatible:** ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()``, ``path_with_replaced_args()``, ``path_with_format()``, ``path_without_format()`` and ``append_querystring()`` have been removed. Plugins should use ``datasette.urls.modify()`` instead: ``path_with_added_args(request, {"_facet": "x"})`` becomes ``datasette.urls.modify(request, add={"_facet": "x"})`` and ``path_with_format(request=request, format="json", extra_qs={"_shape": "array"})`` becomes ``datasette.urls.modify(request, format="json", add={"_shape": "array"})``. ``path_without_format(request, include_query_string=True)`` becomes ``datasette.urls.modify(request, format=False)``. Note that ``modify()`` applies ``base_url``, so its result should not have the prefix added again. (:issue:`1342`)
+- **Backwards incompatible:** ``datasette.utils.path_with_added_args()``, ``path_with_removed_args()``, ``path_with_replaced_args()``, ``path_with_format()``, ``path_without_format()`` and ``append_querystring()`` have been removed. Plugins should use ``datasette.urls.modify()`` instead: ``path_with_added_args(request, {"_facet": "x"})`` becomes ``datasette.urls.modify(request, add={"_facet": "x"})`` and ``path_with_format(request=request, format="json", extra_qs={"_shape": "array"})`` becomes ``datasette.urls.modify(request, format="json", add={"_shape": "array"})``. ``path_without_format(request, include_query_string=True)`` becomes ``datasette.urls.modify(request, format=False)``. Note that ``modify()`` applies ``base_url``, so its result should not have the prefix added again. See :ref:`the upgrade guide <upgrade_guide_v1_urls_modify>`. (:issue:`1342`)
 - **Backwards incompatible:** the ``path_with_replaced_args``, ``fix_path`` and ``append_querystring`` functions are no longer passed to the table and query templates. Custom templates should use ``urls.modify()``: ``fix_path(path_with_replaced_args(request, {"_sort": "x"}))`` becomes ``urls.modify(request, replace={"_sort": "x"})`` and ``append_querystring(url, "_shape=array")`` becomes ``urls.modify(url, add={"_shape": "array"})``. ``fix_path(path)`` is the same as ``urls.path(path)``.
-- **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. (:issue:`1841`)
-- **Backwards incompatible:** the undocumented ``datasette.utils.testing`` module, which held the ``TestClient`` and ``TestResponse`` classes, has been removed. Tests should use :ref:`datasette.client <internals_datasette_client>` instead, as described in :ref:`testing_plugins`. (:issue:`3074`)
+- **Backwards incompatible:** the ``format_bytes()`` function is no longer available in templates, and ``datasette.utils.format_bytes()`` has been removed. Custom templates that call ``{{ format_bytes(size) }}`` should use Jinja's built-in `filesizeformat <https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.filesizeformat>`__ filter instead: ``{{ size|filesizeformat }}``. See :ref:`the upgrade guide <upgrade_guide_v1_format_bytes>`. (:issue:`1841`)
+- **Backwards incompatible:** the undocumented ``datasette.utils.testing`` module, which held the ``TestClient`` and ``TestResponse`` classes, has been removed. Tests should use :ref:`datasette.client <internals_datasette_client>` instead, as described in :ref:`testing_plugins`. See :ref:`the upgrade guide <upgrade_guide_v1_test_client>`. (:issue:`3074`)
 - Datasette no longer depends on ``asgiref``. A plugin that imports it should list it as a dependency of its own. (:issue:`3074`)
 - **Backwards incompatible:** the homepage JSON at ``/.json`` now returns the same searchable catalog of tables, views and stored queries as the :ref:`HTML homepage <IndexView>`, and accepts the same ``?q=``, ``?database=`` and ``?page=`` parameters. It previously returned up to five tables for each database in a format left over from the old homepage design, ignored those parameters and could take several seconds for instances with thousands of tables. Each database in ``databases`` now has ``name``, ``private``, ``tables``, ``views``, ``url`` and ``size`` keys - ``url`` replaces ``path`` - and tables and views are listed in a new ``items`` key, paginated using ``next_url``. This endpoint is still marked as unstable. (:issue:`1674`)
+- **Backwards incompatible:** ``?_shape=object`` now returns a 400 error for a table with rows that have a ``null`` primary key, since those rows have no key to file them under. They were previously merged into one entry. The keys of the object are now the row paths used in row URLs, so in a primary key column with no declared type the integer ``5`` has the key ``"i:5"``. Tables with ordinary primary keys are not affected.
+- **Backwards incompatible:** the ``primary_key_values`` variable passed to the row page template now holds the values decoded from the URL. A binary key is ``bytes``, and a number in a primary key column with no declared type is an ``int`` or ``float``. They were previously always strings. Use the new ``key_value_display`` template filter to display one: ``{{ value|key_value_display }}``. See :ref:`the upgrade guide <upgrade_guide_v1_primary_key_values>`.
 - **Backwards incompatible:** the JSON that ``?_context=1`` previously returned has moved to ``?_context_json=1``.
 - **Backwards incompatible:** removed template variables that were documented but not used by any of Datasette's default templates, so that they are not frozen by the :ref:`template context <template_context>` promise of stability. (:issue:`3088`) Custom templates that use them should switch to the alternatives listed here:
 
@@ -100,6 +112,10 @@ Bug fixes
 - ``datasette publish`` and ``datasette package`` no longer fail on Windows when removing their temporary directory. (:issue:`1479`)
 - Datasette's test suite now runs on Windows in CI. (:issue:`1627`)
 - Fixed a bug where a custom SQL query or stored query returned one row more than :ref:`setting_max_returned_rows` if that setting was the same as :ref:`setting_default_page_size`. Thanks, `kokokoXUY <https://github.com/kokokoXUY>`__, who spotted this in :pr:`2963`.
+- Datasette no longer runs ``count(*)`` against SpatiaLite ``KNN`` and ``KNN2`` virtual tables. That query could run for minutes, ignoring the time limit. Those tables are now shown as having 0 rows. (:issue:`1611`)
+- The :ref:`insert API <TableInsertView>` can now return the rows it inserted into a ``WITHOUT ROWID`` table. Inserting using ``"row"``, or using ``"rows"`` with ``"return": true``, previously failed with a ``no such column: rowid`` error. (:issue:`1873`, :pr:`3081`)
+- Rows returned by the insert API for a table with no primary key now include the ``rowid`` of each row, matching the upsert API.
+- The column menu on a view page now offers "Facet by this" for the first column, which was previously left out. Thanks, `Sebastian Cao <https://github.com/cycsmail>`__. (:issue:`2045`, :pr:`2810`)
 
 .. _v1_0_a43:
 

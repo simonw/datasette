@@ -1,7 +1,6 @@
 import hashlib
 import itertools
 import json
-import math
 import time
 import urllib
 import urllib.parse
@@ -34,20 +33,24 @@ from datasette.utils import (
     await_me_maybe,
     compound_keys_after_sql,
     compound_keys_at_or_before_sql,
+    decode_key_path,
+    decode_key_value,
     decode_write_json_rows,
+    encode_key_value,
     escape_sqlite,
     filters_should_redirect,
     is_url,
+    key_value_display,
     make_slot_function,
     path_from_row_pks,
     request_route_path,
     request_wants_json,
+    row_has_null_primary_key,
     sqlite3,
-    tilde_decode,
     tilde_encode,
     to_css_class,
     truncate_url,
-    urlsafe_components,
+    untyped_columns,
     value_as_boolean,
 )
 from datasette.utils.asgi import (
@@ -310,7 +313,7 @@ def row_label_from_label_column(row, label_column):
     value = getattr(row, "labels", {}).get(label_column, value)
     if value is None or value == "":
         return None
-    return str(value)
+    return key_value_display(value)
 
 
 async def run_sequential(*args):
@@ -335,6 +338,9 @@ def _request_with_query_string(request, query_string):
     return Request(scope, request.receive)
 
 
+_ROW_KEY_SCOPE = "datasette.fragment_row_key"
+
+
 async def _fragment_request_for_row(request, resolved):
     row_path = request.args.get("_row")
     if not row_path:
@@ -344,7 +350,10 @@ async def _fragment_request_for_row(request, resolved):
 
     pks = await resolved.db.primary_keys(resolved.table)
     row_pks = pks or ["rowid"]
-    pk_values = urlsafe_components(row_path)
+    try:
+        pk_values = decode_key_path(row_path)
+    except ValueError:
+        raise BadRequest("Invalid _row")
     if len(pk_values) != len(row_pks):
         raise BadRequest("_row does not match the primary key for this table")
 
@@ -371,16 +380,18 @@ async def _fragment_request_for_row(request, resolved):
         }.union(row_pk_filter_keys)
     ]
     args.extend(
-        [(_exact_filter_key(pk), value) for pk, value in zip(row_pks, pk_values)]
-    )
-    args.extend(
         [
             ("_nocount", "1"),
             ("_nofacet", "1"),
             ("_nosuggest", "1"),
         ]
     )
-    return _request_with_query_string(request, urllib.parse.urlencode(args))
+    fragment_request = _request_with_query_string(request, urllib.parse.urlencode(args))
+    # ?column= filters only compare against text, which cannot select a row by
+    # a binary value or by a number in a column with no declared type. This is
+    # read by _table_filters(), which compares against the decoded values.
+    fragment_request.scope[_ROW_KEY_SCOPE] = dict(zip(row_pks, pk_values))
+    return fragment_request
 
 
 def _redirect(datasette, request, path, forward_querystring=True):
@@ -804,73 +815,89 @@ async def display_columns_and_rows(
             col_dict["column_type_config"] = ct.config
         columns.append(col_dict)
 
+    foreign_keys = await db.foreign_keys_for_table(table_name)
     column_to_foreign_key_table = {
-        fk["column"]: fk["other_table"]
-        for fk in await db.foreign_keys_for_table(table_name)
+        fk["column"]: fk["other_table"] for fk in foreign_keys
     }
+    # Foreign key columns that reference a column with no declared type, where
+    # the link to the other row has to say if its value is a number
+    typed_foreign_keys = set()
+    for fk in foreign_keys:
+        other_columns = await db.table_column_details(fk["other_table"])
+        if fk["other_column"] in untyped_columns(other_columns):
+            typed_foreign_keys.add(fk["column"])
 
+    typed_pks = untyped_columns(column_details.values())
     cell_rows = []
     # Columns with at least one cell displayed as a link to a foreign key row
     fk_link_columns = set()
     base_url = datasette.setting("base_url")
     for row in rows:
         cells = []
+        null_pk = row_has_null_primary_key(row, pks)
         # Unless we are a view, the first column is a link - either to the rowid
         # or to the simple or compound primary key
         if link_column:
             is_special_link_column = len(pks) != 1
-            pk_path = path_from_row_pks(row, pks, not pks, False)
-            row_path = path_from_row_pks(row, pks, not pks)
-            row_label = row_label_from_label_column(row, label_column)
-            row_action_label = pk_path
-            if row_label and row_label != pk_path:
-                row_action_label = f"{pk_path} {row_label}"
-            table_path = datasette.urls.table(database_name, table_name)
-            row_link = (
-                f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
-            )
-            edit_icon = (
-                '<svg class="row-inline-action-icon" aria-hidden="true" '
-                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
-                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>'
-                '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>'
-                "</svg>"
-            )
-            delete_icon = (
-                '<svg class="row-inline-action-icon" aria-hidden="true" '
-                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
-                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                '<path d="M3 6h18"></path>'
-                '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
-                '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
-                '<path d="M10 11v6"></path>'
-                '<path d="M14 11v6"></path>'
-                "</svg>"
-            )
-            row_actions = []
-            if row_action_permissions.get("update-row"):
-                row_actions.append(
-                    '<button type="button" class="row-inline-action row-inline-action-edit" '
-                    f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
-                    'data-row-action="edit">'
-                    f"{edit_icon}</button>"
+            pk_path = row_path = row_label = None
+            # A row with a null primary key cannot be uniquely identified,
+            # so it gets no link to a row page and no edit or delete buttons
+            row_link = "&nbsp;"
+            if not null_pk:
+                pk_path = path_from_row_pks(row, pks, not pks, False)
+                row_path = path_from_row_pks(row, pks, not pks, typed_columns=typed_pks)
+                row_label = row_label_from_label_column(row, label_column)
+                row_action_label = pk_path
+                if row_label and row_label != pk_path:
+                    row_action_label = f"{pk_path} {row_label}"
+                table_path = datasette.urls.table(database_name, table_name)
+                # An empty string primary key still needs something to click on
+                row_link_text = markupsafe.escape(pk_path) or (
+                    '<em class="row-link-empty">empty</em>'
                 )
-            if row_action_permissions.get("delete-row"):
-                row_actions.append(
-                    '<button type="button" class="row-inline-action row-inline-action-delete" '
-                    f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '
-                    'data-row-action="delete">'
-                    f"{delete_icon}</button>"
+                row_link = f'<a href="{table_path}/{row_path}">{row_link_text}</a>'
+                edit_icon = (
+                    '<svg class="row-inline-action-icon" aria-hidden="true" '
+                    'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                    'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>'
+                    '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>'
+                    "</svg>"
                 )
-            if row_actions:
-                row_link = (
-                    '<span class="row-link-with-actions">{row_link}'
-                    '<span class="row-inline-actions" aria-label="Row actions">'
-                    "{row_actions}</span></span>"
-                ).format(row_link=row_link, row_actions="".join(row_actions))
+                delete_icon = (
+                    '<svg class="row-inline-action-icon" aria-hidden="true" '
+                    'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                    'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                    '<path d="M3 6h18"></path>'
+                    '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
+                    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
+                    '<path d="M10 11v6"></path>'
+                    '<path d="M14 11v6"></path>'
+                    "</svg>"
+                )
+                row_actions = []
+                if row_action_permissions.get("update-row"):
+                    row_actions.append(
+                        '<button type="button" class="row-inline-action row-inline-action-edit" '
+                        f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
+                        'data-row-action="edit">'
+                        f"{edit_icon}</button>"
+                    )
+                if row_action_permissions.get("delete-row"):
+                    row_actions.append(
+                        '<button type="button" class="row-inline-action row-inline-action-delete" '
+                        f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '
+                        'data-row-action="delete">'
+                        f"{delete_icon}</button>"
+                    )
+                if row_actions:
+                    row_link = (
+                        '<span class="row-link-with-actions">{row_link}'
+                        '<span class="row-inline-actions" aria-label="Row actions">'
+                        "{row_actions}</span></span>"
+                    ).format(row_link=row_link, row_actions="".join(row_actions))
             cells.append(
                 {
                     "column": pks[0] if len(pks) == 1 else "Link",
@@ -938,23 +965,24 @@ async def display_columns_and_rows(
                         database=tilde_encode(database_name),
                         base_url=base_url,
                         table=tilde_encode(other_table),
-                        link_id=tilde_encode(str(value)),
-                        id=str(markupsafe.escape(value)),
+                        link_id=encode_key_value(value, column in typed_foreign_keys),
+                        id=str(markupsafe.escape(key_value_display(value))),
                         label=str(markupsafe.escape(label)) or "-",
                     )
                 )
             elif isinstance(value, bytes):
                 formatted = do_filesizeformat(len(value))
-                if pks or has_rowid_column or request is None:
+                if ((pks or has_rowid_column) and not null_pk) or request is None:
                     blob_url = datasette.urls.row_blob(
                         database_name,
                         table_name,
-                        path_from_row_pks(row, pks, not pks),
+                        path_from_row_pks(row, pks, not pks, typed_columns=typed_pks),
                         column,
                     )
                 else:
-                    # Views usually have no rowid to link to a row by,
-                    # so find the blob by its content hash instead
+                    # Views usually have no rowid to link to a row by, and
+                    # neither do rows with a null primary key, so find the
+                    # blob by its content hash instead
                     blob_url = datasette.urls.modify(
                         request,
                         format="blob",
@@ -1611,7 +1639,13 @@ class TableCountView(BaseView):
             )
             params = dict(params)
             before_clause = _at_or_before_next_where_clause(
-                _next, sort, sort_desc, pks, use_rowid, params
+                _next,
+                sort,
+                sort_desc,
+                pks,
+                use_rowid,
+                params,
+                has_null_keys=await _has_null_keys(db, table_name, pks, request),
             )
             if before_clause is None:
                 return Response.error("Invalid _next", status=400)
@@ -1719,10 +1753,19 @@ def _autocomplete_initial_order_by(pks):
     return ", ".join(order_by)
 
 
-def _autocomplete_response_rows(rows, pks, label_column):
+def _autocomplete_response_rows(rows, pks, label_column, typed_columns=()):
     response_rows = []
     for row in rows:
-        item = {"pks": {pk: row[pk] for pk in pks}}
+        item = {
+            "pks": {pk: row[pk] for pk in pks},
+            # The row's page is at /database/table/path - null if a null
+            # primary key means it does not have one
+            "path": (
+                None
+                if row_has_null_primary_key(row, pks)
+                else path_from_row_pks(row, pks, False, typed_columns=typed_columns)
+            ),
+        }
         if label_column:
             item["label"] = row[label_column]
         response_rows.append(item)
@@ -1827,7 +1870,12 @@ class TableAutocompleteView(BaseView):
         return Response.json(
             {
                 "ok": True,
-                "rows": _autocomplete_response_rows(results.rows, pks, label_column),
+                "rows": _autocomplete_response_rows(
+                    results.rows,
+                    pks,
+                    label_column,
+                    untyped_columns(await db.table_column_details(table_name)),
+                ),
             }
         )
 
@@ -2154,41 +2202,11 @@ async def table_view_traced(datasette, request):
     return r
 
 
-def _encode_sort_value(value):
-    if value is None:
-        return "$null"
-    # A raw colon cannot occur in a legacy tilde-encoded text component.
-    if isinstance(value, int):
-        return f"i:{value}"
-    if isinstance(value, float):
-        # float.hex() writes positive exponents as "p+1". A raw "+" in a query
-        # string decodes to a space, so drop it - float.fromhex() accepts "p1"
-        return f"f:{value.hex().replace('+', '')}"
-    if isinstance(value, bytes):
-        return f"b:{value.hex()}"
-    return tilde_encode(str(value))
-
-
-def _decode_sort_value(value):
-    if value == "$null":
-        return None
-    # Typed values are not tilde-encoded, so check for them before tilde_decode()
+def _decode_next_component(component):
     try:
-        if value.startswith("i:"):
-            number = int(value[2:])
-            if not -(2**63) <= number < 2**63:
-                raise ValueError
-            return number
-        if value.startswith("f:"):
-            number = float.fromhex(value[2:])
-            if math.isnan(number):
-                raise ValueError
-            return number
-        if value.startswith("b:"):
-            return bytes.fromhex(value[2:])
-    except (ValueError, OverflowError):
+        return decode_key_value(component)
+    except ValueError:
         raise BadRequest("Invalid _next")
-    return tilde_decode(value)
 
 
 def _parse_next(_next, sort, sort_desc):
@@ -2198,11 +2216,102 @@ def _parse_next(_next, sort, sort_desc):
     # If a sort order is applied and there are multiple components,
     # the first of these is the sort value
     if (sort or sort_desc) and (len(components) > 1):
-        sort_value = _decode_sort_value(components.pop(0))
-    return sort_value, [tilde_decode(component) for component in components]
+        sort_value = _decode_next_component(components.pop(0))
+    return sort_value, [_decode_next_component(component) for component in components]
 
 
-def _at_or_before_next_where_clause(_next, sort, sort_desc, pks, use_rowid, params):
+async def _has_null_keys(db, table_name, pks, request=None):
+    """True if any row in the table has a null primary key value.
+
+    SQLite allows those in most tables that have a rowid, and allows several
+    rows to share one, so paginating past them needs rowid as a tie-breaker.
+
+    The answer is kept for the rest of the request, so that streaming every
+    page of a table only asks once - and sorts every page the same way."""
+    if request is None:
+        return await _has_null_keys_query(db, table_name, pks)
+    cache = request.scope.setdefault(_HAS_NULL_KEYS_SCOPE, {})
+    key = (db.name, table_name)
+    if key not in cache:
+        cache[key] = await _has_null_keys_query(db, table_name, pks)
+    return cache[key]
+
+
+_HAS_NULL_KEYS_SCOPE = "datasette.has_null_keys"
+
+
+async def _has_null_keys_query(db, table_name, pks):
+    details = {
+        column.name: column for column in await db.table_column_details(table_name)
+    }
+    nullable = [pk for pk in pks if pk in details and not details[pk].notnull]
+    if not nullable:
+        return False
+    if len(pks) == 1 and (details[pks[0]].type or "").upper() == "INTEGER":
+        # An integer primary key is the rowid, which is never null
+        return False
+    sql = "select 1 from {} where {} limit 1".format(
+        escape_sqlite(table_name),
+        " or ".join(f"{escape_sqlite(pk)} is null" for pk in nullable),
+    )
+    try:
+        # This is an index lookup for the first primary key column, but can be
+        # a scan for the others. Without an answer, assume there are none.
+        return bool(
+            (
+                await db.execute(sql, custom_time_limit=db.ds.capped_time_limit_ms(20))
+            ).first()
+        )
+    except (QueryInterrupted, sqlite3.OperationalError):
+        return False
+
+
+def _cursor_key_columns(components, pks):
+    """The columns a cursor's primary key components are values for, or None
+    if there are the wrong number of them.
+
+    A cursor for a row with a null primary key ends with the rowid of that
+    row, because the primary key does not identify it."""
+    if len(components) == len(pks):
+        return pks
+    if len(components) == len(pks) + 1 and None in components[:-1]:
+        return pks + ["rowid"]
+    return None
+
+
+def _null_aware_keys_sql(columns, values, params, before=False):
+    """Like compound_keys_after_sql() - or compound_keys_at_or_before_sql() if
+    before is true - for columns that sort ascending and can contain nulls,
+    which SQLite sorts before every other value. Adds the values to params."""
+
+    def clause(i):
+        column = "rowid" if columns[i] == "rowid" else escape_sqlite(columns[i])
+        last = i == len(columns) - 1
+        if values[i] is None:
+            if before:
+                return f"{column} is null" + ("" if last else f" and {clause(i + 1)}")
+            if last:
+                return f"{column} is not null"
+            return f"({column} is not null or ({column} is null and {clause(i + 1)}))"
+        key = f"p{len(params)}"
+        params[key] = values[i]
+        if before:
+            if last:
+                return f"({column} is null or {column} <= :{key})"
+            return (
+                f"({column} is null or {column} < :{key}"
+                f" or ({column} = :{key} and {clause(i + 1)}))"
+            )
+        if last:
+            return f"{column} > :{key}"
+        return f"({column} > :{key} or ({column} = :{key} and {clause(i + 1)}))"
+
+    return f"({clause(0)})"
+
+
+def _at_or_before_next_where_clause(
+    _next, sort, sort_desc, pks, use_rowid, params, has_null_keys=False
+):
     """SQL clause selecting the rows up to and including a ?_next= cursor - the
     rows on earlier pages. Returns None if the cursor is not valid.
 
@@ -2216,12 +2325,16 @@ def _at_or_before_next_where_clause(_next, sort, sort_desc, pks, use_rowid, para
         pk_clause = f"rowid <= :p{len(params)}"
         params[f"p{len(params)}"] = components[0]
     else:
-        if len(components) != len(pks):
+        columns = _cursor_key_columns(components, pks)
+        if columns is None:
             return None
-        param_len = len(params)
-        pk_clause = compound_keys_at_or_before_sql(pks, param_len)
-        for i, pk_value in enumerate(components):
-            params[f"p{param_len + i}"] = pk_value
+        if has_null_keys or None in components:
+            pk_clause = _null_aware_keys_sql(columns, components, params, before=True)
+        else:
+            param_len = len(params)
+            pk_clause = compound_keys_at_or_before_sql(pks, param_len)
+            for i, pk_value in enumerate(components):
+                params[f"p{param_len + i}"] = pk_value
     if not (sort or sort_desc):
         return pk_clause
     # Rows are ordered by the sort column then the primary key. SQLite puts
@@ -2243,7 +2356,9 @@ def _at_or_before_next_where_clause(_next, sort, sort_desc, pks, use_rowid, para
     return f"({column} > {p} or ({column} = {p} and {pk_clause}))"
 
 
-def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
+def _next_where_clauses(
+    _next, sort, sort_desc, pks, use_rowid, params, has_null_keys=False
+):
     """SQL clauses selecting the rows at and after a ?_next= keyset cursor.
 
     Adds the cursor's values to params and returns a list of where clauses."""
@@ -2257,7 +2372,10 @@ def _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params):
         params[f"p{len(params)}"] = components[0]
     else:
         # Apply the tie-breaker based on primary keys
-        if len(components) == len(pks):
+        columns = _cursor_key_columns(components, pks)
+        if columns and (has_null_keys or None in components):
+            next_by_pk_clauses.append(_null_aware_keys_sql(columns, components, params))
+        elif columns:
             param_len = len(params)
             next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
             for i, pk_value in enumerate(components):
@@ -2325,7 +2443,9 @@ def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid)
         position["after_value"] = None if sort_value is None else str(sort_value)
     else:
         position["after_column"] = "rowid" if use_rowid else ", ".join(pks)
-        position["after_value"] = ", ".join(components)
+        position["after_value"] = ", ".join(
+            key_value_display(component) for component in components
+        )
     return position
 
 
@@ -2355,6 +2475,14 @@ async def _table_filters(datasette, request, database_name, table_name):
     where_clauses, params = filters.build_where_clauses(
         table_name, no_affinity_columns=no_affinity_columns
     )
+
+    # /-/fragment?_row= selects a single row by its primary key
+    for i, (pk, value) in enumerate(request.scope.get(_ROW_KEY_SCOPE, {}).items()):
+        if value is None:
+            where_clauses.append(f"{escape_sqlite(pk)} is null")
+        else:
+            where_clauses.append(f"{escape_sqlite(pk)} = :rowkey{i}")
+            params[f"rowkey{i}"] = value
 
     # Execute filters_from_request plugin hooks - including the default
     # ones that live in datasette/filters.py
@@ -2441,6 +2569,11 @@ async def table_view_data(
 
     # rowid tables (no specified primary key) need a different SELECT
     use_rowid = not pks and not is_view
+    has_null_keys = (
+        not is_view
+        and not use_rowid
+        and await _has_null_keys(db, table_name, pks, request)
+    )
     order_by = ""
     if use_rowid:
         select_specified_columns = f"rowid, {select_specified_columns}"
@@ -2449,6 +2582,9 @@ async def table_view_data(
         order_by_pks = "rowid"
     else:
         order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
+        if has_null_keys:
+            # Rows that share a null primary key need a defined order
+            order_by_pks += ", rowid"
         order_by = order_by_pks
 
     if is_view:
@@ -2505,7 +2641,15 @@ async def table_view_data(
             offset = f" offset {int(_next)}"
         else:
             where_clauses.extend(
-                _next_where_clauses(_next, sort, sort_desc, pks, use_rowid, params)
+                _next_where_clauses(
+                    _next,
+                    sort,
+                    sort_desc,
+                    pks,
+                    use_rowid,
+                    params,
+                    has_null_keys=has_null_keys,
+                )
             )
 
     # The first page needs this tie-breaker too: the ?_next= cursor assumes that
@@ -2564,6 +2708,12 @@ async def table_view_data(
 
     # This is the SQL that populates the main table on the page
     sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
+
+    # The rowid of the last row on the page, for a cursor that needs it
+    last_rowid_sql = (
+        f"select rowid from {escape_sqlite(table_name)} {where_clause}{order_by}"
+        f" limit 1 offset {max(page_size - 1, 0)}"
+    )
 
     if request.args.get("_timelimit"):
         # ?_timelimit= can shorten the time limit but not extend it
@@ -2653,6 +2803,8 @@ async def table_view_data(
         sort_desc,
         page_size,
         is_view,
+        last_rowid_sql=last_rowid_sql,
+        params=params,
     )
     rows = rows[:page_size]
 
@@ -2890,14 +3042,28 @@ async def _next_value_and_url(
     sort_desc,
     page_size,
     is_view,
+    last_rowid_sql=None,
+    params=None,
 ):
     next_value = None
     next_url = None
+    last_rowid = None
     if 0 < page_size < len(rows):
         if is_view:
             next_value = int(_next or 0) + page_size
         else:
-            next_value = path_from_row_pks(rows[-2], pks, use_rowid)
+            next_value = path_from_row_pks(
+                rows[-2],
+                pks,
+                use_rowid,
+                typed_columns=untyped_columns(
+                    await db.table_column_details(table_name)
+                ),
+            )
+            if last_rowid_sql and row_has_null_primary_key(rows[-2], pks):
+                # A null primary key does not identify the row to resume from
+                last_rowid = (await db.execute(last_rowid_sql, params)).single_value()
+                next_value = f"{next_value},{last_rowid}"
         # If there's a sort or sort_desc, add that value as a prefix
         if (sort or sort_desc) and not is_view:
             try:
@@ -2906,6 +3072,8 @@ async def _next_value_and_url(
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 # Tables with no primary key paginate on rowid
                 lookup_pks = pks or ["rowid"]
+                if last_rowid is not None:
+                    lookup_pks = ["rowid"]
                 prefix_where_clause = " and ".join(
                     f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(lookup_pks)
                 )
@@ -2916,10 +3084,15 @@ async def _next_value_and_url(
                 prefix = (
                     await db.execute(
                         prefix_lookup_sql,
-                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(lookup_pks)}},
+                        {
+                            f"pk{i}": (
+                                last_rowid if last_rowid is not None else rows[-2][pk]
+                            )
+                            for i, pk in enumerate(lookup_pks)
+                        },
                     )
                 ).single_value()
-            prefix = _encode_sort_value(prefix)
+            prefix = encode_key_value(prefix, typed=True)
             next_value = f"{prefix},{next_value}"
             added_args = {"_next": next_value}
             if sort:

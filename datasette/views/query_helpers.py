@@ -11,6 +11,7 @@ from datasette.utils import (
     parse_size_limit,
     path_from_row_pks,
     sqlite3,
+    untyped_columns,
     validate_sql_select,
 )
 from datasette.utils import (
@@ -530,7 +531,12 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     row = result.first()
     if row is None:
         return None
-    row_path = path_from_row_pks(row, pks, use_rowid)
+    row_path = path_from_row_pks(
+        row,
+        pks,
+        use_rowid,
+        typed_columns=untyped_columns(await db.table_column_details(table)),
+    )
     return datasette.urls.row(db.name, table, row_path)
 
 

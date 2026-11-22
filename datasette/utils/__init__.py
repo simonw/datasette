@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import inspect
 import json
+import math
 import os
 import re
 import secrets
@@ -300,21 +301,132 @@ def urlsafe_components(token):
     return [tilde_decode(b) for b in token.split(",")]
 
 
-def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """Generate an optionally tilde-encoded unique identifier
-    for a row from its primary keys."""
+# Markers used by encode_key_value(). Tilde-encoding never emits a raw "$" or
+# ":" - they become ~24 and ~3A - so none of these can be mistaken for text.
+_KEY_NULL = "$null"
+_KEY_EMPTY = "$empty"
+
+
+def encode_key_value(value, typed=False):
+    """Encode one primary key or sort value for use in a row URL or a
+    ``?_next=`` pagination cursor. decode_key_value() reverses it.
+
+    - ``None`` is ``$null`` and the empty string is ``$empty``
+    - bytes are ``b:`` followed by hex
+    - text is tilde-encoded
+    - integers and floats are tilde-encoded as text, unless ``typed`` is true
+      in which case they are ``i:345`` and ``f:`` followed by float.hex()
+
+    A number encoded as text only finds its row if SQLite converts the text
+    back to a number, which it does for a column with a declared type of
+    integer, real, numeric or text. Pass ``typed=True`` for a column SQLite
+    will not convert for - see untyped_columns().
+    """
+    if value is None:
+        return _KEY_NULL
+    if isinstance(value, bytes):
+        return f"b:{value.hex()}"
+    if typed and isinstance(value, int):
+        return f"i:{value}"
+    if typed and isinstance(value, float):
+        # float.hex() writes positive exponents as "p+1". A raw "+" in a query
+        # string decodes to a space, so drop it - float.fromhex() accepts "p1".
+        # The "." is tilde-encoded so a row URL does not read it as the start
+        # of a .json style format extension.
+        return "f:" + tilde_encode(value.hex().replace("+", ""))
+    value = str(value)
+    if value == "":
+        return _KEY_EMPTY
+    return tilde_encode(value)
+
+
+def decode_key_value(component):
+    """Decode a value encoded by encode_key_value(). Text comes back as a
+    string, typed values as None, int, float or bytes.
+
+    Raises ValueError if a typed value is malformed."""
+    if component == _KEY_NULL:
+        return None
+    if component == _KEY_EMPTY:
+        return ""
+    # Typed values are not tilde-encoded, so check for them before tilde_decode()
+    try:
+        if component.startswith("i:"):
+            number = int(component[2:])
+            if not -(2**63) <= number < 2**63:
+                raise ValueError
+            return number
+        if component.startswith("f:"):
+            # Not tilde_decode(), which would turn the "+" of "p+1" into a space
+            number = float.fromhex(component[2:].replace("~2E", "."))
+            if math.isnan(number):
+                raise ValueError
+            return number
+        if component.startswith("b:"):
+            return bytes.fromhex(component[2:])
+    except OverflowError:
+        raise ValueError(component)
+    return tilde_decode(component)
+
+
+def key_value_display(value):
+    """A primary key value as text for people to read, in a link or a
+    message. Binary values are shown as hex, labelled as binary."""
+    if isinstance(value, bytes):
+        return f"binary {value.hex()}"
+    return str(value)
+
+
+def decode_key_path(path):
+    "Split a row path on commas and decode_key_value() each component"
+    return [decode_key_value(component) for component in path.split(",")]
+
+
+def untyped_columns(columns):
+    """Names of the columns SQLite will not convert a text value for: those
+    declared with no type, or as a blob. ``columns`` is the result of
+    ``await db.table_column_details(table)``."""
+    from datasette.column_types import SQLiteType
+
+    return frozenset(
+        column.name
+        for column in columns
+        if SQLiteType.from_declared_type(column.type) is SQLiteType.BLOB
+    )
+
+
+def path_from_row_pks(row, pks, use_rowid, quote=True, typed_columns=()):
+    """Generate a unique identifier for a row from its primary keys, encoded
+    for use in a URL unless ``quote`` is false.
+
+    ``typed_columns`` are the primary key columns that need their integers and
+    floats encoded with a type - see untyped_columns()."""
     if use_rowid:
-        bits = [row["rowid"]]
-    else:
-        bits = [
-            row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
-        ]
+        pks = ["rowid"]
+    values = [
+        (pk, row[pk]["value"] if isinstance(row[pk], dict) else row[pk]) for pk in pks
+    ]
     if quote:
-        bits = [tilde_encode(str(bit)) for bit in bits]
+        bits = [encode_key_value(value, pk in typed_columns) for pk, value in values]
     else:
-        bits = [str(bit) for bit in bits]
+        bits = [key_value_display(value) for _, value in values]
 
     return ",".join(bits)
+
+
+def row_has_null_primary_key(row, pks):
+    """True if any of the row's primary key values are null.
+
+    SQLite allows null primary keys in rowid tables, and allows several rows
+    to share one, so such a row has no identifier that can be used to link to
+    it, edit it or delete it."""
+    for pk in pks:
+        value = row[pk]
+        if isinstance(value, dict):
+            value = value["value"]
+        if value is None:
+            return True
+    return False
 
 
 def compound_keys_at_or_before_sql(pks, start_index=0):

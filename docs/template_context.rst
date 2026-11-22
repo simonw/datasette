@@ -527,7 +527,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration.
 
 ``primary_key_values`` - ``list``
-    Values of the primary keys for this row, from the URL
+    Values of the primary keys for this row, decoded from the URL. Most are strings. A binary value is ``bytes``, and a number in a primary key column with no declared type is an ``int`` or ``float``. Use the ``key_value_display`` filter to show one.
 
 ``primary_keys`` - ``list``
     List of primary key column names for this table, or an empty list if the table has no explicit primary key.

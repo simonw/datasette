@@ -1404,8 +1404,11 @@ The ``q`` parameter is required. If it is omitted or blank, the endpoint returns
 an empty ``"rows"`` list.
 
 The response includes a ``"pks"`` object containing the primary key value or
-values for each row. If Datasette can detect a label column, or one has been
-configured using ``label_column``, each row will also include ``"label"``:
+values for each row, and a ``"path"`` which is the last part of the URL to that
+row's page, ``/<database>/<table>/<path>``. ``"path"`` is ``null`` for a row
+with a null primary key, which has no page. If Datasette can detect a label
+column, or one has been configured using ``label_column``, each row will also
+include ``"label"``:
 
 .. code-block:: json
 
@@ -1415,6 +1418,7 @@ configured using ``label_column``, each row will also include ``"label"``:
                 "pks": {
                     "id": 1
                 },
+                "path": "1",
                 "label": "Example row"
             }
         ]

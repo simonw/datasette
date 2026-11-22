@@ -2467,7 +2467,28 @@ function tildeEncode(value) {
   return encoded;
 }
 
+// Row paths are built by encode_key_value() in datasette/utils/__init__.py.
+// Text is tilde-encoded. $empty is the empty string, and i:345, f:... and
+// b:... are an integer, a float and a binary value.
+function encodeKeyValue(value, typed) {
+  if (typeof value === "number" && typed) {
+    // A float cannot be told apart from an integer here, so only encode
+    // values that are certain to be integers
+    return Number.isSafeInteger(value) ? "i:" + value : null;
+  }
+  if (typeof value !== "string" && typeof value !== "number") {
+    // null has no row path, and binary values arrive as base64 objects
+    return null;
+  }
+  return value === "" ? "$empty" : tildeEncode(value);
+}
+
 function rowDisplayLabel(row) {
+  // The server writes the primary key as text for people to read. Custom
+  // templates from before data-row-display only have the encoded row path.
+  if (row.hasAttribute("data-row-display")) {
+    return row.getAttribute("data-row-display");
+  }
   return tildeDecode(row.getAttribute("data-row") || "");
 }
 
@@ -4126,13 +4147,17 @@ function autocompleteRowPk(row) {
   return pks[keys[0]];
 }
 
-function foreignKeyRowUrl(autocompleteUrl, pk) {
+function foreignKeyRowUrl(autocompleteUrl, row) {
   var url = new URL(autocompleteUrl, location.href);
   if (!/\/-\/autocomplete\/?$/.test(url.pathname)) {
     return null;
   }
+  // The server encodes the row path, as only it knows the column types
+  if (!row || !row.path) {
+    return null;
+  }
   url.pathname =
-    url.pathname.replace(/\/-\/autocomplete\/?$/, "") + "/" + tildeEncode(pk);
+    url.pathname.replace(/\/-\/autocomplete\/?$/, "") + "/" + row.path;
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -4201,7 +4226,7 @@ function setForeignKeyMetaLink(meta, autocompleteUrl, row) {
   var url =
     pk === null || typeof pk === "undefined"
       ? null
-      : foreignKeyRowUrl(autocompleteUrl, pk);
+      : foreignKeyRowUrl(autocompleteUrl, row);
   if (!url) {
     wrap.hidden = true;
     pkSpan.textContent = "";
@@ -6621,18 +6646,29 @@ async function fetchUpdatedRowElement(state) {
   return findDataRowElement(doc, state.currentRowId);
 }
 
-function rowPathFromRowData(row, primaryKeys) {
+function rowPathFromRowData(row, primaryKeys, columns) {
   if (!row) {
     return null;
   }
   var keys = primaryKeys && primaryKeys.length ? primaryKeys : ["rowid"];
+  // SQLite will not convert a text value for a column with no declared type,
+  // so numbers in those columns have to be encoded with their type
+  var untyped = {};
+  (columns || []).forEach(function (column) {
+    untyped[column.name] = column.sqlite_type === "BLOB";
+  });
   var bits = [];
   for (var i = 0; i < keys.length; i += 1) {
     var key = keys[i];
-    if (typeof row[key] === "undefined") {
+    // A row with a null primary key has no row path
+    var bit =
+      typeof row[key] === "undefined"
+        ? null
+        : encodeKeyValue(row[key], untyped[key]);
+    if (bit === null) {
       return null;
     }
-    bits.push(tildeEncode(row[key]));
+    bits.push(bit);
   }
   return bits.join(",");
 }
@@ -6716,6 +6752,7 @@ async function saveRowEditDialog(state) {
       var insertedRowId = rowPathFromRowData(
         insertedRowData,
         insertData.primaryKeys || [],
+        insertData.columns || [],
       );
       if (!insertedRowId) {
         state.modal.close({ restoreFocus: false });
@@ -6745,7 +6782,7 @@ async function saveRowEditDialog(state) {
       }
       if (insertedRow) {
         var insertedStatusMessage = insertedRowStatusMessage(
-          tildeDecode(insertedRowId),
+          rowDisplayLabel(insertedRow),
           rowTitleLabel(insertedRow),
         );
         var addedRow = addInsertedRowToPage(insertedRow);

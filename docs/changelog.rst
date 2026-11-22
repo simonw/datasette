@@ -4,16 +4,16 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a44:
 
-Unreleased
-----------
+1.0a44 (2026-11-22)
+-------------------
 
 This alpha settles a great deal of the outstanding JSON and internal APIs needed prior to the stable 1.0 release - see the `1.0 milestone <https://github.com/simonw/datasette/milestone/37>`__ for current progress.
 
 Queries now return ``datasette.Row`` objects in place of ``sqlite3.Row``. The ``path_with_*()`` helpers have been replaced by a new ``datasette.urls.modify()`` method. Datasette now handles null primary keys (allowed by SQLite) correctly.
 
-The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins backwards incompatible changes in this release.
+The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins for the backwards incompatible changes in this release.
 
 Security fixes
 ~~~~~~~~~~~~~~

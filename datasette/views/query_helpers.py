@@ -29,7 +29,8 @@ from datasette.write_sql import (
     operation_is_write,
 )
 
-_query_name_re = re.compile(r"^[^/\.\n]+$")
+# Used with fullmatch(): "$" would also match before a trailing newline
+_query_name_re = re.compile(r"[^/\.\n]+")
 
 _query_fields = {
     "sql",
@@ -183,7 +184,7 @@ async def _json_or_form_payload(request):
 async def _check_query_name(db, name, *, existing=False):
     if not name or not isinstance(name, str):
         raise QueryValidationError("Query name is required")
-    if not _query_name_re.match(name):
+    if not _query_name_re.fullmatch(name):
         raise QueryValidationError("Invalid query name")
     if not existing and (await db.table_exists(name) or await db.view_exists(name)):
         raise QueryValidationError("Query name conflicts with a table or view")

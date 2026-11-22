@@ -13,6 +13,11 @@ This alpha settles more of the API that plugins and custom templates depend on. 
 
 Several of these changes are backwards incompatible. The :ref:`upgrade guide <upgrade_guide_v1_rows>` describes how to update plugins for the new rows and columns.
 
+Security fixes
+~~~~~~~~~~~~~~
+
+- Fixed a security issue where a stored query could be given a name ending in a newline, such as ``"dogs\n"``, which got past the check that a query name does not conflict with a table or view. Those names are now rejected.
+
 Features
 ~~~~~~~~
 

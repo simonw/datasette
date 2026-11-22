@@ -282,7 +282,23 @@ class InFilter(Filter):
 
     def split_value(self, value):
         if value.startswith("["):
-            return json.loads(value)
+            try:
+                values = json.loads(value)
+                for item in values:
+                    if isinstance(item, str):
+                        # Lone surrogates such as "\ud800" cannot be bound
+                        item.encode("utf-8")
+                    elif isinstance(item, (list, dict)) or (
+                        isinstance(item, int) and not -(2**63) <= item < 2**63
+                    ):
+                        raise ValueError(item)
+            except ValueError:
+                raise BadRequest(
+                    "Invalid JSON array for __in or __notin: values must be "
+                    "strings, numbers, booleans or null, and integers must "
+                    "fit in 64 bits"
+                )
+            return values
         else:
             return [v.strip() for v in value.split(",")]
 

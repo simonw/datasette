@@ -1,7 +1,7 @@
 import pytest
 
 from datasette.filters import Filters, search_filters, through_filters, where_filters
-from datasette.utils.asgi import Request
+from datasette.utils.asgi import BadRequest, Request
 
 
 @pytest.mark.parametrize(
@@ -162,3 +162,36 @@ async def test_search_filters_from_request(ds_client):
     assert filter_args.params == {"search": "bobcat"}
     assert filter_args.human_descriptions == ['search matches "bobcat"']
     assert filter_args.extra_context == {"supports_search": True, "search": "bobcat"}
+
+
+@pytest.mark.parametrize("lookup", ("in", "notin"))
+@pytest.mark.parametrize(
+    "value",
+    (
+        "[",
+        '["a"',
+        "[[1]]",
+        '[{"a": 1}]',
+        "[99999999999999999999]",
+        '["\\ud800"]',
+    ),
+)
+def test_in_filter_invalid_json_array_is_bad_request(lookup, value):
+    filters = Filters(((f"foo__{lookup}", value),))
+    with pytest.raises(BadRequest):
+        filters.build_where_clauses("table")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "qs,expected_status",
+    (
+        ("state__in=[", 400),
+        ("state__notin=[[1]]", 400),
+        ("pk__in=[9223372036854775808]", 400),
+        ("pk__in=[9223372036854775807, -9223372036854775808]", 200),
+    ),
+)
+async def test_in_filter_json_array_status(ds_client, qs, expected_status):
+    response = await ds_client.get("/fixtures/facetable.json?" + qs)
+    assert response.status_code == expected_status

@@ -1522,6 +1522,15 @@ class Datasette:
             [database, resource, column],
         )
 
+    def capped_time_limit_ms(self, time_limit_ms):
+        """
+        Cap a time limit at the sql_time_limit_ms setting.
+
+        db.execute(custom_time_limit=) can extend the limit past that
+        setting. Use this for limits that should only ever shorten it.
+        """
+        return min(time_limit_ms, self.sql_time_limit_ms)
+
     def get_internal_database(self):
         return self._internal_database
 

@@ -340,7 +340,9 @@ query string arguments:
     Sets a custom time limit for the query in ms. You can use this for optimistic
     queries where you would like Datasette to give up if the query takes too
     long, for example if you want to implement autocomplete search but only if
-    it can be executed in less than 10ms.
+    it can be executed in less than 10ms. This can only shorten the time limit:
+    a value higher than the :ref:`setting_sql_time_limit_ms` setting is
+    reduced to that setting.
 
 ``?_ttl=SECONDS``
     For how many seconds should this response be cached by HTTP proxies? Use

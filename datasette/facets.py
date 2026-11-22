@@ -115,6 +115,19 @@ class Facet:
         # row_count can be None, in which case we calculate it ourselves:
         self.row_count = row_count
 
+    # The facet time limit settings can shorten sql_time_limit_ms, but a
+    # facet query never runs for longer than a regular query
+
+    @property
+    def time_limit_ms(self):
+        return self.ds.capped_time_limit_ms(self.ds.setting("facet_time_limit_ms"))
+
+    @property
+    def suggest_time_limit_ms(self):
+        return self.ds.capped_time_limit_ms(
+            self.ds.setting("facet_suggest_time_limit_ms")
+        )
+
     def get_configs(self):
         configs = load_facet_configs(self.request, self.table_config)
         return configs.get(self.type) or []
@@ -210,7 +223,7 @@ class ColumnFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=self.suggest_time_limit_ms,
                 )
                 num_distinct_values = len(distinct_values)
                 if (
@@ -269,7 +282,7 @@ class ColumnFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=self.time_limit_ms,
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -367,7 +380,7 @@ class ArrayFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=self.suggest_time_limit_ms,
                     log_sql_errors=False,
                 )
                 types = tuple(r[0] for r in results.rows)
@@ -386,9 +399,7 @@ class ArrayFacet(Facet):
                             ),
                             self.params,
                             truncate=False,
-                            custom_time_limit=self.ds.setting(
-                                "facet_suggest_time_limit_ms"
-                            ),
+                            custom_time_limit=self.suggest_time_limit_ms,
                             log_sql_errors=False,
                         )
                     ]
@@ -448,7 +459,7 @@ class ArrayFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=self.time_limit_ms,
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -520,7 +531,7 @@ class DateFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=self.suggest_time_limit_ms,
                     log_sql_errors=False,
                 )
                 values = tuple(r[0] for r in results.rows)
@@ -564,7 +575,7 @@ class DateFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=self.time_limit_ms,
                 )
                 facet_results_values = []
                 facet_results.append(

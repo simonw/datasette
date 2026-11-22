@@ -1797,9 +1797,12 @@ class TableAutocompleteView(BaseView):
             limit 10
         """
 
+        autocomplete_time_limit_ms = db.ds.capped_time_limit_ms(
+            AUTOCOMPLETE_TIME_LIMIT_MS
+        )
         try:
             results = await db.execute(
-                sql, params, custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS
+                sql, params, custom_time_limit=autocomplete_time_limit_ms
             )
         except QueryInterrupted:
             fallback_where = _autocomplete_prefix_like(pks[0])
@@ -1819,7 +1822,7 @@ class TableAutocompleteView(BaseView):
                 results = await db.execute(
                     fallback_sql,
                     params,
-                    custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
+                    custom_time_limit=autocomplete_time_limit_ms,
                 )
             except QueryInterrupted:
                 return Response.json({"ok": True, "rows": []})
@@ -2554,7 +2557,10 @@ async def table_view_data(
     sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
 
     if request.args.get("_timelimit"):
-        extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
+        # ?_timelimit= can shorten the time limit but not extend it
+        extra_args["custom_time_limit"] = datasette.capped_time_limit_ms(
+            int(request.args.get("_timelimit"))
+        )
 
     # Execute the main query!
     try:

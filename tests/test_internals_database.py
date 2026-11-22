@@ -1360,3 +1360,22 @@ async def test_write_thread_context_is_detached_between_tasks(
         f"write thread context stack grew across tasks: {seen_depths} - "
         "a token was attached without being detached"
     )
+
+
+async def test_execute_custom_time_limit_can_exceed_setting():
+    "custom_time_limit can be longer than sql_time_limit_ms"
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 5})
+    db = ds.add_memory_database("custom_time_limit_can_exceed_setting")
+    sql = """
+        with recursive counter(x) as (
+            select 1 union all select x + 1 from counter where x < 300000
+        )
+        select max(x) from counter
+    """
+    with pytest.raises(QueryInterrupted):
+        await db.execute(sql)
+    # custom_time_limit=0 is the same as not passing one
+    with pytest.raises(QueryInterrupted):
+        await db.execute(sql, custom_time_limit=0)
+    results = await db.execute(sql, custom_time_limit=30000)
+    assert results.rows[0][0] == 300000

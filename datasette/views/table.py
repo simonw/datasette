@@ -2563,7 +2563,8 @@ async def table_view_data(
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
     # Describe the columns of the results using the details of the table
-    column_details, foreign_keys = await db._column_details_and_foreign_keys(table_name)
+    column_details = await db.table_column_details(table_name)
+    foreign_keys = await db.foreign_keys_for_table(table_name)
     results = results.with_columns(
         columns_for_results(column_details, results.columns.names)
     )

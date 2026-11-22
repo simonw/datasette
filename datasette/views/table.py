@@ -1900,7 +1900,9 @@ class TableAutocompleteView(BaseView):
                     label_column,
                     untyped_columns(await db.table_column_details(table_name)),
                 ),
-            }
+            },
+            # A binary primary key or label is bytes
+            default=CustomJSONEncoder().default,
         )
 
 

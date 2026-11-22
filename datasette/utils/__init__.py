@@ -18,7 +18,7 @@ import time
 import types
 import typing
 import urllib
-from collections import Counter, OrderedDict, namedtuple
+from collections import Counter
 from collections.abc import Iterable
 from contextlib import contextmanager
 from shutil import copytree
@@ -29,6 +29,7 @@ import markupsafe
 import mergedeep
 import yaml
 
+from ..rows import Column, Columns, Row
 from ..version import __version__
 from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
@@ -284,12 +285,6 @@ SPATIALITE_FUNCTIONS = (
 HASH_LENGTH = 7
 
 
-# Can replace this with Column from sqlite_utils when I add that dependency
-Column = namedtuple(
-    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
-)
-
-
 @documented
 async def await_me_maybe(value: typing.Any) -> typing.Any:
     "If value is callable, call it. If awaitable, await it. Otherwise return it."
@@ -395,7 +390,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
     Built-in types (text, numbers, lists, etc) are encoded the same as Python's built-in ``json`` module.
 
-    - ``sqlite3.Row`` becomes a tuple
+    - ``datasette.Row`` and ``sqlite3.Row`` become a tuple
     - ``sqlite3.Cursor`` becomes a list
 
     Binary blobs are encoded as an object, with the actual data base64-encoded,
@@ -410,7 +405,7 @@ class CustomJSONEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, sqlite3.Row):
+        if isinstance(obj, (Row, sqlite3.Row)):
             return tuple(obj)
         if isinstance(obj, sqlite3.Cursor):
             return list(obj)
@@ -821,19 +816,47 @@ def temporary_docker_directory(
             )
         yield datasette_dir
     finally:
-        tmp.cleanup()
+        # Windows cannot delete the current working directory, so leave it first
         os.chdir(saved_cwd)
+        tmp.cleanup()
 
 
 def detect_primary_keys(conn, table):
     """Figure out primary keys for a table."""
-    columns = table_column_details(conn, table)
-    pks = [column for column in columns if column.is_pk]
-    pks.sort(key=lambda column: column.is_pk)
-    return [column.name for column in pks]
+    # Sorted by position in the primary key, which starts at 1
+    pks = sorted(
+        (pk_position, name)
+        for _cid, name, _type, _notnull, _default, pk_position, _hidden in _table_xinfo(
+            conn, table
+        )
+        if pk_position
+    )
+    return [name for _, name in pks]
+
+
+def refresh_schema(conn):
+    """
+    Make sure this connection has noticed schema changes made by other connections.
+
+    SQLite answers several PRAGMAs from the connection's cached copy of the
+    schema without first checking that the cache is current. If another
+    connection has just created the table, they return no rows at all:
+
+    - ``PRAGMA table_info()`` and ``table_xinfo()`` in SQLite before 3.33.0
+    - ``PRAGMA foreign_key_list()`` and ``index_list()`` in every version
+      tested, up to 3.53
+
+    Running any ordinary query first makes SQLite compare schema versions and
+    reload the schema if needed. This was the cause of intermittent test
+    failures in https://github.com/simonw/datasette/issues/2356,
+    https://github.com/simonw/datasette/issues/1919 and
+    https://github.com/simonw/datasette/issues/2632
+    """
+    conn.execute("select 1 from sqlite_master limit 1").fetchall()
 
 
 def get_outbound_foreign_keys(conn, table):
+    refresh_schema(conn)
     infos = conn.execute(f"PRAGMA foreign_key_list({escape_sqlite(table)})").fetchall()
     fks = []
     for info in infos:
@@ -967,29 +990,62 @@ def detect_json1(conn=None):
 
 
 def table_columns(conn, table):
-    return [column.name for column in table_column_details(conn, table)]
+    return [row[1] for row in _table_xinfo(conn, table)]
+
+
+def _table_xinfo(conn, table):
+    """
+    Returns a row for each column of a table or view, as
+    (cid, name, type, notnull, default_value, pk_position, hidden)
+    """
+    refresh_schema(conn)
+    if supports_table_xinfo():
+        # table_xinfo was added in 3.26.0
+        return conn.execute(f"PRAGMA table_xinfo({escape_sqlite(table)});").fetchall()
+    # table_info does not report hidden, so treat it as 0 for all columns
+    return [
+        (*row, 0)
+        for row in conn.execute(
+            f"PRAGMA table_info({escape_sqlite(table)});"
+        ).fetchall()
+    ]
+
+
+# The values PRAGMA table_xinfo reports as "hidden" for generated columns
+_XINFO_GENERATED = {2: "virtual", 3: "stored"}
+_XINFO_HIDDEN_FOR_GENERATED = {"virtual": 2, "stored": 3}
+
+
+def table_xinfo_hidden(column):
+    """
+    The integer PRAGMA table_xinfo reports as "hidden" for this column: 1 for
+    a hidden column of a virtual table, 2 for a virtual generated column, 3
+    for a stored generated column, otherwise 0.
+    """
+    if column.hidden:
+        return 1
+    return _XINFO_HIDDEN_FOR_GENERATED.get(column.generated, 0)
 
 
 def table_column_details(conn, table):
-    if supports_table_xinfo():
-        # table_xinfo was added in 3.26.0
-        return [
-            Column(*r)
-            for r in conn.execute(
-                f"PRAGMA table_xinfo({escape_sqlite(table)});"
-            ).fetchall()
-        ]
-    else:
-        # First trigger a query against sqlite_master to fix an intermittent
-        # test failure, see https://github.com/simonw/datasette/issues/2632
-        conn.execute("select 1 from sqlite_master limit 1").fetchall()
-        return [
-            # Treat hidden as 0 for all columns.
-            Column(*(list(r) + [0]))
-            for r in conn.execute(
-                f"PRAGMA table_info({escape_sqlite(table)});"
-            ).fetchall()
-        ]
+    """
+    Returns a ``Columns`` object describing every column of a table or view.
+    """
+    return Columns(
+        Column(
+            name=name,
+            # SQLite reports a column declared without a type as ""
+            type=type_ or None,
+            notnull=notnull,
+            default_value=default_value,
+            pk_position=pk_position,
+            hidden=hidden == 1,
+            generated=_XINFO_GENERATED.get(hidden),
+        )
+        for _cid, name, type_, notnull, default_value, pk_position, hidden in _table_xinfo(
+            conn, table
+        )
+    )
 
 
 filter_column_re = re.compile(r"^_filter_column_\d+$")
@@ -1105,25 +1161,6 @@ def module_from_path(path, name):
     # plugins and how metadata/config .py files are evaluated
     exec(code, mod.__dict__)  # noqa: S102
     return mod
-
-
-class CustomRow(OrderedDict):
-    # Loose imitation of sqlite3.Row which offers
-    # both index-based AND key-based lookups
-    def __init__(self, columns, values=None):
-        self.columns = columns
-        if values:
-            self.update(values)
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return super().__getitem__(self.columns[key])
-        else:
-            return super().__getitem__(key)
-
-    def __iter__(self):
-        for column in self.columns:
-            yield self[column]
 
 
 def value_as_boolean(value):
@@ -1555,6 +1592,22 @@ def parse_size_limit(value, default, maximum, name="_size"):
 UNSTABLE_API_MESSAGE = (
     "This API is not part of Datasette's stable interface and may change at any time"
 )
+
+
+def request_wants_json(request):
+    """
+    True if errors for this request should use the JSON error format: the
+    path ends in .json, or the Accept header mentions application/json, or
+    the request body was sent as application/json (with or without a
+    charset parameter).
+    """
+    path = request.path.split("?")[0]
+    if path.endswith(".json"):
+        return True
+    if "application/json" in (request.headers.get("accept") or ""):
+        return True
+    content_type = (request.headers.get("content-type") or "").split(";")[0]
+    return content_type.strip().lower() == "application/json"
 
 
 def error_body(messages, status):

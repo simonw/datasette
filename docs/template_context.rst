@@ -118,9 +118,6 @@ The homepage, listing the tables, views and queries across every database. Rende
 ``page_count`` - ``int``
     The total number of pages
 
-``page_size`` - ``int``
-    The number of tables and views per page
-
 ``previous_url`` - ``str | None``
     URL of the previous page, or None on the first page
 
@@ -168,17 +165,11 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 ``database_page_data`` - ``dict``
     JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions``, ``canInsertRows`` and optional ``customColumnTypes``.
 
-``editable`` - ``bool``
-    Boolean indicating if the database is editable
-
 ``hidden_count`` - ``int``
     Count of hidden tables
 
 ``metadata`` - ``dict``
     Metadata dictionary for the database, such as ``title``, ``description``, ``license`` and ``source`` values from Datasette metadata.
-
-``path`` - ``str``
-    The URL path to this database
 
 ``private`` - ``bool``
     Boolean indicating if this is a private database
@@ -188,9 +179,6 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 
 ``queries_count`` - ``int``
     Count of visible stored queries
-
-``queries_more`` - ``bool``
-    Boolean indicating if more stored queries are available
 
 ``select_templates`` - ``list``
     List of template names that were considered for this page, with the selected template prefixed by ``*``.
@@ -414,9 +402,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``next_url`` - ``str``
     Full URL for the next page of results, or None if there are no more pages. See :ref:`json_api_pagination`.
 
-``ok`` - ``bool``
-    True if the data for this page was retrieved without errors
-
 ``page_position`` - ``dict``
     On pages after the first (``?_next=`` is set) a dictionary with ``first_url`` (this page without ``?_next=``), ``count_before_url`` (POST to count the rows before this page), ``after_column`` and ``after_value`` (a description of the pagination cursor). ``None`` on the first page.
 
@@ -541,9 +526,6 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``metadata`` - ``dict``
     Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration.
 
-``ok`` - ``bool``
-    True if the data for this page was retrieved without errors
-
 ``primary_key_values`` - ``list``
     Values of the primary keys for this row, from the URL
 
@@ -627,17 +609,11 @@ The list of stored queries, at ``/-/queries`` for every database and ``/<databas
 ``filters`` - ``dict``
     The current values of the ``q``, ``is_write``, ``is_private``, ``source`` and ``owner_id`` query string arguments, as strings that are empty if not set
 
-``limit`` - ``int``
-    Maximum number of queries per page
-
 ``next`` - ``str | None``
     Pagination token for the next page, or None
 
 ``next_url`` - ``str | None``
     URL of the next page of queries, or None
-
-``ok`` - ``bool``
-    Always ``True``
 
 ``queries`` - ``list[StoredQuery]``
     The stored queries on this page that the actor can see. Each has ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source`` and ``owner_id`` attributes
@@ -650,15 +626,6 @@ The list of stored queries, at ``/-/queries`` for every database and ``/<databas
 
 ``select_templates`` - ``list[str]``
     The template names Datasette considered, with an asterisk next to the one that was used
-
-``show_database`` - ``bool``
-    True if the list covers every database, so each query should be shown with its database
-
-``show_private_note`` - ``bool``
-    True if any query on this page is private
-
-``show_trusted_note`` - ``bool``
-    True if any query on this page is trusted, meaning it skips the permission checks for the SQL it runs
 
 ``start`` - ``int``
     Number of queries on earlier pages, used to display the position of this page
@@ -697,12 +664,6 @@ The form for saving a new stored query, at ``/<database>/-/queries/store``. Rend
 
 ``name`` - ``str``
     The name entered for the query, used in its URL
-
-``ok`` - ``bool``
-    True if the SQL was analyzed without an error
-
-``parameters`` - ``list[str]``
-    Names of the ``:named`` parameters found in the SQL
 
 ``save_disabled`` - ``bool``
     True if the query cannot be saved, because there is no SQL, it could not be analyzed or the actor lacks a permission it needs
@@ -747,12 +708,6 @@ The form for editing a stored query, at ``/<database>/<query>/-/edit``. Rendered
 
 ``name`` - ``str``
     Name of the query being edited
-
-``ok`` - ``bool``
-    True if the SQL was analyzed without an error
-
-``parameters`` - ``list[str]``
-    Names of the ``:named`` parameters found in the SQL
 
 ``query_url`` - ``str``
     URL of the page for the query
@@ -969,9 +924,6 @@ Error pages other than the 403 permission denied page are rendered without most 
 
 ``error`` - ``str``
     The error message
-
-``ok`` - ``bool``
-    Always ``False``
 
 ``status`` - ``int``
     The HTTP status code, for example ``404``

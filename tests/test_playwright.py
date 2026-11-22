@@ -2521,6 +2521,185 @@ def test_row_edit_discard_is_confirmed_in_page(page, datasette_server):
     assert project_row(datasette_server, 1)["title"] == original_title
 
 
+def record_native_prompts(page):
+    native_prompts = []
+
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", dismiss)
+    return native_prompts
+
+
+@pytest.mark.playwright
+def test_modal_alert(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = record_native_prompts(page)
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        const trigger = document.createElement('button');
+        trigger.id = 'alert-trigger';
+        trigger.textContent = 'Show alert';
+        document.body.append(trigger);
+        window.dismissed = 0;
+        trigger.onclick = async () => {
+            const result = await DatasetteModal.alert(window.alertOptions);
+            window.alertResult = result;
+            window.dismissed += 1;
+        };
+        window.alertOptions = {message: 'Could not save.\\nPlease try again.'};
+    }""")
+    trigger = page.locator("#alert-trigger")
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    ok = alert.locator(".modal-alert-ok")
+
+    trigger.click()
+    # A modal alertdialog named by its message, as a screen reader announces it
+    expect(
+        page.get_by_role("alertdialog", name="Could not save. Please try again.")
+    ).to_be_visible()
+    assert alert.evaluate("node => node.matches(':modal')")
+    assert alert.evaluate("node => node.parentElement.localName") == "datasette-modal"
+    # Line breaks in the message are kept, as they are by window.alert()
+    message = alert.locator(".modal-confirm-message")
+    assert message.evaluate("node => node.textContent") == (
+        "Could not save.\nPlease try again."
+    )
+    assert message.evaluate("node => getComputedStyle(node).whiteSpace") == "pre-wrap"
+    # OK is the only button and has focus, so Enter dismisses the alert
+    expect(alert.locator("button")).to_have_count(1)
+    expect(ok).to_have_text("OK")
+    expect(ok).to_be_focused()
+    assert page.evaluate("dismissed") == 0
+    page.keyboard.press("Enter")
+    expect(alert).to_have_count(0)
+    page.wait_for_function("dismissed === 1")
+    assert page.evaluate("alertResult") is None
+    # ... and focus goes back to where it was
+    expect(trigger).to_be_focused()
+    # The dialog is removed from the page, not just closed
+    expect(page.locator("dialog.modal-alert-dialog")).to_have_count(0)
+
+    # Escape and a click outside the dialog dismiss it too
+    trigger.click()
+    expect(ok).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(alert).to_have_count(0)
+    page.wait_for_function("dismissed === 2")
+    expect(trigger).to_be_focused()
+    trigger.click()
+    expect(alert).to_be_visible()
+    page.mouse.click(2, 2)
+    expect(alert).to_have_count(0)
+    page.wait_for_function("dismissed === 3")
+
+    # The button can be relabelled, and an Error is shown as its string
+    page.evaluate("""() => {
+        window.alertOptions = {message: new TypeError('Failed to fetch'), okLabel: 'Close'};
+    }""")
+    trigger.click()
+    expect(message).to_have_text("TypeError: Failed to fetch")
+    expect(ok).to_have_text("Close")
+    ok.click()
+    expect(alert).to_have_count(0)
+
+    # A long message scrolls, leaving the button on screen
+    page.evaluate("""() => {
+        window.alertOptions = {message: 'A long line of text. '.repeat(2000)};
+    }""")
+    trigger.click()
+    expect(ok).to_be_in_viewport(ratio=1)
+    assert message.evaluate("node => node.scrollHeight > node.clientHeight")
+    ok.click()
+    expect(alert).to_have_count(0)
+    assert native_prompts == []
+
+
+@pytest.mark.playwright
+def test_modal_alert_on_top_of_another_dialog(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        window.outerModal = DatasetteModal.create();
+        outerModal.dialog.id = 'outer-modal';
+        outerModal.dialog.innerHTML = '<button id="outer-button">Save</button>';
+        document.body.append(outerModal);
+        outerModal.show();
+        DatasetteModal.alert({message: 'Could not save'});
+    }""")
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    expect(alert.locator(".modal-alert-ok")).to_be_focused()
+    # Escape dismisses the alert and leaves the dialog behind it open
+    page.keyboard.press("Escape")
+    expect(alert).to_have_count(0)
+    expect(page.locator("#outer-modal")).to_be_visible()
+    expect(page.locator("#outer-button")).to_be_focused()
+
+
+@pytest.mark.playwright
+def test_edit_tools_load_failure_is_shown_in_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = record_native_prompts(page)
+    page.route("**/edit-tools.js*", lambda route: route.abort())
+    page.goto(datasette_server + "data/projects")
+    edit_button = page.locator('tr[data-row="1"] button[data-row-action="edit"]')
+    edit_button.click()
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    expect(alert.locator(".modal-confirm-message")).to_have_text(
+        "Could not load the editing tools. Please try again."
+    )
+    expect(page.locator("#row-edit-dialog")).to_have_count(0)
+    alert.locator(".modal-alert-ok").click()
+    expect(alert).to_have_count(0)
+    expect(edit_button).not_to_have_attribute("aria-busy", "true")
+
+    # Trying again works once the script can be loaded
+    page.unroute("**/edit-tools.js*")
+    edit_button.click()
+    expect(page.locator("#row-edit-dialog")).to_be_visible()
+    assert native_prompts == []
+
+
+@pytest.mark.playwright
+def test_api_explorer_errors_are_shown_in_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = record_native_prompts(page)
+    page.goto(datasette_server + "-/api")
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    message = alert.locator(".modal-confirm-message")
+    ok = alert.locator(".modal-alert-ok")
+
+    page.locator("summary", has_text="POST").click()
+    post_form = page.locator("#api-explorer-post")
+    post_form.locator("textarea").fill("{not json")
+    format_button = page.locator("#json-format")
+    format_button.click()
+    expect(message).to_contain_text("Error parsing JSON: SyntaxError")
+    ok.click()
+    expect(alert).to_have_count(0)
+    expect(format_button).to_be_focused()
+
+    post_form.locator('input[name="path"]').fill("/data/projects/-/insert")
+    post_form.locator('input[type="submit"]').click()
+    expect(message).to_contain_text("Invalid JSON: SyntaxError")
+    ok.click()
+
+    # A response that is not JSON
+    page.locator("summary", has_text="GET").click()
+    get_form = page.locator("#api-explorer-get")
+    get_form.locator('input[name="path"]').fill("/data/projects")
+    get_form.locator('input[type="submit"]').click()
+    expect(message).to_contain_text("SyntaxError")
+    ok.click()
+    expect(alert).to_have_count(0)
+    assert native_prompts == []
+
+
 MENU_CASES = [
     ("app", "", "details.nav-menu summary", "#app-menu-panel"),
     ("database", "data", "details.actions-menu-links summary", "#actions-menu-panel"),

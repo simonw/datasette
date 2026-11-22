@@ -6,13 +6,13 @@ import hashlib
 import json
 import os
 import pathlib
-import tempfile
 from unittest.mock import patch
 
 import pytest
 
 from datasette import utils
 from datasette.app import Datasette
+from datasette.rows import Row
 from datasette.utils.sqlite import (
     sqlite3,
     sqlite_derived_table_dependencies,
@@ -83,13 +83,18 @@ def test_modify_query_string(query_string, kwargs, expected):
         ({"A": "f,o", "B": "bar"}, ["A", "B"], "f~2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
-            utils.CustomRow(
-                ["searchable_id", "tag"],
-                [
-                    ("searchable_id", {"value": 1, "label": "1"}),
-                    ("tag", {"value": "feline", "label": "feline"}),
-                ],
+            Row.from_dict(
+                {"searchable_id": 1, "tag": "feline"}, labels={"tag": "Feline"}
             ),
+            ["searchable_id", "tag"],
+            "1,feline",
+        ),
+        (
+            # Rows as represented in JSON, with expanded foreign key labels
+            {
+                "searchable_id": {"value": 1, "label": "1"},
+                "tag": {"value": "feline", "label": "feline"},
+            },
             ["searchable_id", "tag"],
             "1,feline",
         ),
@@ -444,88 +449,87 @@ def test_to_css_class(s, expected):
     assert utils.to_css_class(s) == expected
 
 
-def test_temporary_docker_directory_uses_hard_link():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        # Default usage of this should use symlink
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options=None,
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note=None,
-            secret="secret",
-        ) as temp_docker:
-            hello = os.path.join(temp_docker, "hello")
-            with open(hello) as fp:
-                assert fp.read() == "world"
-            # It should be a hard link
-            assert os.stat(hello).st_nlink == 2
+def test_temporary_docker_directory_uses_hard_link(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    # Default usage of this should use symlink
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options=None,
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note=None,
+        secret="secret",
+    ) as temp_docker:
+        hello = os.path.join(temp_docker, "hello")
+        with open(hello) as fp:
+            assert fp.read() == "world"
+        # It should be a hard link
+        assert os.stat(hello).st_nlink == 2
 
 
 @patch("os.link")
-def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
+def test_temporary_docker_directory_uses_copy_if_hard_link_fails(
+    mock_link, tmp_path, monkeypatch
+):
     # Copy instead if os.link raises OSError (normally due to different device)
     mock_link.side_effect = OSError
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        # Default usage of this should use symlink
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options=None,
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note=None,
-            secret=None,
-        ) as temp_docker:
-            hello = os.path.join(temp_docker, "hello")
-            with open(hello) as fp:
-                assert fp.read() == "world"
-            # It should be a copy, not a hard link
-            assert os.stat(hello).st_nlink == 1
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    # Default usage of this should use symlink
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options=None,
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note=None,
+        secret=None,
+    ) as temp_docker:
+        hello = os.path.join(temp_docker, "hello")
+        with open(hello) as fp:
+            assert fp.read() == "world"
+        # It should be a copy, not a hard link
+        assert os.stat(hello).st_nlink == 1
 
 
-def test_temporary_docker_directory_quotes_args():
-    with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
-        with open("hello", "w") as fp:
-            fp.write("world")
-        with utils.temporary_docker_directory(
-            files=["hello"],
-            name="t",
-            metadata=None,
-            extra_options="--$HOME",
-            branch=None,
-            template_dir=None,
-            plugins_dir=None,
-            static=[],
-            install=[],
-            spatialite=False,
-            version_note="$PWD",
-            secret="secret",
-        ) as temp_docker:
-            df = os.path.join(temp_docker, "Dockerfile")
-            with open(df) as fp:
-                df_contents = fp.read()
-            assert "'$PWD'" in df_contents
-            assert "'--$HOME'" in df_contents
-            assert "ENV DATASETTE_SECRET 'secret'" in df_contents
+def test_temporary_docker_directory_quotes_args(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with open("hello", "w") as fp:
+        fp.write("world")
+    with utils.temporary_docker_directory(
+        files=["hello"],
+        name="t",
+        metadata=None,
+        extra_options="--$HOME",
+        branch=None,
+        template_dir=None,
+        plugins_dir=None,
+        static=[],
+        install=[],
+        spatialite=False,
+        version_note="$PWD",
+        secret="secret",
+    ) as temp_docker:
+        df = os.path.join(temp_docker, "Dockerfile")
+        with open(df) as fp:
+            df_contents = fp.read()
+        assert "'$PWD'" in df_contents
+        assert "'--$HOME'" in df_contents
+        assert "ENV DATASETTE_SECRET 'secret'" in df_contents
 
 
 def test_compound_keys_after_sql():
@@ -567,6 +571,49 @@ def test_table_columns():
     """)
     assert utils.table_columns(conn, "places") == ["id", "name", "bob"]
     conn.close()
+
+
+def test_introspection_sees_table_created_by_another_connection(tmp_path):
+    # A connection that has already loaded the schema must still see tables
+    # that are created afterwards by a different connection
+    # https://github.com/simonw/datasette/issues/2356
+    path = str(tmp_path / "data.db")
+    writer = sqlite3.connect(path)
+    writer.execute("create table docs (id integer primary key, title text)")
+    writer.commit()
+    reader = sqlite3.connect(path)
+    # Cause the reader to load and cache the schema
+    assert reader.execute("select count(*) from docs").fetchone()[0] == 0
+    writer.execute(
+        "create table notes (type text, key text, "
+        "doc_id integer references docs(id), primary key (type, key))"
+    )
+    writer.commit()
+    try:
+        assert utils.get_outbound_foreign_keys(reader, "notes") == [
+            {"column": "doc_id", "other_table": "docs", "other_column": "id"}
+        ]
+    finally:
+        reader.close()
+    # Fresh stale reader for each check, since any check refreshes the schema
+    for fn, expected in (
+        (utils.detect_primary_keys, ["type", "key"]),
+        (utils.table_columns, ["type", "key", "doc_id"]),
+    ):
+        writer.execute("drop table notes")
+        writer.commit()
+        reader = sqlite3.connect(path)
+        assert reader.execute("select count(*) from docs").fetchone()[0] == 0
+        writer.execute(
+            "create table notes (type text, key text, "
+            "doc_id integer references docs(id), primary key (type, key))"
+        )
+        writer.commit()
+        try:
+            assert fn(reader, "notes") == expected
+        finally:
+            reader.close()
+    writer.close()
 
 
 @pytest.mark.parametrize(

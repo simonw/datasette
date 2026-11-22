@@ -786,8 +786,8 @@ Example:
 await .check_visibility(actor, action, resource=None)
 -----------------------------------------------------
 
-``actor`` - dictionary
-    The authenticated actor. This is usually ``request.actor``.
+``actor`` - dictionary or None
+    The authenticated actor, or ``None`` for an anonymous request. This is usually ``request.actor``.
 
 ``action`` - string
     The name of the action that is being permission checked.
@@ -1580,6 +1580,29 @@ For example:
         "default_allow_download"
     )
 
+.. _datasette_capped_time_limit_ms:
+
+.capped_time_limit_ms(time_limit_ms)
+------------------------------------
+
+``time_limit_ms`` - integer
+    A time limit in milliseconds.
+
+Returns ``time_limit_ms``, or the value of the :ref:`setting_sql_time_limit_ms` setting if that is lower.
+
+The ``custom_time_limit=`` argument to :ref:`db.execute() <database_execute>` can set a time limit that is longer than ``sql_time_limit_ms``. Use this method for a time limit that should only ever shorten that setting, such as one that comes from a request or from plugin configuration:
+
+.. code-block:: python
+
+    time_limit_ms = datasette.capped_time_limit_ms(
+        int(request.args["_timelimit"])
+    )
+    results = await db.execute(
+        sql, custom_time_limit=time_limit_ms
+    )
+
+Datasette uses this method for the ``?_timelimit=`` query string argument and for the :ref:`setting_facet_time_limit_ms` and :ref:`setting_facet_suggest_time_limit_ms` settings.
+
 .. _datasette_resolve_database:
 
 .resolve_database(request)
@@ -1649,7 +1672,7 @@ It returns a ``ResolvedRow`` named tuple instance with the following fields:
 ``pk_values`` - list
     List of primary key values decoded from the URL
 
-``row`` - ``sqlite3.Row``
+``row`` - :ref:`Row <internals_row>`
     The row itself
 
 If the database or table cannot be found it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception.
@@ -2212,7 +2235,7 @@ Executes a SQL query against the database and returns the resulting rows (see :r
     Should the rows returned by the query be truncated at the maximum page size? Defaults to ``True``, set this to ``False`` to disable truncation.
 
 ``custom_time_limit`` - integer ms
-    A custom time limit for this query. This can be set to a lower value than the Datasette configured default. If a query takes longer than this it will be terminated early and raise a ``dataette.database.QueryInterrupted`` exception.
+    A custom time limit for this query, used instead of the :ref:`setting_sql_time_limit_ms` setting. This can be lower or higher than that setting. If a query takes longer than this it will be terminated early and raise a ``datasette.database.QueryInterrupted`` exception. Do not pass a value from an untrusted source without capping it first using :ref:`datasette.capped_time_limit_ms() <datasette_capped_time_limit_ms>`, as Datasette does for the ``?_timelimit=`` query string argument.
 
 ``page_size`` - integer
     Set a custom page size for truncation, over-riding the configured Datasette default.
@@ -2227,7 +2250,7 @@ Results
 
 The ``db.execute()`` method returns a single ``Results`` object. This can be used to access the rows returned by the query.
 
-Iterating over a ``Results`` object will yield SQLite `Row objects <https://docs.python.org/3/library/sqlite3.html#row-objects>`__. Each of these can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
+Iterating over a ``Results`` object will yield :ref:`Row objects <internals_row>`. Each of these can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
 
 .. code-block:: python
 
@@ -2241,11 +2264,14 @@ The ``Results`` object also has the following properties and methods:
 ``.truncated`` - boolean
     Indicates if this query was truncated - if it returned more results than the specified ``page_size``. If this is true then the results object will only provide access to the first ``page_size`` rows in the query result. You can disable truncation by passing ``truncate=False`` to the ``db.query()`` method.
 
-``.columns`` - list of strings
-    A list of column names returned by the query.
+``.columns`` - :ref:`Columns <internals_row_columns>`
+    The columns returned by the query. ``results.columns.names`` is a tuple of the column names. Every row in ``.rows`` shares this same object as its ``row.columns``.
 
-``.rows`` - list of ``sqlite3.Row``
+``.rows`` - list of :ref:`Row <internals_row>`
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
+
+``.with_columns(columns)`` - ``Results``
+    Returns a copy of these results that uses a different :ref:`Columns <internals_row_columns>` object. Datasette uses this on table and row pages to attach the details of the table's columns to the rows.
 
 ``.dicts()`` - list of ``dict``
     This method returns a list of Python dictionaries, one for each row.
@@ -2258,6 +2284,92 @@ The ``Results`` object also has the following properties and methods:
 
 ``.__len__()``
     Calling ``len(results)`` returns the (truncated) number of returned results.
+
+.. _internals_row:
+
+Row
+---
+
+Datasette represents each row returned by a query as a ``datasette.Row`` object. These are returned by :ref:`db.execute() <database_execute>` and passed to plugin hooks such as :ref:`render_cell() <plugin_hook_render_cell>`.
+
+``Row`` is not specific to SQLite. It describes the row in terms that apply to any database, so code written against it does not depend on the ``sqlite3`` module.
+
+Values can be read by column name or by position, and a row behaves as a sequence of its values:
+
+.. code-block:: python
+
+    row = (
+        await db.execute("select id, name from dogs")
+    ).first()
+    row["name"]  # By column name
+    row[1]  # By position
+    id, name = row  # Iterating yields the values
+    len(row)
+    "Cleo" in row  # True if any value equals "Cleo"
+    dict(row)  # {"id": 1, "name": "Cleo"}
+
+``row["column"]`` raises a ``KeyError`` if there is no column with that name, and ``row[5]`` raises an ``IndexError`` if there are not that many values. Column names are case-sensitive. If a query returns two columns with the same name, ``row["name"]`` returns the first and both are available by position.
+
+Rows are immutable, and two rows are equal if they have the same values and the same column names.
+
+``row.keys()`` - list of strings
+    The names of the columns.
+
+``row.columns`` - :ref:`Columns <internals_row_columns>`
+    The columns for this row. Every row from the same query shares the same object.
+
+``row.labels`` - dictionary
+    A read-only dictionary of labels for the foreign keys in this row that Datasette has resolved, mapping the column name to the label of the row it refers to. The value in the row itself is always the stored key.
+
+    A column is only included if a label was found, so ``"owner_id" in row.labels`` tells you whether that foreign key was resolved for this row. The dictionary is empty for rows returned by ``db.execute()``. Datasette adds labels on table and row pages, see :ref:`expand_foreign_keys`.
+
+``Row.from_dict(d, labels=None)`` - ``Row``
+    Builds a row from a ``{column_name: value}`` dictionary, with an optional ``{column_name: label}`` dictionary of labels. Use this to construct rows in the tests for a plugin.
+
+.. _internals_row_columns:
+
+Columns and Column
+~~~~~~~~~~~~~~~~~~
+
+``datasette.Columns`` is an immutable sequence of ``datasette.Column`` objects. It is used for the columns in a set of results, and :ref:`db.table_column_details() <database_table_column_details>` returns one describing the columns of a table.
+
+.. code-block:: python
+
+    columns = results.columns
+    columns.names  # ("id", "name")
+    columns[0]  # Column(name="id", ...)
+    columns["name"]  # Column(name="name", ...)
+    "name" in columns  # True
+    for column in columns:
+        print(column.name, column.type)
+
+``columns.names`` - tuple of strings
+    The names of the columns.
+
+Each ``Column`` has the following attributes. Only ``name`` is always available. The others describe a column of a table, and are ``None`` for the columns of an arbitrary SQL query. Datasette fills them in on table and row pages.
+
+``column.name`` - string
+    The name of the column.
+
+``column.type`` - string or None
+    The type the column was declared with, exactly as the database reports it, for example ``INTEGER`` or ``varchar(30)``. ``None`` if the column was declared without a type.
+
+    This is separate from the :ref:`column types <datasette_column_types>` that Datasette itself can assign to a column. It describes the column, not the values in it: SQLite will store a string in a column declared as ``INTEGER``. SQLite accepts any name as a declared type, and the capitalization of the string can differ between SQLite versions, with older versions reporting ``integer`` where newer versions report ``INTEGER``.
+
+``column.notnull`` - integer or None
+    ``1`` if the column has a ``NOT NULL`` constraint, otherwise ``0``.
+
+``column.default_value`` - string or None
+    The default value for the column, as a SQL expression. ``None`` if it has no default.
+
+``column.pk_position`` - integer or None
+    The position of the column in the primary key of its table, starting at ``1``, or ``0`` if it is not part of the primary key. A table with a compound primary key has columns with positions ``1``, ``2`` and so on.
+
+``column.hidden`` - boolean or None
+    ``True`` for a hidden column of a virtual table, such as the column an FTS table names after itself. Hidden columns are not returned by ``select *``. Always ``False`` on versions of SQLite before 3.26, which do not report them.
+
+``column.generated`` - string or None
+    ``"virtual"`` or ``"stored"`` if this is a `generated column <https://www.sqlite.org/gencol.html>`__, otherwise ``None``. A generated column cannot be written to.
 
 .. _database_execute_fn:
 
@@ -2277,6 +2389,8 @@ Example usage:
 
 
     version = await db.execute_fn(get_version)
+
+Rows fetched from this connection are :ref:`Row <internals_row>` objects, the same as those returned by ``db.execute()``.
 
 The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
@@ -2308,7 +2422,7 @@ The method will block until the operation is completed, and the return value wil
     ``True`` if the statement returned more rows than ``returning_limit``.
 
 ``.fetchall()``
-    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
+    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause, as a list of :ref:`Row <internals_row>` objects. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
 
 SQLite statements using ``RETURNING`` must have their rows consumed before the transaction can commit. Datasette will fetch up to ``returning_limit + 1`` rows before committing, store up to ``returning_limit`` rows on the result object and set ``.truncated`` if there were more. The default ``returning_limit`` is ``10``.
 
@@ -2362,6 +2476,8 @@ await db.execute_write_fn(fn, \*, block=True, transaction=True)
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
+
+Rows fetched from this connection are :ref:`Row <internals_row>` objects.
 
 Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
@@ -2450,7 +2566,7 @@ await db.execute_isolated_fn(fn)
 
 This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method.
 
-The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection.
+The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection, and Datasette does not configure it in any other way. Rows fetched from it are plain tuples, not :ref:`Row <internals_row>` objects.
 
 This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
 
@@ -2516,8 +2632,10 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.table_columns(table)`` - list of strings
     Names of columns in a specific table.
 
-``await db.table_column_details(table)`` - list of named tuples
-    Full details of the columns in a specific table. Each column is represented by a ``Column`` named tuple with fields ``cid`` (integer representing the column position), ``name`` (string), ``type`` (string, e.g. ``REAL`` or ``VARCHAR(30)``), ``notnull`` (integer 1 or 0), ``default_value`` (string or None), ``is_pk`` (integer 1 or 0).
+.. _database_table_column_details:
+
+``await db.table_column_details(table)`` - :ref:`Columns <internals_row_columns>`
+    Full details of the columns in a specific table or view, as a ``Columns`` object containing a ``datasette.Column`` for each one. Each has ``name``, ``type``, ``notnull``, ``default_value``, ``pk_position``, ``hidden`` and ``generated`` attributes, described in :ref:`internals_row_columns`. ``columns["name"]`` looks up a column by name.
 
 ``await db.primary_keys(table)`` - list of strings
     Names of the columns that are part of the primary key for this table.
@@ -2715,7 +2833,7 @@ A request to a table page produces a span named, in full::
     - ``db.operation.name`` *(optional)* - The statement's leading keyword, such as ``SELECT``, ``INSERT`` or ``CREATE``, if it matches the supported allowlist. Statements beginning with a common table expression report ``WITH``. Omitted for unrecognized keywords and ``execute_write_script()``.
     - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
     - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. The parameter values are not recorded.
-    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or a shorter ``custom_time_limit``.
+    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or the ``custom_time_limit`` passed by the caller.
     - ``datasette.rows_returned`` *(optional)* - Number of rows returned by a successful read query.
     - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
     - ``datasette.interrupted`` *(optional)* - True if the query exceeded its time limit. The span status is set to ``ERROR`` unless the caller used a ``custom_time_limit`` shorter than :ref:`setting_sql_time_limit_ms`, in which case the status is left unset.

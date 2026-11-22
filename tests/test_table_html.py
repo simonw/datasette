@@ -2187,12 +2187,12 @@ async def test_compound_primary_key_with_foreign_key_references(ds_client):
     expected = [
         [
             '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
-            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/1">1</a>\xa0<em>1</em></td>',
+            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/1">1</a></td>',
             '<td class="col-tag type-str"><a href="/fixtures/tags/feline">feline</a></td>',
         ],
         [
             '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/2,canine">2,canine</a></td>',
-            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/2">2</a>\xa0<em>2</em></td>',
+            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/2">2</a></td>',
             '<td class="col-tag type-str"><a href="/fixtures/tags/canine">canine</a></td>',
         ],
     ]

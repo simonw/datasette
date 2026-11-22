@@ -238,13 +238,11 @@ class DatabaseView(View):
                 DatabaseContext(
                     database=database,
                     private=private,
-                    path=datasette.urls.database(database),
                     size=db.size,
                     tables=tables,
                     hidden_count=len([table for table in tables if table.hidden]),
                     views=sql_views,
                     queries=stored_queries,
-                    queries_more=queries_more,
                     queries_count=queries_count,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
@@ -259,7 +257,6 @@ class DatabaseView(View):
                     ),
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
-                    editable=True,
                     allow_download=datasette.setting("default_allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
@@ -292,7 +289,6 @@ class DatabaseContext(Context):
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
     )
-    path: str = field(metadata={"help": "The URL path to this database"})
     size: int = field(metadata={"help": "The size of the database in bytes"})
     tables: list[DatabaseTable] = field(
         metadata={
@@ -309,9 +305,6 @@ class DatabaseContext(Context):
         metadata={
             "help": "List of ``StoredQuery`` objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``."
         }
-    )
-    queries_more: bool = field(
-        metadata={"help": "Boolean indicating if more stored queries are available"}
     )
     queries_count: int = field(metadata={"help": "Count of visible stored queries"})
     allow_execute_sql: bool = field(
@@ -339,9 +332,6 @@ class DatabaseContext(Context):
         }
     )
     show_hidden: str = field(metadata={"help": "Value of _show_hidden query parameter"})
-    editable: bool = field(
-        metadata={"help": "Boolean indicating if the database is editable"}
-    )
     allow_download: bool = field(
         metadata={"help": "Boolean indicating if database download is allowed"}
     )
@@ -824,7 +814,10 @@ class QueryView(View):
 
         extra_args = {}
         if params.get("_timelimit"):
-            extra_args["custom_time_limit"] = int(params["_timelimit"])
+            # ?_timelimit= can shorten the time limit but not extend it
+            extra_args["custom_time_limit"] = datasette.capped_time_limit_ms(
+                int(params["_timelimit"])
+            )
 
         format_ = request.url_vars.get("format") or "html"
 
@@ -847,7 +840,7 @@ class QueryView(View):
                 results = await datasette.execute(
                     database, sql, params_for_query, truncate=True, **extra_args
                 )
-                columns = results.columns
+                columns = list(results.columns.names)
                 rows = results.rows
             except QueryInterrupted as ex:
                 raise DatasetteError(
@@ -1164,7 +1157,7 @@ class QueryView(View):
                 headers=headers,
             )
         else:
-            assert False, f"Invalid format: {format_}"
+            raise NotFound(f"Invalid format: {format_}")
         if datasette.cors:
             add_cors_headers(r.headers)
         if stored_query_write and format_ == "html":

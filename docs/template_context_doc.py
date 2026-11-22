@@ -68,5 +68,5 @@ def _page(cog, klass, underline):
 
 
 def _section(cog, title, intro, underline="-"):
-    cog.out("{}\n{}\n\n".format(title, underline * len(title)))
+    cog.out(f"{title}\n{underline * len(title)}\n\n")
     cog.out(f"{intro}\n\n")

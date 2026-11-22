@@ -66,7 +66,7 @@ async def _count_rows(datasette, items):
                 "select count(*) from (select * from {} limit {})".format(
                     escape_sqlite(item["name"]), db.count_limit + 1
                 ),
-                custom_time_limit=COUNT_TIME_LIMIT_MS,
+                custom_time_limit=db.ds.capped_time_limit_ms(COUNT_TIME_LIMIT_MS),
             )
             count = result.rows[0][0]
         except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):

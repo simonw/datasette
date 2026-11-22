@@ -199,7 +199,7 @@ def _foreign_key_suggestion_metadata(conn, table_name):
             "affinity": _sqlite_type_affinity(column.type),
         }
         for column in table_column_details(conn, table_name)
-        if not column.hidden
+        if not (column.hidden or column.generated)
     ]
     current_by_column = {
         fk["column"]: {
@@ -220,8 +220,12 @@ def _foreign_key_suggestion_metadata(conn, table_name):
         if candidate_table == table_name or candidate_table in hidden_tables:
             continue
         columns = [column for column in table_column_details(conn, candidate_table)]
-        pks = [column for column in columns if column.is_pk and not column.hidden]
-        pks.sort(key=lambda column: column.is_pk)
+        pks = [
+            column
+            for column in columns
+            if column.pk_position and not (column.hidden or column.generated)
+        ]
+        pks.sort(key=lambda column: column.pk_position)
         if len(pks) != 1:
             continue
         pk = pks[0]
@@ -247,7 +251,9 @@ async def _foreign_key_suggestion_samples(db, table_name, columns):
     try:
         results = await db.execute(
             sql,
-            custom_time_limit=FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS,
+            custom_time_limit=db.ds.capped_time_limit_ms(
+                FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS
+            ),
             log_sql_errors=False,
         )
     except QueryInterrupted as e:
@@ -277,7 +283,7 @@ async def _foreign_key_suggestion_values_exist(db, target, values, time_limit_ms
         results = await db.execute(
             sql,
             params=values,
-            custom_time_limit=time_limit_ms,
+            custom_time_limit=db.ds.capped_time_limit_ms(time_limit_ms),
             log_sql_errors=False,
         )
     except QueryInterrupted as e:

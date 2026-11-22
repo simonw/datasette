@@ -345,3 +345,78 @@ def test_template_context_docs_cover_every_documented_key():
             assert (
                 f"``{context_field.name}`` - ``{context_field.type_name}``" in docs
             ), f"{context_field.name} type ({page_name} page)"
+
+
+# Documented variables that none of Datasette's default templates use.
+# Everything documented is frozen until Datasette 2.0, so a variable should
+# only be listed here on purpose: because custom templates or plugins need
+# it. See https://github.com/simonw/datasette/issues/3088
+UNUSED_BY_DEFAULT_TEMPLATES = {
+    # url_csv: custom templates based on older default templates link to it
+    "query": {"url_csv"},
+    # columns: passed to the extra_body_script, extra_template_vars,
+    # extra_css_urls and extra_js_urls plugin hooks
+    # rows: the raw values, display_rows only has the rendered cells
+    # next: the pagination token, for templates that build their own links
+    # count_sql: matches ?_extra=count_sql
+    "table": {"columns", "count_sql", "next", "rows", "url_csv"},
+    "row": {"columns", "rows", "url_csv"},
+    "query_list": {"next"},
+}
+# base_url: used by templates in plugins
+UNUSED_BASE_CONTEXT = {"base_url"}
+
+# Templates that jinja2.meta cannot discover from the documented template:
+# {% include custom_table_templates %} and views sharing a Context class
+ADDITIONAL_TEMPLATES = {
+    "table": ["_table.html"],
+    "row": ["_row_fields.html"],
+    "json_data": ["debug_actions.html"],
+}
+
+
+def _variables_used_by(environment, template_name, seen=None):
+    "Undeclared variables in a template and every template it references"
+    from jinja2 import meta
+
+    seen = set() if seen is None else seen
+    if template_name in seen:
+        return set()
+    seen.add(template_name)
+    source = environment.loader.get_source(environment, template_name)[0]
+    ast = environment.parse(source)
+    used = set(meta.find_undeclared_variables(ast))
+    for referenced in meta.find_referenced_templates(ast):
+        if referenced is not None:
+            used |= _variables_used_by(environment, referenced, seen)
+    return used
+
+
+def _variables_used_by_page(environment, page_name):
+    templates = [PAGES[page_name].documented_template] + ADDITIONAL_TEMPLATES.get(
+        page_name, []
+    )
+    used = set()
+    for template_name in templates:
+        used |= _variables_used_by(environment, template_name)
+    return used
+
+
+@pytest.mark.parametrize("page_name", PAGES)
+def test_documented_variables_are_used_by_default_templates(page_name):
+    environment = Datasette(memory=True).get_jinja_environment()
+    used = _variables_used_by_page(environment, page_name)
+    documented = {f.name for f in PAGES[page_name].documented_fields()}
+    assert documented - used == UNUSED_BY_DEFAULT_TEMPLATES.get(page_name, set()), (
+        f"{page_name}: variables documented but not used by any default template "
+        "must match UNUSED_BY_DEFAULT_TEMPLATES - remove the variable, or list it "
+        "there if it is kept on purpose"
+    )
+
+
+def test_base_context_variables_are_used_by_default_templates():
+    environment = Datasette(memory=True).get_jinja_environment()
+    used = set()
+    for page_name in PAGES:
+        used |= _variables_used_by_page(environment, page_name)
+    assert set(TEMPLATE_BASE_CONTEXT) - used == UNUSED_BASE_CONTEXT

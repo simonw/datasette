@@ -21,7 +21,7 @@ from datasette.events import (
     UpsertRowsEvent,
 )
 from datasette.extras import ExtraScope, extra_names_from_request
-from datasette.filters import Filters
+from datasette.filters import Filters, column_type_has_no_affinity
 from datasette.plugins import pm
 from datasette.renderer import apply_column_type_transforms, row_as_dict
 from datasette.resources import DatabaseResource, TableResource
@@ -2341,7 +2341,20 @@ async def _table_filters(datasette, request, database_name, table_name):
 
     # Build where clauses from query string arguments
     filters = Filters(sorted(filter_args))
-    where_clauses, params = filters.build_where_clauses(table_name)
+    no_affinity_columns = set()
+    if filter_args:
+        # Expression columns in views (and untyped table columns) have no
+        # type affinity, so need numeric values to be handled differently
+        no_affinity_columns = {
+            column.name
+            for column in await datasette.get_database(
+                database_name
+            ).table_column_details(table_name)
+            if column_type_has_no_affinity(column.type)
+        }
+    where_clauses, params = filters.build_where_clauses(
+        table_name, no_affinity_columns=no_affinity_columns
+    )
 
     # Execute filters_from_request plugin hooks - including the default
     # ones that live in datasette/filters.py

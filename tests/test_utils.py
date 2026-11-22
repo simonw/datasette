@@ -1025,3 +1025,70 @@ def test_datasette_install_requirements(install, branch, expected):
         expected = install
     expected = [item.replace("VERSION", __version__) for item in expected]
     assert utils.datasette_install_requirements(install, branch) == expected
+
+
+@pytest.mark.parametrize(
+    "value,typed,expected",
+    [
+        ("foo", False, "foo"),
+        ("f,o/o", False, "f~2Co~2Fo"),
+        (None, False, "$null"),
+        ("", False, "$empty"),
+        (b"\x00\xff", False, "b:00ff"),
+        (b"", False, "b:"),
+        # Text that looks like a marker is tilde-encoded, so it stays text
+        ("$null", False, "~24null"),
+        ("$empty", False, "~24empty"),
+        ("i:2", False, "i~3A2"),
+        ("b:ff", False, "b~3Aff"),
+        # Numbers are text unless the column needs their type
+        (345, False, "345"),
+        (1.5, False, "1~2E5"),
+        (345, True, "i:345"),
+        (-345, True, "i:-345"),
+        # No "." or "+", which mean other things in a URL
+        (1.5, True, "f:0x1~2E8000000000000p0"),
+        (1e100, True, "f:0x1~2E249ad2594c37dp332"),
+    ],
+)
+def test_encode_key_value(value, typed, expected):
+    encoded = utils.encode_key_value(value, typed)
+    assert encoded == expected
+    decoded = utils.decode_key_value(encoded)
+    if isinstance(value, (int, float)) and not typed:
+        # SQLite converts this back to a number for a typed column
+        assert decoded == str(value)
+    else:
+        assert decoded == value
+        assert type(decoded) is type(value)
+
+
+@pytest.mark.parametrize(
+    "component,expected",
+    [
+        # Paths and cursors from before $empty existed
+        ("", ""),
+        # float.hex() as written by Datasette 1.0a43 cursors
+        ("f:0x1.8p+0", 1.5),
+        ("f:0x1.8p0", 1.5),
+    ],
+)
+def test_decode_key_value_accepts_older_forms(component, expected):
+    assert utils.decode_key_value(component) == expected
+
+
+@pytest.mark.parametrize(
+    "component", ["i:no", "i:9223372036854775808", "f:no", "f:nan", "b:zz"]
+)
+def test_decode_key_value_invalid(component):
+    with pytest.raises(ValueError):
+        utils.decode_key_value(component)
+
+
+def test_path_from_row_pks_typed_columns():
+    row = {"a": 1, "b": 1, "c": "", "d": b"\x01"}
+    assert (
+        utils.path_from_row_pks(row, ["a", "b", "c", "d"], False, typed_columns={"b"})
+        == "1,i:1,$empty,b:01"
+    )
+    assert utils.decode_key_path("1,i:1,$empty,b:01") == ["1", 1, "", b"\x01"]

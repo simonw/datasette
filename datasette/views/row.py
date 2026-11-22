@@ -28,6 +28,7 @@ from datasette.utils import (
     sqlite3,
     tilde_decode,
     to_css_class,
+    untyped_columns,
 )
 from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import check_structured_write_table
@@ -470,7 +471,12 @@ class RowView(BaseView):
                         )
 
             label_column = await db.label_column_for_table(table) if is_table else None
-            row_path = path_from_row_pks(rows[0], pks, False)
+            row_path = path_from_row_pks(
+                rows[0],
+                pks,
+                False,
+                typed_columns=untyped_columns(await db.table_column_details(table)),
+            )
             pk_path = path_from_row_pks(rows[0], pks, False, False)
             row_label = row_label_from_label_column(labeled_rows[0], label_column)
             for display_row in display_rows:
@@ -579,7 +585,8 @@ class RowView(BaseView):
             "rows": rows,
             "columns": columns,
             "primary_keys": resolved.pks,
-            "primary_key_values": pk_values,
+            # Always strings, as they were when they came straight from the URL
+            "primary_key_values": [str(value) for value in pk_values],
         }
 
         extras = extra_names_from_request(request)
@@ -671,7 +678,7 @@ class RowView(BaseView):
             link = "{}?{}={}".format(
                 self.ds.urls.table(database, fk["other_table"]),
                 key,
-                ",".join(pk_values),
+                ",".join(str(value) for value in pk_values),
             )
             foreign_key_tables.append({**fk, "count": count, "link": link})
         return foreign_key_tables
@@ -695,7 +702,7 @@ def _truncated_row_flash_label(label):
 async def _row_flash_message(
     datasette, request, action, resolved, row=None, *, refresh_row=False
 ):
-    pk_label = ", ".join(resolved.pk_values)
+    pk_label = ", ".join(str(value) for value in resolved.pk_values)
     # Mutation permission does not grant access to stored row labels.
     if not await datasette.allowed(
         action="view-table",

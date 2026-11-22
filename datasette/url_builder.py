@@ -2,6 +2,7 @@ import urllib
 
 from .utils import (
     PrefixedUrlString,
+    encode_key_value,
     modify_query_string,
     request_route_path,
     tilde_encode,
@@ -94,10 +95,10 @@ class Urls:
         return PrefixedUrlString(path)
 
     def _row_path(self, row_path):
-        # A list or tuple of primary key values is tilde-encoded and joined
-        # with commas. Anything else is assumed to be already encoded.
+        # A list or tuple of primary key values is encoded and joined with
+        # commas. Anything else is assumed to be already encoded.
         if isinstance(row_path, (list, tuple)):
-            return ",".join(tilde_encode(str(value)) for value in row_path)
+            return ",".join(encode_key_value(value) for value in row_path)
         return row_path
 
     def row(self, database, table, row_path, *, format=None):

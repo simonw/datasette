@@ -75,6 +75,7 @@ from .utils import (
     await_me_maybe,
     baseconv,
     call_with_supported_arguments,
+    decode_key_path,
     detect_json1,
     display_actor,
     escape_css_string,
@@ -3259,7 +3260,10 @@ ORDER BY allowed.parent, allowed.child
 
     async def resolve_row(self, request):
         db, table_name, _ = await self.resolve_table(request)
-        pk_values = urlsafe_components(request.url_vars["pks"])
+        try:
+            pk_values = decode_key_path(request.url_vars["pks"])
+        except ValueError:
+            raise BadRequest("Invalid row identifier")
         sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
         if len(pk_values) != len(pks):
             raise BadRequest(
@@ -3586,6 +3590,12 @@ class DatasetteRouter:
             # and "." replaced with "~2E"
             new_path = (
                 request.path.replace("~", "~7E").replace("%", "~").replace(".", "~2E")
+            )
+            # Some clients percent-encode the ":" and "$" that mark a typed
+            # value in a row path, such as i:345 or $empty. Those must stay as
+            # markers and not turn into the tilde-encoded text ~3A and ~24.
+            new_path = re.sub("~3A", ":", new_path, flags=re.IGNORECASE).replace(
+                "~24", "$"
             )
             if request.query_string:
                 new_path += f"?{request.query_string}"

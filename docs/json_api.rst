@@ -94,7 +94,7 @@ looks like this:
 
 The ``"rows"`` key is a list of objects, each one representing a row.
 
-The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
+The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting). Query responses also return this as a ``Datasette-Truncated: true`` or ``Datasette-Truncated: false`` HTTP header, in JSON and in every other format - see :ref:`csv_export_truncated`.
 
 For table pages, two additional keys are present: ``"next"``, an opaque token that can be used to retrieve the next page using ``?_next=TOKEN``, and ``"next_url"``, the full URL of that next page. Both are ``null`` on the final page. See :ref:`json_api_pagination`.
 
@@ -1705,7 +1705,7 @@ served with the following additional HTTP headers:
 
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization, Content-Type
-    Access-Control-Expose-Headers: Link
+    Access-Control-Expose-Headers: Link, Datasette-Truncated, Datasette-Max-Returned-Rows
     Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
     Access-Control-Max-Age: 3600
 

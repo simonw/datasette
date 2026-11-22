@@ -767,7 +767,6 @@ class Database:
     ):
         """Executes sql against db_name in a thread"""
         self._check_not_closed()
-        page_size = page_size or self.ds.page_size
         default_time_limit_ms = self.ds.sql_time_limit_ms
         # custom_time_limit can be shorter or longer than the setting. Limits
         # that come from a request, such as ?_timelimit=, are capped by the
@@ -795,7 +794,9 @@ class Database:
                             cursor.row_factory = None
                             cursor.execute(sql, params if params is not None else {})
                             max_returned_rows = self.ds.max_returned_rows
-                            if max_returned_rows == page_size:
+                            # A paginated query fetches one row more than a
+                            # page, to find out if there is a next page
+                            if page_size and max_returned_rows == page_size:
                                 max_returned_rows += 1
                             if max_returned_rows and truncate:
                                 rows = cursor.fetchmany(max_returned_rows + 1)

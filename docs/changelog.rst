@@ -30,6 +30,7 @@ Features
 - The query page now repeats its notice that the results have been truncated below the table of results, where previously it was only shown above the SQL editor.
 - The link to download a SQLite database from the database page is now a button showing the size of the file.
 - File sizes shown on the database page and in the tooltips for binary values now use decimal units, where 1 MB is 1,000,000 bytes, matching the sizes already shown on the homepage. They previously used 1 MB to mean 1,048,576 bytes, so a 5,242,880 byte database that was displayed as ``5.0 MB`` is now displayed as ``5.2 MB``.
+- CSV, TSV, JSON and other exports of a custom SQL query or a stored query now include a ``Datasette-Truncated: true`` or ``Datasette-Truncated: false`` HTTP header, so code paging through the results of a query can tell whether rows were left out because of :ref:`setting_max_returned_rows`. Truncated responses also include a ``Datasette-Max-Returned-Rows`` header with the limit that was applied. Both headers are listed in ``Access-Control-Expose-Headers`` for ``--cors``. See :ref:`csv_export_truncated`. (:issue:`1553`)
 
 Rows and columns
 ~~~~~~~~~~~~~~~~
@@ -97,6 +98,7 @@ Bug fixes
 - A read query that fails part way through now has its cursor closed immediately. On Python 3.11 the open cursor could keep a named in-memory database alive after its ``Datasette`` instance was closed.
 - ``datasette publish`` and ``datasette package`` no longer fail on Windows when removing their temporary directory. (:issue:`1479`)
 - Datasette's test suite now runs on Windows in CI. (:issue:`1627`)
+- Fixed a bug where a custom SQL query or stored query returned one row more than :ref:`setting_max_returned_rows` if that setting was the same as :ref:`setting_default_page_size`. Thanks, `kokokoXUY <https://github.com/kokokoXUY>`__, who spotted this in :pr:`2963`.
 
 .. _v1_0_a43:
 

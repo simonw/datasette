@@ -1736,7 +1736,9 @@ def add_cors_headers(headers: dict) -> None:
     """
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
-    headers["Access-Control-Expose-Headers"] = "Link"
+    headers["Access-Control-Expose-Headers"] = (
+        "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     headers["Access-Control-Allow-Methods"] = "GET, POST, HEAD, OPTIONS"
     headers["Access-Control-Max-Age"] = "3600"
 

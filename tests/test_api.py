@@ -1010,7 +1010,10 @@ async def test_cors(
         response.headers["Access-Control-Allow-Headers"]
         == "Authorization, Content-Type"
     )
-    assert response.headers["Access-Control-Expose-Headers"] == "Link"
+    assert (
+        response.headers["Access-Control-Expose-Headers"]
+        == "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )

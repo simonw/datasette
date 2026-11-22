@@ -2251,7 +2251,7 @@ Executes a SQL query against the database and returns the resulting rows (see :r
     A custom time limit for this query, used instead of the :ref:`setting_sql_time_limit_ms` setting. This can be lower or higher than that setting. If a query takes longer than this it will be terminated early and raise a ``datasette.database.QueryInterrupted`` exception. Do not pass a value from an untrusted source without capping it first using :ref:`datasette.capped_time_limit_ms() <datasette_capped_time_limit_ms>`, as Datasette does for the ``?_timelimit=`` query string argument.
 
 ``page_size`` - integer
-    Set a custom page size for truncation, over-riding the configured Datasette default.
+    The page size of a paginated query, which fetches one more row than this to find out if there is a next page. If this is the same as :ref:`setting_max_returned_rows`, a truncated query returns that extra row. Without it, a truncated query returns at most ``max_returned_rows`` rows.
 
 ``log_sql_errors`` - boolean
     Should any SQL errors be logged to the console in addition to being raised as an error? Defaults to ``True``.

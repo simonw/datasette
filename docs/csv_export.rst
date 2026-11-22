@@ -112,6 +112,34 @@ You can increase or remove this limit using the :ref:`setting_max_stream_mb` con
 setting. You can also disable the *include all rows* option entirely using
 :ref:`setting_default_allow_stream`.
 
+.. _csv_export_truncated:
+
+Truncated query results
+-----------------------
+
+Streaming is only available for tables and views. The results of a custom SQL
+query or a :ref:`stored query <stored_queries>` are cut short after
+:ref:`setting_max_returned_rows` rows, in every format.
+
+The CSV and TSV for a query have nowhere to say that rows were left out, so
+Datasette uses HTTP headers instead. Every export of a query, in CSV, TSV, JSON
+or a format added by a plugin, includes this header::
+
+    Datasette-Truncated: false
+
+If rows were left out it is ``true``, and a second header gives the number of
+rows that were returned, which is the limit that was applied::
+
+    Datasette-Truncated: true
+    Datasette-Max-Returned-Rows: 1000
+
+Code that fetches every row of a query in pages, using ``limit`` and
+``offset`` in the SQL, can check ``Datasette-Truncated`` to tell whether a
+page was cut short by the limit. These headers are included in the
+``Access-Control-Expose-Headers`` header when Datasette is run with
+:ref:`--cors <json_api_cors>`, so JavaScript running on other domains can read
+them.
+
 CSV and TSV are implemented as :ref:`output renderers <plugin_register_output_renderer>`
 that stream their rows. Plugins can add other formats that work the same way, see
 :ref:`plugin_register_output_renderer_streaming`.

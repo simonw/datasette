@@ -2699,9 +2699,9 @@ async def table_view_data(
         if page_size > datasette.max_returned_rows:
             raise BadRequest(f"_size must be <= {datasette.max_returned_rows}")
 
-        extra_args["page_size"] = page_size
     else:
         page_size = datasette.page_size
+    extra_args["page_size"] = page_size
 
     # Facets are calculated against SQL without order by or limit
     sql_no_order_no_limit = f"select {select_all_columns} {from_sql}"

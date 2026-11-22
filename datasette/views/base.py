@@ -270,6 +270,12 @@ async def _limit_stream_size(body, limit_mb):
             await aclose()
 
 
+def _set_header_unless_present(response, name, value):
+    "Add a header, unless the output renderer has already set one with that name"
+    if not any(key.lower() == name.lower() for key in response.headers):
+        response.headers[name] = value
+
+
 async def render_with_output_renderer(
     datasette,
     request,
@@ -338,6 +344,18 @@ async def render_with_output_renderer(
         response.headers["content-disposition"] = (
             f'attachment; filename="{filename}.{format_}"'
         )
+
+    # Query results can be cut short at max_returned_rows. CSV and other
+    # formats have nowhere in the body to say so, so it goes in a header
+    if view_name == "query":
+        _set_header_unless_present(
+            response, "Datasette-Truncated", "true" if truncated else "false"
+        )
+        if truncated:
+            # The number of rows returned is the limit that was applied
+            _set_header_unless_present(
+                response, "Datasette-Max-Returned-Rows", str(len(rows))
+            )
 
     # Streamed responses are limited in size
     limit_mb = datasette.setting("max_stream_mb")

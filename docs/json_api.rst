@@ -2219,6 +2219,9 @@ The JSON here describes the table that will be created:
   If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an auto-incrementing integer ID column for you.
 
 * ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+
+  Primary key columns are created as ``NOT NULL``, because SQLite would otherwise allow rows with a null primary key. The exception is a single integer primary key, which SQLite never allows to be null. This also applies to tables created from example ``rows``.
+
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.

@@ -2641,7 +2641,6 @@ async def test_create_table_permissions(
         assert data["errors"] == expected_errors
 
 
-@pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2356")
 @pytest.mark.parametrize(
     "input,expected_rows_after",
     (

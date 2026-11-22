@@ -1,5 +1,6 @@
 import json
 import math
+import re
 from typing import ClassVar
 
 from datasette import hookimpl
@@ -223,6 +224,33 @@ def _coerce_numeric_filter_value(value):
     return converted if math.isfinite(converted) else value
 
 
+# Values that SQLite would convert to a number when comparing them to a
+# column with INTEGER, REAL or NUMERIC affinity
+_numeric_literal_re = re.compile(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?")
+
+
+def looks_numeric(value):
+    # fullmatch(), because "$" would also match before a trailing newline
+    return isinstance(value, str) and bool(_numeric_literal_re.fullmatch(value))
+
+
+def column_type_has_no_affinity(column_type):
+    """
+    True if a column with this declared type has no type affinity (which
+    SQLite calls BLOB affinity), following the rules in
+    https://www.sqlite.org/datatype3.html#determination_of_column_affinity
+
+    This is the case for expression columns in views, such as
+    ``count(*) as n``, and for table columns declared without a type.
+    """
+    column_type = (column_type or "").upper()
+    if "INT" in column_type:
+        return False
+    if any(text in column_type for text in ("CHAR", "CLOB", "TEXT")):
+        return False
+    return not column_type or "BLOB" in column_type
+
+
 class TemplatedFilter(Filter):
     def __init__(
         self,
@@ -233,10 +261,18 @@ class TemplatedFilter(Filter):
         format="{}",
         numeric=False,
         no_argument=False,
+        no_affinity_sql_template=None,
     ):
         self.key = key
         self.display = display
         self.sql_template = sql_template
+        # Alternative SQL for comparing a numeric-looking value against a
+        # column that has no type affinity, see #1671. This should use
+        # "in (:p, cast(:p as numeric))" rather than "= cast(:p as numeric)":
+        # the "=" form applies numeric affinity to the column as well, so
+        # ?col=1 would also match the text values '1.0' and '01', and it
+        # stops SQLite from using an index on the column
+        self.no_affinity_sql_template = no_affinity_sql_template
         self.human_template = human_template
         self.format = format
         self.numeric = numeric
@@ -256,6 +292,16 @@ class TemplatedFilter(Filter):
                 "t": _quote_sqlite_identifier(table),
             }
         return self.sql_template.format(**kwargs), converted
+
+    def where_clause_no_affinity(self, table, column, value, param_counter):
+        if not self.no_affinity_sql_template or not looks_numeric(value):
+            return self.where_clause(table, column, value, param_counter)
+        return (
+            self.no_affinity_sql_template.format(
+                c=_quote_sqlite_identifier(column), p=f"p{param_counter}"
+            ),
+            value,
+        )
 
     def human_clause(self, column, value):
         if callable(self.human_template):
@@ -302,10 +348,24 @@ class InFilter(Filter):
         else:
             return [v.strip() for v in value.split(",")]
 
+    operator = "in"
+
     def where_clause(self, table, column, value, param_counter):
         values = self.split_value(value)
         params = [f":p{param_counter + i}" for i in range(len(values))]
-        sql = f"{escape_sqlite(column)} in ({', '.join(params)})"
+        sql = f"{escape_sqlite(column)} {self.operator} ({', '.join(params)})"
+        return sql, values
+
+    def where_clause_no_affinity(self, table, column, value, param_counter):
+        # Numeric-looking values are compared as both text and numbers
+        values = self.split_value(value)
+        params = []
+        for i, individual_value in enumerate(values):
+            param = f":p{param_counter + i}"
+            params.append(param)
+            if looks_numeric(individual_value):
+                params.append(f"cast({param} as numeric)")
+        sql = f"{escape_sqlite(column)} {self.operator} ({', '.join(params)})"
         return sql, values
 
     def human_clause(self, column, value):
@@ -315,12 +375,7 @@ class InFilter(Filter):
 class NotInFilter(InFilter):
     key = "notin"
     display = "not in"
-
-    def where_clause(self, table, column, value, param_counter):
-        values = self.split_value(value)
-        params = [f":p{param_counter + i}" for i in range(len(values))]
-        sql = f"{escape_sqlite(column)} not in ({', '.join(params)})"
-        return sql, values
+    operator = "not in"
 
     def human_clause(self, column, value):
         return f"{column} not in {json.dumps(self.split_value(value))}"
@@ -335,12 +390,14 @@ class Filters:
                 "=",
                 "{c} = :{p}",
                 lambda c, v: "{c} = {v}" if v.isdigit() else '{c} = "{v}"',
+                no_affinity_sql_template="{c} in (:{p}, cast(:{p} as numeric))",
             ),
             TemplatedFilter(
                 "not",
                 "!=",
                 "{c} != :{p}",
                 lambda c, v: "{c} != {v}" if v.isdigit() else '{c} != "{v}"',
+                no_affinity_sql_template="{c} not in (:{p}, cast(:{p} as numeric))",
             ),
             TemplatedFilter(
                 "contains",
@@ -475,14 +532,24 @@ class Filters:
     def has_selections(self):
         return bool(self.pairs)
 
-    def build_where_clauses(self, table):
+    def build_where_clauses(self, table, no_affinity_columns=None):
+        # no_affinity_columns is the set of columns that have no type
+        # affinity, such as expression columns in views. SQLite will not
+        # convert the text values from the query string to numbers when
+        # comparing against those, so we have to do that ourselves - see #1671
+        no_affinity_columns = no_affinity_columns or ()
         sql_bits = []
         params = {}
         i = 0
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(table, column, value, i)
+                where_clause = filter.where_clause
+                if column in no_affinity_columns:
+                    where_clause = getattr(
+                        filter, "where_clause_no_affinity", where_clause
+                    )
+                sql_bit, param = where_clause(table, column, value, i)
                 sql_bits.append(sql_bit)
                 if param is not None:
                     if not isinstance(param, list):

@@ -1444,6 +1444,8 @@ You can filter the data returned by the table based on column values using a que
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
 
+    A value that looks like a number matches numbers as well as text if the column has no declared type, which is the case for a column in a view that is calculated by an expression such as ``count(*)`` or ``sum(amount)``. ``?total=5`` returns rows where ``total`` is the number ``5`` or the text ``"5"``. The same applies to ``__not``, ``__in`` and ``__notin``.
+
 ``?column__not=value``
     Returns rows where the column does not match the value.
 

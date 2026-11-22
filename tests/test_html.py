@@ -279,6 +279,7 @@ async def test_database_page(ds_client):
         if "catalog-item-view" in li["class"]
     ) == [
         ("/fixtures/binary_data_view", "binary_data_view"),
+        ("/fixtures/facetable_by_state", "facetable_by_state"),
         ("/fixtures/paginated_view", "paginated_view"),
         ("/fixtures/searchable_view", "searchable_view"),
         (

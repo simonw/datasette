@@ -339,6 +339,17 @@ CREATE VIEW searchable_view_configured_by_metadata AS
 CREATE VIEW binary_data_view AS
     SELECT data FROM binary_data;
 
+-- A view with columns calculated by aggregate functions. These have no
+-- declared type, see #1671
+CREATE VIEW facetable_by_state AS
+    SELECT
+        state,
+        count(*) AS row_count,
+        sum(planet_int) AS planet_total,
+        avg(on_earth) AS avg_on_earth
+    FROM facetable
+    GROUP BY state;
+
 """
     + "\n".join(
         [

@@ -592,6 +592,11 @@ allowed_sql_res = [
     re.compile(comment_re + r"with\b"),
     re.compile(comment_re + r"explain\s+with\b"),
     re.compile(comment_re + r"explain\s+query\s+plan\s+with\b"),
+    # EXPLAIN compiles a write statement without running it, so these are
+    # read-only. Queries still run on a read-only connection regardless.
+    re.compile(
+        comment_re + r"explain\s+(?:query\s+plan\s+)?(?:insert|update|delete|replace)\b"
+    ),
 ]
 
 allowed_pragmas = (

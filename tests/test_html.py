@@ -327,6 +327,60 @@ async def test_disallowed_custom_sql_pragma(ds_client):
     )
 
 
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "explain update counters set value = value - 1 where name = 'counter_b'",
+        "explain query plan update counters set value = value - 1",
+        "explain insert into counters (name, value) values ('c', 1)",
+        "explain insert into counters values ('counter_b', 0) returning *",
+        "explain replace into counters values ('counter_b', 0)",
+        "explain delete from counters",
+    ),
+)
+async def test_explain_write_statement_does_not_write(tmp_path, sql):
+    # Use a mutable database with a trigger, so anything that actually
+    # ran the write would change counters or add a row to log
+    path = str(tmp_path / "counters.db")
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        create table counters (name text primary key, value integer);
+        create table log (message text);
+        insert into counters values ('counter_b', 5);
+        create trigger counters_update after update on counters
+        begin insert into log values ('updated'); end;
+        create trigger counters_delete after delete on counters
+        begin insert into log values ('deleted'); end;
+        """)
+    conn.close()
+    ds = Datasette([path])
+    try:
+        response = await ds.client.get(
+            "/counters/-/query.json?"
+            + urllib.parse.urlencode({"sql": sql, "_shape": "array"})
+        )
+        assert response.status_code == 200, response.text
+        assert len(response.json()) >= 1
+        db = ds.get_database("counters")
+        assert (await db.execute("select * from counters")).dicts() == [
+            {"name": "counter_b", "value": 5}
+        ]
+        assert (await db.execute("select count(*) from log")).single_value() == 0
+    finally:
+        ds.close()
+
+
+async def test_explain_write_statement_rejects_extra_statement(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.json?"
+        + urllib.parse.urlencode(
+            {"sql": "explain delete from facetable; delete from facetable"}
+        )
+    )
+    assert response.status_code == 400
+    assert "one statement at a time" in response.json()["error"]
+
+
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
 async def test_sql_time_limit(ds_client_shorter_time_limit):
     response = await ds_client_shorter_time_limit.get(

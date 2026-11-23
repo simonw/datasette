@@ -9,7 +9,7 @@ Changelog
 Unreleased
 ----------
 
-- Arbitrary SQL queries can now use ``explain`` and ``explain query plan`` with ``insert``, ``update``, ``delete`` and ``replace`` statements. ``EXPLAIN`` compiles a statement without running it, so these queries cannot change data. Previously an "Explain this query" query action on a writable stored query failed with "Statement must be a SELECT".
+- Arbitrary SQL queries can now use ``explain`` and ``explain query plan`` with ``insert``, ``update``, ``delete`` and ``replace`` statements.
 
 .. _v1_0_a44:
 

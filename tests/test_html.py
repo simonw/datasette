@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
+from datasette.utils.sqlite import sqlite_version
 
 from .fixtures import get_unprefixed, make_ds, make_ds_on_disk
 from .utils import assert_footer_links, inner_html
@@ -333,7 +334,12 @@ async def test_disallowed_custom_sql_pragma(ds_client):
         "explain update counters set value = value - 1 where name = 'counter_b'",
         "explain query plan update counters set value = value - 1",
         "explain insert into counters (name, value) values ('c', 1)",
-        "explain insert into counters values ('counter_b', 0) returning *",
+        pytest.param(
+            "explain insert into counters values ('counter_b', 0) returning *",
+            marks=pytest.mark.skipif(
+                sqlite_version() < (3, 35, 0), reason="RETURNING needs SQLite 3.35"
+            ),
+        ),
         "explain replace into counters values ('counter_b', 0)",
         "explain delete from counters",
     ),

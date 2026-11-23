@@ -3,7 +3,7 @@ import textwrap
 from sqlite_utils import Database as SQLiteUtilsDatabase
 from sqlite_utils import Migrations
 
-from datasette.utils import escape_sqlite, table_column_details
+from datasette.utils import escape_sqlite, table_column_details, table_xinfo_hidden
 
 INTERNAL_DB_SCHEMA_TABLES = {
     "catalog_databases",
@@ -223,9 +223,15 @@ async def populate_schema_tables(internal_db, db, schema_version):
                 {
                     "database_name": database_name,
                     "table_name": table_name,
-                    **column._asdict(),
+                    "cid": cid,
+                    "name": column.name,
+                    "type": column.type or "",
+                    "notnull": column.notnull,
+                    "default_value": column.default_value,
+                    "is_pk": column.pk_position,
+                    "hidden": table_xinfo_hidden(column),
                 }
-                for column in columns
+                for cid, column in enumerate(columns)
             )
             foreign_keys = conn.execute(
                 f"PRAGMA foreign_key_list({escape_sqlite(table_name)})"

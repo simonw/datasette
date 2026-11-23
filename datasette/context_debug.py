@@ -14,6 +14,8 @@ import sqlite3
 
 from markupsafe import Markup, escape
 
+from datasette.rows import Row
+
 # Values that fit in this many characters are shown on a single line
 COMPACT_LENGTH = 200
 # Values longer than this many lines start out collapsed
@@ -53,7 +55,7 @@ def rst_to_html(text):
 def _json_default(value):
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: getattr(value, f.name) for f in dataclasses.fields(value)}
-    if isinstance(value, sqlite3.Row):
+    if isinstance(value, (Row, sqlite3.Row)):
         # Iterating over a Row gives its values, not its keys
         return {key: value[key] for key in value.keys()}  # noqa: SIM118
     if isinstance(value, (set, frozenset, tuple)):
@@ -124,7 +126,20 @@ def _is_data(value):
     "Is this a value we display as JSON, rather than as an object with members?"
     if value is None or isinstance(
         value,
-        (str, bytes, int, float, bool, dict, list, tuple, set, frozenset, sqlite3.Row),
+        (
+            str,
+            bytes,
+            int,
+            float,
+            bool,
+            dict,
+            list,
+            tuple,
+            set,
+            frozenset,
+            Row,
+            sqlite3.Row,
+        ),
     ):
         return True
     return dataclasses.is_dataclass(value) and not isinstance(value, type)

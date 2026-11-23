@@ -18,6 +18,7 @@ from datasette.context_debug import (
     format_value,
     rst_to_html,
 )
+from datasette.rows import Row
 from datasette.utils.asgi import Request
 from datasette.views import Context
 
@@ -55,6 +56,10 @@ def test_format_value():
     assert format_value([1, 2]) == "[1, 2]"
     assert format_value(Nested(name="x")) == '{"name": "x"}'
     assert format_value(row) == '{"id": 1, "name": "one"}'
+    assert (
+        format_value(Row.from_dict({"id": 1, "name": "one"}))
+        == '{"id": 1, "name": "one"}'
+    )
     assert format_value({"a": {1}}) == '{"a": [1]}'
     # Objects that only hold data show their public attributes
 

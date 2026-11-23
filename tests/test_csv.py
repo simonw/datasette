@@ -171,6 +171,120 @@ async def test_custom_sql_csv(ds_client):
     assert response.text == EXPECTED_CUSTOM_CSV
 
 
+# 150 rows, more than the max_returned_rows of 100 used by the fixtures
+TOO_MANY_ROWS_SQL = (
+    "with recursive c(x) as (select 1 union all select x + 1 from c limit 150) "
+    "select x from c"
+)
+
+
+@pytest.mark.parametrize("extension", ("csv", "tsv", "json"))
+async def test_custom_sql_truncated_headers(ds_client, extension):
+    # https://github.com/simonw/datasette/issues/1553
+    response = await ds_client.get(
+        f"/fixtures/-/query.{extension}?"
+        + urllib.parse.urlencode({"sql": TOO_MANY_ROWS_SQL})
+    )
+    assert response.status_code == 200
+    assert response.headers["Datasette-Truncated"] == "true"
+    assert response.headers["Datasette-Max-Returned-Rows"] == "100"
+    if extension == "json":
+        assert response.json()["truncated"] is True
+    else:
+        # Header row plus the 100 rows that were returned
+        assert len(response.text.splitlines()) == 101
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/-/query.csv?sql=select+content+from+simple_primary_key",
+        "/fixtures/-/query.json?sql=select+content+from+simple_primary_key",
+        # Stored queries send the header too
+        "/fixtures/pragma_cache_size.csv",
+    ),
+)
+async def test_custom_sql_not_truncated_headers(ds_client, path):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    assert response.headers["Datasette-Truncated"] == "false"
+    assert "Datasette-Max-Returned-Rows" not in response.headers
+
+
+FOUR_ROWS_SQL = "select 1 as n union all select 2 union all select 3 union all select 4"
+
+
+@pytest.mark.parametrize("extension", ("csv", "json"))
+async def test_custom_sql_truncated_when_limit_matches_page_size(extension):
+    # A query used to return one row more than max_returned_rows when that
+    # was the same as default_page_size. Idea from PR #2963 by kokokoXUY.
+    ds = Datasette(
+        memory=True, settings={"max_returned_rows": 2, "default_page_size": 2}
+    )
+    try:
+        response = await ds.client.get(
+            f"/_memory/-/query.{extension}?"
+            + urllib.parse.urlencode({"sql": FOUR_ROWS_SQL})
+        )
+        assert response.status_code == 200
+        assert response.headers["Datasette-Truncated"] == "true"
+        assert response.headers["Datasette-Max-Returned-Rows"] == "2"
+        if extension == "csv":
+            assert response.text == "n\r\n1\r\n2\r\n"
+        else:
+            assert response.json()["rows"] == [{"n": 1}, {"n": 2}]
+        # Tables still paginate in pages of default_page_size
+        db = ds.add_memory_database("limit_matches_page_size")
+        await db.execute_write(
+            "create table t as select value as id from json_each('[1, 2, 3, 4, 5]')"
+        )
+        page = (await ds.client.get("/limit_matches_page_size/t.json")).json()
+        assert [row["id"] for row in page["rows"]] == [1, 2]
+        assert page["next"]
+    finally:
+        ds.close()
+
+
+async def test_custom_sql_without_row_limit():
+    ds = Datasette(memory=True, settings={"max_returned_rows": 0})
+    try:
+        response = await ds.client.get(
+            "/_memory/-/query.csv?" + urllib.parse.urlencode({"sql": FOUR_ROWS_SQL})
+        )
+        assert response.status_code == 200
+        assert response.text == "n\r\n1\r\n2\r\n3\r\n4\r\n"
+        assert response.headers["Datasette-Truncated"] == "false"
+        assert "Datasette-Max-Returned-Rows" not in response.headers
+    finally:
+        ds.close()
+
+
+async def test_custom_sql_truncated_headers_exposed_to_cors(ds_client_with_cors):
+    response = await ds_client_with_cors.get(
+        "/fixtures/-/query.csv?" + urllib.parse.urlencode({"sql": TOO_MANY_ROWS_SQL})
+    )
+    assert response.headers["Datasette-Truncated"] == "true"
+    assert response.headers["Access-Control-Expose-Headers"] == (
+        "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        # Tables paginate using _next= instead, and HTML shows a warning
+        "/fixtures/simple_primary_key.csv",
+        "/fixtures/simple_primary_key/1.json",
+        "/fixtures/-/query?" + urllib.parse.urlencode({"sql": TOO_MANY_ROWS_SQL}),
+    ),
+)
+async def test_truncated_headers_only_for_query_exports(ds_client, path):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    assert "Datasette-Truncated" not in response.headers
+    assert "Datasette-Max-Returned-Rows" not in response.headers
+
+
 @pytest.mark.parametrize("download", (False, True))
 @pytest.mark.parametrize(
     "query_string,expected_error",

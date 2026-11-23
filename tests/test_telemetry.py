@@ -274,18 +274,18 @@ async def test_expected_timeout_does_not_error_the_inner_execute_span(otel_spans
     assert not [event for event in child.events if event.name == "exception"]
 
 
-async def test_unexpected_timeout_is_still_a_span_error(otel_spans):
+async def test_longer_custom_time_limit_timeout_is_a_span_error(otel_spans):
     "A timeout is an error if custom_time_limit is above sql_time_limit_ms."
-    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 20})
-    db = ds.add_memory_database("t09_custom_limit_ignored")
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 10})
+    db = ds.add_memory_database("t09_longer_custom_limit")
     with pytest.raises(QueryInterrupted):
-        await db.execute(SLOW_SQL, custom_time_limit=5000)
+        await db.execute(SLOW_SQL, custom_time_limit=30)
 
-    spans = _spans_for_namespace(otel_spans, "t09_custom_limit_ignored")
+    spans = _spans_for_namespace(otel_spans, "t09_longer_custom_limit")
     assert spans
     span = spans[-1]
-    # The setting overrides the larger custom_time_limit:
-    assert span.attributes["datasette.time_limit_ms"] == 20
+    # The longer custom_time_limit replaced the setting:
+    assert span.attributes["datasette.time_limit_ms"] == 30
     assert span.attributes["datasette.interrupted"] is True
     assert span.status.status_code == StatusCode.ERROR
     assert any(event.name == "exception" for event in span.events)
@@ -293,6 +293,61 @@ async def test_unexpected_timeout_is_still_a_span_error(otel_spans):
     children = _children_named(otel_spans, "db.query.execute", span.context)
     assert len(children) == 1
     assert children[0].status.status_code == StatusCode.ERROR
+
+
+@pytest.mark.parametrize(
+    "timelimit,expected_time_limit_ms",
+    (
+        # ?_timelimit= can shorten the limit...
+        (5, 5),
+        # ... but cannot extend it past sql_time_limit_ms
+        (5000, 20),
+    ),
+)
+@pytest.mark.parametrize("path", ("/{}/-/query.json?sql=select+1", "/{}/t.json?"))
+async def test_timelimit_query_string_cannot_extend_time_limit(
+    otel_spans, path, timelimit, expected_time_limit_ms
+):
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 20})
+    name = "t09_timelimit_{}_{}".format(timelimit, "query" in path)
+    db = ds.add_memory_database(name)
+    await db.execute_write("create table t (id integer primary key)")
+    otel_spans.clear()
+    response = await ds.client.get(f"{path.format(name)}&_timelimit={timelimit}")
+    assert response.status_code == 200
+    sql = "select 1" if "query" in path else "select id from t"
+    limits = [
+        span.attributes["datasette.time_limit_ms"]
+        for span in _spans_for_namespace(otel_spans, name)
+        if span.attributes.get("db.query.text", "").startswith(sql)
+    ]
+    assert limits == [expected_time_limit_ms]
+
+
+async def test_internal_time_limits_are_capped_by_sql_time_limit_ms(otel_spans):
+    "Facet, facet suggestion and count limits cannot exceed sql_time_limit_ms."
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 7})
+    assert ds.setting("facet_time_limit_ms") > 7
+    assert ds.setting("facet_suggest_time_limit_ms") > 7
+    name = "t09_internal_limits_capped"
+    db = ds.add_memory_database(name)
+    await db.execute_write("create table t (id integer primary key, category text)")
+    await db.execute_write_many(
+        "insert into t (category) values (?)", [[str(i % 3)] for i in range(30)]
+    )
+    otel_spans.clear()
+    response = await ds.client.get(
+        f"/{name}/t.json?_facet=category&_extra=suggested_facets"
+    )
+    assert response.status_code == 200
+    assert response.json()["facet_results"]["results"]["category"]["results"]
+    await db.table_counts(5000)
+    limits = {
+        span.attributes["datasette.time_limit_ms"]
+        for span in _spans_for_namespace(otel_spans, name)
+        if "datasette.time_limit_ms" in span.attributes
+    }
+    assert limits == {7}
 
 
 async def test_unsuppressed_sql_error_is_a_span_error(ds_client, otel_spans):

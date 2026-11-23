@@ -33,7 +33,6 @@ def ds_envelope(tmp_path_factory):
         "/-/.json",
         "/-/versions.json",
         "/-/settings.json",
-        "/-/config.json",
         "/-/actor.json",
         "/-/jump.json",
         "/-/schema.json",
@@ -58,6 +57,7 @@ async def test_success_object_has_ok_true(ds_client, path):
         "/-/check.json?action=view-instance",
         "/-/threads.json",
         "/-/tasks.json",
+        "/-/config.json",
     ),
 )
 async def test_permission_debug_success_has_ok_true(ds_envelope, path):

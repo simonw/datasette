@@ -1,10 +1,11 @@
-<img src="https://datasette.io/static/datasette-logo.svg" alt="Datasette">
+<img src="https://raw.githubusercontent.com/simonw/datasette/main/docs/datasette-logo.svg" alt="Datasette">
 
 [![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.org/project/datasette/)
 [![Changelog](https://img.shields.io/github/v/release/simonw/datasette?label=changelog)](https://docs.datasette.io/en/latest/changelog.html)
+[![Latest alpha](https://img.shields.io/github/v/release/simonw/datasette?include_prereleases&filter=*a*&label=alpha)](https://docs.datasette.io/en/latest/changelog.html)
 [![Python 3.x](https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white)](https://pypi.org/project/datasette/)
 [![Tests](https://github.com/simonw/datasette/workflows/Test/badge.svg)](https://github.com/simonw/datasette/actions?query=workflow%3ATest)
-[![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](https://docs.datasette.io/en/latest/?badge=latest)
+[![Documentation Status](https://img.shields.io/readthedocs/datasette/latest?label=docs)](https://docs.datasette.io/en/latest/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/main/LICENSE)
 [![docker: datasette](https://img.shields.io/badge/docker-datasette-blue)](https://hub.docker.com/r/datasetteproject/datasette)
 [![discord](https://img.shields.io/discord/823971286308356157?label=discord)](https://datasette.io/discord)

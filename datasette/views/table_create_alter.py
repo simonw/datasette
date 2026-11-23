@@ -14,6 +14,7 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
+from sqlite_utils.utils import suggest_column_types
 
 from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
@@ -199,7 +200,7 @@ def _foreign_key_suggestion_metadata(conn, table_name):
             "affinity": _sqlite_type_affinity(column.type),
         }
         for column in table_column_details(conn, table_name)
-        if not column.hidden
+        if not (column.hidden or column.generated)
     ]
     current_by_column = {
         fk["column"]: {
@@ -220,8 +221,12 @@ def _foreign_key_suggestion_metadata(conn, table_name):
         if candidate_table == table_name or candidate_table in hidden_tables:
             continue
         columns = [column for column in table_column_details(conn, candidate_table)]
-        pks = [column for column in columns if column.is_pk and not column.hidden]
-        pks.sort(key=lambda column: column.is_pk)
+        pks = [
+            column
+            for column in columns
+            if column.pk_position and not (column.hidden or column.generated)
+        ]
+        pks.sort(key=lambda column: column.pk_position)
         if len(pks) != 1:
             continue
         pk = pks[0]
@@ -247,7 +252,9 @@ async def _foreign_key_suggestion_samples(db, table_name, columns):
     try:
         results = await db.execute(
             sql,
-            custom_time_limit=FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS,
+            custom_time_limit=db.ds.capped_time_limit_ms(
+                FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS
+            ),
             log_sql_errors=False,
         )
     except QueryInterrupted as e:
@@ -277,7 +284,7 @@ async def _foreign_key_suggestion_values_exist(db, target, values, time_limit_ms
         results = await db.execute(
             sql,
             params=values,
-            custom_time_limit=time_limit_ms,
+            custom_time_limit=db.ds.capped_time_limit_ms(time_limit_ms),
             log_sql_errors=False,
         )
     except QueryInterrupted as e:
@@ -817,6 +824,25 @@ def _literal_default(db, value):
     return value
 
 
+def _not_null_primary_keys(pk_names, integer_columns):
+    """
+    Return the primary key columns that should be created as NOT NULL.
+
+    SQLite allows NULL in a primary key, and lets several rows share that NULL
+    key - see #2807. A single integer primary key is the exception: it is an
+    alias for the rowid and can never be NULL, so it needs no constraint.
+
+    ``integer_columns`` maps each column name to True if it is an integer
+    column. Names are matched case-insensitively because SQLite resolves
+    identifiers that way: pk "code" makes a column named "Code" the primary key.
+    """
+    folded = {name.lower() for name in pk_names}
+    matches = [name for name in integer_columns if name.lower() in folded]
+    if len(folded) == 1 and len(matches) == 1 and integer_columns[matches[0]]:
+        return []
+    return matches
+
+
 class TableCreateView(BaseView):
     name = "table-create"
 
@@ -930,12 +956,35 @@ class TableCreateView(BaseView):
             check_structured_write_table(conn, table_name, allow_missing=True)
             db_for_write = sqlite_utils.Database(conn)
             table = db_for_write[table_name]
+            pk_names = pks if pks else ([pk] if pk else [])
             if rows:
+                if not table.exists():
+                    # insert_all() would create the table from these rows, but
+                    # it checks not_null against the columns in its first batch
+                    # of rows. Create the table here instead, from every row.
+                    column_types = suggest_column_types(rows)
+                    not_null = _not_null_primary_keys(
+                        pk_names,
+                        {
+                            name: column_type is int
+                            for name, column_type in column_types.items()
+                        },
+                    )
+                    if not_null:
+                        table.create(column_types, pk=pks or pk, not_null=not_null)
                 table.insert_all(
                     rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
                 )
             else:
-                not_null = [column.name for column in columns if column.not_null]
+                pk_not_null = _not_null_primary_keys(
+                    pk_names,
+                    {column.name: column.type == "integer" for column in columns},
+                )
+                not_null = [
+                    column.name
+                    for column in columns
+                    if column.not_null or column.name in pk_not_null
+                ]
                 defaults = {}
                 for column in columns:
                     if "default_expr" in column.model_fields_set:

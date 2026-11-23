@@ -128,7 +128,7 @@ You can optionally set a lower time limit for an individual query using the ``?_
 
     /my-database/my-table?qSpecies=44&_timelimit=100
 
-This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate.
+This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate. ``?_timelimit=`` cannot be used to raise the time limit above ``sql_time_limit_ms``.
 
 .. _setting_max_returned_rows:
 

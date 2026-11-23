@@ -3953,3 +3953,23 @@ async def test_query_list_fragment_and_pagination():
     # Links in the fragment point at the full page
     next_href = results.select_one("a.page-position-next")["href"]
     assert "_fragment" not in next_href
+
+
+@pytest.mark.parametrize("name", ["dogs\n", "new_query\n"])
+async def test_query_store_rejects_name_ending_in_newline(name):
+    # "$" in a regular expression also matches just before a trailing
+    # newline, so "dogs\n" got past the check for a conflicting table
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_name_newline_api", name="data")
+    await db.execute_write("create table if not exists dogs (id integer primary key)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        json={"query": {"name": name, "sql": "select 1"}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"] == ["Invalid query name"]

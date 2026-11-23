@@ -45,7 +45,8 @@ def config_dir(tmp_path_factory):
 
     static_dir = config_dir / "static"
     static_dir.mkdir()
-    (static_dir / "hello.css").write_text(CSS, "utf-8")
+    # newline="\n" stops Windows from writing \r\n line endings
+    (static_dir / "hello.css").write_text(CSS, "utf-8", newline="\n")
 
     (config_dir / "metadata.json").write_text(json.dumps(METADATA), "utf-8")
     (config_dir / "datasette.json").write_text(json.dumps(CONFIG), "utf-8")

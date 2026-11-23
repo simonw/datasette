@@ -11,7 +11,7 @@ import pytest_asyncio
 from bs4 import BeautifulSoup
 
 from datasette.app import Datasette
-from datasette.utils import tilde_encode
+from datasette.utils import encode_key_value, tilde_encode
 
 PAGE_SIZE = 4
 
@@ -206,9 +206,11 @@ def test_parse_sorted_scalar_cursor(raw, expected):
     ],
 )
 def test_sort_scalar_round_trip(value):
-    from datasette.views.table import _encode_sort_value, _parse_next
+    from datasette.views.table import _parse_next
 
-    decoded, components = _parse_next(_encode_sort_value(value) + ",1", "score", None)
+    decoded, components = _parse_next(
+        encode_key_value(value, typed=True) + ",1", "score", None
+    )
     assert decoded == value
     assert type(decoded) is type(value)
     if isinstance(value, float):
@@ -222,9 +224,7 @@ def test_sort_scalar_round_trip(value):
 )
 def test_sort_scalar_token_is_query_string_safe(value):
     # Clients can paste the "next" token into ?_next= without encoding it
-    from datasette.views.table import _encode_sort_value
-
-    token = _encode_sort_value(value)
+    token = encode_key_value(value, typed=True)
     assert "+" not in token
     assert urllib.parse.parse_qs("_next=" + token + ",1") == {"_next": [token + ",1"]}
 

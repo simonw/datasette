@@ -486,11 +486,11 @@ render_cell(row, value, column, table, pks, database, datasette, request, column
 
 Lets you customize the display of values within table cells in the HTML table view.
 
-``row`` - ``sqlite.Row``
-    The SQLite row object that the value being rendered is part of
+``row`` - :ref:`Row <internals_row>`
+    The row that the value being rendered is part of. ``row["other_column"]`` returns the value of another column in that row.
 
 ``value`` - string, integer, float, bytes or None
-    The value that was loaded from the database
+    The value that was loaded from the database. For a foreign key column this is the stored key, not the label of the row it refers to.
 
 ``column`` - string
     The name of the column being rendered
@@ -524,6 +524,20 @@ If you want to return HTML markup you can do so by returning a ``jinja2.Markup``
 You can also return an awaitable function which returns a value.
 
 Datasette will loop through all available ``render_cell`` hooks and display the value returned by the first one that does not return ``None``.
+
+``row`` and ``value`` are the same kind of object on table pages, row pages and for the results of SQL queries. ``value`` is always the value stored in the database.
+
+Where Datasette has resolved a foreign key to the label of the row it refers to, that label is available in the ``row.labels`` dictionary, keyed by column name. A column is only present in ``row.labels`` if a label was found for the value in this row:
+
+.. code-block:: python
+
+    @hookimpl
+    def render_cell(row, value, column):
+        label = row.labels.get(column)
+        if label is not None:
+            return f"{label} (#{value})"
+
+``row.columns[column]`` is a :ref:`Column <internals_row_columns>` describing the column. On table and row pages this includes details of the column in its table, such as its declared ``.type`` and whether it is ``.notnull``.
 
 Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
 
@@ -661,8 +675,8 @@ When a request is received, the ``"render"`` callback function is called with ze
 ``columns`` - list of strings
     The names of the columns returned by this query.
 
-``rows`` - list of ``sqlite3.Row`` objects
-    The rows returned by the query. For a table this is the rows on the current page.
+``rows`` - list of :ref:`Row <internals_row>` objects
+    The rows returned by the query. For a table this is the rows on the current page. If the request used ``?_labels=on`` or ``?_label=column``, the labels for the foreign keys that were expanded are in the ``row.labels`` dictionary of each row.
 
 ``row_stream`` - async iterator
     An async iterator over the rows to render. This is the rows on the current page, or every row if the request has ``?_stream=1``. See :ref:`plugin_register_output_renderer_streaming`.
@@ -1581,10 +1595,11 @@ Datasette's action-based permission resolver calls this hook to gather SQL rows 
 resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
 Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns.
 
-**Parameter naming convention:** Plugin parameters in ``PermissionSQL.params`` should use unique names
-to avoid conflicts with other plugins. The recommended convention is to prefix parameters with your
-plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
-``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
+**Parameter names:** Datasette renames the parameters in ``PermissionSQL.params`` before it combines your SQL
+with the SQL from other plugins, so a name you choose cannot clash with a parameter used by another plugin
+or by Datasette itself. Refer to each parameter in your SQL as ``:name``. Datasette provides these
+parameters to every SQL snippet: ``:actor`` (the actor as JSON, or ``NULL``), ``:actor_id`` and ``:action``.
+A value you supply in ``params`` under one of those three names is used in place of Datasette's, for your SQL only.
 
 You can also use return ``PermissionSQL.allow(reason="reason goes here")`` or ``PermissionSQL.deny(reason="reason goes here")`` as shortcuts for simple root-level allow or deny rules. These will create SQL snippets that look like this:
 
@@ -2260,8 +2275,8 @@ row_actions(datasette, actor, request, database, table, row)
 ``table`` - string
     The name of the table.
 
-``row`` - ``sqlite.Row``
-    The SQLite row object being displayed on the page.
+``row`` - :ref:`Row <internals_row>`
+    The row being displayed on the page.
 
 Return links for the "Row actions" menu shown at the top of the row page.
 
@@ -2449,8 +2464,8 @@ top_row(datasette, request, database, table, row)
 ``table`` - string
     The name of the table.
 
-``row`` - ``sqlite.Row``
-    The SQLite row object being displayed.
+``row`` - :ref:`Row <internals_row>`
+    The row being displayed.
 
 Returns HTML to be displayed at the top of the row page.
 

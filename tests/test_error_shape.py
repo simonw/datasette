@@ -737,3 +737,56 @@ async def test_next_url_extra_no_longer_exists(ds_client):
     response = await ds_client.get("/fixtures/facetable.json?_extra=next_url")
     data = assert_canonical_error(response, 400)
     assert data["errors"] == ["Unknown _extra: next_url"]
+
+
+# One definition of "this request wants JSON errors", used by every handler
+
+
+@pytest.mark.parametrize(
+    "method,path,headers",
+    (
+        # .json path on a function-based view
+        ("post", "/fixtures/facetable.json", {}),
+        # Accept header, no .json
+        ("post", "/fixtures/facetable", {"accept": "application/json"}),
+        ("get", "/fixtures/facetable/-/insert", {"accept": "application/json"}),
+        # Content-Type with a charset parameter
+        (
+            "put",
+            "/fixtures/facetable/-/insert",
+            {"content-type": "application/json; charset=utf-8"},
+        ),
+    ),
+)
+async def test_method_not_allowed_json_signals(ds_client, method, path, headers):
+    response = await getattr(ds_client, method)(path, headers=headers)
+    assert_canonical_error(response, 405)
+
+
+async def test_not_found_content_type_with_charset(ds_client):
+    response = await ds_client.get(
+        "/fixtures/no_such_table",
+        headers={"content-type": "application/json; charset=utf-8"},
+    )
+    assert_canonical_error(response, 404)
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/facetable.jsono",
+        "/fixtures/facetable.blah",
+        "/fixtures/-/query.blah?sql=select+1",
+    ),
+)
+async def test_unknown_format_is_404_not_500(ds_client, path):
+    response = await ds_client.get(path)
+    assert response.status_code == 404
+
+
+async def test_forbidden_csv_is_plain_text():
+    ds = Datasette(memory=True, config={"allow": {"id": "root"}})
+    await ds.invoke_startup()
+    response = await ds.client.get("/_memory/-/query.csv?sql=select+1")
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("text/plain")

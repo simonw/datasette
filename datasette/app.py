@@ -46,11 +46,12 @@ from .background_tasks import BackgroundTask, BackgroundTaskSupervisor
 from .column_types import SQLiteType
 from .context_debug import build_context_debug, context_as_json
 from .csrf import CrossOriginProtectionMiddleware
-from .database import Database, QueryInterrupted
+from .database import Database, QueryInterrupted, _schema_checks
 from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
+from .rows import connection_row_factory
 from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
@@ -74,11 +75,13 @@ from .utils import (
     await_me_maybe,
     baseconv,
     call_with_supported_arguments,
+    decode_key_path,
     detect_json1,
     display_actor,
     escape_css_string,
     escape_sqlite,
     find_spatialite,
+    key_value_display,
     module_from_path,
     move_plugins_and_allow,
     move_table_config,
@@ -699,6 +702,7 @@ class Datasette:
         self._jinja_env = environment
         environment.filters["escape_sqlite"] = escape_sqlite
         environment.filters["to_css_class"] = to_css_class
+        environment.filters["key_value_display"] = key_value_display
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
@@ -1521,6 +1525,15 @@ class Datasette:
             [database, resource, column],
         )
 
+    def capped_time_limit_ms(self, time_limit_ms):
+        """
+        Cap a time limit at the sql_time_limit_ms setting.
+
+        db.execute(custom_time_limit=) can extend the limit past that
+        setting. Use this for limits that should only ever shorten it.
+        """
+        return min(time_limit_ms, self.sql_time_limit_ms)
+
     def get_internal_database(self):
         return self._internal_database
 
@@ -1613,7 +1626,7 @@ class Datasette:
         return url + separator + urllib.parse.urlencode({"_hash": hash_value})
 
     def _prepare_connection(self, conn, database):
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = connection_row_factory()
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         if self.sqlite_extensions and database != INTERNAL_DB_NAME:
             # Extension loading is only enabled for as long as it takes to
@@ -1763,7 +1776,7 @@ class Datasette:
 
     async def check_visibility(
         self,
-        actor: dict,
+        actor: dict | None,
         action: str,
         resource: Resource | None = None,
     ):
@@ -2343,9 +2356,14 @@ ORDER BY allowed.parent, allowed.child
             log_sql_errors=log_sql_errors,
         )
 
-    async def expand_foreign_keys(self, actor, database, table, column, values):
-        """Returns dict mapping (column, value) -> label"""
-        labeled_fks = {}
+    async def _foreign_key_target(
+        self, actor: dict | None, database: str, table: str, column: str
+    ) -> tuple[str, str] | None:
+        """
+        Returns ``(other_table, other_column)`` for the row that the foreign
+        key in ``column`` refers to, or ``None`` if there is no foreign key
+        there that this actor can follow.
+        """
         db = self.databases[database]
         foreign_keys = await db.foreign_keys_for_table(table)
         # Find the foreign_key for this column
@@ -2358,28 +2376,22 @@ ORDER BY allowed.parent, allowed.child
             None,
         )
         if fk is None:
-            return {}
+            return None
         # Ensure user has permission to view the referenced table
         from datasette.resources import TableResource
 
         other_table = fk["other_table"]
         # Foreign key declarations can spell the target with different casing.
-        target_table = (
-            await db.execute(
-                "select name from sqlite_master where type='table' and name=? collate nocase",
-                [other_table],
-            )
-        ).first()
-        if target_table is None:
+        other_table = await db._table_name_nocase(other_table)
+        if other_table is None:
             # SQLite accepts a foreign key to a table that does not exist, and
             # linking to it would only lead to a 404
-            return {}
-        other_table = target_table[0]
+            return None
         other_column = fk["other_column"]
         if other_column is None:
             other_pks = await db.primary_keys(other_table)
             if len(other_pks) != 1:
-                return {}
+                return None
             other_column = other_pks[0]
         visible, _ = await self.check_visibility(
             actor,
@@ -2387,11 +2399,37 @@ ORDER BY allowed.parent, allowed.child
             resource=TableResource(database=database, table=other_table),
         )
         if not visible:
-            return {}
+            return None
+        return other_table, other_column
+
+    async def foreign_key_labels(
+        self,
+        actor: dict | None,
+        database: str,
+        table: str,
+        column: str,
+        values: Iterable[Any],
+    ) -> tuple[str, dict[Any, Any] | None] | None:
+        """
+        Looks up labels for the rows that the foreign key in ``column`` refers to.
+
+        Returns ``None`` if the column is not a foreign key this actor can
+        follow. Otherwise returns ``(other_table, labels)``. ``labels`` is a
+        ``{value: label}`` dictionary for each of the ``values`` that matched
+        a row, or ``None`` if the other table has no label column.
+        """
+        target = await self._foreign_key_target(actor, database, table, column)
+        if target is None:
+            return None
+        other_table, other_column = target
+        db = self.databases[database]
         label_column = await db.label_column_for_table(other_table)
         if not label_column:
-            return {(fk["column"], value): str(value) for value in values}
-        labeled_fks = {}
+            return other_table, None
+        labels: dict[Any, Any] = {}
+        distinct_values = list({value for value in values if value is not None})
+        if not distinct_values:
+            return other_table, labels
         sql = """
             select {other_column}, {label_column}
             from {other_table}
@@ -2400,16 +2438,36 @@ ORDER BY allowed.parent, allowed.child
             other_column=escape_sqlite(other_column),
             label_column=escape_sqlite(label_column),
             other_table=escape_sqlite(other_table),
-            placeholders=", ".join(["?"] * len(set(values))),
+            placeholders=", ".join(["?"] * len(distinct_values)),
         )
         try:
-            results = await self.execute(database, sql, list(set(values)))
+            results = await self.execute(database, sql, distinct_values)
         except QueryInterrupted:
             pass
         else:
-            for id, value in results:
-                labeled_fks[(fk["column"], id)] = value
-        return labeled_fks
+            for id, label in results:
+                labels[id] = label
+        return other_table, labels
+
+    async def expand_foreign_keys(
+        self,
+        actor: dict | None,
+        database: str,
+        table: str,
+        column: str,
+        values: Iterable[Any],
+    ) -> dict[tuple[str, Any], Any]:
+        """Returns dict mapping (column, value) -> label"""
+        # values is used twice below, so it must not be a one-shot iterator
+        values = list(values)
+        expanded = await self.foreign_key_labels(actor, database, table, column, values)
+        if expanded is None:
+            return {}
+        _, labels = expanded
+        if labels is None:
+            # No label column, so each value is its own label
+            return {(column, value): str(value) for value in values}
+        return {(column, value): label for value, label in labels.items()}
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
@@ -2695,7 +2753,7 @@ ORDER BY allowed.parent, allowed.child
         context_class = type(context) if isinstance(context, Context) else None
         if dataclasses.is_dataclass(context):
             # Shallow conversion - asdict() would deep-copy values, which
-            # is wasteful and fails on values like sqlite3.Row
+            # is wasteful for values such as lists of rows
             context = {
                 f.name: getattr(context, f.name) for f in dataclasses.fields(context)
             }
@@ -2956,7 +3014,13 @@ ORDER BY allowed.parent, allowed.child
             r"/-/settings(\.(?P<format>json))?$",
         )
         add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self._config()),
+            JsonDataView.as_view(
+                self,
+                "config.json",
+                lambda: self._config(),
+                # Configuration includes allow blocks and stored query SQL
+                permission="permissions-debug",
+            ),
             r"/-/config(\.(?P<format>json))?$",
         )
         add_route(
@@ -3204,7 +3268,10 @@ ORDER BY allowed.parent, allowed.child
 
     async def resolve_row(self, request):
         db, table_name, _ = await self.resolve_table(request)
-        pk_values = urlsafe_components(request.url_vars["pks"])
+        try:
+            pk_values = decode_key_path(request.url_vars["pks"])
+        except ValueError:
+            raise BadRequest("Invalid row identifier")
         sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
         if len(pk_values) != len(pks):
             raise BadRequest(
@@ -3361,9 +3428,13 @@ class DatasetteRouter:
         from datasette.permissions import _permission_check_cache
 
         cache_token = _permission_check_cache.set({})
+        # Each database is asked whether its schema has changed at most
+        # once per request - see Database._get_schema_cache()
+        schema_checks_token = _schema_checks.set({})
         try:
             return await self.route_path(scope, receive, send, path)
         finally:
+            _schema_checks.reset(schema_checks_token)
             _permission_check_cache.reset(cache_token)
 
     async def route_path(self, scope, receive, send, path):
@@ -3527,6 +3598,12 @@ class DatasetteRouter:
             # and "." replaced with "~2E"
             new_path = (
                 request.path.replace("~", "~7E").replace("%", "~").replace(".", "~2E")
+            )
+            # Some clients percent-encode the ":" and "$" that mark a typed
+            # value in a row path, such as i:345 or $empty. Those must stay as
+            # markers and not turn into the tilde-encoded text ~3A and ~24.
+            new_path = re.sub("~3A", ":", new_path, flags=re.IGNORECASE).replace(
+                "~24", "$"
             )
             if request.query_string:
                 new_path += f"?{request.query_string}"

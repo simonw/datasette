@@ -96,7 +96,9 @@ Shows the :ref:`settings` for this instance of Datasette. `Settings example <htt
 /-/config
 ---------
 
-Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well. `Config example <https://latest.datasette.io/-/config>`_:
+Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well.
+
+This endpoint requires the ``permissions-debug`` permission, because configuration can include ``allow`` blocks, the names of private tables and the SQL of private stored queries. Example output:
 
 .. code-block:: json
 

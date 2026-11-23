@@ -69,12 +69,15 @@ async def test_database_page(ds_client):
         "binary_data",
         "complex_foreign_keys",
         "compound_primary_key",
+        "compound_primary_key_edge_cases",
         "compound_three_primary_keys",
         "custom_foreign_key_label",
         "facet_cities",
         "facetable",
         "foreign_key_references",
         "infinity",
+        "primary_key_edge_case_references",
+        "primary_key_edge_cases",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
         "roadside_attraction_characteristics",
@@ -1010,7 +1013,10 @@ async def test_cors(
         response.headers["Access-Control-Allow-Headers"]
         == "Authorization, Content-Type"
     )
-    assert response.headers["Access-Control-Expose-Headers"] == "Link"
+    assert (
+        response.headers["Access-Control-Expose-Headers"]
+        == "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )
@@ -1193,8 +1199,40 @@ async def test_table_with_reserved_characters_in_name(table_name):
 async def test_config_json(config, expected):
     "/-/config.json should return redacted configuration"
     ds = Datasette(config=config)
-    response = await ds.client.get("/-/config.json")
+    ds.root_enabled = True
+    response = await ds.client.get("/-/config.json", actor={"id": "root"})
     assert response.json() == {"ok": True, **expected}
+
+
+@pytest.mark.parametrize("path", ("/-/config", "/-/config.json"))
+async def test_config_requires_permissions_debug(path):
+    # Configuration can include allow blocks, the names of private tables
+    # and the SQL of private stored queries
+    config = {
+        "databases": {
+            "data": {
+                "tables": {"private_t": {"allow": {"id": "alice"}}},
+                "queries": {
+                    "hidden_q": {
+                        "sql": "select * from private_t where v = 'x'",
+                        "allow": {"id": "root"},
+                    }
+                },
+            }
+        }
+    }
+    ds = Datasette(config=config)
+    ds.root_enabled = True
+    ds.add_memory_database("config_requires_permissions_debug", name="data")
+    for actor in (None, {"id": "alice"}):
+        response = await ds.client.get(path, actor=actor)
+        assert response.status_code == 403
+        assert "private_t" not in response.text
+        assert "hidden_q" not in response.text
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    assert "private_t" in response.text
+    assert "hidden_q" in response.text
 
 
 @pytest.mark.skip(reason="rm?")

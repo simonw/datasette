@@ -1217,6 +1217,7 @@ async def test_row_delete_action_data_attributes():
         assert row["data-row-label"] == "One"
         assert {key for key in row.attrs if key.startswith("data-row")} == {
             "data-row",
+            "data-row-display",
             "data-row-label",
         }
 
@@ -1772,6 +1773,7 @@ async def test_table_fragment_endpoint(ds_client):
     assert rows[0]["data-row-label"] == "hello"
     assert {key for key in rows[0].attrs if key.startswith("data-row")} == {
         "data-row",
+        "data-row-display",
         "data-row-label",
     }
 
@@ -2187,12 +2189,12 @@ async def test_compound_primary_key_with_foreign_key_references(ds_client):
     expected = [
         [
             '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
-            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/1">1</a>\xa0<em>1</em></td>',
+            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/1">1</a></td>',
             '<td class="col-tag type-str"><a href="/fixtures/tags/feline">feline</a></td>',
         ],
         [
             '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/2,canine">2,canine</a></td>',
-            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/2">2</a>\xa0<em>2</em></td>',
+            '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/2">2</a></td>',
             '<td class="col-tag type-str"><a href="/fixtures/tags/canine">canine</a></td>',
         ],
     ]
@@ -3092,3 +3094,130 @@ async def test_search_box_shows_current_search(ds_client):
     response = await ds_client.get("/fixtures/searchable")
     search_input = Soup(response.text, "html.parser").select_one("input#_search")
     assert search_input["value"] == ""
+
+
+@pytest.mark.asyncio
+async def test_rows_with_null_primary_key_have_no_link_or_actions():
+    # https://github.com/simonw/datasette/issues/2145
+    # https://github.com/simonw/datasette/issues/2805
+    ds = Datasette(
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "update-row": {"id": "root"},
+                        "delete-row": {"id": "root"},
+                    }
+                }
+            }
+        }
+    )
+    try:
+        db = ds.add_database(Database(ds, memory_name="test_null_pk_rows"), name="data")
+        await db.execute_write_script("""
+            create table items (id text primary key, name text, data blob);
+            insert into items (id, name, data) values (null, 'First null', x'0102');
+            insert into items (id, name, data) values (null, 'Second null', null);
+            insert into items (id, name, data) values ('None', 'String None', null);
+            create table compound (a text, b text, name text, primary key (a, b));
+            insert into compound (a, b, name) values ('x', null, 'Partial null');
+            insert into compound (a, b, name) values ('x', 'y', 'Not null');
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        rows = soup.select("table.rows-and-columns tbody tr")
+        assert len(rows) == 3
+        for row in rows[:2]:
+            # No row link, no edit or delete buttons, no row identifier
+            assert not any(key.startswith("data-row") for key in row.attrs)
+            assert row.select("button") == []
+            pk_cell = row.select_one("td.col-id")
+            assert pk_cell.find("a") is None
+            assert pk_cell.text.strip() == ""
+        # The blob is linked by its content hash, not by a row path
+        blob_href = rows[0].select_one("a.blob-download")["href"]
+        assert blob_href.startswith("/data/items.blob?")
+        assert "_blob_hash=" in blob_href
+        blob_response = await ds.client.get(blob_href, actor={"id": "root"})
+        assert blob_response.status_code == 200
+        assert blob_response.content == b"\x01\x02"
+
+        # A row with the string 'None' as its primary key is a normal row
+        assert rows[2]["data-row"] == "None"
+        assert rows[2].select_one("td.col-id a")["href"] == "/data/items/None"
+        assert rows[2].select_one('button[data-row-action="edit"]') is not None
+        assert rows[2].select_one('button[data-row-action="delete"]') is not None
+        # ... and its row page is that row, not one of the null ones
+        row_response = await ds.client.get(
+            "/data/items/None.json", actor={"id": "root"}
+        )
+        assert row_response.json()["row"]["name"] == "String None"
+
+        # One null value in a compound primary key is enough
+        response = await ds.client.get("/data/compound", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        by_name = {
+            row.select_one("td.col-name").text: row
+            for row in soup.select("table.rows-and-columns tbody tr")
+        }
+        partial = by_name["Partial null"]
+        assert "data-row" not in partial.attrs
+        assert partial.select("a") == []
+        assert partial.select("button") == []
+        assert by_name["Not null"]["data-row"] == "x,y"
+        assert by_name["Not null"].select_one("td.col-Link a")["href"] == (
+            "/data/compound/x,y"
+        )
+
+        # The blob column still exports as a working URL
+        csv_response = await ds.client.get("/data/items.csv", actor={"id": "root"})
+        assert csv_response.status_code == 200
+        assert "/data/items.blob?_blob_column=data&_blob_hash=" in csv_response.text
+        assert "/data/items/None.blob" not in csv_response.text
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_rows_with_null_primary_key_have_no_row_page():
+    ds = Datasette(
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "update-row": {"id": "root"},
+                        "delete-row": {"id": "root"},
+                    }
+                }
+            }
+        }
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_null_pk_row_page"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id text primary key, name text);
+            insert into items (id, name) values (null, 'Null');
+            create table compound (a text, b text, name text, primary key (a, b));
+            insert into compound (a, b, name) values ('x', null, 'Partial null');
+            """)
+        for path in (
+            "/data/items/None",
+            "/data/items/null",
+            "/data/items/None.json",
+            "/data/compound/x,None",
+            "/data/compound/x,",
+        ):
+            response = await ds.client.get(path, actor={"id": "root"})
+            assert response.status_code == 404, path
+        for path in ("/data/items/None/-/update", "/data/items/None/-/delete"):
+            response = await ds.client.post(
+                path, json={"update": {"name": "Changed"}}, actor={"id": "root"}
+            )
+            assert response.status_code == 404, path
+        assert (await db.execute("select name from items")).first()[0] == "Null"
+    finally:
+        ds.close()

@@ -6,6 +6,7 @@ from datasette.renderer import RowStream
 from datasette.utils import (
     add_cors_headers,
     call_with_supported_arguments,
+    request_wants_json,
 )
 from datasette.utils.asgi import (
     BadRequest,
@@ -51,7 +52,6 @@ class ErrorContext(Context):
 
     documented_template = "error.html"
 
-    ok: bool = dataclasses.field(metadata={"help": "Always ``False``"})
     error: str = dataclasses.field(metadata={"help": "The error message"})
     status: int = dataclasses.field(
         metadata={"help": "The HTTP status code, for example ``404``"}
@@ -72,10 +72,7 @@ class View:
         return response
 
     async def method_not_allowed(self, request):
-        if (
-            request.path.endswith(".json")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
@@ -111,10 +108,7 @@ class BaseView:
         return response
 
     async def method_not_allowed(self, request):
-        if (
-            request.path.endswith(".json")
-            or request.headers.get("content-type") == "application/json"
-        ):
+        if request_wants_json(request):
             response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
@@ -276,6 +270,12 @@ async def _limit_stream_size(body, limit_mb):
             await aclose()
 
 
+def _set_header_unless_present(response, name, value):
+    "Add a header, unless the output renderer has already set one with that name"
+    if not any(key.lower() == name.lower() for key in response.headers):
+        response.headers[name] = value
+
+
 async def render_with_output_renderer(
     datasette,
     request,
@@ -344,6 +344,18 @@ async def render_with_output_renderer(
         response.headers["content-disposition"] = (
             f'attachment; filename="{filename}.{format_}"'
         )
+
+    # Query results can be cut short at max_returned_rows. CSV and other
+    # formats have nowhere in the body to say so, so it goes in a header
+    if view_name == "query":
+        _set_header_unless_present(
+            response, "Datasette-Truncated", "true" if truncated else "false"
+        )
+        if truncated:
+            # The number of rows returned is the limit that was applied
+            _set_header_unless_present(
+                response, "Datasette-Max-Returned-Rows", str(len(rows))
+            )
 
     # Streamed responses are limited in size
     limit_mb = datasette.setting("max_stream_mb")

@@ -1572,7 +1572,7 @@ Actor is allowed to run arbitrary writable SQL queries against a specific databa
 permissions-debug
 -----------------
 
-Actor is allowed to view the ``/-/permissions`` debug tools.
+Actor is allowed to view the ``/-/permissions`` debug tools, and the :ref:`/-/config <JsonDataView_config>`, :ref:`/-/threads <JsonDataView_threads>`, ``/-/tasks`` and ``/-/actions`` introspection endpoints.
 
 .. _actions_debug_menu:
 

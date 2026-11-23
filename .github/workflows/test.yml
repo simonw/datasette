@@ -79,3 +79,30 @@ jobs:
       run: |
         pip install datasette-init datasette-json-html
         tests/test-datasette-load-plugins.sh
+
+  test-windows:
+    # https://github.com/simonw/datasette/issues/1627
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.15"]
+    steps:
+    - uses: actions/checkout@v7
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
+        cache: pip
+        cache-dependency-path: pyproject.toml
+        check-latest: true
+    - name: Install dependencies
+      run: |
+        pip install . --group dev
+        pip freeze
+    - name: Run tests
+      run: pytest -n auto -m "not serial"
+    - name: Run serial tests
+      if: ${{ !cancelled() }}
+      run: pytest -m "serial"

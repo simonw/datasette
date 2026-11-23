@@ -161,6 +161,18 @@ def test_custom_json_encoder(obj, expected):
         "SELECT * FROM pragma_not_on_allow_list('idx52')",
         "/* This comment is not valid. select 1",
         "/**/\nupdate foo set bar = 1\n/* test */ select 1",
+        # EXPLAIN only makes the write statement directly after it safe
+        "insert into foo values (1)",
+        "delete from foo",
+        "replace into foo values (1)",
+        "explainupdate foo set bar = 1",
+        "explain updated",
+        "explain create table foo (id)",
+        "explain drop table foo",
+        "explain attach database 'x.db' as x",
+        "explain vacuum",
+        "explain query plan pragma foo",
+        "explain update foo set bar = (select * from pragma_not_on_allow_list('x'))",
     ],
 )
 def test_validate_sql_select_bad(bad_sql):
@@ -193,6 +205,16 @@ def test_validate_sql_select_bad(bad_sql):
         "  /* comment */select 1",
         "/* comment */\n -- another\n /* one more */ select 1",
         "/* This comment \n has multiple lines */\nselect 1",
+        # EXPLAIN of a write statement compiles it without running it
+        "explain update counters set value = value - 1 where name = 'counter_b'",
+        "EXPLAIN UPDATE foo SET bar = 1",
+        "explain query plan update foo set bar = 1",
+        "explain insert into foo (bar) values (1)",
+        "explain insert or replace into foo values (1)",
+        "explain replace into foo values (1)",
+        "explain delete from foo",
+        "explain\n  query plan\n  delete from foo",
+        "-- comment\nexplain delete from foo",
     ],
 )
 def test_validate_sql_select_good(good_sql):

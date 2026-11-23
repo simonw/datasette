@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- Arbitrary SQL queries can now use ``explain`` and ``explain query plan`` with ``insert``, ``update``, ``delete`` and ``replace`` statements.
+
 .. _v1_0_a44:
 
 1.0a44 (2026-11-22)

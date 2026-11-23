@@ -92,7 +92,7 @@ The homepage, listing the tables, views and queries across every database. Rende
     Function that takes a database name, or None for all databases, and returns the homepage URL filtered to that database, keeping the current search
 
 ``databases`` - ``list[dict]``
-    One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url`` and ``size`` (bytes, or None for in-memory databases)
+    One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url``, ``size`` (bytes, or None for in-memory databases) and ``metadata`` (dictionary of database-level metadata such as ``title``, ``description``, ``source`` and ``source_url``)
 
 ``homepage_actions`` - ``list[dict]``
     Links for the homepage actions menu, from plugins implementing :ref:`plugin_hook_homepage_actions`

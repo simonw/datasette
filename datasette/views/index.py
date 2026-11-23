@@ -27,7 +27,7 @@ class IndexContext(Context):
 
     databases: list[dict] = field(
         metadata={
-            "help": "One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url`` and ``size`` (bytes, or None for in-memory databases)"
+            "help": "One dictionary per database the actor can see, in the order they were attached, with keys ``name``, ``color``, ``private``, ``tables`` and ``views`` (counts matching the current search), ``url``, ``size`` (bytes, or None for in-memory databases) and ``metadata`` (dictionary of database-level metadata such as ``title``, ``description``, ``source`` and ``source_url``)"
         }
     )
     catalog: Catalog = field(

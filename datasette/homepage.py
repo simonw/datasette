@@ -373,6 +373,21 @@ async def build_catalog(
             }
         )
 
+    db_metadata: dict[str, dict[str, str]] = {}
+    if database_names:
+        metadata_rows = (
+            await internal.execute(
+                """
+                SELECT database_name, key, value
+                FROM metadata_databases
+                WHERE database_name IN (SELECT value FROM json_each(:allowed_dbs))
+                """,
+                {"allowed_dbs": json.dumps(database_names)},
+            )
+        ).rows
+        for row in metadata_rows:
+            db_metadata.setdefault(row["database_name"], {})[row["key"]] = row["value"]
+
     databases = []
     for name in database_names:
         db = datasette.databases[name]
@@ -385,6 +400,7 @@ async def build_catalog(
                 "views": per_db[name]["view"],
                 "url": datasette.urls.database(name),
                 "size": None if db.is_memory else db.size,
+                "metadata": db_metadata.get(name, {}),
             }
         )
 

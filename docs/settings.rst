@@ -269,6 +269,8 @@ The time limit in milliseconds Datasette allows for calculating a facet. You can
 
     datasette mydatabase.db --setting facet_time_limit_ms 1000
 
+This setting can be higher than :ref:`setting_sql_time_limit_ms`, allowing requested facets more time without increasing the limit for the main query. The ``?_timelimit=`` query string argument does not affect facet calculations.
+
 .. _setting_facet_suggest_time_limit_ms:
 
 facet_suggest_time_limit_ms
@@ -282,7 +284,7 @@ Default: ``50``
 
 .. [[[end]]]
 
-When Datasette calculates suggested facets it needs to run a SQL query for every column in your table. This time limit, in milliseconds, applies separately to each query. If the time limit is exceeded the column will not be suggested as a facet.
+When Datasette calculates suggested facets it needs to run a SQL query for every column in your table. This time limit, in milliseconds, applies separately to each query. If the time limit is exceeded the column will not be suggested as a facet. This limit is capped by :ref:`setting_sql_time_limit_ms`.
 
 There is also a limit on the total time spent suggesting facets for a page, which is ten times this setting - 500ms by default. Once that total has been used up the remaining columns are not considered, so a table with a large number of columns may not have every possible facet suggested.
 

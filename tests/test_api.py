@@ -342,6 +342,17 @@ async def test_custom_sql_time_limit(ds_client):
     assert response.json()["error"].startswith("SQL query took too long.")
 
 
+async def test_custom_sql_time_limit_cannot_exceed_setting():
+    ds = await make_ds(settings={"facet_time_limit_ms": 30000})
+    # Apply the short limit after startup so schema initialization is unaffected
+    ds.sql_time_limit_ms = 20
+    response = await ds.client.get(
+        "/fixtures/-/query.json?sql=select+sleep(0.1)&_timelimit=30000"
+    )
+    assert response.status_code == 400
+    assert response.json()["error"].startswith("SQL query took too long.")
+
+
 async def test_invalid_custom_sql(ds_client):
     response = await ds_client.get(
         "/fixtures/-/query.json?sql=.schema",

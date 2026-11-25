@@ -253,13 +253,21 @@
         return rows;
       }
       var rememberedValue = String(remembered.value);
+      var rememberedRow = null;
       var withoutRemembered = rows.filter(function (row) {
-        return autocompleteValueFromRow(row) !== rememberedValue;
+        if (autocompleteValueFromRow(row) !== rememberedValue) {
+          return true;
+        }
+        // Prefer the fetched row, whose label may be newer than the stored one
+        rememberedRow = rememberedRow || row;
+        return false;
       });
-      var rememberedRow = {
-        pks: { value: remembered.value },
-        label: remembered.label,
-      };
+      if (!rememberedRow) {
+        rememberedRow = {
+          pks: { value: remembered.value },
+          label: remembered.label,
+        };
+      }
       return [rememberedRow].concat(withoutRemembered);
     }
 

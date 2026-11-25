@@ -2023,6 +2023,26 @@ def test_autocomplete_remembers_most_recently_used_value(page, datasette_server)
     labels = [options.nth(index).inner_text() for index in range(options.count())]
     assert labels == ["Cleo (3)", "Alpha (1)", "Bravo (2)"]
 
+    # A fetched row for the remembered value wins over the stored label.
+    rows[2] = {"pks": {"id": "3"}, "label": "Cleo renamed"}
+    field.blur()
+    field.click()
+    autocomplete.locator(
+        ".datasette-autocomplete-option", has_text="Cleo renamed"
+    ).wait_for()
+    labels = [options.nth(index).inner_text() for index in range(options.count())]
+    assert labels == ["Cleo renamed (3)", "Alpha (1)", "Bravo (2)"]
+
+    # When the fetched rows do not include it, the stored row is shown.
+    del rows[2]
+    field.blur()
+    field.click()
+    autocomplete.locator(
+        ".datasette-autocomplete-option", has_text=re.compile(r"^Cleo \(3\)$")
+    ).wait_for()
+    labels = [options.nth(index).inner_text() for index in range(options.count())]
+    assert labels == ["Cleo (3)", "Alpha (1)", "Bravo (2)"]
+
 
 @pytest.mark.playwright
 def test_delete_row_flow_removes_row(page, datasette_server):

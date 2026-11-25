@@ -46,6 +46,15 @@ async def test_facet_ignores_unrelated_prefixes(ds_client, query_string):
     assert facets["state"]["results"]
 
 
+@pytest.mark.parametrize("path", ("/fixtures/facetable.json", "/fixtures/facetable"))
+@pytest.mark.parametrize("query_string", ("_facet={oops", "_facet={}"))
+async def test_malformed_facet_config_returns_bad_request(
+    ds_client, path, query_string
+):
+    response = await ds_client.get(path + "?" + query_string)
+    assert response.status_code == 400
+
+
 # https://github.com/simonw/datasette/issues/3021
 @pytest.mark.parametrize(
     "query_string,where_sql",

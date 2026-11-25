@@ -9,6 +9,7 @@ from datasette.utils import (
     escape_sqlite,
     sqlite3,
 )
+from datasette.utils.asgi import BadRequest
 
 # Suggesting facets for a page can take at most this many multiples of
 # the facet_suggest_time_limit_ms setting in total, see #862
@@ -66,9 +67,18 @@ def load_facet_configs(request, table_config):
                 type = key[len("_facet_") :]
             for value in values:
                 # The value is the facet_config - either JSON or not
-                facet_config = (
-                    json.loads(value) if value.startswith("{") else {"simple": value}
-                )
+                try:
+                    facet_config = (
+                        json.loads(value)
+                        if value.startswith("{")
+                        else {"simple": value}
+                    )
+                except (ValueError, TypeError):
+                    raise BadRequest("Invalid _facet configuration")
+                if not isinstance(facet_config, dict) or not (
+                    "simple" in facet_config or "column" in facet_config
+                ):
+                    raise BadRequest("Invalid _facet configuration")
                 facet_configs.setdefault(type, []).append(
                     {"source": "request", "config": facet_config}
                 )

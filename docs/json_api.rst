@@ -94,7 +94,7 @@ looks like this:
 
 The ``"rows"`` key is a list of objects, each one representing a row.
 
-The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
+The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting). Query responses also return this as a ``Datasette-Truncated: true`` or ``Datasette-Truncated: false`` HTTP header, in JSON and in every other format - see :ref:`csv_export_truncated`.
 
 For table pages, two additional keys are present: ``"next"``, an opaque token that can be used to retrieve the next page using ``?_next=TOKEN``, and ``"next_url"``, the full URL of that next page. Both are ``null`` on the final page. See :ref:`json_api_pagination`.
 
@@ -340,7 +340,9 @@ query string arguments:
     Sets a custom time limit for the query in ms. You can use this for optimistic
     queries where you would like Datasette to give up if the query takes too
     long, for example if you want to implement autocomplete search but only if
-    it can be executed in less than 10ms.
+    it can be executed in less than 10ms. This can only shorten the time limit:
+    a value higher than the :ref:`setting_sql_time_limit_ms` setting is
+    reduced to that setting.
 
 ``?_ttl=SECONDS``
     For how many seconds should this response be cached by HTTP proxies? Use
@@ -608,7 +610,7 @@ The available table extras are listed below.
             "table": "facetable",
             "format": "json"
           },
-          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=274432)>, table='facetable', is_view=False)",
           "nofacet": null,
           "nosuggest": null
         }
@@ -1402,8 +1404,12 @@ The ``q`` parameter is required. If it is omitted or blank, the endpoint returns
 an empty ``"rows"`` list.
 
 The response includes a ``"pks"`` object containing the primary key value or
-values for each row. If Datasette can detect a label column, or one has been
-configured using ``label_column``, each row will also include ``"label"``:
+values for each row, and a ``"path"`` which is the last part of the URL to that
+row's page, ``/<database>/<table>/<path>``. ``"path"`` is ``null`` for a row
+with a null primary key, which has no page. If Datasette can detect a label
+column, or one has been configured using ``label_column``, each row will also
+include ``"label"``. A binary value is returned as a
+``{"$base64": true, "encoded": "..."}`` object, as it is in table JSON.
 
 .. code-block:: json
 
@@ -1413,6 +1419,7 @@ configured using ``label_column``, each row will also include ``"label"``:
                 "pks": {
                     "id": 1
                 },
+                "path": "1",
                 "label": "Example row"
             }
         ]
@@ -1441,6 +1448,8 @@ You can filter the data returned by the table based on column values using a que
 
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
+
+    A value that looks like a number matches numbers as well as text if the column has no declared type, which is the case for a column in a view that is calculated by an expression such as ``count(*)`` or ``sum(amount)``. ``?total=5`` returns rows where ``total`` is the number ``5`` or the text ``"5"``. The same applies to ``__not``, ``__in`` and ``__notin``.
 
 ``?column__not=value``
     Returns rows where the column does not match the value.
@@ -1651,6 +1660,10 @@ looks like:
 The column in the foreign key table that is used for the label can be specified
 in ``datasette.yaml`` - see :ref:`table_configuration_label_column`.
 
+A value is only expanded if a label was found for it. A foreign key that refers
+to a table with no label column is returned as the plain value, as is a value
+that does not match a row in the other table.
+
 .. _json_api_discover_alternate:
 
 Discovering the JSON for a page
@@ -1693,7 +1706,7 @@ served with the following additional HTTP headers:
 
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization, Content-Type
-    Access-Control-Expose-Headers: Link
+    Access-Control-Expose-Headers: Link, Datasette-Truncated, Datasette-Max-Returned-Rows
     Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
     Access-Control-Max-Age: 3600
 
@@ -1914,6 +1927,8 @@ To return the newly inserted rows, add the ``"return": true`` key to the request
     }
 
 This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
+
+If the table does not have an explicit primary key, each returned row will include the ``rowid`` that SQLite assigned to it. You can also set the ``rowid`` yourself by including it as a key in the row.
 
 If any of your rows have a primary key that is already in use, you will get an error and none of the rows will be inserted:
 
@@ -2204,6 +2219,9 @@ The JSON here describes the table that will be created:
   If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an auto-incrementing integer ID column for you.
 
 * ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+
+  Primary key columns are created as ``NOT NULL``, because SQLite would otherwise allow rows with a null primary key. The exception is a single integer primary key, which SQLite never allows to be null. This also applies to tables created from example ``rows``.
+
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.

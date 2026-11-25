@@ -22,10 +22,14 @@ The core pattern is:
 """
 
 import asyncio
+import json
 import re
 from typing import TYPE_CHECKING
 
-from datasette.utils.permissions import gather_permission_sql_from_hooks
+from datasette.utils.permissions import (
+    gather_permission_sql_from_hooks,
+    namespace_permission_sql_params,
+)
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -38,6 +42,16 @@ def _child_collation(action: "Action") -> str:
     if resource_class is not None and resource_class.case_insensitive_child:
         return "NOCASE"
     return "BINARY"
+
+
+def _reserved_params(actor: dict | None, action: str) -> dict:
+    # Plugin params are renamed by gather_permission_sql_from_hooks(), so
+    # these names are only ever bound to the values Datasette gives them
+    return {
+        "action": action,
+        "actor": json.dumps(actor) if actor is not None else None,
+        "actor_id": actor.get("id") if isinstance(actor, dict) else None,
+    }
 
 
 async def build_allowed_resources_sql(
@@ -99,8 +113,9 @@ async def build_allowed_resources_sql(
             include_is_private=False,
         )
 
-        # Merge parameters - they should have identical values for :actor, :actor_id, etc.
-        all_params = {**main_params, **required_params}
+        # Each action's rules have their own parameter names. The reserved
+        # :action is the one that was asked about, so main_params goes last
+        all_params = {**required_params, **main_params}
         if parent is not None:
             all_params["filter_parent"] = parent
 
@@ -179,7 +194,7 @@ async def _build_single_action_sql(
             cols += ", 0 AS is_private"
         return f"SELECT {cols} FROM ({base_resources_sql})", {}
 
-    all_params = {}
+    all_params = _reserved_params(actor, action)
     rule_sqls = []
     restriction_sqls = []
 
@@ -235,12 +250,13 @@ async def _build_single_action_sql(
             # Skip plugins that only provide restriction_sql (no permission rules)
             if permission_sql.sql is None:
                 continue
-            rewritten_sql = permission_sql.sql
-            for key, value in (permission_sql.params or {}).items():
-                anon_key = f"anon_{key}"
-                anon_params[anon_key] = value
-                rewritten_sql = rewritten_sql.replace(f":{key}", f":{anon_key}")
-            anon_sqls_rewritten.append(rewritten_sql)
+            # Keep the anonymous rules apart from the actor's own rules,
+            # which were given the same parameter names
+            anon_permission_sql = namespace_permission_sql_params(
+                permission_sql, "anon_"
+            )
+            anon_params.update(anon_permission_sql.params)
+            anon_sqls_rewritten.append(anon_permission_sql.sql)
 
         all_params.update(anon_params)
 
@@ -489,7 +505,7 @@ async def build_permission_rules_sql(
         )
 
     union_parts = []
-    all_params = {}
+    all_params = _reserved_params(actor, action)
     restriction_sqls = []
     child_collation = _child_collation(action_obj)
 
@@ -756,10 +772,13 @@ async def _explain_single_action(
     """Return matching rules and restrictions for a single action."""
     from datasette.utils.permissions import SKIP_PERMISSION_CHECKS
 
+    # Each PermissionSQL is run on its own below, so keep the plugin's own
+    # parameter names - the "deny" param is read back as a reason
     permission_sqls = await gather_permission_sql_from_hooks(
         datasette=datasette,
         actor=actor,
         action=action,
+        namespace_params=False,
     )
 
     if permission_sqls is SKIP_PERMISSION_CHECKS:

@@ -194,7 +194,9 @@
         })
         .catch(function (error) {
           console.error(error);
-          window.alert("Could not load the editing tools. Please try again.");
+          window.DatasetteModal.alert({
+            message: "Could not load the editing tools. Please try again.",
+          });
         })
         .finally(function () {
           pendingOpen = false;

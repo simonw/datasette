@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
 from datasette.database import QueryInterrupted
@@ -6,6 +7,7 @@ from datasette.resources import DatabaseResource
 from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3
 from datasette.utils.asgi import Response
 
+from . import Context, select_templates_field
 from .base import BaseView
 from .database import display_rows as display_query_rows
 from .query_helpers import (
@@ -69,7 +71,7 @@ def _preferred_where_column(table, columns):
 
 
 def _auto_incrementing_primary_key(columns):
-    primary_keys = [column for column in columns if column.is_pk]
+    primary_keys = [column for column in columns if column.pk_position]
     if len(primary_keys) != 1:
         return None
     primary_key = primary_keys[0]
@@ -169,7 +171,7 @@ async def _write_template_tables(
         column_details = [
             column
             for column in await db.table_column_details(table)
-            if not column.hidden
+            if not (column.hidden or column.generated)
         ]
         if not column_details:
             continue
@@ -214,6 +216,110 @@ def _analysis_changes_schema(analysis):
         operation.operation in {"create", "alter", "drop"}
         for operation in analysis.operations
     )
+
+
+@dataclass
+class ExecuteWriteContext(Context):
+    "The form for running SQL that writes to a database, at ``/<database>/-/execute-write``."
+
+    documented_template = "execute_write.html"
+
+    database: str = field(metadata={"help": "Database name"})
+    database_color: str = field(metadata={"help": "Color assigned to the database"})
+    sql: str = field(metadata={"help": "The SQL in the editor"})
+    parameter_names: list[str] = field(
+        metadata={"help": "Names of the ``:named`` parameters found in the SQL"}
+    )
+    parameter_values: dict = field(
+        metadata={
+            "help": "Dictionary mapping parameter names to the values that were submitted for them"
+        }
+    )
+    sql_parameter_name_prefix: str = field(
+        metadata={
+            "help": "Prefix added to the name of each parameter to make the name of its form field"
+        }
+    )
+    analysis_error: str | None = field(
+        metadata={
+            "help": "Error message if the SQL could not be analyzed or is not a write, otherwise None"
+        }
+    )
+    analysis_rows: list[dict] = field(
+        metadata={
+            "help": "The operations the SQL would perform, one per table it reads or writes. Each has ``operation``, ``database``, ``table``, ``required_permission``, ``message``, ``source`` and ``allowed`` keys. ``allowed`` is False if the actor may not perform that operation"
+        }
+    )
+    execute_disabled: bool = field(
+        metadata={"help": "True if the SQL cannot be executed as it stands"}
+    )
+    execute_disabled_reason: str | None = field(
+        metadata={
+            "help": "Why the SQL cannot be executed, or None if it can or if that reason is already displayed as the error for this request"
+        }
+    )
+    execution_message: str | None = field(
+        metadata={
+            "help": "Message describing the result of executing the SQL, or None if nothing has been executed"
+        }
+    )
+    execution_ok: bool | None = field(
+        metadata={
+            "help": "True if the SQL was executed, False if it failed and None if nothing has been executed"
+        }
+    )
+    execution_links: list[dict] = field(
+        metadata={
+            "help": "Links to show after the SQL was executed, such as to a row that was inserted. Each has ``href`` and ``label`` keys"
+        }
+    )
+    execute_write_returns_rows: bool = field(
+        metadata={
+            "help": "True if the executed SQL returned rows, for example by using ``RETURNING``"
+        }
+    )
+    execute_write_columns: list[str] = field(
+        metadata={"help": "Names of the columns of the returned rows"}
+    )
+    execute_write_display_rows: list = field(
+        metadata={
+            "help": "The returned rows, formatted for display in the same way as ``display_rows`` on the query page"
+        }
+    )
+    execute_write_truncated: bool = field(
+        metadata={"help": "True if more rows were returned than are displayed"}
+    )
+    table_columns: dict = field(
+        metadata={
+            "help": "Dictionary mapping the name of each table and view in the database to a list of its column names, used for autocomplete in the editor"
+        }
+    )
+    write_template_tables: dict = field(
+        metadata={
+            "help": "Tables the actor can write to. Maps each table name to a dictionary with a ``templates`` key, itself a dictionary mapping an operation such as ``insert`` to example SQL for that operation"
+        }
+    )
+    write_template_operations: list[dict] = field(
+        metadata={
+            "help": "The operations that have example SQL for at least one table, each with ``name`` and ``label`` keys"
+        }
+    )
+    write_create_table_template_sql: str | None = field(
+        metadata={
+            "help": "Example ``CREATE TABLE`` SQL, or None if the actor cannot create tables"
+        }
+    )
+    save_query_url: str | None = field(
+        metadata={
+            "help": "URL for saving this SQL as a stored query, or None if the actor cannot do that or the SQL cannot be executed"
+        }
+    )
+    save_query_base_url: str | None = field(
+        metadata={
+            "help": "URL of the form for saving a stored query without any SQL filled in, or None if the actor cannot save queries"
+        }
+    )
+    select_templates: list[str] = select_templates_field()
 
 
 class ExecuteWriteView(BaseView):
@@ -298,31 +404,31 @@ class ExecuteWriteView(BaseView):
         response = await self.render(
             ["execute_write.html"],
             request,
-            {
-                "database": db.name,
-                "database_color": db.color,
-                "sql": sql,
-                "parameter_names": parameter_names,
-                "parameter_values": parameter_values,
-                "analysis_error": analysis_error,
-                "analysis_rows": analysis_rows,
-                "execution_message": execution_message,
-                "execution_links": execution_links,
-                "execution_ok": execution_ok,
-                "execute_write_returns_rows": execute_write_returns_rows,
-                "execute_write_columns": execute_write_columns,
-                "execute_write_display_rows": execute_write_display_rows,
-                "execute_write_truncated": execute_write_truncated,
-                "sql_parameter_name_prefix": SQL_PARAMETER_FORM_PREFIX,
-                "execute_disabled": bool(execute_disabled_reason),
-                "execute_disabled_reason": displayed_disabled_reason,
-                "table_columns": table_columns,
-                "write_template_tables": write_template_tables,
-                "write_template_operations": write_template_operations,
-                "write_create_table_template_sql": write_create_table_template_sql,
-                "save_query_url": save_query_url,
-                "save_query_base_url": save_query_base_url,
-            },
+            ExecuteWriteContext(
+                database=db.name,
+                database_color=db.color,
+                sql=sql,
+                parameter_names=parameter_names,
+                parameter_values=parameter_values,
+                analysis_error=analysis_error,
+                analysis_rows=analysis_rows,
+                execution_message=execution_message,
+                execution_links=execution_links,
+                execution_ok=execution_ok,
+                execute_write_returns_rows=execute_write_returns_rows,
+                execute_write_columns=execute_write_columns,
+                execute_write_display_rows=execute_write_display_rows,
+                execute_write_truncated=execute_write_truncated,
+                sql_parameter_name_prefix=SQL_PARAMETER_FORM_PREFIX,
+                execute_disabled=bool(execute_disabled_reason),
+                execute_disabled_reason=displayed_disabled_reason,
+                table_columns=table_columns,
+                write_template_tables=write_template_tables,
+                write_template_operations=write_template_operations,
+                write_create_table_template_sql=write_create_table_template_sql,
+                save_query_url=save_query_url,
+                save_query_base_url=save_query_base_url,
+            ),
         )
         response.status = status
         return _block_framing(response)

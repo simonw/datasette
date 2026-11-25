@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import inspect
 import json
+import math
 import os
 import re
 import secrets
@@ -18,7 +19,7 @@ import time
 import types
 import typing
 import urllib
-from collections import Counter, OrderedDict, namedtuple
+from collections import Counter
 from collections.abc import Iterable
 from contextlib import contextmanager
 from shutil import copytree
@@ -29,6 +30,7 @@ import markupsafe
 import mergedeep
 import yaml
 
+from ..rows import Column, Columns, Row
 from ..version import __version__
 from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
@@ -284,12 +286,6 @@ SPATIALITE_FUNCTIONS = (
 HASH_LENGTH = 7
 
 
-# Can replace this with Column from sqlite_utils when I add that dependency
-Column = namedtuple(
-    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
-)
-
-
 @documented
 async def await_me_maybe(value: typing.Any) -> typing.Any:
     "If value is callable, call it. If awaitable, await it. Otherwise return it."
@@ -305,21 +301,132 @@ def urlsafe_components(token):
     return [tilde_decode(b) for b in token.split(",")]
 
 
-def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """Generate an optionally tilde-encoded unique identifier
-    for a row from its primary keys."""
+# Markers used by encode_key_value(). Tilde-encoding never emits a raw "$" or
+# ":" - they become ~24 and ~3A - so none of these can be mistaken for text.
+_KEY_NULL = "$null"
+_KEY_EMPTY = "$empty"
+
+
+def encode_key_value(value, typed=False):
+    """Encode one primary key or sort value for use in a row URL or a
+    ``?_next=`` pagination cursor. decode_key_value() reverses it.
+
+    - ``None`` is ``$null`` and the empty string is ``$empty``
+    - bytes are ``b:`` followed by hex
+    - text is tilde-encoded
+    - integers and floats are tilde-encoded as text, unless ``typed`` is true
+      in which case they are ``i:345`` and ``f:`` followed by float.hex()
+
+    A number encoded as text only finds its row if SQLite converts the text
+    back to a number, which it does for a column with a declared type of
+    integer, real, numeric or text. Pass ``typed=True`` for a column SQLite
+    will not convert for - see untyped_columns().
+    """
+    if value is None:
+        return _KEY_NULL
+    if isinstance(value, bytes):
+        return f"b:{value.hex()}"
+    if typed and isinstance(value, int):
+        return f"i:{value}"
+    if typed and isinstance(value, float):
+        # float.hex() writes positive exponents as "p+1". A raw "+" in a query
+        # string decodes to a space, so drop it - float.fromhex() accepts "p1".
+        # The "." is tilde-encoded so a row URL does not read it as the start
+        # of a .json style format extension.
+        return "f:" + tilde_encode(value.hex().replace("+", ""))
+    value = str(value)
+    if value == "":
+        return _KEY_EMPTY
+    return tilde_encode(value)
+
+
+def decode_key_value(component):
+    """Decode a value encoded by encode_key_value(). Text comes back as a
+    string, typed values as None, int, float or bytes.
+
+    Raises ValueError if a typed value is malformed."""
+    if component == _KEY_NULL:
+        return None
+    if component == _KEY_EMPTY:
+        return ""
+    # Typed values are not tilde-encoded, so check for them before tilde_decode()
+    try:
+        if component.startswith("i:"):
+            number = int(component[2:])
+            if not -(2**63) <= number < 2**63:
+                raise ValueError
+            return number
+        if component.startswith("f:"):
+            # Not tilde_decode(), which would turn the "+" of "p+1" into a space
+            number = float.fromhex(component[2:].replace("~2E", "."))
+            if math.isnan(number):
+                raise ValueError
+            return number
+        if component.startswith("b:"):
+            return bytes.fromhex(component[2:])
+    except OverflowError:
+        raise ValueError(component)
+    return tilde_decode(component)
+
+
+def key_value_display(value):
+    """A primary key value as text for people to read, in a link or a
+    message. Binary values are shown as hex, labelled as binary."""
+    if isinstance(value, bytes):
+        return f"binary {value.hex()}"
+    return str(value)
+
+
+def decode_key_path(path):
+    "Split a row path on commas and decode_key_value() each component"
+    return [decode_key_value(component) for component in path.split(",")]
+
+
+def untyped_columns(columns):
+    """Names of the columns SQLite will not convert a text value for: those
+    declared with no type, or as a blob. ``columns`` is the result of
+    ``await db.table_column_details(table)``."""
+    from datasette.column_types import SQLiteType
+
+    return frozenset(
+        column.name
+        for column in columns
+        if SQLiteType.from_declared_type(column.type) is SQLiteType.BLOB
+    )
+
+
+def path_from_row_pks(row, pks, use_rowid, quote=True, typed_columns=()):
+    """Generate a unique identifier for a row from its primary keys, encoded
+    for use in a URL unless ``quote`` is false.
+
+    ``typed_columns`` are the primary key columns that need their integers and
+    floats encoded with a type - see untyped_columns()."""
     if use_rowid:
-        bits = [row["rowid"]]
-    else:
-        bits = [
-            row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
-        ]
+        pks = ["rowid"]
+    values = [
+        (pk, row[pk]["value"] if isinstance(row[pk], dict) else row[pk]) for pk in pks
+    ]
     if quote:
-        bits = [tilde_encode(str(bit)) for bit in bits]
+        bits = [encode_key_value(value, pk in typed_columns) for pk, value in values]
     else:
-        bits = [str(bit) for bit in bits]
+        bits = [key_value_display(value) for _, value in values]
 
     return ",".join(bits)
+
+
+def row_has_null_primary_key(row, pks):
+    """True if any of the row's primary key values are null.
+
+    SQLite allows null primary keys in rowid tables, and allows several rows
+    to share one, so such a row has no identifier that can be used to link to
+    it, edit it or delete it."""
+    for pk in pks:
+        value = row[pk]
+        if isinstance(value, dict):
+            value = value["value"]
+        if value is None:
+            return True
+    return False
 
 
 def compound_keys_at_or_before_sql(pks, start_index=0):
@@ -380,7 +487,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
     Built-in types (text, numbers, lists, etc) are encoded the same as Python's built-in ``json`` module.
 
-    - ``sqlite3.Row`` becomes a tuple
+    - ``datasette.Row`` and ``sqlite3.Row`` become a tuple
     - ``sqlite3.Cursor`` becomes a list
 
     Binary blobs are encoded as an object, with the actual data base64-encoded,
@@ -395,7 +502,7 @@ class CustomJSONEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, sqlite3.Row):
+        if isinstance(obj, (Row, sqlite3.Row)):
             return tuple(obj)
         if isinstance(obj, sqlite3.Cursor):
             return list(obj)
@@ -485,6 +592,11 @@ allowed_sql_res = [
     re.compile(comment_re + r"with\b"),
     re.compile(comment_re + r"explain\s+with\b"),
     re.compile(comment_re + r"explain\s+query\s+plan\s+with\b"),
+    # EXPLAIN compiles a write statement without running it, so these are
+    # read-only. Queries still run on a read-only connection regardless.
+    re.compile(
+        comment_re + r"explain\s+(?:query\s+plan\s+)?(?:insert|update|delete|replace)\b"
+    ),
 ]
 
 allowed_pragmas = (
@@ -806,19 +918,47 @@ def temporary_docker_directory(
             )
         yield datasette_dir
     finally:
-        tmp.cleanup()
+        # Windows cannot delete the current working directory, so leave it first
         os.chdir(saved_cwd)
+        tmp.cleanup()
 
 
 def detect_primary_keys(conn, table):
     """Figure out primary keys for a table."""
-    columns = table_column_details(conn, table)
-    pks = [column for column in columns if column.is_pk]
-    pks.sort(key=lambda column: column.is_pk)
-    return [column.name for column in pks]
+    # Sorted by position in the primary key, which starts at 1
+    pks = sorted(
+        (pk_position, name)
+        for _cid, name, _type, _notnull, _default, pk_position, _hidden in _table_xinfo(
+            conn, table
+        )
+        if pk_position
+    )
+    return [name for _, name in pks]
+
+
+def refresh_schema(conn):
+    """
+    Make sure this connection has noticed schema changes made by other connections.
+
+    SQLite answers several PRAGMAs from the connection's cached copy of the
+    schema without first checking that the cache is current. If another
+    connection has just created the table, they return no rows at all:
+
+    - ``PRAGMA table_info()`` and ``table_xinfo()`` in SQLite before 3.33.0
+    - ``PRAGMA foreign_key_list()`` and ``index_list()`` in every version
+      tested, up to 3.53
+
+    Running any ordinary query first makes SQLite compare schema versions and
+    reload the schema if needed. This was the cause of intermittent test
+    failures in https://github.com/simonw/datasette/issues/2356,
+    https://github.com/simonw/datasette/issues/1919 and
+    https://github.com/simonw/datasette/issues/2632
+    """
+    conn.execute("select 1 from sqlite_master limit 1").fetchall()
 
 
 def get_outbound_foreign_keys(conn, table):
+    refresh_schema(conn)
     infos = conn.execute(f"PRAGMA foreign_key_list({escape_sqlite(table)})").fetchall()
     fks = []
     for info in infos:
@@ -952,29 +1092,62 @@ def detect_json1(conn=None):
 
 
 def table_columns(conn, table):
-    return [column.name for column in table_column_details(conn, table)]
+    return [row[1] for row in _table_xinfo(conn, table)]
+
+
+def _table_xinfo(conn, table):
+    """
+    Returns a row for each column of a table or view, as
+    (cid, name, type, notnull, default_value, pk_position, hidden)
+    """
+    refresh_schema(conn)
+    if supports_table_xinfo():
+        # table_xinfo was added in 3.26.0
+        return conn.execute(f"PRAGMA table_xinfo({escape_sqlite(table)});").fetchall()
+    # table_info does not report hidden, so treat it as 0 for all columns
+    return [
+        (*row, 0)
+        for row in conn.execute(
+            f"PRAGMA table_info({escape_sqlite(table)});"
+        ).fetchall()
+    ]
+
+
+# The values PRAGMA table_xinfo reports as "hidden" for generated columns
+_XINFO_GENERATED = {2: "virtual", 3: "stored"}
+_XINFO_HIDDEN_FOR_GENERATED = {"virtual": 2, "stored": 3}
+
+
+def table_xinfo_hidden(column):
+    """
+    The integer PRAGMA table_xinfo reports as "hidden" for this column: 1 for
+    a hidden column of a virtual table, 2 for a virtual generated column, 3
+    for a stored generated column, otherwise 0.
+    """
+    if column.hidden:
+        return 1
+    return _XINFO_HIDDEN_FOR_GENERATED.get(column.generated, 0)
 
 
 def table_column_details(conn, table):
-    if supports_table_xinfo():
-        # table_xinfo was added in 3.26.0
-        return [
-            Column(*r)
-            for r in conn.execute(
-                f"PRAGMA table_xinfo({escape_sqlite(table)});"
-            ).fetchall()
-        ]
-    else:
-        # First trigger a query against sqlite_master to fix an intermittent
-        # test failure, see https://github.com/simonw/datasette/issues/2632
-        conn.execute("select 1 from sqlite_master limit 1").fetchall()
-        return [
-            # Treat hidden as 0 for all columns.
-            Column(*(list(r) + [0]))
-            for r in conn.execute(
-                f"PRAGMA table_info({escape_sqlite(table)});"
-            ).fetchall()
-        ]
+    """
+    Returns a ``Columns`` object describing every column of a table or view.
+    """
+    return Columns(
+        Column(
+            name=name,
+            # SQLite reports a column declared without a type as ""
+            type=type_ or None,
+            notnull=notnull,
+            default_value=default_value,
+            pk_position=pk_position,
+            hidden=hidden == 1,
+            generated=_XINFO_GENERATED.get(hidden),
+        )
+        for _cid, name, type_, notnull, default_value, pk_position, hidden in _table_xinfo(
+            conn, table
+        )
+    )
 
 
 filter_column_re = re.compile(r"^_filter_column_\d+$")
@@ -1090,25 +1263,6 @@ def module_from_path(path, name):
     # plugins and how metadata/config .py files are evaluated
     exec(code, mod.__dict__)  # noqa: S102
     return mod
-
-
-class CustomRow(OrderedDict):
-    # Loose imitation of sqlite3.Row which offers
-    # both index-based AND key-based lookups
-    def __init__(self, columns, values=None):
-        self.columns = columns
-        if values:
-            self.update(values)
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return super().__getitem__(self.columns[key])
-        else:
-            return super().__getitem__(key)
-
-    def __iter__(self):
-        for column in self.columns:
-            yield self[column]
 
 
 def value_as_boolean(value):
@@ -1542,6 +1696,22 @@ UNSTABLE_API_MESSAGE = (
 )
 
 
+def request_wants_json(request):
+    """
+    True if errors for this request should use the JSON error format: the
+    path ends in .json, or the Accept header mentions application/json, or
+    the request body was sent as application/json (with or without a
+    charset parameter).
+    """
+    path = request.path.split("?")[0]
+    if path.endswith(".json"):
+        return True
+    if "application/json" in (request.headers.get("accept") or ""):
+        return True
+    content_type = (request.headers.get("content-type") or "").split(";")[0]
+    return content_type.strip().lower() == "application/json"
+
+
 def error_body(messages, status):
     """
     The canonical JSON error body used by every Datasette JSON error response:
@@ -1571,7 +1741,9 @@ def add_cors_headers(headers: dict) -> None:
     """
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
-    headers["Access-Control-Expose-Headers"] = "Link"
+    headers["Access-Control-Expose-Headers"] = (
+        "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     headers["Access-Control-Allow-Methods"] = "GET, POST, HEAD, OPTIONS"
     headers["Access-Control-Max-Age"] = "3600"
 

@@ -251,6 +251,52 @@ CREATE TABLE binary_data (
     data BLOB
 );
 
+-- Primary key values that need more than text to identify a row. The id
+-- column has no declared type, so SQLite stores each value as it was given:
+-- the integer 1, the text '1' and the float 1.5 are three different keys.
+-- SQLite also allows null primary keys here, and several rows can share one.
+
+CREATE TABLE primary_key_edge_cases (
+    id PRIMARY KEY,
+    content TEXT
+);
+
+INSERT INTO primary_key_edge_cases VALUES (1, 'integer 1');
+INSERT INTO primary_key_edge_cases VALUES ('1', 'text 1');
+INSERT INTO primary_key_edge_cases VALUES (1.5, 'float 1.5');
+INSERT INTO primary_key_edge_cases VALUES (x'0102', 'binary 0102');
+INSERT INTO primary_key_edge_cases VALUES ('', 'empty string');
+INSERT INTO primary_key_edge_cases VALUES ('i:1', 'text i:1');
+INSERT INTO primary_key_edge_cases VALUES ('$null', 'text $null');
+INSERT INTO primary_key_edge_cases VALUES (null, 'null, first');
+INSERT INTO primary_key_edge_cases VALUES (null, 'null, second');
+INSERT INTO primary_key_edge_cases VALUES (null, 'null, third');
+
+CREATE TABLE compound_primary_key_edge_cases (
+    pk1 TEXT,
+    pk2 TEXT,
+    content TEXT,
+    PRIMARY KEY (pk1, pk2)
+);
+
+INSERT INTO compound_primary_key_edge_cases VALUES ('a', 'b', 'a and b');
+INSERT INTO compound_primary_key_edge_cases VALUES ('a', '', 'a and empty string');
+INSERT INTO compound_primary_key_edge_cases VALUES ('', '', 'two empty strings');
+INSERT INTO compound_primary_key_edge_cases VALUES ('a', null, 'a and null, first');
+INSERT INTO compound_primary_key_edge_cases VALUES ('a', null, 'a and null, second');
+INSERT INTO compound_primary_key_edge_cases VALUES (null, null, 'two nulls');
+
+-- Foreign keys that reference those primary keys
+
+CREATE TABLE primary_key_edge_case_references (
+    pk INTEGER PRIMARY KEY,
+    edge_case INTEGER REFERENCES primary_key_edge_cases(id)
+);
+
+INSERT INTO primary_key_edge_case_references VALUES (1, 1);
+INSERT INTO primary_key_edge_case_references VALUES (2, 'i:1');
+INSERT INTO primary_key_edge_case_references VALUES (3, '');
+
 -- Many 2 Many demo: roadside attractions!
 
 CREATE TABLE roadside_attractions (
@@ -338,6 +384,17 @@ CREATE VIEW searchable_view_configured_by_metadata AS
 -- A view with a BLOB column and no rowid, see #2601
 CREATE VIEW binary_data_view AS
     SELECT data FROM binary_data;
+
+-- A view with columns calculated by aggregate functions. These have no
+-- declared type, see #1671
+CREATE VIEW facetable_by_state AS
+    SELECT
+        state,
+        count(*) AS row_count,
+        sum(planet_int) AS planet_total,
+        avg(on_earth) AS avg_on_earth
+    FROM facetable
+    GROUP BY state;
 
 """
     + "\n".join(

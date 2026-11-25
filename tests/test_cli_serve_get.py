@@ -16,7 +16,7 @@ def test_serve_with_get(tmp_path_factory):
 
         @hookimpl
         def startup(datasette):
-            with open("{}", "w") as fp:
+            with open({!r}, "w") as fp:
                 fp.write("hello")
     """.format(str(plugins_dir / "hello.txt")),
         ),
@@ -70,7 +70,7 @@ def test_serve_with_get_does_not_launch_background_tasks(tmp_path_factory):
         def startup(datasette):
             async def inner():
                 async def task(datasette):
-                    with open("{sentinel!s}", "w") as fp:
+                    with open({str(sentinel)!r}, "w") as fp:
                         fp.write("ran")
 
                 datasette.add_background_task(task, name="get-sentinel-task")

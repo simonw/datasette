@@ -33,33 +33,16 @@ async def test_homepage(ds_client):
     assert isinstance(databases, list)
     assert [d["name"] for d in databases] == ["fixtures"]
     d = databases[0]
-    assert d["name"] == "fixtures"
-    assert isinstance(d["tables_count"], int)
-    assert isinstance(len(d["tables_and_views_truncated"]), int)
-    assert d["tables_and_views_more"] is True
-    assert isinstance(d["hidden_tables_count"], int)
-    assert isinstance(d["hidden_table_rows_sum"], int)
-    assert isinstance(d["views_count"], int)
-
-
-async def test_homepage_sort_by_relationships(ds_client):
-    response = await ds_client.get("/.json?_sort=relationships")
-    assert response.status_code == 200
-    tables = [
-        t["name"] for t in response.json()["databases"][0]["tables_and_views_truncated"]
-    ]
-    assert tables[:3] == [
-        "simple_primary_key",
-        "foreign_key_references",
-        "complex_foreign_keys",
-    ]
-    # These two have two relationships each, so they are ordered by row count -
-    # unless counting takes longer than its 10ms limit, as it can on a busy CI
-    # machine, in which case the counts are skipped and they are ordered by name
-    assert sorted(tables[3:]) == [
-        "roadside_attraction_characteristics",
-        "searchable_tags",
-    ]
+    assert d["url"] == "/fixtures"
+    assert isinstance(d["tables"], int)
+    assert isinstance(d["views"], int)
+    assert "size" in d
+    assert data["totals"] == {
+        "databases": 1,
+        "tables": d["tables"],
+        "views": d["views"],
+    }
+    assert data["total"] == d["tables"] + d["views"]
 
 
 async def test_database_page(ds_client):
@@ -86,12 +69,15 @@ async def test_database_page(ds_client):
         "binary_data",
         "complex_foreign_keys",
         "compound_primary_key",
+        "compound_primary_key_edge_cases",
         "compound_three_primary_keys",
         "custom_foreign_key_label",
         "facet_cities",
         "facetable",
         "foreign_key_references",
         "infinity",
+        "primary_key_edge_case_references",
+        "primary_key_edge_cases",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
         "roadside_attraction_characteristics",
@@ -260,21 +246,24 @@ async def test_no_files_uses_memory_database():
         "databases": [
             {
                 "name": "_memory",
-                "hash": None,
-                "color": "a6c7b9",
-                "path": "/_memory",
-                "tables_and_views_truncated": [],
-                "tables_and_views_more": False,
-                "tables_count": 0,
-                "table_rows_sum": 0,
-                "show_table_row_counts": False,
-                "hidden_table_rows_sum": 0,
-                "hidden_tables_count": 0,
-                "views_count": 0,
                 "private": False,
+                "tables": 0,
+                "views": 0,
+                "url": "/_memory",
+                "size": None,
             },
         ],
+        "items": [],
+        "queries": [],
+        "total": 0,
+        "queries_total": 0,
+        "totals": {"databases": 1, "tables": 0, "views": 0},
+        "q": "",
+        "database_filter": None,
+        "previous_url": None,
+        "next_url": None,
         "metadata": {},
+        "private": False,
     }
     # Try that SQL query
     response = await ds.client.get(
@@ -1024,7 +1013,10 @@ async def test_cors(
         response.headers["Access-Control-Allow-Headers"]
         == "Authorization, Content-Type"
     )
-    assert response.headers["Access-Control-Expose-Headers"] == "Link"
+    assert (
+        response.headers["Access-Control-Expose-Headers"]
+        == "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )
@@ -1144,7 +1136,7 @@ async def test_tilde_encoded_database_names(db_name):
     response = await ds.client.get("/.json")
     databases_by_name = {d["name"]: d for d in response.json()["databases"]}
     assert db_name in databases_by_name
-    path = databases_by_name[db_name]["path"]
+    path = databases_by_name[db_name]["url"]
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
@@ -1207,8 +1199,40 @@ async def test_table_with_reserved_characters_in_name(table_name):
 async def test_config_json(config, expected):
     "/-/config.json should return redacted configuration"
     ds = Datasette(config=config)
-    response = await ds.client.get("/-/config.json")
+    ds.root_enabled = True
+    response = await ds.client.get("/-/config.json", actor={"id": "root"})
     assert response.json() == {"ok": True, **expected}
+
+
+@pytest.mark.parametrize("path", ("/-/config", "/-/config.json"))
+async def test_config_requires_permissions_debug(path):
+    # Configuration can include allow blocks, the names of private tables
+    # and the SQL of private stored queries
+    config = {
+        "databases": {
+            "data": {
+                "tables": {"private_t": {"allow": {"id": "alice"}}},
+                "queries": {
+                    "hidden_q": {
+                        "sql": "select * from private_t where v = 'x'",
+                        "allow": {"id": "root"},
+                    }
+                },
+            }
+        }
+    }
+    ds = Datasette(config=config)
+    ds.root_enabled = True
+    ds.add_memory_database("config_requires_permissions_debug", name="data")
+    for actor in (None, {"id": "alice"}):
+        response = await ds.client.get(path, actor=actor)
+        assert response.status_code == 403
+        assert "private_t" not in response.text
+        assert "hidden_q" not in response.text
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    assert "private_t" in response.text
+    assert "hidden_q" in response.text
 
 
 @pytest.mark.skip(reason="rm?")

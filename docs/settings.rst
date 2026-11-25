@@ -128,7 +128,7 @@ You can optionally set a lower time limit for an individual query using the ``?_
 
     /my-database/my-table?qSpecies=44&_timelimit=100
 
-This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate.
+This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate. ``?_timelimit=`` cannot be used to raise the time limit above ``sql_time_limit_ms``.
 
 .. _setting_max_returned_rows:
 
@@ -516,11 +516,19 @@ Enable it like this::
 
 Now you can add ``?_context=1`` or ``&_context=1`` to any Datasette page to see the context that was passed to that template.
 
+This shows a page listing every variable, grouped into the documented variables for that page, any undocumented variables, variables added by plugins and the variables that are available on every page. Each variable is shown with its description from the :ref:`template context documentation <template_context>`, its current value and the ``{{ variable }}`` syntax for using it in a template, with a button to copy that to your clipboard. Functions are shown with their arguments and docstring, and objects such as ``urls`` list their methods.
+
 Some examples:
 
 * https://latest.datasette.io/?_context=1
 * https://latest.datasette.io/fixtures?_context=1
 * https://latest.datasette.io/fixtures/roadside_attractions?_context=1
+
+Use ``?_context_json=1`` to see the same context as indented JSON instead:
+
+* https://latest.datasette.io/fixtures/roadside_attractions?_context_json=1
+
+Template contexts can include information that is not otherwise visible on the page, so this setting should not be enabled on a public instance unless you are happy for that information to be seen.
 
 .. _setting_trace_debug:
 

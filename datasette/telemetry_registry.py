@@ -201,7 +201,8 @@ PARAM_SETS = Attribute(
 TIME_LIMIT_MS = Attribute(
     "datasette.time_limit_ms",
     "Time limit applied to the read query, in milliseconds: "
-    ":ref:`setting_sql_time_limit_ms` or a shorter ``custom_time_limit``.",
+    ":ref:`setting_sql_time_limit_ms` or the ``custom_time_limit`` passed by "
+    "the caller.",
     optional=True,
 )
 ROWS_RETURNED = Attribute(

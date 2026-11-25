@@ -1,10 +1,15 @@
 import json
+from collections.abc import Mapping
+from typing import Any
 
+from datasette.rows import Row
 from datasette.utils import (
     CustomJSONEncoder,
     error_body,
     path_from_row_pks,
     remove_infinites,
+    row_has_null_primary_key,
+    untyped_columns,
     value_as_boolean,
 )
 from datasette.utils.asgi import Response
@@ -72,6 +77,33 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
+def row_as_dict(
+    row: Row | Mapping[str, Any], values: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """
+    Return a row as the dictionary used to represent it in JSON.
+
+    A foreign key value that has been expanded to a label, available in
+    ``row.labels``, becomes ``{"value": value, "label": label}``.
+
+    Pass ``values`` to use a different ``{column: value}`` dictionary in
+    place of the values from the row itself.
+    """
+    row_dict = _dict(row) if values is None else values
+    labels = getattr(row, "labels", None)
+    if labels:
+        for column, label in labels.items():
+            row_dict[column] = {"value": row_dict[column], "label": label}
+    return row_dict
+
+
+def _dict(row: Row | Mapping[str, Any]) -> dict[str, Any]:
+    "dict(row), but faster for a Row"
+    if row.__class__ is Row:
+        return dict(zip(row.columns.names, row))
+    return dict(row)
+
+
 async def apply_column_type_transforms(datasette, database, table, rows):
     """
     Return rows as dictionaries, with transform_value() applied for any
@@ -80,13 +112,13 @@ async def apply_column_type_transforms(datasette, database, table, rows):
     ct_map = await datasette.get_column_types(database, table)
     transformed_rows = []
     for row in rows:
-        row_dict = dict(row)
+        row_dict = _dict(row)
         for col_name, ct in ct_map.items():
             if col_name in row_dict:
                 row_dict[col_name] = await ct.transform_value(
                     row_dict[col_name], datasette
                 )
-        transformed_rows.append(row_dict)
+        transformed_rows.append(row_as_dict(row, row_dict))
     return transformed_rows
 
 
@@ -119,6 +151,30 @@ async def json_renderer(
         json_cols = args.getlist("_json")
     object_keys = None
     pks = data.get("primary_keys")
+    # Primary key columns where a number in a row path has to carry its type,
+    # so that the integer 1 and the text "1" are different keys
+    typed_columns = ()
+    if not error and args.get("_shape") == "object" and pks and table:
+        typed_columns = untyped_columns(
+            await datasette.get_database(database).table_column_details(table)
+        )
+    # Checked here, before ?_json= can turn the text "null" into a null
+    object_has_null_key = (
+        not error
+        and args.get("_shape") == "object"
+        and bool(pks)
+        and any(
+            row_has_null_primary_key(
+                (
+                    row
+                    if isinstance(row, dict) or not columns
+                    else dict(zip(columns, row))
+                ),
+                pks,
+            )
+            for row in data["rows"]
+        )
+    )
     if (
         not error
         and args.get("_shape") == "object"
@@ -129,7 +185,9 @@ async def json_renderer(
         for row in data["rows"]:
             if columns and not isinstance(row, dict):
                 row = dict(zip(columns, row))
-            object_keys.append(path_from_row_pks(row, pks, False))
+            object_keys.append(
+                path_from_row_pks(row, pks, False, typed_columns=typed_columns)
+            )
     if json_cols:
         data["rows"] = convert_specific_columns_to_json(
             data["rows"], columns, json_cols
@@ -192,10 +250,18 @@ async def json_renderer(
                         pk_string = (
                             object_keys[index]
                             if object_keys is not None
-                            else path_from_row_pks(row, pks, not pks)
+                            else path_from_row_pks(
+                                row, pks, not pks, typed_columns=typed_columns
+                            )
                         )
                         object_rows[pk_string] = row
                     data = object_rows
+                    if object_has_null_key:
+                        # Rows that share a null key cannot each have one
+                        shape_error = (
+                            "_shape=object not available for rows with "
+                            "a null primary key"
+                        )
             if shape_error:
                 status_code = 400
                 data = error_body(shape_error, status_code)

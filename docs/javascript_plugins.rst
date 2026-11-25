@@ -186,6 +186,12 @@ This example shows how a plugin might define a single panel:
 
 When a page with a table loads, all registered plugins that implement ``makeAboveTablePanelConfigs()`` will be called and panels they return will be added to the top of the table page.
 
+The panels are displayed as a set of tabs, one for each panel, with the first panel selected to start with. The ``label`` is used as the text of the tab, so it should be short and should describe the panel on its own.
+
+The tabs follow the `WAI-ARIA tabs pattern <https://www.w3.org/WAI/ARIA/apg/patterns/tabs/>`__. The tab for the panel that is currently displayed has ``aria-selected="true"`` and is styled as selected, and each panel is a ``role="tabpanel"`` element labelled by its tab. Keyboard users can move between the tabs with the left and right arrow keys and the ``Home`` and ``End`` keys, then press ``Tab`` to move into the selected panel.
+
+The ``node`` passed to ``render()`` is that ``role="tabpanel"`` element. Plugins should not change its ``role``, ``id``, ``tabindex``, ``hidden`` or ``aria-labelledby`` attributes.
+
 .. _javascript_plugins_makeColumnActions:
 
 makeColumnActions(columnDetails)
@@ -603,6 +609,36 @@ Set ``modal.busy = true`` while saving to prevent user dismissal.  While busy, `
 
 If an operation fails, set ``modal.busy = false`` so the user can retry or close the dialog. A successful operation can call ``modal.close()`` even while busy.
 
+.. _javascript_plugins_modal_alert:
+
+Alert dialogs
+~~~~~~~~~~~~~
+
+``DatasetteModal.alert(options)`` shows a small dialog containing a message and a single button. It returns a promise that resolves once the user dismisses the dialog, by using the button, pressing Escape or clicking outside the dialog. It can be shown on top of another open dialog.
+
+Use this instead of the browser's ``alert()`` function. Browsers embedded in other applications can dismiss native ``alert()``, ``confirm()`` and ``prompt()`` dialogs without displaying them, so the user never sees the message.
+
+``options`` is an object with these optional properties:
+
+- ``message`` (string): The message to show. Line breaks are preserved. Other values, such as an ``Error``, are converted to a string.
+- ``okLabel`` (string): Text for the button. Defaults to ``"OK"``.
+
+.. code-block:: javascript
+
+    try {
+        await saveFilter();
+    } catch (error) {
+        await DatasetteModal.alert({
+            message: "Could not save this filter: " + error.message,
+        });
+    }
+
+Unlike the browser's ``alert()``, this does not pause the script that called it. Code that should run after the user has dismissed the dialog must ``await`` the promise.
+
+Screen readers announce the message when the dialog opens. Keyboard focus moves to the button, then returns to where it was once the dialog is dismissed.
+
+An alert interrupts the user, so keep it for messages that have no better place. An error that relates to a form field or a dialog that is already open is better shown next to that field or inside that dialog.
+
 .. _javascript_plugins_modal_confirm:
 
 Confirmation dialogs
@@ -610,7 +646,7 @@ Confirmation dialogs
 
 ``DatasetteModal.confirm(options)`` shows a small confirmation dialog and returns a promise that resolves to ``true`` if the user confirms, or ``false`` if they cancel, press Escape or click outside the dialog. It can be shown on top of another open dialog.
 
-Use this instead of the browser's ``confirm()`` function. Browsers embedded in other applications can dismiss native ``alert()``, ``confirm()`` and ``prompt()`` dialogs without displaying them, which makes any button that depends on one appear to do nothing.
+Use this instead of the browser's ``confirm()`` function, for the same reason as ``DatasetteModal.alert()``: an embedded browser that dismisses the native dialog makes any button that depends on it appear to do nothing.
 
 ``options`` is an object with these optional properties:
 

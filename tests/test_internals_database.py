@@ -3,6 +3,7 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
+import dataclasses
 import gc
 import threading
 import uuid
@@ -22,7 +23,7 @@ from datasette.database import (
     Results,
     _deliver_write_result,
 )
-from datasette.utils import Column
+from datasette.rows import Column, Columns, Row
 from datasette.utils.sqlite import (
     sqlite3,
     sqlite_derived_table_dependencies,
@@ -48,9 +49,11 @@ async def test_execute(db):
 async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
     ds = Datasette(memory=True)
     db = ds.add_memory_database(uuid.uuid4().hex, name="data")
-    await db.derived_table_dependencies()
-    previous_cache = db._cached_derived_table_dependencies
-    await db.execute_write("create table dependency_cache_refresh (id integer)")
+    await db.execute_write("create table documents (id integer primary key, body)")
+    assert await db.derived_table_dependencies() == {}
+    await db.execute_write(
+        "create virtual table documents_fts using fts5(body, content='documents')"
+    )
 
     class UnavailableSchema:
         def execute(self, sql):
@@ -63,17 +66,20 @@ async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
         )
         with pytest.raises(sqlite3.DatabaseError, match="schema temporarily"):
             await db.derived_table_dependencies()
-    assert db._cached_derived_table_dependencies == previous_cache
+    # The failure must not leave the dependencies from before the schema
+    # change, or nothing at all, cached as if they were current
+    assert "derived_table_dependencies" not in db._schema_cache
 
-    await db.derived_table_dependencies()
-    assert db._cached_derived_table_dependencies[0] != previous_cache[0]
+    assert (await db.derived_table_dependencies())["documents_fts"] == "documents"
+    assert "derived_table_dependencies" in db._schema_cache
 
 
 async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")
     row = results.first()
-    assert isinstance(row, sqlite3.Row)
+    assert isinstance(row, Row)
+    assert row.columns is results.columns
 
 
 @pytest.mark.parametrize("expected", (True, False))
@@ -213,103 +219,92 @@ async def test_table_columns(db, table, expected):
             "facetable",
             [
                 Column(
-                    cid=0,
                     name="pk",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=1,
-                    hidden=0,
+                    pk_position=1,
+                    hidden=False,
                 ),
                 Column(
-                    cid=1,
                     name="created",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=2,
                     name="planet_int",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=3,
                     name="on_earth",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=4,
                     name="state",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=5,
                     name="_city_id",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=6,
                     name="_neighborhood",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=7,
                     name="tags",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=8,
                     name="complex_array",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=9,
                     name="distinct_some_null",
-                    type="",
+                    type=None,
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=10,
                     name="n",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
             ],
         ),
@@ -317,67 +312,60 @@ async def test_table_columns(db, table, expected):
             "sortable",
             [
                 Column(
-                    cid=0,
                     name="pk1",
                     type="varchar(30)",
                     notnull=0,
                     default_value=None,
-                    is_pk=1,
-                    hidden=0,
+                    pk_position=1,
+                    hidden=False,
                 ),
                 Column(
-                    cid=1,
                     name="pk2",
                     type="varchar(30)",
                     notnull=0,
                     default_value=None,
-                    is_pk=2,
-                    hidden=0,
+                    pk_position=2,
+                    hidden=False,
                 ),
                 Column(
-                    cid=2,
                     name="content",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=3,
                     name="sortable",
                     type="integer",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=4,
                     name="sortable_with_nulls",
                     type="real",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=5,
                     name="sortable_with_nulls_2",
                     type="real",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
                 Column(
-                    cid=6,
                     name="text",
                     type="text",
                     notnull=0,
                     default_value=None,
-                    is_pk=0,
-                    hidden=0,
+                    pk_position=0,
+                    hidden=False,
                 ),
             ],
         ),
@@ -387,11 +375,10 @@ async def test_table_column_details(db, table, expected):
     columns = await db.table_column_details(table)
     # Convert "type" to lowercase before comparison
     # https://github.com/simonw/datasette/issues/1647
+    assert isinstance(columns, Columns)
     compare_columns = [
-        Column(
-            c.cid, c.name, c.type.lower(), c.notnull, c.default_value, c.is_pk, c.hidden
-        )
-        for c in columns
+        dataclasses.replace(column, type=column.type and column.type.lower())
+        for column in columns
     ]
     assert compare_columns == expected
 
@@ -460,6 +447,7 @@ async def test_table_names(db):
         "binary_data",
         "complex_foreign_keys",
         "compound_primary_key",
+        "compound_primary_key_edge_cases",
         "compound_three_primary_keys",
         "custom_foreign_key_label",
         "facet_cities",
@@ -467,6 +455,8 @@ async def test_table_names(db):
         "foreign_key_references",
         "infinity",
         "no_primary_key",
+        "primary_key_edge_case_references",
+        "primary_key_edge_cases",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
         "roadside_attraction_characteristics",
@@ -494,6 +484,7 @@ async def test_view_names(db):
         "searchable_view",
         "searchable_view_configured_by_metadata",
         "binary_data_view",
+        "facetable_by_state",
     ]
 
 
@@ -1373,3 +1364,87 @@ async def test_write_thread_context_is_detached_between_tasks(
         f"write thread context stack grew across tasks: {seen_depths} - "
         "a token was attached without being detached"
     )
+
+
+async def test_execute_custom_time_limit_can_exceed_setting():
+    "custom_time_limit can be longer than sql_time_limit_ms"
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 5})
+    db = ds.add_memory_database("custom_time_limit_can_exceed_setting")
+    sql = """
+        with recursive counter(x) as (
+            select 1 union all select x + 1 from counter where x < 300000
+        )
+        select max(x) from counter
+    """
+    with pytest.raises(QueryInterrupted):
+        await db.execute(sql)
+    # custom_time_limit=0 is the same as not passing one
+    with pytest.raises(QueryInterrupted):
+        await db.execute(sql, custom_time_limit=0)
+    results = await db.execute(sql, custom_time_limit=30000)
+    assert results.rows[0][0] == 300000
+
+
+def test_database_constructor_arguments_are_keyword_only(bare_ds, tmp_path):
+    path = str(tmp_path / "data.db")
+    sqlite3.connect(path).execute("vacuum")
+    # path can be passed by position
+    assert Database(bare_ds, path).path == path
+    # Everything after it has to be named. is_temp_disk used to be the
+    # seventh positional argument, after a mode= the documentation left out
+    with pytest.raises(TypeError):
+        Database(bare_ds, path, False)
+    with pytest.raises(TypeError):
+        Database(bare_ds, None, True, False, None, None, True)
+    db = Database(bare_ds, path, is_mutable=False)
+    assert db.is_mutable is False
+
+
+async def test_database_constructor_mode(bare_ds, tmp_path):
+    # mode="rwc" creates the file if it does not exist yet
+    path = tmp_path / "created.db"
+    assert not path.exists()
+    db = bare_ds.add_database(Database(bare_ds, str(path), mode="rwc"), name="created")
+    await db.execute_write("create table t (id integer primary key)")
+    assert path.exists()
+    assert await db.table_names() == ["t"]
+    # Without it, a file that does not exist cannot be opened
+    missing = bare_ds.add_database(
+        Database(bare_ds, str(tmp_path / "missing.db")), name="missing"
+    )
+    with pytest.raises(sqlite3.OperationalError):
+        await missing.execute("select 1")
+
+
+@pytest.mark.asyncio
+async def test_table_counts_skips_spatialite_knn_tables(tmp_path):
+    # https://github.com/simonw/datasette/issues/1611
+    # count(*) against SpatiaLite's KNN virtual tables can run for minutes
+    # past the time limit, so table_counts() must not run it. SpatiaLite is
+    # not needed: the virtual table entries are written directly into the
+    # schema, and an ordinary table called "knn" must still be counted.
+    path = str(tmp_path / "spatial.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table places (id integer primary key)")
+    conn.execute("insert into places (id) values (1), (2)")
+    conn.execute("create table knn_notes (id integer primary key)")
+    conn.execute("insert into knn_notes (id) values (1)")
+    conn.execute("pragma writable_schema = on")
+    for name, module in (("KNN", "VirtualKNN"), ("KNN2", '"VirtualKNN2"')):
+        conn.execute(
+            "insert into sqlite_master (type, name, tbl_name, rootpage, sql) "
+            "values ('table', ?, ?, 0, ?)",
+            [name, name, f"CREATE VIRTUAL TABLE {name} USING {module}()"],
+        )
+    conn.execute("pragma writable_schema = off")
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([path])
+    db = ds.get_database("spatial")
+    assert await db.table_counts() == {
+        "KNN": 0,
+        "KNN2": 0,
+        "knn_notes": 1,
+        "places": 2,
+    }

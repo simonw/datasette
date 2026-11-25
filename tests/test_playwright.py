@@ -2521,6 +2521,185 @@ def test_row_edit_discard_is_confirmed_in_page(page, datasette_server):
     assert project_row(datasette_server, 1)["title"] == original_title
 
 
+def record_native_prompts(page):
+    native_prompts = []
+
+    def dismiss(prompt):
+        native_prompts.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", dismiss)
+    return native_prompts
+
+
+@pytest.mark.playwright
+def test_modal_alert(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = record_native_prompts(page)
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        const trigger = document.createElement('button');
+        trigger.id = 'alert-trigger';
+        trigger.textContent = 'Show alert';
+        document.body.append(trigger);
+        window.dismissed = 0;
+        trigger.onclick = async () => {
+            const result = await DatasetteModal.alert(window.alertOptions);
+            window.alertResult = result;
+            window.dismissed += 1;
+        };
+        window.alertOptions = {message: 'Could not save.\\nPlease try again.'};
+    }""")
+    trigger = page.locator("#alert-trigger")
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    ok = alert.locator(".modal-alert-ok")
+
+    trigger.click()
+    # A modal alertdialog named by its message, as a screen reader announces it
+    expect(
+        page.get_by_role("alertdialog", name="Could not save. Please try again.")
+    ).to_be_visible()
+    assert alert.evaluate("node => node.matches(':modal')")
+    assert alert.evaluate("node => node.parentElement.localName") == "datasette-modal"
+    # Line breaks in the message are kept, as they are by window.alert()
+    message = alert.locator(".modal-confirm-message")
+    assert message.evaluate("node => node.textContent") == (
+        "Could not save.\nPlease try again."
+    )
+    assert message.evaluate("node => getComputedStyle(node).whiteSpace") == "pre-wrap"
+    # OK is the only button and has focus, so Enter dismisses the alert
+    expect(alert.locator("button")).to_have_count(1)
+    expect(ok).to_have_text("OK")
+    expect(ok).to_be_focused()
+    assert page.evaluate("dismissed") == 0
+    page.keyboard.press("Enter")
+    expect(alert).to_have_count(0)
+    page.wait_for_function("dismissed === 1")
+    assert page.evaluate("alertResult") is None
+    # ... and focus goes back to where it was
+    expect(trigger).to_be_focused()
+    # The dialog is removed from the page, not just closed
+    expect(page.locator("dialog.modal-alert-dialog")).to_have_count(0)
+
+    # Escape and a click outside the dialog dismiss it too
+    trigger.click()
+    expect(ok).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(alert).to_have_count(0)
+    page.wait_for_function("dismissed === 2")
+    expect(trigger).to_be_focused()
+    trigger.click()
+    expect(alert).to_be_visible()
+    page.mouse.click(2, 2)
+    expect(alert).to_have_count(0)
+    page.wait_for_function("dismissed === 3")
+
+    # The button can be relabelled, and an Error is shown as its string
+    page.evaluate("""() => {
+        window.alertOptions = {message: new TypeError('Failed to fetch'), okLabel: 'Close'};
+    }""")
+    trigger.click()
+    expect(message).to_have_text("TypeError: Failed to fetch")
+    expect(ok).to_have_text("Close")
+    ok.click()
+    expect(alert).to_have_count(0)
+
+    # A long message scrolls, leaving the button on screen
+    page.evaluate("""() => {
+        window.alertOptions = {message: 'A long line of text. '.repeat(2000)};
+    }""")
+    trigger.click()
+    expect(ok).to_be_in_viewport(ratio=1)
+    assert message.evaluate("node => node.scrollHeight > node.clientHeight")
+    ok.click()
+    expect(alert).to_have_count(0)
+    assert native_prompts == []
+
+
+@pytest.mark.playwright
+def test_modal_alert_on_top_of_another_dialog(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        window.outerModal = DatasetteModal.create();
+        outerModal.dialog.id = 'outer-modal';
+        outerModal.dialog.innerHTML = '<button id="outer-button">Save</button>';
+        document.body.append(outerModal);
+        outerModal.show();
+        DatasetteModal.alert({message: 'Could not save'});
+    }""")
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    expect(alert.locator(".modal-alert-ok")).to_be_focused()
+    # Escape dismisses the alert and leaves the dialog behind it open
+    page.keyboard.press("Escape")
+    expect(alert).to_have_count(0)
+    expect(page.locator("#outer-modal")).to_be_visible()
+    expect(page.locator("#outer-button")).to_be_focused()
+
+
+@pytest.mark.playwright
+def test_edit_tools_load_failure_is_shown_in_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = record_native_prompts(page)
+    page.route("**/edit-tools.js*", lambda route: route.abort())
+    page.goto(datasette_server + "data/projects")
+    edit_button = page.locator('tr[data-row="1"] button[data-row-action="edit"]')
+    edit_button.click()
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    expect(alert.locator(".modal-confirm-message")).to_have_text(
+        "Could not load the editing tools. Please try again."
+    )
+    expect(page.locator("#row-edit-dialog")).to_have_count(0)
+    alert.locator(".modal-alert-ok").click()
+    expect(alert).to_have_count(0)
+    expect(edit_button).not_to_have_attribute("aria-busy", "true")
+
+    # Trying again works once the script can be loaded
+    page.unroute("**/edit-tools.js*")
+    edit_button.click()
+    expect(page.locator("#row-edit-dialog")).to_be_visible()
+    assert native_prompts == []
+
+
+@pytest.mark.playwright
+def test_api_explorer_errors_are_shown_in_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    native_prompts = record_native_prompts(page)
+    page.goto(datasette_server + "-/api")
+    alert = page.locator("dialog.modal-alert-dialog[open]")
+    message = alert.locator(".modal-confirm-message")
+    ok = alert.locator(".modal-alert-ok")
+
+    page.locator("summary", has_text="POST").click()
+    post_form = page.locator("#api-explorer-post")
+    post_form.locator("textarea").fill("{not json")
+    format_button = page.locator("#json-format")
+    format_button.click()
+    expect(message).to_contain_text("Error parsing JSON: SyntaxError")
+    ok.click()
+    expect(alert).to_have_count(0)
+    expect(format_button).to_be_focused()
+
+    post_form.locator('input[name="path"]').fill("/data/projects/-/insert")
+    post_form.locator('input[type="submit"]').click()
+    expect(message).to_contain_text("Invalid JSON: SyntaxError")
+    ok.click()
+
+    # A response that is not JSON
+    page.locator("summary", has_text="GET").click()
+    get_form = page.locator("#api-explorer-get")
+    get_form.locator('input[name="path"]').fill("/data/projects")
+    get_form.locator('input[type="submit"]').click()
+    expect(message).to_contain_text("SyntaxError")
+    ok.click()
+    expect(alert).to_have_count(0)
+    assert native_prompts == []
+
+
 MENU_CASES = [
     ("app", "", "details.nav-menu summary", "#app-menu-panel"),
     ("database", "data", "details.actions-menu-links summary", "#actions-menu-panel"),
@@ -2752,7 +2931,38 @@ def test_column_menu_actions_and_dialog_focus(page, datasette_server):
 
 
 @pytest.mark.playwright
-def test_menu_switching_and_header_alignment(page, datasette_server):
+@pytest.mark.parametrize(
+    "path,first_column,column,expect_facet",
+    (
+        # The first column of a view is an ordinary column, see #2045
+        ("fixtures/simple_view", "content", "content", True),
+        # The first column of a table with a single primary key is that key
+        ("fixtures/simple_primary_key", "id", "id", False),
+        # A compound primary key table starts with a link column, which has
+        # no menu, so its first primary key column can still be faceted
+        ("fixtures/compound_primary_key", "Link", "pk1", True),
+    ),
+)
+def test_column_menu_facet_by_this_for_first_column(
+    page, datasette_server, path, first_column, column, expect_facet
+):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + path)
+    first_th = page.locator("table.rows-and-columns thead th[data-column]").first
+    expect(first_th).to_have_attribute("data-column", first_column)
+    expect(
+        page.locator('th[data-is-link-column="1"] .column-menu-trigger')
+    ).to_have_count(0)
+    page.locator(f'th[data-column="{column}"] .column-menu-trigger').click()
+    panel = page.locator("#column-actions-menu")
+    expect(panel).to_be_visible()
+    facet_item = panel.get_by_role("menuitem", name="Facet by this", exact=True)
+    if not expect_facet:
+        expect(facet_item).to_have_count(0)
+        return
+    facet_item.click()
+    expect(page).to_have_url(re.compile(rf"[?&]_facet={column}(&|$)"))
     from playwright.sync_api import expect
 
     page.goto(datasette_server + "data/projects")
@@ -4732,3 +4942,113 @@ def test_row_page_long_value_replaced_by_plugin_is_not_clamped(
     expect(wrap).not_to_have_class(re.compile(r"\bis-rich\b"))
     expect(expand).to_be_visible()
     assert value.bounding_box()["height"] == clamped_height
+
+
+PANEL_PLUGIN_SCRIPT = """
+document.addEventListener("datasette_init", function (event) {
+  event.detail.registerPlugin("panel-plugin", {
+    version: 0.1,
+    makeAboveTablePanelConfigs: () => ["First", "Second", "Third"].map((name) => ({
+      id: name.toLowerCase() + "-panel",
+      label: name + " panel",
+      render: (node) => {
+        node.innerHTML = "<p>" + name + " panel content</p>";
+      },
+    })),
+  });
+});
+"""
+
+
+@pytest.mark.playwright
+def test_above_table_panel_tabs_show_selected_state(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script(PANEL_PLUGIN_SCRIPT)
+    page.goto(f"{datasette_server}data/projects")
+
+    tablist = page.get_by_role("tablist")
+    expect(tablist).to_have_count(1)
+    expect(tablist).to_have_accessible_name("Panels")
+    tabs = tablist.get_by_role("tab")
+    expect(tabs).to_have_count(3)
+    first, second, third = tabs.nth(0), tabs.nth(1), tabs.nth(2)
+
+    def expect_selected(selected):
+        for tab in (first, second, third):
+            is_selected = tab == selected
+            expect(tab).to_have_attribute(
+                "aria-selected", "true" if is_selected else "false"
+            )
+            # Only the selected tab is in the tab order
+            expect(tab).to_have_attribute("tabindex", "0" if is_selected else "-1")
+            panel = page.locator(f"#{tab.get_attribute('aria-controls')}")
+            expect(panel).to_have_attribute("role", "tabpanel")
+            expect(panel).to_have_attribute("aria-labelledby", tab.get_attribute("id"))
+            if is_selected:
+                expect(panel).to_be_visible()
+                expect(panel).to_have_accessible_name(tab.inner_text())
+            else:
+                expect(panel).to_be_hidden()
+
+    def underline(tab):
+        return tab.evaluate("el => getComputedStyle(el).borderBottomWidth")
+
+    # The first panel is selected by default
+    expect_selected(first)
+    expect(page.get_by_role("tabpanel")).to_have_text("First panel content")
+    # ... and the selected state is visible without relying on colour
+    assert underline(first) == "3px"
+    assert underline(second) == "0px"
+
+    second.click()
+    expect_selected(second)
+    assert underline(first) == "0px"
+    assert underline(second) == "3px"
+
+    # Arrow keys move between the tabs, wrapping at either end
+    page.keyboard.press("ArrowRight")
+    expect(third).to_be_focused()
+    expect_selected(third)
+    page.keyboard.press("ArrowRight")
+    expect(first).to_be_focused()
+    expect_selected(first)
+    page.keyboard.press("ArrowLeft")
+    expect(third).to_be_focused()
+    expect_selected(third)
+    page.keyboard.press("Home")
+    expect(first).to_be_focused()
+    expect_selected(first)
+    page.keyboard.press("End")
+    expect(third).to_be_focused()
+    expect_selected(third)
+
+    # Tab leaves the tablist for the selected panel
+    page.keyboard.press("Tab")
+    expect(page.get_by_role("tabpanel")).to_be_focused()
+    expect(page.get_by_role("tabpanel")).to_have_text("Third panel content")
+
+
+@pytest.mark.playwright
+def test_above_table_panel_keeps_selection_when_plugin_registers_later(
+    page, datasette_server
+):
+    from playwright.sync_api import expect
+
+    page.add_init_script(PANEL_PLUGIN_SCRIPT)
+    page.goto(f"{datasette_server}data/projects")
+    tabs = page.get_by_role("tab")
+    tabs.nth(1).click()
+    page.evaluate("""
+        window.__DATASETTE__.registerPlugin("late-plugin", {
+          version: 0.1,
+          makeAboveTablePanelConfigs: () => [
+            {id: "late", label: "Late panel", render: (node) => {}},
+          ],
+        });
+        """)
+    expect(page.get_by_role("tablist")).to_have_count(1)
+    expect(tabs).to_have_count(4)
+    expect(tabs.nth(1)).to_have_attribute("aria-selected", "true")
+    expect(tabs.nth(3)).to_have_attribute("aria-selected", "false")
+    expect(page.get_by_role("tabpanel")).to_have_text("Second panel content")

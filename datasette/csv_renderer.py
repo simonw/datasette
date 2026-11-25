@@ -5,7 +5,7 @@ import io
 import markupsafe
 
 from datasette import hookimpl
-from datasette.utils import path_from_row_pks
+from datasette.utils import path_from_row_pks, row_has_null_primary_key
 from datasette.utils.asgi import Response
 from datasette.views.base import DatasetteError
 
@@ -23,9 +23,9 @@ def _blob_url(datasette, request, format_, database, table, pks, columns, row, c
     "URL that serves the binary content of this cell"
     cell = row[columns.index(column)]
     # If this is a table page with a way to identify the row, use
-    # .urls.row_blob(). Views usually have no rowid, so they use the
-    # content hash.
-    if table and (pks or "rowid" in columns):
+    # .urls.row_blob(). Views usually have no rowid, and rows with a null
+    # primary key cannot be identified, so they use the content hash.
+    if table and (pks or "rowid" in columns) and not row_has_null_primary_key(row, pks):
         return datasette.absolute_url(
             request,
             datasette.urls.row_blob(
@@ -63,6 +63,7 @@ def render_delimited(
             headings.append(f"{column}_label")
 
     def cells(row):
+        labels = getattr(row, "labels", {})
         for column, cell in zip(columns, row):
             if isinstance(cell, bytes):
                 cell = _blob_url(
@@ -81,10 +82,9 @@ def render_delimited(
             elif cell is None:
                 yield ""
                 yield ""
-            elif isinstance(cell, dict):
-                # {"value": ..., "label": ...}
-                yield cell["value"]
-                yield cell["label"]
+            elif column in labels:
+                yield cell
+                yield labels[column]
             else:
                 yield cell
                 yield ""

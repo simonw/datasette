@@ -1,5 +1,6 @@
 import os
 import pathlib
+from subprocess import CalledProcessError
 from unittest import mock
 
 import pytest
@@ -184,3 +185,59 @@ def test_publish_heroku_generate_dir(
     ):
         with open(path / name) as fp:
             assert fp.read().strip() == expected
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize(
+    "extra_args,expected_cmd,expected_error",
+    [
+        (
+            [],
+            ["heroku", "apps:create", "datasette", "--json"],
+            "Error: Could not create Heroku app 'datasette'. Try specifying a different app name with -n/--name.",
+        ),
+        (
+            ["-n", "taken-app"],
+            ["heroku", "apps:create", "taken-app", "--json"],
+            "Error: Could not create Heroku app 'taken-app'. Try specifying a different app name with -n/--name.",
+        ),
+        (
+            ["-n", ""],
+            ["heroku", "apps:create", "--json"],
+            "Error: Could not create Heroku app.",
+        ),
+    ],
+)
+@mock.patch("shutil.which")
+@mock.patch("datasette.publish.heroku.check_output")
+@mock.patch("datasette.publish.heroku.call")
+def test_publish_heroku_create_error(
+    mock_call,
+    mock_check_output,
+    mock_which,
+    tmp_path_factory,
+    extra_args,
+    expected_cmd,
+    expected_error,
+):
+    mock_which.return_value = True
+
+    def side_effect(cmd):
+        if cmd == ["heroku", "plugins"]:
+            return b"heroku-builds"
+        if cmd == ["heroku", "apps:list", "--json"]:
+            return b"[]"
+        if cmd == expected_cmd:
+            raise CalledProcessError(1, cmd)
+        raise AssertionError(f"Unexpected command: {cmd}")
+
+    mock_check_output.side_effect = side_effect
+    runner = CliRunner()
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(cli.cli, ["publish", "heroku", "test.db", *extra_args])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert expected_error in result.output
+    mock_call.assert_not_called()

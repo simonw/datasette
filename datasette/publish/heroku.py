@@ -5,7 +5,7 @@ import shlex
 import shutil
 import tempfile
 from contextlib import contextmanager
-from subprocess import call, check_output
+from subprocess import CalledProcessError, call, check_output
 
 import click
 
@@ -149,7 +149,15 @@ def publish_subcommand(publish):
                 if name:
                     cmd.append(name)
                 cmd.append("--json")
-                create_output = check_output(cmd).decode("utf8")
+                try:
+                    create_output = check_output(cmd).decode("utf8")
+                except CalledProcessError:
+                    if name:
+                        raise click.ClickException(
+                            f"Could not create Heroku app '{name}'. "
+                            "Try specifying a different app name with -n/--name."
+                        )
+                    raise click.ClickException("Could not create Heroku app.")
                 app_name = json.loads(create_output)["name"]
 
             for key, value in environment_variables.items():

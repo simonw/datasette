@@ -11,6 +11,7 @@ from datasette.utils import (
     parse_size_limit,
     path_from_row_pks,
     sqlite3,
+    untyped_columns,
     validate_sql_select,
 )
 from datasette.utils import (
@@ -21,12 +22,15 @@ from datasette.utils.sql_analysis import Operation, SQLAnalysis
 from datasette.write_sql import (
     IgnoreWriteSqlOperation,
     QueryWriteRejected,
+    RejectWriteSqlOperation,
     RequireWriteSqlPermissions,
+    UnsupportedWriteSqlOperation,
     decision_for_write_sql_operation,
     operation_is_write,
 )
 
-_query_name_re = re.compile(r"^[^/\.\n]+$")
+# Used with fullmatch(): "$" would also match before a trailing newline
+_query_name_re = re.compile(r"[^/\.\n]+")
 
 _query_fields = {
     "sql",
@@ -180,7 +184,7 @@ async def _json_or_form_payload(request):
 async def _check_query_name(db, name, *, existing=False):
     if not name or not isinstance(name, str):
         raise QueryValidationError("Query name is required")
-    if not _query_name_re.match(name):
+    if not _query_name_re.fullmatch(name):
         raise QueryValidationError("Invalid query name")
     if not existing and (await db.table_exists(name) or await db.view_exists(name)):
         raise QueryValidationError("Query name conflicts with a table or view")
@@ -234,12 +238,21 @@ def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
             if isinstance(decision, RequireWriteSqlPermissions)
             else ""
         )
+        # Why an operation can never run, whatever the actor's permissions
+        message = (
+            decision.message
+            if isinstance(
+                decision, (RejectWriteSqlOperation, UnsupportedWriteSqlOperation)
+            )
+            else None
+        )
         rows.append(
             {
                 "operation": operation.operation,
                 "database": operation.database,
                 "table": operation.table or operation.target,
                 "required_permission": required_permission,
+                "message": message,
                 "source": operation.source,
             }
         )
@@ -275,7 +288,11 @@ def _execute_write_disabled_reason(sql, analysis_error, analysis_rows):
         return "Enter writable SQL before executing."
     if analysis_error:
         return analysis_error
-    if any(row.get("allowed") is False for row in analysis_rows):
+    denied_rows = [row for row in analysis_rows if row.get("allowed") is False]
+    for row in denied_rows:
+        if row.get("message"):
+            return row["message"]
+    if denied_rows:
         return "You do not have permission for every operation listed above."
     return None
 
@@ -415,6 +432,16 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
     }
 
 
+def _analysis_template_data(analysis_data):
+    # "ok" and "parameters" are for the JSON analysis endpoint, the
+    # templates use analysis_error instead
+    return {
+        key: value
+        for key, value in analysis_data.items()
+        if key not in ("ok", "parameters")
+    }
+
+
 async def _query_create_form_context(
     datasette,
     request,
@@ -435,7 +462,7 @@ async def _query_create_form_context(
         "title": title,
         "description": description,
         "is_private": is_private,
-        **analysis_data,
+        **_analysis_template_data(analysis_data),
     }
 
 
@@ -464,7 +491,7 @@ async def _query_edit_form_context(
         "description": description or "",
         "is_private": is_private,
         "query_url": datasette.urls.table(db.name, existing.name),
-        **analysis_data,
+        **_analysis_template_data(analysis_data),
     }
 
 
@@ -505,7 +532,12 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     row = result.first()
     if row is None:
         return None
-    row_path = path_from_row_pks(row, pks, use_rowid)
+    row_path = path_from_row_pks(
+        row,
+        pks,
+        use_rowid,
+        typed_columns=untyped_columns(await db.table_column_details(table)),
+    )
     return datasette.urls.row(db.name, table, row_path)
 
 

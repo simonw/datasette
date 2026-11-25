@@ -11,26 +11,6 @@ JSON responses that return an object include an ``"ok": true`` key, consistent w
 
 The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads``, ``/-/tasks`` and ``/-/actions``, whose shapes may change in future releases.
 
-.. _JsonDataView_metadata:
-
-/-/metadata
------------
-
-Shows the contents of the ``metadata.json`` file that was passed to ``datasette serve``, if any. `Metadata example <https://fivethirtyeight.datasettes.com/-/metadata>`_:
-
-.. code-block:: json
-
-    {
-        "license": "CC Attribution 4.0 License",
-        "license_url": "http://creativecommons.org/licenses/by/4.0/",
-        "source": "fivethirtyeight/data on GitHub",
-        "source_url": "https://github.com/fivethirtyeight/data",
-        "title": "Five Thirty Eight",
-        "databases": {
-
-        }
-    }
-
 .. _JsonDataView_versions:
 
 /-/versions
@@ -97,7 +77,7 @@ Add ``?all=1`` to include details of the default plugins baked into Datasette.
 /-/settings
 -----------
 
-Shows the :ref:`settings` for this instance of Datasette. `Settings example <https://fivethirtyeight.datasettes.com/-/settings>`_:
+Shows the :ref:`settings` for this instance of Datasette. `Settings example <https://latest.datasette.io/-/settings>`_:
 
 .. code-block:: json
 
@@ -116,7 +96,9 @@ Shows the :ref:`settings` for this instance of Datasette. `Settings example <htt
 /-/config
 ---------
 
-Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well. `Config example <https://latest.datasette.io/-/config>`_:
+Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well.
+
+This endpoint requires the ``permissions-debug`` permission, because configuration can include ``allow`` blocks, the names of private tables and the SQL of private stored queries. Example output:
 
 .. code-block:: json
 
@@ -183,11 +165,15 @@ Shows all actions registered with the permission system, including those added b
 /-/jump
 -------
 
-Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and stored queries, and plugins can contribute additional items.
+Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes databases, tables, views and stored queries, and plugins can contribute additional items. :ref:`Hidden tables <DatabaseView_hidden>` are not included.
 
-Each item includes a ``type`` string used as a category label in the menu. Items can also include an optional ``description`` with longer text describing that individual result.
+Each item includes a ``type`` string used as a category label in the menu. Items can also include an optional ``description`` with longer text describing that individual result, and an optional ``display_name`` with a human-readable label - for stored queries this is the query ``title``, if one has been set.
+
+Items also include the arguments that were used to construct their URL using the :ref:`internals_datasette_urls` methods. Databases include a ``database`` key, tables and views include ``database`` and ``table`` keys and stored queries include ``database`` and ``query`` keys.
 
 The endpoint supports a ``?q=`` query parameter for filtering items by name.
+
+Use ``?type=`` to return only items of a specific type, for example ``?type=table``. This parameter can be repeated to include multiple types, for example ``?type=table&type=database``. The default item types are ``database``, ``table``, ``view`` and ``query`` - plugins may add their own.
 
 `Jump example <https://latest.datasette.io/-/jump>`_:
 
@@ -200,19 +186,24 @@ The endpoint supports a ``?q=`` query parameter for filtering items by name.
                 "name": "fixtures",
                 "url": "/fixtures",
                 "type": "database",
-                "description": null
+                "description": null,
+                "database": "fixtures"
             },
             {
                 "name": "fixtures: facetable",
                 "url": "/fixtures/facetable",
                 "type": "table",
-                "description": null
+                "description": null,
+                "database": "fixtures",
+                "table": "facetable"
             },
             {
                 "name": "fixtures: recent_releases",
                 "url": "/fixtures/recent_releases",
                 "type": "query",
-                "description": null
+                "description": null,
+                "database": "fixtures",
+                "query": "recent_releases"
             }
         ],
         "truncated": false
@@ -229,7 +220,9 @@ Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
                 "name": "fixtures: facetable",
                 "url": "/fixtures/facetable",
                 "type": "table",
-                "description": null
+                "description": null,
+                "database": "fixtures",
+                "table": "facetable"
             }
         ],
         "truncated": false
@@ -251,7 +244,7 @@ Without those query string arguments, the page lists up to five tables with dete
 /-/threads
 ----------
 
-Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``permissions-debug`` permission, since it exposes runtime internals. `Threads example <https://latest.datasette.io/-/threads>`_:
+Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``permissions-debug`` permission, since it exposes runtime internals. Example output:
 
 .. code-block:: json
 

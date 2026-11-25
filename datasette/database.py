@@ -11,12 +11,21 @@ import threading
 import time
 import uuid
 from collections import namedtuple
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
+from .permissions import _SQLITE_IDENTIFIER_CASE
+from .rows import (
+    Column,
+    Columns,
+    Row,
+    rows_with_columns,
+)
 from .telemetry import (
     callback_name,
     linked_root_span_kwargs,
@@ -53,7 +62,6 @@ from .tracer import trace, tracing_active
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
-    detect_primary_keys,
     detect_spatialite,
     escape_sqlite,
     get_all_foreign_keys,
@@ -61,10 +69,15 @@ from .utils import (
     sqlite3,
     sqlite_timelimit,
     table_column_details,
-    table_columns,
 )
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
-from .utils.sqlite import sqlite_derived_table_dependencies, sqlite_hidden_table_names
+from .utils.sqlite import (
+    _virtual_table_module,
+    sqlite_derived_table_dependencies,
+    sqlite_hidden_table_names,
+)
+
+_SPATIALITE_KNN_MODULES = {"virtualknn", "virtualknn2"}
 
 connections = threading.local()
 
@@ -83,6 +96,16 @@ class _Connection(sqlite3.Connection):
         super().set_trace_callback(trace_callback)
         self._datasette_trace_callback = trace_callback
 
+
+# Request-scoped record of which databases have had their schema checked
+# for changes. The ASGI router sets this to a fresh dict at the start of
+# each request, so a request asks each database whether its schema has
+# changed once, not once for every schema lookup. Outside of a request it
+# is None and every lookup checks. Keys are Database instances, values are
+# (write generation, schema version) tuples.
+_schema_checks: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "schema_checks", default=None
+)
 
 EXECUTE_WRITE_RETURNING_LIMIT = 10
 
@@ -105,6 +128,7 @@ class Database:
         self,
         ds,
         path=None,
+        *,
         is_mutable=True,
         is_memory=False,
         memory_name=None,
@@ -136,7 +160,13 @@ class Database:
         self.cached_hash = None
         self.cached_size = None
         self._cached_table_counts = None
-        self._cached_derived_table_dependencies = None
+        # Results of schema lookups, valid for one schema version. See
+        # _get_schema_cache() for how this is kept from going stale.
+        self._schema_cache = {}
+        self._schema_cache_version = None
+        # Incremented after every write made through this object, since
+        # any of them may have changed the schema
+        self._write_generation = 0
         self._write_thread = None
         self._write_queue = None
         self._closed = False
@@ -309,6 +339,7 @@ class Database:
         self,
         sql,
         params=None,
+        *,
         block=True,
         request=None,
         return_all=False,
@@ -355,7 +386,7 @@ class Database:
                     )
         return results
 
-    async def execute_write_script(self, sql, block=True, request=None):
+    async def execute_write_script(self, sql, *, block=True, request=None):
         self._check_not_closed()
 
         def _inner(conn):
@@ -376,7 +407,7 @@ class Database:
                     )
         return results
 
-    async def execute_write_many(self, sql, params_seq, block=True, request=None):
+    async def execute_write_many(self, sql, params_seq, *, block=True, request=None):
         self._check_not_closed()
 
         def _inner(conn):
@@ -435,7 +466,10 @@ class Database:
             with record_operation_duration(self.name, "write" if write else "read"):
                 if self.ds.executor is None:
                     # non-threaded mode
-                    return _run()
+                    try:
+                        return _run()
+                    finally:
+                        self._write_generation += 1
                 if not write:
                     # Immutable database - no writes can ever occur, so there
                     # is no write queue to block; run against a fresh
@@ -455,7 +489,7 @@ class Database:
 
         return await self.execute_isolated_fn(_analyze_sql)
 
-    async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
+    async def execute_write_fn(self, fn, *, block=True, transaction=True, request=None):
         """Run `fn(conn)` on the write connection, traced as a `db.query` span.
 
         The SQL-string write methods call `_execute_write_fn()` directly to
@@ -486,12 +520,15 @@ class Database:
             if self._write_connection is None:
                 self._write_connection = self.connect(write=True)
                 self.ds._prepare_connection(self._write_connection, self.name)
-            if transaction:
-                with self._write_connection:
-                    self._write_connection.execute("BEGIN IMMEDIATE")
+            try:
+                if transaction:
+                    with self._write_connection:
+                        self._write_connection.execute("BEGIN IMMEDIATE")
+                        result = fn(self._write_connection)
+                else:
                     result = fn(self._write_connection)
-            else:
-                result = fn(self._write_connection)
+            finally:
+                self._write_generation += 1
             if not block:
                 # There is no write thread here, so the write has already
                 # finished. Hand back the same (task_id, reply_future) shape
@@ -686,6 +723,10 @@ class Database:
                         sys.stderr.write(f"{e}\n")
                         sys.stderr.flush()
                         exception = e
+                # Before the caller hears back, so that their next schema
+                # lookup sees this. A write that failed may still have
+                # changed the schema.
+                self._write_generation += 1
                 _deliver_write_result(task, result, exception)
             finally:
                 if token is not None:
@@ -772,6 +813,7 @@ class Database:
         self,
         sql,
         params=None,
+        *,
         truncate=False,
         custom_time_limit=None,
         page_size=None,
@@ -779,13 +821,14 @@ class Database:
     ):
         """Executes sql against db_name in a thread"""
         self._check_not_closed()
-        page_size = page_size or self.ds.page_size
-        time_limit_ms = self.ds.sql_time_limit_ms
+        default_time_limit_ms = self.ds.sql_time_limit_ms
+        # custom_time_limit can be shorter or longer than the setting. Limits
+        # that come from a request, such as ?_timelimit=, are capped by the
+        # code that reads them.
+        time_limit_ms = custom_time_limit or default_time_limit_ms
         # Callers that pass a shorter custom_time_limit, such as table counts
         # and facet suggestions, expect timeouts, so they are not span errors
-        timeout_expected = bool(custom_time_limit) and custom_time_limit < time_limit_ms
-        if timeout_expected:
-            time_limit_ms = custom_time_limit
+        timeout_expected = time_limit_ms < default_time_limit_ms
 
         def sql_operation_in_thread(conn):
             # Expected timeouts and errors with log_sql_errors=False are not
@@ -795,13 +838,19 @@ class Database:
                 record_exception=False,
                 set_status_on_exception=False,
             ) as execute_span:
+                cursor = None
                 try:
                     with sqlite_timelimit(conn, time_limit_ms):
                         try:
                             cursor = conn.cursor()
+                            # Fetch plain tuples, which become datasette.Row
+                            # objects when the Results object is constructed
+                            cursor.row_factory = None
                             cursor.execute(sql, params if params is not None else {})
                             max_returned_rows = self.ds.max_returned_rows
-                            if max_returned_rows == page_size:
+                            # A paginated query fetches one row more than a
+                            # page, to find out if there is a next page
+                            if page_size and max_returned_rows == page_size:
                                 max_returned_rows += 1
                             if max_returned_rows and truncate:
                                 rows = cursor.fetchmany(max_returned_rows + 1)
@@ -811,6 +860,12 @@ class Database:
                                 rows = cursor.fetchall()
                                 truncated = False
                         except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                            # The traceback keeps this frame, and so the cursor,
+                            # alive until the garbage collector runs. An open
+                            # cursor stops SQLite from really closing the
+                            # connection, so release it now.
+                            if cursor is not None:
+                                cursor.close()
                             if e.args == ("interrupted",):
                                 raise QueryInterrupted(e, sql, params)
                             if log_sql_errors:
@@ -912,12 +967,21 @@ class Database:
             return self.cached_table_counts
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
-        for table in await self.table_names():
+        tables = await self.execute(
+            "select name, sql from sqlite_master where type='table' order by name"
+        )
+        for table, sql in tables.rows:
+            # SpatiaLite's KNN virtual tables only return rows for a nearest
+            # neighbour query, so they are always empty to count(*) - which
+            # can still run for minutes without being stopped by the time limit
+            if _virtual_table_module(sql) in _SPATIALITE_KNN_MODULES:
+                counts[table] = 0
+                continue
             try:
                 table_count = (
                     await self.execute(
                         f"select count(*) from (select * from {escape_sqlite(table)} limit {self.count_limit + 1})",
-                        custom_time_limit=limit,
+                        custom_time_limit=self.ds.capped_time_limit_ms(limit),
                     )
                 ).rows[0][0]
                 counts[table] = table_count
@@ -949,16 +1013,47 @@ class Database:
         ]
 
     async def table_exists(self, table):
+        cache = await self._get_schema_cache()
+        if cache is not None:
+            return (await self._table_and_view_types(cache)).get(table) == "table"
         results = await self.execute(
             "select 1 from sqlite_master where type='table' and name=?", params=(table,)
         )
         return bool(results.rows)
 
     async def view_exists(self, table):
+        cache = await self._get_schema_cache()
+        if cache is not None:
+            return (await self._table_and_view_types(cache)).get(table) == "view"
         results = await self.execute(
             "select 1 from sqlite_master where type='view' and name=?", params=(table,)
         )
         return bool(results.rows)
+
+    async def _table_name_nocase(self, table):
+        """
+        Returns the name of the table that SQLite would find for ``table``,
+        which it matches without regard to ASCII case, or None if there is
+        no such table.
+        """
+        cache = await self._get_schema_cache()
+        if cache is None:
+            row = (
+                await self.execute(
+                    "select name from sqlite_master"
+                    " where type='table' and name=? collate nocase",
+                    [table],
+                )
+            ).first()
+            return row[0] if row else None
+        names = cache.get("table_names_nocase")
+        if names is None:
+            names = cache["table_names_nocase"] = {
+                name.translate(_SQLITE_IDENTIFIER_CASE): name
+                for name, type_ in (await self._table_and_view_types(cache)).items()
+                if type_ == "table"
+            }
+        return names.get(table.translate(_SQLITE_IDENTIFIER_CASE))
 
     async def table_names(self):
         results = await self.execute(
@@ -966,32 +1061,112 @@ class Database:
         )
         return [r[0] for r in results.rows]
 
+    async def _schema_version(self):
+        """
+        Returns a value that changes whenever the schema changes, asking
+        SQLite for it at most once per request unless a write has been made
+        through this object since it was last asked.
+        """
+        checks = _schema_checks.get()
+        generation = self._write_generation
+        if checks is not None:
+            checked = checks.get(self)
+            if checked is not None and checked[0] == generation:
+                return checked[1]
+        version = await self.execute_fn(_schema_version)
+        if checks is not None:
+            checks[self] = (generation, version)
+        return version
+
+    async def _get_schema_cache(self) -> dict | None:
+        """
+        Returns the dictionary of cached schema lookups that is valid for
+        the schema as it is now, or None if lookups against this database
+        cannot be cached.
+
+        The cache is thrown away when the schema version changes. That
+        version is read again after any write made through this object and
+        at least once in every request, which is how a change made by
+        another process is noticed. Outside of a request it is read every
+        time.
+        """
+        if self.is_memory and not self.memory_name:
+            # Each connection to an unnamed in-memory database is a
+            # separate database, so there is no one schema to cache
+            return None
+        if self.is_mutable:
+            version = await self._schema_version()
+            if version != self._schema_cache_version:
+                self._schema_cache = {}
+                self._schema_cache_version = version
+        return self._schema_cache
+
+    async def _cached_schema_lookup(self, key, fn, table=None):
+        """
+        Returns the result of running ``fn(conn)``, a function of nothing
+        but the schema, from the cache if it is there. ``key`` identifies
+        the lookup. Pass ``table`` if the lookup is about one table or view.
+
+        Callers must not hand the result to code that might modify it,
+        since the same object is returned every time.
+        """
+        cache = await self._get_schema_cache()
+        if cache is None:
+            return await self.execute_fn(fn)
+        try:
+            return cache[key]
+        except KeyError:
+            pass
+        # If the schema changes while this is running then self._schema_cache
+        # is replaced, and this result is stored in the discarded dictionary
+        result = await self.execute_fn(fn)
+        # A lookup about a table is only kept if that table or view exists.
+        # Table names can come from a query string, so without this any
+        # number of names that match nothing could be used to fill the cache.
+        if table is None or table in await self._table_and_view_types(cache):
+            cache[key] = result
+        return result
+
+    async def _table_and_view_types(self, cache) -> dict[str, str]:
+        """
+        Returns {name: "table" or "view"} for everything in the main
+        database, kept in ``cache``, the result of _get_schema_cache()
+        """
+        types = cache.get("table_and_view_types")
+        if types is None:
+            types = await self.execute_fn(_table_and_view_types)
+            cache["table_and_view_types"] = types
+        return types
+
     # Named functions rather than lambdas give more useful datasette.callback
     # span attributes
 
     async def table_columns(self, table):
-        def _table_columns(conn):
-            return table_columns(conn, table)
+        return list((await self.table_column_details(table)).names)
 
-        return await self.execute_fn(_table_columns)
-
-    async def table_column_details(self, table):
+    async def table_column_details(self, table: str) -> Columns:
         def _table_column_details(conn):
             return table_column_details(conn, table)
 
-        return await self.execute_fn(_table_column_details)
+        # Columns is immutable, so the cached object can be handed out
+        return await self._cached_schema_lookup(
+            ("column_details", table), _table_column_details, table
+        )
 
     async def primary_keys(self, table):
-        def _primary_keys(conn):
-            return detect_primary_keys(conn, table)
-
-        return await self.execute_fn(_primary_keys)
+        # Sorted by position in the primary key, which starts at 1
+        pks = sorted(
+            (column.pk_position, column.name)
+            for column in await self.table_column_details(table)
+            if column.pk_position
+        )
+        return [name for _, name in pks]
 
     async def fts_table(self, table):
         def _fts_table(conn):
             return detect_fts(conn, table)
 
-        return await self.execute_fn(_fts_table)
+        return await self._cached_schema_lookup(("fts_table", table), _fts_table, table)
 
     async def label_column_for_table(self, table):
         explicit_label_column = (await self.ds.table_config(self.name, table)).get(
@@ -1015,7 +1190,9 @@ class Database:
                 details[name] = (columns[name], is_unique)
             return details
 
-        column_details = await self.execute_fn(column_details)
+        column_details = await self._cached_schema_lookup(
+            ("label_column_details", table), column_details, table
+        )
         # Is there just one unique column that's text?
         unique_text_columns = [
             name
@@ -1042,9 +1219,14 @@ class Database:
         return None
 
     async def foreign_keys_for_table(self, table):
-        return await self.execute_fn(
-            lambda conn: get_outbound_foreign_keys(conn, table)
+        def _foreign_keys_for_table(conn):
+            return tuple(get_outbound_foreign_keys(conn, table))
+
+        foreign_keys = await self._cached_schema_lookup(
+            ("foreign_keys", table), _foreign_keys_for_table, table
         )
+        # Copies, so that a caller cannot change what is cached
+        return [dict(fk) for fk in foreign_keys]
 
     async def hidden_table_names(self):
         hidden_tables = []
@@ -1085,14 +1267,13 @@ class Database:
 
     async def derived_table_dependencies(self):
         """Return implementation tables and the tables they derive from."""
-        schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
-        if (
-            self._cached_derived_table_dependencies is None
-            or self._cached_derived_table_dependencies[0] != schema_version
-        ):
-            dependencies = await self.execute_fn(sqlite_derived_table_dependencies)
-            self._cached_derived_table_dependencies = (schema_version, dependencies)
-        return self._cached_derived_table_dependencies[1]
+
+        def _derived_table_dependencies(conn):
+            return sqlite_derived_table_dependencies(conn)
+
+        return await self._cached_schema_lookup(
+            "derived_table_dependencies", _derived_table_dependencies
+        )
 
     async def view_names(self):
         results = await self.execute("select name from sqlite_master where type='view'")
@@ -1102,25 +1283,28 @@ class Database:
         return await self.execute_fn(get_all_foreign_keys)
 
     async def get_table_definition(self, table, type_="table"):
-        table_definition_rows = list(
-            await self.execute(
+        def _get_table_definition(conn):
+            definition = conn.execute(
                 "select sql from sqlite_master where name = :n and type=:t",
                 {"n": table, "t": type_},
+            ).fetchone()
+            if definition is None:
+                return None
+            bits = [definition[0] + ";"]
+            # Add on any indexes
+            bits.extend(
+                row[0] + ";"
+                for row in conn.execute(
+                    "select sql from sqlite_master where tbl_name = :n"
+                    " and type='index' and sql is not null",
+                    {"n": table},
+                ).fetchall()
             )
+            return "\n".join(bits)
+
+        return await self._cached_schema_lookup(
+            ("definition", table, type_), _get_table_definition, table
         )
-        if not table_definition_rows:
-            return None
-        bits = [table_definition_rows[0][0] + ";"]
-        # Add on any indexes
-        index_rows = list(
-            await self.execute(
-                "select sql from sqlite_master where tbl_name = :n and type='index' and sql is not null",
-                {"n": table},
-            )
-        )
-        for index_row in index_rows:
-            bits.append(index_row[0] + ";")
-        return "\n".join(bits)
 
     async def get_view_definition(self, view):
         return await self.get_table_definition(view, "view")
@@ -1141,6 +1325,21 @@ class Database:
         if tags:
             tags_str = f" ({', '.join(tags)})"
         return f"<Database: {self.name}{tags_str}>"
+
+
+def _schema_version(conn):
+    # SQLite increments this whenever the schema of the main database
+    # changes, whichever connection or process changed it
+    return conn.execute("PRAGMA schema_version").fetchone()[0]
+
+
+def _table_and_view_types(conn):
+    # Tables in the main database only, matching _schema_version()
+    return dict(
+        conn.execute(
+            "select name, type from sqlite_master where type in ('table', 'view')"
+        ).fetchall()
+    )
 
 
 def _apply_write_wrapper(fn, wrapper_factory, track_event):
@@ -1286,6 +1485,11 @@ class ExecuteWriteResult:
             cursor.close()
         if description is not None and not return_all and truncated:
             rowcount = -1
+        if rows and not isinstance(rows[0], Row):
+            # Connections Datasette opens return Row objects already, but a
+            # plugin may have set a different row_factory on this one
+            columns = Columns(d[0] for d in description)
+            rows = [Row(tuple(row), columns) for row in rows]
         return cls(rowcount, lastrowid, description, rows, truncated)
 
     def fetchall(self):
@@ -1294,33 +1498,90 @@ class ExecuteWriteResult:
         return rows
 
 
+def columns_for_results(table_columns: Columns, names: Iterable[str]) -> Columns:
+    """
+    Returns the ``Columns`` for the results of a query that selected ``names``
+    from a table, given the ``table_columns`` describing that table.
+
+    A name that is not a column of the table is included with no details.
+    """
+    columns = []
+    for name in names:
+        if name in table_columns:
+            column = table_columns[name]
+        elif name == "rowid" and len(table_columns):
+            # The implicit rowid of a table that has no column of that name
+            column = Column(name=name, type="INTEGER")
+        else:
+            column = Column(name)
+        columns.append(column)
+    return Columns(columns)
+
+
 class Results:
-    def __init__(self, rows, truncated, description):
-        self.rows = rows
+    """
+    The results of a query: a list of :class:`datasette.Row` objects in
+    ``.rows``, plus ``.columns`` describing the columns they share.
+    """
+
+    rows: list[Row]
+    columns: Columns
+    truncated: bool
+
+    def __init__(
+        self,
+        rows: Sequence[Row | Sequence[Any]],
+        truncated: bool,
+        description: Sequence[Sequence[Any]] | None,
+        columns: Columns | None = None,
+    ) -> None:
+        if columns is None:
+            columns = Columns(d[0] for d in description or ())
+        self.columns = columns
         self.truncated = truncated
         self.description = description
+        if rows and rows[0].__class__ is tuple:
+            # The common case: tuples straight from the database
+            self.rows = [Row(row, columns) for row in rows]
+        elif rows and rows[0].__class__ is Row:
+            self.rows = list(rows)  # type: ignore[arg-type]
+        else:
+            self.rows = [
+                row if isinstance(row, Row) else Row(tuple(row), columns)
+                for row in rows
+            ]
 
-    @property
-    def columns(self):
-        return [d[0] for d in self.description]
+    def with_columns(self, columns: Columns | Iterable[str | Column]) -> "Results":
+        """
+        Returns a copy of these results described by a different ``Columns``
+        object, for example one that adds the details of a table's columns.
+        """
+        if not isinstance(columns, Columns):
+            columns = Columns(columns)
+        return Results(
+            rows_with_columns(self.rows, columns),
+            self.truncated,
+            self.description,
+            columns,
+        )
 
-    def first(self):
+    def first(self) -> Row | None:
         if self.rows:
             return self.rows[0]
         else:
             return None
 
-    def single_value(self):
+    def single_value(self) -> Any:
         if self.rows and 1 == len(self.rows) and 1 == len(self.rows[0]):
             return self.rows[0][0]
         else:
             raise MultipleValues
 
-    def dicts(self):
+    def dicts(self) -> list[dict[str, Any]]:
         return [dict(row) for row in self.rows]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Row]:
         return iter(self.rows)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.rows)

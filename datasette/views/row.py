@@ -8,14 +8,14 @@ from dataclasses import dataclass, field
 import markupsafe
 import sqlite_utils
 
-from datasette.database import QueryInterrupted
+from datasette.database import QueryInterrupted, columns_for_results
 from datasette.events import DeleteRowEvent, UpdateRowEvent
 from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.plugins import pm
 from datasette.resources import TableResource
+from datasette.rows import label_rows
 from datasette.utils import (
     CustomJSONEncoder,
-    CustomRow,
     InvalidSql,
     WriteJsonValueError,
     add_cors_headers,
@@ -23,19 +23,24 @@ from datasette.utils import (
     call_with_supported_arguments,
     decode_write_json_row,
     escape_sqlite,
+    key_value_display,
     make_slot_function,
     path_from_row_pks,
-    path_with_format,
-    path_with_removed_args,
     sqlite3,
     tilde_decode,
     to_css_class,
+    untyped_columns,
 )
 from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import (
+    BaseView,
+    DatasetteError,
+    render_with_output_renderer,
+    tsv_export_path,
+)
 from .table import (
     _table_page_data,
     display_columns_and_rows,
@@ -63,16 +68,15 @@ class RowContext(Context):
     table: str = from_extra()
 
     # Fields added by the view code
-    ok: bool = field(
-        metadata={"help": "True if the data for this page was retrieved without errors"}
-    )
     rows: list = field(
         metadata={
             "help": "A single-item list containing this row as a dictionary mapping column name to raw value."
         }
     )
     primary_key_values: list = field(
-        metadata={"help": "Values of the primary keys for this row, from the URL"}
+        metadata={
+            "help": "Values of the primary keys for this row, decoded from the URL. Most are strings. A binary value is ``bytes``, and a number in a primary key column with no declared type is an ``int`` or ``float``. Use the ``key_value_display`` filter to show one."
+        }
     )
     query_ms: float = field(
         metadata={
@@ -81,7 +85,7 @@ class RowContext(Context):
     )
     display_columns: list = field(
         metadata={
-            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row."
         }
     )
     display_rows: list = field(
@@ -117,11 +121,21 @@ class RowContext(Context):
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this row in that format."
         }
     )
+    renderer_options: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names to the ``label``, ``description``, ``is_binary`` and ``is_webpage`` options their :ref:`plugin_register_output_renderer` plugin hook set, used by the export dialog."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``."
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options."
+        }
+    )
+    url_tsv_path: str = field(
+        metadata={
+            "help": "Path portion of the TSV export URL, which takes the same arguments as CSV, or None if a plugin provides the ``tsv`` format"
         }
     )
     settings: dict = field(
@@ -148,33 +162,27 @@ async def _database_and_table_resource_from_request(datasette, request):
 class RowView(BaseView):
     name = "row"
 
-    def redirect(self, request, path, forward_querystring=True, remove_args=None):
+    def redirect(self, request, path, forward_querystring=True):
         if request.query_string and "?" not in path and forward_querystring:
             path = f"{path}?{request.query_string}"
-        if remove_args:
-            path = path_with_removed_args(request, remove_args, path=path)
         response = Response.redirect(path)
         response.headers["Link"] = f"<{path}>; rel=preload"
         if self.ds.cors:
             add_cors_headers(response.headers)
         return response
 
-    async def as_csv(self, request, database):
-        return await stream_csv(self.ds, self.data, request, database)
-
     async def get(self, request):
         db = await self.ds.resolve_database(request)
         database = db.name
-        database_route = db.route
         format_ = request.url_vars.get("format") or "html"
         data_kwargs = {}
-
-        if format_ == "csv":
-            return await self.as_csv(request, database_route)
 
         if format_ == "html":
             # HTML views default to expanding all foreign key labels
             data_kwargs["default_labels"] = True
+        elif self.ds._renderer_extras.get(format_):
+            # Extras declared by the output renderer for this format
+            data_kwargs["renderer_extras"] = self.ds._renderer_extras[format_]
 
         extra_template_data = {}
         start = time.perf_counter()
@@ -223,43 +231,24 @@ class RowView(BaseView):
         data["query_ms"] = (end - start) * 1000
 
         if format_ in self.ds.renderers:
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                self.ds.renderers[format_][0],
-                datasette=self.ds,
+            response = await render_with_output_renderer(
+                self.ds,
+                request,
+                format_,
+                data=data,
                 columns=data.get("columns") or [],
                 rows=data.get("rows") or [],
                 sql=data.get("query", {}).get("sql", None),
                 query_name=data.get("query_name"),
                 database=database,
                 table=data.get("table"),
-                request=request,
                 view_name=self.name,
                 truncated=False,  # TODO: support this
                 error=data.get("error"),
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
             )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                response = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code", status_code or 200),
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                response = result
-                if status_code is not None:
-                    # Over-ride the status code
-                    response.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
+            if status_code is not None:
+                # Over-ride the status code
+                response.status = status_code
         elif format_ == "html":
             response = await self.html(request, data, extra_template_data, templates)
             if status_code is not None:
@@ -298,28 +287,18 @@ class RowView(BaseView):
                 database=data.get("database"),
                 table=data.get("table"),
                 request=request,
+                path=self.ds.urls.modify(request, format=False).partition("?")[0],
+                full_path=self.ds.urls.modify(request, format=False),
                 view_name=self.name,
             )
             it_can_render = await await_me_maybe(it_can_render)
             if it_can_render:
-                renderers[key] = self.ds.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format=key,
-                        extra_qs={**url_labels_extra},
-                    )
+                renderers[key] = self.ds.urls.modify(
+                    request, format=key, add={**url_labels_extra}
                 )
 
-        url_csv_args = {"_size": "max", **url_labels_extra}
-        url_csv = self.ds.urls.path(
-            path_with_format(
-                request=request,
-                path=request.scope.get("route_path"),
-                format="csv",
-                extra_qs=url_csv_args,
-            )
-        )
+        # No _size=max: a row page exports just that row
+        url_csv = self.ds.urls.modify(request, format="csv", add={**url_labels_extra})
         url_csv_path = url_csv.split("?")[0]
         context = {**data, **extras}
         if "metadata" not in context:
@@ -329,13 +308,7 @@ class RowView(BaseView):
         template = environment.select_template(templates)
         alternate_url_json = self.ds.absolute_url(
             request,
-            self.ds.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="json",
-                )
-            ),
+            self.ds.urls.modify(request, format="json"),
         )
         return Response.html(
             await self.ds.render_template(
@@ -349,7 +322,6 @@ class RowView(BaseView):
                     primary_keys=context["primary_keys"],
                     private=context["private"],
                     table=context["table"],
-                    ok=context["ok"],
                     rows=context["rows"],
                     primary_key_values=context["primary_key_values"],
                     query_ms=context["query_ms"],
@@ -361,14 +333,15 @@ class RowView(BaseView):
                     table_page_data=context["table_page_data"],
                     top_row=context["top_row"],
                     renderers=renderers,
+                    renderer_options=self.ds._renderer_options,
                     url_csv=url_csv,
                     url_csv_path=url_csv_path,
                     url_csv_hidden_args=[
                         (key, value)
                         for key, value in urllib.parse.parse_qsl(request.query_string)
                         if key not in ("_labels", "_facet", "_size")
-                    ]
-                    + [("_size", "max")],
+                    ],
+                    url_tsv_path=tsv_export_path(self.ds, request),
                     settings=self.ds.settings_dict(),
                     select_templates=[
                         f"{'*' if template_name == template.name else ''}{template_name}"
@@ -406,7 +379,7 @@ class RowView(BaseView):
             add_cors_headers(response.headers)
         return response
 
-    async def data(self, request, default_labels=False):
+    async def data(self, request, default_labels=False, renderer_extras=None):
         db, table, resource = await _database_and_table_resource_from_request(
             self.ds, request
         )
@@ -431,7 +404,14 @@ class RowView(BaseView):
         results = await resolved.db.execute(
             resolved.sql, resolved.params, truncate=True
         )
-        columns = [r[0] for r in results.description]
+        # Describe the columns of the results using the details of the table
+        results = results.with_columns(
+            columns_for_results(
+                await resolved.db.table_column_details(resolved.table),
+                results.columns.names,
+            )
+        )
+        columns = list(results.columns.names)
         rows = list(results.rows)
         if not rows:
             raise NotFound(f"Record not found: {pk_values}")
@@ -440,62 +420,47 @@ class RowView(BaseView):
 
         async def template_data():
             is_table = await db.table_exists(table)
-            # Reorder columns so primary keys come first
+            # Primary keys are displayed first. The rows themselves keep the
+            # order their values came back from the database in.
             pk_set = set(pks)
             pk_cols = [d for d in results.description if d[0] in pk_set]
             non_pk_cols = [d for d in results.description if d[0] not in pk_set]
-            reordered_description = pk_cols + non_pk_cols
-            reordered_columns = [d[0] for d in reordered_description]
+            display_description = pk_cols + non_pk_cols
 
-            # Reorder row data to match
-            reordered_rows = []
-            for row in rows:
-                new_row = CustomRow(reordered_columns)
-                for col in reordered_columns:
-                    new_row[col] = row[col]
-                reordered_rows.append(new_row)
-
-            # Expand foreign key columns into dicts so display_columns_and_rows
-            # renders them as hyperlinks, matching the table view behavior
-            expanded_rows = reordered_rows
+            # Look up labels for foreign key columns, so that
+            # display_columns_and_rows renders them as hyperlinks
+            labels = {}
+            foreign_key_links = {}
             for fk in await db.foreign_keys_for_table(table):
                 column = fk["column"]
-                if column not in reordered_columns:
+                if column not in columns:
                     continue
-                column_index = reordered_columns.index(column)
-                values = [row[column_index] for row in expanded_rows]
-                expanded_labels = await self.ds.expand_foreign_keys(
-                    request.actor, database, table, column, values
+                expanded = await self.ds.foreign_key_labels(
+                    request.actor,
+                    database,
+                    table,
+                    column,
+                    [row[column] for row in rows],
                 )
-                if expanded_labels:
-                    new_rows = []
-                    for row in expanded_rows:
-                        new_row = CustomRow(reordered_columns)
-                        for col in reordered_columns:
-                            value = row[col]
-                            if (
-                                col == column
-                                and (col, value) in expanded_labels
-                                and value is not None
-                            ):
-                                new_row[col] = {
-                                    "value": value,
-                                    "label": expanded_labels[(col, value)],
-                                }
-                            else:
-                                new_row[col] = value
-                        new_rows.append(new_row)
-                    expanded_rows = new_rows
+                if expanded is None:
+                    continue
+                other_table, column_labels = expanded
+                if column_labels is None:
+                    foreign_key_links[column] = other_table
+                else:
+                    labels[column] = column_labels
+            labeled_rows = label_rows(rows, labels)
 
             display_columns, display_rows = await display_columns_and_rows(
                 self.ds,
                 database,
                 table,
-                reordered_description,
-                expanded_rows,
+                display_description,
+                labeled_rows,
                 link_column=False,
                 truncate_cells=0,
                 request=request,
+                foreign_key_links=foreign_key_links,
             )
             for column in display_columns:
                 column["sortable"] = False
@@ -509,9 +474,14 @@ class RowView(BaseView):
                         )
 
             label_column = await db.label_column_for_table(table) if is_table else None
-            row_path = path_from_row_pks(rows[0], pks, False)
+            row_path = path_from_row_pks(
+                rows[0],
+                pks,
+                False,
+                typed_columns=untyped_columns(await db.table_column_details(table)),
+            )
             pk_path = path_from_row_pks(rows[0], pks, False, False)
-            row_label = row_label_from_label_column(expanded_rows[0], label_column)
+            row_label = row_label_from_label_column(labeled_rows[0], label_column)
             for display_row in display_rows:
                 display_row.pk_path = pk_path
                 display_row.row_path = row_path
@@ -568,7 +538,7 @@ class RowView(BaseView):
                 request=request,
                 database=database,
                 table=table,
-                row=rows[0],
+                row=labeled_rows[0],
             ):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
@@ -576,7 +546,7 @@ class RowView(BaseView):
 
             return {
                 "private": private,
-                "columns": reordered_columns,
+                "columns": [d[0] for d in display_description],
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values, actor=request.actor
                 ),
@@ -586,7 +556,7 @@ class RowView(BaseView):
                 "custom_table_templates": [
                     f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
                     f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
-                    "_table.html",
+                    "_row_fields.html",
                 ],
                 "row_mutation_ui": any(row_action_permissions.values()),
                 "table_page_data": await _table_page_data(
@@ -606,7 +576,7 @@ class RowView(BaseView):
                     request,
                     database=resolved.db.name,
                     table=resolved.table,
-                    row=rows[0],
+                    row=labeled_rows[0],
                 ),
                 "metadata": {},
             }
@@ -625,6 +595,9 @@ class RowView(BaseView):
         if request.url_vars.get("format"):
             # Data formats reject unknown extras; HTML ignores them
             table_extra_registry.validate_requested(extras, ExtraScope.ROW)
+        if renderer_extras:
+            # Any that are not available for rows are skipped when resolved
+            extras.update(renderer_extras)
 
         # Process extras
         row_extra_context = RowExtraContext(
@@ -707,7 +680,7 @@ class RowView(BaseView):
             link = "{}?{}={}".format(
                 self.ds.urls.table(database, fk["other_table"]),
                 key,
-                ",".join(pk_values),
+                ",".join(str(value) for value in pk_values),
             )
             foreign_key_tables.append({**fk, "count": count, "link": link})
         return foreign_key_tables
@@ -731,7 +704,7 @@ def _truncated_row_flash_label(label):
 async def _row_flash_message(
     datasette, request, action, resolved, row=None, *, refresh_row=False
 ):
-    pk_label = ", ".join(resolved.pk_values)
+    pk_label = ", ".join(key_value_display(value) for value in resolved.pk_values)
     # Mutation permission does not grant access to stored row labels.
     if not await datasette.allowed(
         action="view-table",

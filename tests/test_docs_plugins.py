@@ -1,6 +1,5 @@
 # fmt: off
 # -- start datasette_with_plugin_fixture --
-import pytest
 import pytest_asyncio
 
 from datasette import hookimpl
@@ -29,7 +28,6 @@ async def datasette_with_plugin():
 
 
 # -- start datasette_with_plugin_test --
-@pytest.mark.asyncio
 async def test_error(datasette_with_plugin):
     response = await datasette_with_plugin.client.get("/error")
     assert response.status_code == 500

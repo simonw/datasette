@@ -26,7 +26,6 @@ def ds_envelope(tmp_path_factory):
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -34,7 +33,6 @@ def ds_envelope(tmp_path_factory):
         "/-/.json",
         "/-/versions.json",
         "/-/settings.json",
-        "/-/config.json",
         "/-/actor.json",
         "/-/jump.json",
         "/-/schema.json",
@@ -52,7 +50,6 @@ async def test_success_object_has_ok_true(ds_client, path):
     assert data["ok"] is True
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -60,6 +57,7 @@ async def test_success_object_has_ok_true(ds_client, path):
         "/-/check.json?action=view-instance",
         "/-/threads.json",
         "/-/tasks.json",
+        "/-/config.json",
     ),
 )
 async def test_permission_debug_success_has_ok_true(ds_envelope, path):
@@ -69,7 +67,6 @@ async def test_permission_debug_success_has_ok_true(ds_envelope, path):
     assert data["ok"] is True
 
 
-@pytest.mark.asyncio
 async def test_permissions_post_success_has_ok_true(ds_envelope):
     response = await ds_envelope.client.post(
         "/-/permissions",
@@ -80,7 +77,6 @@ async def test_permissions_post_success_has_ok_true(ds_envelope):
     assert response.json()["ok"] is True
 
 
-@pytest.mark.asyncio
 async def test_plugins_json_is_array(ds_client):
     response = await ds_client.get("/-/plugins.json")
     assert response.status_code == 200
@@ -93,7 +89,6 @@ async def test_plugins_json_is_array(ds_client):
     assert len(all_plugins) > len(data)
 
 
-@pytest.mark.asyncio
 async def test_databases_json_is_object(ds_client):
     response = await ds_client.get("/-/databases.json")
     assert response.status_code == 200
@@ -104,7 +99,6 @@ async def test_databases_json_is_object(ds_client):
     assert "fixtures" in {db["name"] for db in data["databases"]}
 
 
-@pytest.mark.asyncio
 async def test_actions_json_is_object(ds_envelope):
     response = await ds_envelope.client.get("/-/actions.json", actor={"id": "root"})
     assert response.status_code == 200
@@ -115,7 +109,6 @@ async def test_actions_json_is_object(ds_envelope):
     assert "view-instance" in {action["name"] for action in data["actions"]}
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -136,7 +129,6 @@ async def test_undocumented_endpoints_report_unstable(ds_client, path):
     assert response.json()["unstable"] == UNSTABLE_API_MESSAGE
 
 
-@pytest.mark.asyncio
 async def test_query_store_and_definition_report_unstable(ds_envelope):
     store = await ds_envelope.client.post(
         "/data/-/queries/store",
@@ -152,7 +144,6 @@ async def test_query_store_and_definition_report_unstable(ds_envelope):
     assert definition.json()["unstable"] == UNSTABLE_API_MESSAGE
 
 
-@pytest.mark.asyncio
 async def test_permissions_post_reports_unstable(ds_envelope):
     response = await ds_envelope.client.post(
         "/-/permissions",
@@ -163,7 +154,6 @@ async def test_permissions_post_reports_unstable(ds_envelope):
     assert response.json()["unstable"] == UNSTABLE_API_MESSAGE
 
 
-@pytest.mark.asyncio
 async def test_documented_endpoints_do_not_report_unstable(ds_client):
     for path in ("/-/versions.json", "/fixtures.json", "/fixtures/facetable.json"):
         response = await ds_client.get(path)

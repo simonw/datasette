@@ -15,7 +15,6 @@ from datasette.utils.asgi import Forbidden
 from datasette.utils.permissions import gather_permission_sql_from_hooks
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["table", "view"])
 @pytest.mark.parametrize("spelling", ["Inventory", "inventory", "INVENTORY"])
 @pytest.mark.parametrize("allowed", [False, True])
@@ -89,7 +88,6 @@ async def test_table_permission_identity(
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_other_permission_identities_are_preserved():
     ds = Datasette(
         config={
@@ -144,7 +142,6 @@ async def test_other_permission_identities_are_preserved():
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("allow", [True, False, {"id": "reader"}])
 async def test_table_listings_and_explanations(allow):
     ds = Datasette(
@@ -197,7 +194,6 @@ async def test_table_listings_and_explanations(allow):
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("deny_first", [True, False])
 async def test_case_variant_rules_deny_wins(deny_first):
     rules = [("inventory", False), ("INVENTORY", True)]
@@ -247,7 +243,6 @@ async def test_case_variant_rules_deny_wins(deny_first):
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("config_style", ["allow", "permissions"])
 @pytest.mark.parametrize("allowed", [True, False])
 async def test_case_variant_token_restrictions(config_style, allowed):
@@ -295,7 +290,6 @@ async def test_case_variant_token_restrictions(config_style, allowed):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_plugin_restriction_intersection_and_dependencies():
     class Plugin:
         @hookimpl
@@ -357,7 +351,6 @@ async def test_plugin_restriction_intersection_and_dependencies():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_shared_plugin_rule_keeps_query_identity_and_original_sql():
     shared = PermissionSQL(
         sql="SELECT 'data' AS parent, 'Inventory' AS child, 0 AS allow, 'shared deny' AS reason"

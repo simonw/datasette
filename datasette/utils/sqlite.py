@@ -161,6 +161,45 @@ def sqlite_hidden_table_names(conn, *, schema: str | None = "main") -> list[str]
     return sorted(hidden_tables) + content_fts_tables
 
 
+def sqlite_fts_external_content_tables(
+    conn, *, schema: str | None = "main"
+) -> dict[str, str]:
+    """Return ``{fts_table: content_table}`` for FTS tables declared with ``content=``.
+
+    Contentless tables (``content=''``) are not included.
+    """
+    rows = conn.execute(
+        f"select name, sql from {_sqlite_schema_table(schema)} where type = 'table'"
+    ).fetchall()
+    content_tables = {}
+    for name, sql in rows:
+        if _virtual_table_module(sql) not in {"fts3", "fts4", "fts5"}:
+            continue
+        content_table = _fts_external_content_table(sql)
+        if content_table:
+            content_tables[name] = content_table
+    return content_tables
+
+
+def sqlite_triggers_and_views_named(
+    conn, name: str, *, schemas: list[str]
+) -> list[tuple[str, str, str]]:
+    """Return ``(schema, type, tbl_name)`` for each trigger or view called ``name``.
+
+    Names are matched case-insensitively, as SQLite does. Triggers and views
+    have separate namespaces, so one name can match both.
+    """
+    matches = []
+    for schema in schemas:
+        rows = conn.execute(
+            f"select type, tbl_name from {_sqlite_schema_table(schema)} "
+            "where type in ('trigger', 'view') and name = ? collate nocase",
+            (name,),
+        ).fetchall()
+        matches.extend((schema, object_type, table) for object_type, table in rows)
+    return matches
+
+
 def sqlite_derived_table_dependencies(
     conn, *, schema: str | None = "main"
 ) -> dict[str, str]:

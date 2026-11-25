@@ -56,7 +56,6 @@ def _headers(token):
     }
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["read", "read_row", "rename"])
 async def test_trailing_lf_table_permissions(tmp_path, operation):
     # SQLite treats "secret" and "secret\n" as different table names. Permission
@@ -167,7 +166,6 @@ BASE64_WRITE_API_VALUE = {"$base64": True, "encoded": "AAEC/f7/"}
 BASE64_WRITE_API_LITERAL = '{"$base64": true, "encoded": "AAEC/f7/"}'
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("use_fallback", (False, True))
 @pytest.mark.parametrize(
     "operation", ("insert", "upsert", "update", "delete", "create", "create_uppercase")
@@ -223,7 +221,6 @@ async def test_structured_writes_require_ordinary_tables(
     assert await db.execute_fn(lambda conn: list(conn.iterdump())) == before
 
 
-@pytest.mark.asyncio
 async def test_structured_writes_to_content_table_maintain_fts(ds_write):
     db = ds_write.get_database("data")
     await db.execute_write_fn(
@@ -243,7 +240,6 @@ async def test_structured_writes_to_content_table_maintain_fts(ds_write):
     assert [row[0] for row in matches.rows] == [1]
 
 
-@pytest.mark.asyncio
 async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -286,7 +282,6 @@ async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_writ
     ]
 
 
-@pytest.mark.asyncio
 async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
     token = write_token(ds_write)
     db = ds_write.get_database("data")
@@ -369,7 +364,6 @@ async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
     ]
 
 
-@pytest.mark.asyncio
 async def test_api_explorer_upsert_example_json(ds_write):
     response = await ds_write.client.get("/-/api", actor={"id": "root"})
     assert response.status_code == 200
@@ -384,7 +378,6 @@ async def test_api_explorer_upsert_example_json(ds_write):
     assert '"age": "<age>"' in upsert_chunk
 
 
-@pytest.mark.asyncio
 async def test_api_explorer_upsert_example_json_rowid_table(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
     conn = sqlite3.connect(db_path)
@@ -404,7 +397,6 @@ async def test_api_explorer_upsert_example_json_rowid_table(tmp_path_factory):
     assert '"score": "<score>"' in upsert_chunk
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "content_type",
     (
@@ -438,7 +430,6 @@ async def test_insert_row(ds_write, content_type):
     assert not event.replace
 
 
-@pytest.mark.asyncio
 async def test_insert_row_alter(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -459,7 +450,6 @@ async def test_insert_row_alter(ds_write):
     assert "extra" in event.after_schema
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("return_rows", (True, False))
 async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
@@ -494,7 +484,6 @@ async def test_insert_rows(ds_write, return_rows):
         assert response.json()["rows"] == actual_rows
 
 
-@pytest.mark.asyncio
 async def test_insert_rows_post_body_too_large(tmp_path_factory):
     db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
     conn = sqlite3.connect(db_path)
@@ -522,7 +511,6 @@ async def test_insert_rows_post_body_too_large(tmp_path_factory):
     ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,input,special_case,expected_status,expected_errors",
     (
@@ -769,7 +757,6 @@ async def test_insert_or_upsert_row_errors(
     assert before_count == after_count
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("allowed", (True, False))
 async def test_upsert_permissions_per_table(ds_write, allowed):
     # https://github.com/simonw/datasette/issues/2262
@@ -804,7 +791,6 @@ async def test_upsert_permissions_per_table(ds_write, allowed):
         assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "ignore,replace,expected_rows",
     (
@@ -865,7 +851,232 @@ async def test_insert_ignore_replace(
         assert response.json()["rows"] == expected_rows
 
 
-@pytest.mark.asyncio
+PK_EDGE_CASE_TABLES = """
+create table text_pk (id text primary key, title text);
+create table compound_pk (a text, b integer, title text, primary key (a, b));
+create table rowid_only (title text);
+create table without_rowid (id text primary key, title text) without rowid;
+create table compound_without_rowid (
+    a text, b integer, title text, primary key (a, b)
+) without rowid;
+"""
+
+
+@pytest.mark.parametrize(
+    "table,select,steps,expected_rows_after",
+    (
+        pytest.param(
+            "docs",
+            "select id, title from docs",
+            (
+                # An explicit value can be provided for an integer primary key
+                ({"row": {"id": 10, "title": "Ten"}}, 201, [(10, "Ten", None, None)]),
+                # ... and automatic values then continue from there
+                ({"row": {"title": "Auto"}}, 201, [(11, "Auto", None, None)]),
+                (
+                    {"row": {"id": 10, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: docs.id",
+                ),
+            ),
+            [(10, "Ten"), (11, "Auto")],
+            id="integer_pk",
+        ),
+        pytest.param(
+            "text_pk",
+            "select id, title from text_pk",
+            (
+                ({"row": {"id": "a", "title": "A"}}, 201, [("a", "A")]),
+                (
+                    {
+                        "rows": [{"id": "b", "title": "B"}, {"id": "c", "title": "C"}],
+                        "return": True,
+                    },
+                    201,
+                    [("b", "B"), ("c", "C")],
+                ),
+                (
+                    {"row": {"id": "a", "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: text_pk.id",
+                ),
+                ({"row": {"id": "a", "title": "Ignored"}, "ignore": True}, 201, None),
+                (
+                    {"row": {"id": "a", "title": "Replaced"}, "replace": True},
+                    201,
+                    [("a", "Replaced")],
+                ),
+            ),
+            [("a", "Replaced"), ("b", "B"), ("c", "C")],
+            id="text_pk",
+        ),
+        pytest.param(
+            "compound_pk",
+            "select a, b, title from compound_pk",
+            (
+                ({"row": {"a": "x", "b": 1, "title": "X1"}}, 201, [("x", 1, "X1")]),
+                (
+                    {
+                        "rows": [
+                            {"a": "x", "b": 2, "title": "X2"},
+                            {"a": "y", "b": 1, "title": "Y1"},
+                        ],
+                        "return": True,
+                    },
+                    201,
+                    [("x", 2, "X2"), ("y", 1, "Y1")],
+                ),
+                # Both columns have to match to count as a conflict
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: compound_pk.a, compound_pk.b",
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Ignored"}, "ignore": True},
+                    201,
+                    None,
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Replaced"}, "replace": True},
+                    201,
+                    [("x", 1, "Replaced")],
+                ),
+            ),
+            [("x", 1, "Replaced"), ("x", 2, "X2"), ("y", 1, "Y1")],
+            id="compound_pk",
+        ),
+        pytest.param(
+            "rowid_only",
+            "select rowid, title from rowid_only",
+            (
+                # Returned rows include the rowid that was assigned
+                ({"row": {"title": "One"}}, 201, [(1, "One")]),
+                (
+                    {"rows": [{"title": "Two"}, {"title": "Three"}], "return": True},
+                    201,
+                    [(2, "Two"), (3, "Three")],
+                ),
+                # The rowid can be set explicitly
+                ({"row": {"rowid": 10, "title": "Ten"}}, 201, [(10, "Ten")]),
+                ({"row": {"title": "Eleven"}}, 201, [(11, "Eleven")]),
+                (
+                    {"row": {"rowid": 10, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: rowid_only.rowid",
+                ),
+                ({"row": {"rowid": 10, "title": "Ignored"}, "ignore": True}, 201, None),
+                (
+                    {"row": {"rowid": 10, "title": "Replaced"}, "replace": True},
+                    201,
+                    [(10, "Replaced")],
+                ),
+            ),
+            [(1, "One"), (2, "Two"), (3, "Three"), (10, "Replaced"), (11, "Eleven")],
+            id="rowid_only",
+        ),
+        pytest.param(
+            "without_rowid",
+            "select id, title from without_rowid",
+            (
+                ({"row": {"id": "a", "title": "A"}}, 201, [("a", "A")]),
+                (
+                    {
+                        "rows": [{"id": "b", "title": "B"}, {"id": "c", "title": "C"}],
+                        "return": True,
+                    },
+                    201,
+                    [("b", "B"), ("c", "C")],
+                ),
+                ({"rows": [{"id": "d", "title": "D"}]}, 201, None),
+                # WITHOUT ROWID primary keys are always NOT NULL
+                (
+                    {"row": {"title": "No primary key"}},
+                    400,
+                    "NOT NULL constraint failed: without_rowid.id",
+                ),
+                (
+                    {"row": {"id": "a", "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: without_rowid.id",
+                ),
+                (
+                    {"row": {"id": "a", "title": "Replaced"}, "replace": True},
+                    201,
+                    [("a", "Replaced")],
+                ),
+            ),
+            [("a", "Replaced"), ("b", "B"), ("c", "C"), ("d", "D")],
+            id="without_rowid",
+        ),
+        pytest.param(
+            "compound_without_rowid",
+            "select a, b, title from compound_without_rowid",
+            (
+                ({"row": {"a": "x", "b": 1, "title": "X1"}}, 201, [("x", 1, "X1")]),
+                (
+                    {
+                        "rows": [
+                            {"a": "x", "b": 2, "title": "X2"},
+                            {"a": "y", "b": 1, "title": "Y1"},
+                        ],
+                        "return": True,
+                    },
+                    201,
+                    [("x", 2, "X2"), ("y", 1, "Y1")],
+                ),
+                (
+                    {"row": {"a": "x", "title": "Missing b"}},
+                    400,
+                    "NOT NULL constraint failed: compound_without_rowid.b",
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Dupe"}},
+                    400,
+                    "UNIQUE constraint failed: compound_without_rowid.a, compound_without_rowid.b",
+                ),
+                (
+                    {"row": {"a": "x", "b": 1, "title": "Replaced"}, "replace": True},
+                    201,
+                    [("x", 1, "Replaced")],
+                ),
+            ),
+            [("x", 1, "Replaced"), ("x", 2, "X2"), ("y", 1, "Y1")],
+            id="compound_without_rowid",
+        ),
+    ),
+)
+async def test_insert_primary_key_edge_cases(
+    ds_write, table, select, steps, expected_rows_after
+):
+    # https://github.com/simonw/datasette/issues/1873
+    # Each step is (request body, expected status, expected) where expected
+    # is an error string, a list of returned rows as tuples, or None to
+    # skip checking the returned rows
+    db = ds_write.get_database("data")
+    await db.execute_write_script(PK_EDGE_CASE_TABLES)
+    token = write_token(ds_write)
+    for body, expected_status, expected in steps:
+        response = await ds_write.client.post(
+            f"/data/{table}/-/insert",
+            json=body,
+            headers=_headers(token),
+        )
+        data = response.json()
+        assert response.status_code == expected_status, (body, data)
+        if expected_status == 400:
+            assert data["ok"] is False
+            assert data["errors"] == [expected]
+        else:
+            assert data["ok"] is True
+            if expected is not None:
+                assert [tuple(row.values()) for row in data["rows"]] == expected
+    rows_after = [
+        tuple(row) for row in (await db.execute(select + " order by 1, 2")).rows
+    ]
+    assert rows_after == expected_rows_after
+
+
 @pytest.mark.parametrize(
     "initial,input,expected_rows",
     (
@@ -968,7 +1179,6 @@ async def _insert_row(ds):
     return insert_response.json()["rows"][0]["id"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table"))
 async def test_delete_row_errors(ds_write, scenario):
     if scenario == "no_token":
@@ -997,7 +1207,6 @@ async def test_delete_row_errors(ds_write, scenario):
     assert len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table,row_for_create,pks,delete_path",
     (
@@ -1062,7 +1271,6 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     ).json() == [0]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario", ("no_token", "no_perm", "bad_table", "cannot_alter")
 )
@@ -1101,7 +1309,6 @@ async def test_update_row_check_permission(ds_write, scenario):
     )
 
 
-@pytest.mark.asyncio
 async def test_update_row_invalid_key(ds_write):
     token = write_token(ds_write)
 
@@ -1122,7 +1329,6 @@ async def test_update_row_invalid_key(ds_write):
     }
 
 
-@pytest.mark.asyncio
 async def test_update_row_alter(ds_write):
     token = write_token(ds_write, permissions=["ur", "at"])
     pk = await _insert_row(ds_write)
@@ -1136,7 +1342,6 @@ async def test_update_row_alter(ds_write):
     assert response.json() == {"ok": True}
 
 
-@pytest.mark.asyncio
 async def test_alter_table_operations(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1240,7 +1445,6 @@ async def test_alter_table_operations(ds_write):
     assert event.after_schema == data["schema"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "default_expr,minimum_value,expected_schema",
     (
@@ -1297,7 +1501,6 @@ async def test_alter_table_integer_default_expr(
     assert row[1] == "integer"
 
 
-@pytest.mark.asyncio
 async def test_alter_table_rename_table(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1349,7 +1552,6 @@ async def test_alter_table_rename_table(ds_write):
     assert rename_events[0].new_table == "documents"
 
 
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_operations(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1423,7 +1625,6 @@ async def test_alter_table_foreign_key_operations(ds_write):
     assert_schema_not_contains('"owner_id" INTEGER REFERENCES', data["schema"])
 
 
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write):
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1443,7 +1644,6 @@ async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write)
     )
 
 
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1469,7 +1669,6 @@ async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_w
     )
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_suggestions(ds_write):
     token = write_token(ds_write, permissions=["alter-table", "view-table"])
     db = ds_write.get_database("data")
@@ -1524,7 +1723,6 @@ async def test_foreign_key_suggestions(ds_write):
     assert columns["score"]["suggestions"] == []
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_suggestions_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.get(
@@ -1535,7 +1733,6 @@ async def test_foreign_key_suggestions_permission_denied(ds_write):
     assert response.json() == error_body(["Permission denied: need alter-table"], 403)
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
     token = write_token(ds_write, permissions=["alter-table", "view-table"])
     db = ds_write.get_database("data")
@@ -1566,7 +1763,6 @@ async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
     assert columns["age"]["suggestions"] == []
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_targets(ds_write):
     token = write_token(ds_write, permissions=["create-table", "view-table"])
     db = ds_write.get_database("data")
@@ -1636,7 +1832,6 @@ async def test_foreign_key_targets(ds_write):
     )
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_targets_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.get(
@@ -1647,7 +1842,6 @@ async def test_foreign_key_targets_permission_denied(ds_write):
     assert response.json() == error_body(["Permission denied: need create-table"], 403)
 
 
-@pytest.mark.asyncio
 async def test_foreign_key_targets_allowed_for_alter_table(ds_write):
     token = write_token(ds_write, permissions=["at"])
     response = await ds_write.client.get(
@@ -1658,7 +1852,6 @@ async def test_foreign_key_targets_allowed_for_alter_table(ds_write):
     assert response.json()["ok"] is True
 
 
-@pytest.mark.asyncio
 async def test_alter_table_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.post(
@@ -1670,7 +1863,6 @@ async def test_alter_table_permission_denied(ds_write):
     assert response.json() == error_body(["Permission denied: need alter-table"], 403)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "body,expected_error",
     (
@@ -1737,7 +1929,6 @@ async def test_alter_table_validation_errors(ds_write, body, expected_error):
     assert response.json()["errors"] == [expected_error]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_form_parameter_called_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1775,7 +1966,6 @@ async def test_execute_write_form_parameter_called_sql():
     ] == "Updated"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input,expected_errors",
     (
@@ -1836,7 +2026,6 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
         assert row[k] == v
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario", ("no_token", "no_perm", "bad_table", "has_perm", "immutable")
 )
@@ -1901,7 +2090,6 @@ async def test_drop_table(ds_write, scenario):
         assert (await ds_write.client.get("/data/docs")).status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_drop_table_cleans_up_fts(ds_write):
     db = ds_write.get_database("data")
 
@@ -1937,7 +2125,6 @@ async def test_drop_table_cleans_up_fts(ds_write):
     ] == []
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input,expected_status,expected_response,expected_events",
     (
@@ -2095,7 +2282,8 @@ async def test_drop_table_cleans_up_fts(ds_write):
                 "table_url": "http://localhost/data/five",
                 "table_api_url": "http://localhost/data/five.json",
                 "schema": (
-                    'CREATE TABLE "five" (\n   "type" TEXT,\n   "key" INTEGER,\n'
+                    'CREATE TABLE "five" (\n   "type" TEXT NOT NULL,\n'
+                    '   "key" INTEGER NOT NULL,\n'
                     '   "title" TEXT,\n   PRIMARY KEY ("type", "key")\n)'
                 ),
                 "row_count": 1,
@@ -2394,7 +2582,6 @@ async def test_create_table(
     assert [e.name for e in events] == expected_events
 
 
-@pytest.mark.asyncio
 async def test_create_table_with_foreign_key(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -2435,7 +2622,6 @@ async def test_create_table_with_foreign_key(ds_write):
     )
 
 
-@pytest.mark.asyncio
 async def test_create_table_with_column_constraints(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -2489,7 +2675,271 @@ async def test_create_table_with_column_constraints(ds_write):
     assert columns[4]["dflt_value"] == "'hello)'"
 
 
-@pytest.mark.asyncio
+async def test_create_table_primary_keys_are_not_null(ds_write):
+    # Primary keys created via the JSON API must be NOT NULL - see #2807
+    token = write_token(ds_write)
+    db = ds_write.get_database("data")
+
+    # Single (non-integer) primary key
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_single",
+            "columns": [
+                {"name": "code", "type": "text"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "code",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    assert "PRIMARY KEY NOT NULL" in response.json()["schema"]
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_single')")
+        ).dicts()
+    }
+    assert columns["code"]["pk"] == 1
+    assert columns["code"]["notnull"] == 1
+    assert columns["name"]["notnull"] == 0
+
+    # Composite primary key - every key column is NOT NULL
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_composite",
+            "columns": [
+                {"name": "a", "type": "text"},
+                {"name": "b", "type": "text"},
+                {"name": "value", "type": "text"},
+            ],
+            "pks": ["a", "b"],
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_composite')")
+        ).dicts()
+    }
+    assert columns["a"]["notnull"] == 1
+    assert columns["b"]["notnull"] == 1
+    assert columns["value"]["notnull"] == 0
+
+    # Primary key named with different casing from the column. SQLite resolves
+    # identifiers case-insensitively, so this still creates "Code" as the primary
+    # key and it must pick up NOT NULL too.
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_mixed_case",
+            "columns": [
+                {"name": "Code", "type": "text"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "code",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_mixed_case')")
+        ).dicts()
+    }
+    assert columns["Code"]["pk"] == 1
+    assert columns["Code"]["notnull"] == 1
+    assert columns["name"]["notnull"] == 0
+
+    # The integer-rowid-alias exemption is matched case-insensitively too, so an
+    # integer pk stays a plain rowid alias rather than gaining a constraint.
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_mixed_case_integer",
+            "columns": [
+                {"name": "Id", "type": "integer"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_mixed_case_integer')")
+        ).dicts()
+    }
+    assert columns["Id"]["pk"] == 1
+    assert columns["Id"]["notnull"] == 0
+
+
+@pytest.mark.parametrize(
+    "body,expected_schema,expected_not_null",
+    (
+        pytest.param(
+            {"rows": [{"code": "a", "name": "A"}], "pk": "code"},
+            'CREATE TABLE "t" (\n   "code" TEXT PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"code": 1, "name": 0},
+            id="text_pk",
+        ),
+        pytest.param(
+            {"row": {"code": "a", "name": "A"}, "pk": "code"},
+            'CREATE TABLE "t" (\n   "code" TEXT PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"code": 1, "name": 0},
+            id="text_pk_single_row",
+        ),
+        pytest.param(
+            {"rows": [{"score": 1.5, "name": "A"}], "pk": "score"},
+            'CREATE TABLE "t" (\n   "score" REAL PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"score": 1, "name": 0},
+            id="float_pk",
+        ),
+        pytest.param(
+            {"rows": [{"a": "x", "b": 1, "name": "A"}], "pks": ["a", "b"]},
+            (
+                'CREATE TABLE "t" (\n   "a" TEXT NOT NULL,\n   "b" INTEGER NOT NULL,\n'
+                '   "name" TEXT,\n   PRIMARY KEY ("a", "b")\n)'
+            ),
+            {"a": 1, "b": 1, "name": 0},
+            id="compound_pk",
+        ),
+        pytest.param(
+            {"rows": [{"Code": "a", "name": "A"}], "pk": "code"},
+            'CREATE TABLE "t" (\n   "Code" TEXT PRIMARY KEY NOT NULL,\n   "name" TEXT\n)',
+            {"Code": 1, "name": 0},
+            id="pk_in_different_case",
+        ),
+        pytest.param(
+            {"rows": [{"name": "A", "code": "a"}, {"code": "b"}], "pk": "code"},
+            'CREATE TABLE "t" (\n   "name" TEXT,\n   "code" TEXT PRIMARY KEY NOT NULL\n)',
+            {"code": 1, "name": 0},
+            id="text_pk_not_first_column",
+        ),
+        # A single integer primary key can never be null, so is left alone
+        pytest.param(
+            {"rows": [{"id": 5, "name": "A"}], "pk": "id"},
+            'CREATE TABLE "t" (\n   "id" INTEGER PRIMARY KEY,\n   "name" TEXT\n)',
+            {"id": 0, "name": 0},
+            id="integer_pk",
+        ),
+        pytest.param(
+            {"rows": [{"id": 5, "name": "A"}], "pks": ["id"]},
+            'CREATE TABLE "t" (\n   "id" INTEGER PRIMARY KEY,\n   "name" TEXT\n)',
+            {"id": 0, "name": 0},
+            id="integer_pk_using_pks",
+        ),
+        # ... including the one that is added when no row has that key
+        pytest.param(
+            {"rows": [{"name": "A"}], "pk": "id"},
+            'CREATE TABLE "t" (\n   "id" INTEGER PRIMARY KEY,\n   "name" TEXT\n)',
+            {"id": 0, "name": 0},
+            id="integer_pk_not_in_rows",
+        ),
+        pytest.param(
+            {"rows": [{"name": "A"}]},
+            'CREATE TABLE "t" (\n   "name" TEXT\n)',
+            {"name": 0},
+            id="no_pk",
+        ),
+    ),
+)
+async def test_create_table_from_rows_primary_keys_are_not_null(
+    ds_write, body, expected_schema, expected_not_null
+):
+    # https://github.com/simonw/datasette/issues/2807
+    db = ds_write.get_database("data")
+    try:
+        response = await ds_write.client.post(
+            "/data/-/create",
+            json={"table": "t", **body},
+            headers=_headers(write_token(ds_write)),
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["schema"] == expected_schema
+        columns = (await db.execute("select * from pragma_table_info('t')")).dicts()
+        assert {
+            column["name"]: column["notnull"] for column in columns
+        } == expected_not_null
+        expected_count = len(body["rows"]) if "rows" in body else 1
+        assert (await db.execute("select count(*) from t")).single_value() == (
+            expected_count
+        )
+    finally:
+        await db.execute_write("drop table if exists t")
+
+
+@pytest.mark.parametrize(
+    "body,expected_error",
+    (
+        pytest.param(
+            {"rows": [{"code": "a", "name": "A"}, {"name": "B"}], "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="key_missing_from_row",
+        ),
+        pytest.param(
+            {"rows": [{"name": "A"}, {"code": "b", "name": "B"}], "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="key_missing_from_first_row",
+        ),
+        pytest.param(
+            {"rows": [{"code": "a"}, {"code": None}], "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="null_key",
+        ),
+        pytest.param(
+            {"row": {"code": None, "name": "A"}, "pk": "code"},
+            "NOT NULL constraint failed: t.code",
+            id="null_key_single_row",
+        ),
+        pytest.param(
+            {"rows": [{"a": "x", "b": None}, {"a": "y", "b": 2}], "pks": ["a", "b"]},
+            "NOT NULL constraint failed: t.b",
+            id="null_in_compound_key",
+        ),
+    ),
+)
+async def test_create_table_from_rows_rejects_null_primary_keys(
+    ds_write, body, expected_error
+):
+    # https://github.com/simonw/datasette/issues/2807
+    db = ds_write.get_database("data")
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={"table": "t", **body},
+        headers=_headers(write_token(ds_write)),
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["errors"] == [expected_error]
+    # The table should not have been created
+    assert not await db.table_exists("t")
+
+
+async def test_create_rows_for_existing_table_with_nullable_primary_key(ds_write):
+    # Only new tables get NOT NULL primary keys - an existing table is unchanged
+    db = ds_write.get_database("data")
+    await db.execute_write("create table nullable_pk (code text primary key, name)")
+    try:
+        response = await ds_write.client.post(
+            "/data/-/create",
+            json={"table": "nullable_pk", "rows": [{"name": "A"}], "pk": "code"},
+            headers=_headers(write_token(ds_write)),
+        )
+        assert response.status_code == 201, response.text
+        assert [
+            tuple(row) for row in await db.execute("select code, name from nullable_pk")
+        ] == [(None, "A")]
+    finally:
+        await db.execute_write("drop table nullable_pk")
+
+
 @pytest.mark.parametrize(
     "default_expr,minimum_value,expected_schema",
     (
@@ -2544,7 +2994,6 @@ async def test_create_table_integer_default_expr(
     assert row[1] == "integer"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "column,expected_error",
     (
@@ -2595,7 +3044,6 @@ async def test_create_table_column_validation(ds_write, column, expected_error):
         )
 
 
-@pytest.mark.asyncio
 async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
@@ -2635,7 +3083,6 @@ async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "permissions,body,expected_status,expected_errors",
     (
@@ -2686,8 +3133,6 @@ async def test_create_table_permissions(
         assert data["errors"] == expected_errors
 
 
-@pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2356")
 @pytest.mark.parametrize(
     "input,expected_rows_after",
     (
@@ -2757,7 +3202,6 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
     assert event_names == ["insert-rows"]
 
 
-@pytest.mark.asyncio
 async def test_create_table_error_if_pk_changed(ds_write):
     token = write_token(ds_write)
     first_response = await ds_write.client.post(
@@ -2787,7 +3231,6 @@ async def test_create_table_error_if_pk_changed(ds_write):
     )
 
 
-@pytest.mark.asyncio
 async def test_create_table_error_rows_twice_with_duplicates(ds_write):
     # Error if you don't send ignore: True or replace: True
     token = write_token(ds_write)
@@ -2813,7 +3256,6 @@ async def test_create_table_error_rows_twice_with_duplicates(ds_write):
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (
@@ -2838,7 +3280,6 @@ async def test_method_not_allowed(ds_write, path):
     }
 
 
-@pytest.mark.asyncio
 async def test_create_uses_alter_by_default_for_new_table(ds_write):
     ds_write._tracked_events = []
     token = write_token(ds_write)
@@ -2864,7 +3305,6 @@ async def test_create_uses_alter_by_default_for_new_table(ds_write):
     assert event_names == ["create-table", "insert-rows"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("has_alter_permission", (True, False))
 async def test_create_using_alter_against_existing_table(
     ds_write, has_alter_permission
@@ -2922,7 +3362,6 @@ async def test_create_using_alter_against_existing_table(
         assert insert_rows_event.num_rows == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("denied_action", "request_body"),
     (
@@ -3006,7 +3445,6 @@ async def test_create_table_existing_table_respects_table_level_denial(
     assert await db.table_columns("salaries") == ["id", "note"]
 
 
-@pytest.mark.asyncio
 async def test_create_table_respects_predeclared_table_level_denial():
     ds = Datasette(
         memory=True,

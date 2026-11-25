@@ -160,24 +160,19 @@ If you want to change Datasette's Python code you can use the ``--reload`` optio
 This also enables development mode for static asset cache busting, described in
 :ref:`customization_static_files`.
 
-You can also use the ``fixtures.py`` script to recreate the testing version of ``metadata.json`` used by the unit tests. To do that::
+You can also use the ``fixtures.py`` script to write the configuration and metadata used by the unit tests. The configuration filename comes before the metadata filename::
 
-    uv run python tests/fixtures.py fixtures.db fixtures-metadata.json
+    uv run python tests/fixtures.py fixtures.db fixtures-config.json fixtures-metadata.json --recreate
 
-Or to output the plugins used by the tests, run this::
+The ``--recreate`` option replaces the ``fixtures.db`` created above. Omit it if you are creating a new database.
 
-    uv run python tests/fixtures.py fixtures.db fixtures-metadata.json fixtures-plugins
-    Test tables written to fixtures.db
-    - metadata written to fixtures-metadata.json
-    Wrote plugin: fixtures-plugins/register_output_renderer.py
-    Wrote plugin: fixtures-plugins/view_name.py
-    Wrote plugin: fixtures-plugins/my_plugin.py
-    Wrote plugin: fixtures-plugins/messages_output_renderer.py
-    Wrote plugin: fixtures-plugins/my_plugin_2.py
+To also output the plugins used by the tests, add the plugins directory as the final argument::
 
-Then run Datasette like this::
+    uv run python tests/fixtures.py fixtures.db fixtures-config.json fixtures-metadata.json fixtures-plugins --recreate
 
-    uv run datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
+Then run Datasette with both files and the plugins directory::
+
+    uv run datasette fixtures.db -c fixtures-config.json -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
 
 .. _contributing_debugging:
 
@@ -332,11 +327,15 @@ Documented template contexts
 
 Datasette's documented template contexts are part of the public API for custom templates. They are defined as dataclasses next to the view code that renders them, for example ``DatabaseContext`` and ``QueryContext`` in ``datasette/views/database.py``.
 
-Every documented context class inherits from ``datasette.views.Context``. Fields that are added directly by view code should be declared as dataclass fields with ``help`` metadata, which is used to generate :ref:`template_context`. Fields resolved through the page extras system should use ``from_extra()`` so their documentation comes from the matching ``Extra`` class.
+Every documented context class inherits from ``datasette.views.Context``. Fields that are added directly by view code should be declared as dataclass fields with ``help`` metadata, which is used to generate :ref:`template_context` and is shown on the ``?_context=1`` :ref:`template debug page <setting_template_debug>`. Fields resolved through the page extras system should use ``from_extra()`` so their documentation comes from the matching ``Extra`` class.
 
-Use ``documented_template`` on each context class to record the canonical template named in the generated documentation. This should be a string such as ``"database.html"``. Runtime template selection still happens in the view code, since most pages consider more specific template names before falling back to the canonical one.
+Views that render using ``BaseView.render()`` can pass it an instance of their context class. That method fills in ``select_templates`` and, for views with a JSON alternate, ``alternate_url_json``, so the class must declare those as its last fields using ``select_templates_field()`` and ``alternate_url_json_field()`` from ``datasette.views``.
 
-When a context field contains repeated structured data, prefer a small nested dataclass over an anonymous dictionary. For example, a field containing table summaries should be annotated as ``list[DatabaseTable]`` where ``DatabaseTable`` is a dataclass describing the keys and value types. This keeps the Python contract and generated documentation clear. JSON responses and ``?_context=1`` debug output will convert nested dataclasses back to JSON objects at the response boundary.
+Use ``documented_template`` on each context class to record the canonical template named in the generated documentation. This should be a string such as ``"database.html"``. The heading for the page in the documentation comes from the class name, so ``QueryListContext`` becomes "Query list page" - set ``documented_title`` to override that.
+
+Pages that are debugging tools should set ``stable = False`` on their context class. Their variables are still documented and shown on the ``?_context=1`` page, but they are listed in a separate section of the documentation that is not covered by the promise of stability until the next major version. Runtime template selection still happens in the view code, since most pages consider more specific template names before falling back to the canonical one.
+
+When a context field contains repeated structured data, prefer a small nested dataclass over an anonymous dictionary. For example, a field containing table summaries should be annotated as ``list[DatabaseTable]`` where ``DatabaseTable`` is a dataclass describing the keys and value types. This keeps the Python contract and generated documentation clear. JSON responses and the ``?_context=1`` and ``?_context_json=1`` debug output will convert nested dataclasses back to JSON objects at the response boundary.
 
 .. _contributing_continuous_deployment:
 

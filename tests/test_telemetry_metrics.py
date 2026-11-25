@@ -49,14 +49,12 @@ def metrics_ds():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_sql_thread_limit_gauge_reports_num_sql_threads(metrics_ds):
     values = [value for _, value in observations(telemetry.observe_sql_thread_limit)]
     # Other Datasette instances may also be reporting:
     assert 7 in values
 
 
-@pytest.mark.asyncio
 async def test_no_thread_gauges_in_non_threaded_mode():
     "Pool gauges skip instances with num_sql_threads=0, which have no pool."
     ds = Datasette(memory=True, settings={"num_sql_threads": 0})
@@ -76,7 +74,6 @@ async def test_no_thread_gauges_in_non_threaded_mode():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_thread_queue_depth_gauge_reports_saturation():
     """
     Queue depth is above zero when reads queue behind num_sql_threads. Also
@@ -116,7 +113,6 @@ async def test_thread_queue_depth_gauge_reports_saturation():
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_pending_queries_gauge_tracks_in_flight_queries(metrics_ds):
     db = metrics_ds.get_database("metrics_test_db")
     attributes = {"db.namespace": "metrics_test_db"}
@@ -150,7 +146,6 @@ async def test_pending_queries_gauge_tracks_in_flight_queries(metrics_ds):
     assert value() == 0, "the count must drop once the query completes"
 
 
-@pytest.mark.asyncio
 async def test_write_queue_depth_gauge(metrics_ds):
     db = metrics_ds.get_database("metrics_test_db")
     attributes = {"db.namespace": "metrics_test_db"}
@@ -169,7 +164,6 @@ async def test_write_queue_depth_gauge(metrics_ds):
     assert depths() == [0], "an idle write queue reports zero, not nothing"
 
 
-@pytest.mark.asyncio
 async def test_open_connections_gauge(metrics_ds, tmp_path):
     path = str(tmp_path / "conns.db")
     sqlite3.connect(path).execute("create table t (id integer primary key)")
@@ -190,7 +184,6 @@ async def test_open_connections_gauge(metrics_ds, tmp_path):
     assert open_connections() >= 1, "executing a query opens a tracked connection"
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_histogram_read(otel_metrics):
     ds = Datasette(memory=True)
     ds.add_memory_database("duration_read_db")
@@ -210,7 +203,6 @@ async def test_operation_duration_histogram_read(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_histogram_write(otel_metrics):
     ds = Datasette(memory=True)
     ds.add_memory_database("duration_write_db")
@@ -228,7 +220,6 @@ async def test_operation_duration_histogram_write(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_records_error_type(otel_metrics):
     "A failed query is still timed, and is separable from a successful one."
     ds = Datasette(memory=True)
@@ -248,7 +239,6 @@ async def test_operation_duration_records_error_type(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_records_write_error_type(otel_metrics):
     "A failed write is still timed and records error.type."
     ds = Datasette(memory=True)
@@ -268,7 +258,6 @@ async def test_operation_duration_records_write_error_type(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_write_queue_wait_histogram(otel_metrics):
     ds = Datasette(memory=True)
     ds.add_memory_database("queue_wait_db")
@@ -286,7 +275,6 @@ async def test_write_queue_wait_histogram(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_interrupted_queries_counter(otel_metrics):
     "Queries cancelled by sql_time_limit_ms are counted."
     ds = Datasette(memory=True, settings={"sql_time_limit_ms": 1})
@@ -311,7 +299,6 @@ async def test_interrupted_queries_counter(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_metrics_are_reported_through_the_sdk_for_gauges(otel_metrics):
     "Gauge callbacks reach the metric reader as data points."
     ds = Datasette(memory=True)
@@ -413,7 +400,6 @@ def test_histograms_spread_values_across_buckets(
     )
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_histogram_records_execute_fn(otel_metrics):
     "execute_fn() reads are recorded in the same histogram as SQL reads."
     ds = Datasette(memory=True)
@@ -436,7 +422,6 @@ async def test_operation_duration_histogram_records_execute_fn(otel_metrics):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_histogram_records_execute_write_fn(otel_metrics):
     "execute_write_fn() writes are recorded in the same histogram."
     ds = Datasette(memory=True)
@@ -459,7 +444,6 @@ async def test_operation_duration_histogram_records_execute_write_fn(otel_metric
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_operation_duration_records_callback_error_type(otel_metrics):
     "A callback that raises is still timed, with error.type from the exception."
     ds = Datasette(memory=True)

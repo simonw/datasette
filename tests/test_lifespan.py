@@ -14,7 +14,6 @@ import contextlib
 import sqlite3
 
 import httpx2
-import pytest
 
 from datasette import hookimpl
 from datasette.app import Datasette
@@ -57,7 +56,6 @@ async def _drive_lifespan_startup(app):
     return messages_sent
 
 
-@pytest.mark.asyncio
 async def test_lifespan_startup_runs_before_any_request():
     ds = Datasette(memory=True)
     assert ds._startup_invoked is False
@@ -74,7 +72,6 @@ async def test_lifespan_startup_runs_before_any_request():
     assert len(databases.rows) >= 1
 
 
-@pytest.mark.asyncio
 async def test_lifespan_startup_failure_reports_lifespan_startup_failed():
     class RaisingStartupPlugin:
         __name__ = "RaisingStartupPlugin"
@@ -102,7 +99,6 @@ async def test_lifespan_startup_failure_reports_lifespan_startup_failed():
     assert ds._startup_invoked is False
 
 
-@pytest.mark.asyncio
 async def test_startup_runs_exactly_once_across_lifespan_and_first_request():
     call_count = {"n": 0}
 
@@ -146,7 +142,6 @@ async def test_startup_runs_exactly_once_across_lifespan_and_first_request():
     assert call_count["n"] == 1
 
 
-@pytest.mark.asyncio
 async def test_no_lifespan_first_request_still_triggers_startup():
     # Pin today's behavior: a client that never drives ASGI lifespan events
     # at all (like httpx2.ASGITransport, which DatasetteClient uses) still
@@ -167,7 +162,6 @@ async def test_no_lifespan_first_request_still_triggers_startup():
     assert len(databases.rows) >= 1
 
 
-@pytest.mark.asyncio
 async def test_datasette_client_first_request_triggers_startup():
     # Same as above, but through the real DatasetteClient (ds.client) that
     # plugins and tests actually use, to confirm nothing regressed there.
@@ -178,7 +172,6 @@ async def test_datasette_client_first_request_triggers_startup():
     assert ds._startup_invoked is True
 
 
-@pytest.mark.asyncio
 async def test_concurrent_first_requests_all_wait_for_slow_startup():
     call_count = {"n": 0}
 
@@ -214,7 +207,6 @@ async def test_concurrent_first_requests_all_wait_for_slow_startup():
     assert ds._startup_invoked is True
 
 
-@pytest.mark.asyncio
 async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monkeypatch):
     # Regression test: `datasette serve` (cli.py _serve_async) calls
     # ds.invoke_startup() directly, before uvicorn ever sends a
@@ -259,7 +251,6 @@ async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monke
     assert call_count["n"] == 1
 
 
-@pytest.mark.asyncio
 async def test_asgi_wrapper_runs_after_startup_fallback_path():
     class AssertStartupPlugin:
         __name__ = "AssertStartupPlugin"
@@ -295,7 +286,6 @@ async def test_asgi_wrapper_runs_after_startup_fallback_path():
     assert ds._startup_invoked is True
 
 
-@pytest.mark.asyncio
 async def test_short_circuit_wrapper_no_longer_defers_startup():
     # Middleware that returns a response before getting to the rest of
     # Datasette should still cause _startup_invoked=True

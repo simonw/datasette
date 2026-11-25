@@ -4,8 +4,11 @@ import binascii
 import copy
 import dataclasses
 import hashlib
+import importlib.machinery
+import importlib.util
 import inspect
 import json
+import math
 import os
 import re
 import secrets
@@ -16,7 +19,7 @@ import time
 import types
 import typing
 import urllib
-from collections import Counter, OrderedDict, namedtuple
+from collections import Counter
 from collections.abc import Iterable
 from contextlib import contextmanager
 from shutil import copytree
@@ -27,16 +30,39 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .sqlite import sqlite3, supports_table_xinfo
+from ..rows import Column, Columns, Row
+from ..version import __version__
+from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
     from datasette.database import Database
     from datasette.permissions import Resource
 
 
+functions_marked_as_documented = []
+
+
+def documented(fn=None, *, label=None):
+    def decorate(fn):
+        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
+        functions_marked_as_documented.append(fn)
+        return fn
+
+    if fn is None:
+        return decorate
+    return decorate(fn)
+
+
+@documented
 @dataclasses.dataclass
 class PaginatedResources:
-    """Paginated results from allowed_resources query."""
+    """
+    A page of results returned by :ref:`datasette.allowed_resources() <datasette_allowed_resources>`.
+
+    - ``.resources`` - list of ``Resource`` objects for the current page
+    - ``.next`` - keyset token for the next page, or ``None`` if there are no more results
+    - ``async for resource in page.all()`` - iterate over every resource across all pages
+    """
 
     resources: list["Resource"]
     next: str | None  # Keyset token for next page (None if no more results)
@@ -260,25 +286,6 @@ SPATIALITE_FUNCTIONS = (
 HASH_LENGTH = 7
 
 
-# Can replace this with Column from sqlite_utils when I add that dependency
-Column = namedtuple(
-    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
-)
-
-functions_marked_as_documented = []
-
-
-def documented(fn=None, *, label=None):
-    def decorate(fn):
-        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
-        functions_marked_as_documented.append(fn)
-        return fn
-
-    if fn is None:
-        return decorate
-    return decorate(fn)
-
-
 @documented
 async def await_me_maybe(value: typing.Any) -> typing.Any:
     "If value is callable, call it. If awaitable, await it. Otherwise return it."
@@ -294,21 +301,155 @@ def urlsafe_components(token):
     return [tilde_decode(b) for b in token.split(",")]
 
 
-def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """Generate an optionally tilde-encoded unique identifier
-    for a row from its primary keys."""
+# Markers used by encode_key_value(). Tilde-encoding never emits a raw "$" or
+# ":" - they become ~24 and ~3A - so none of these can be mistaken for text.
+_KEY_NULL = "$null"
+_KEY_EMPTY = "$empty"
+
+
+def encode_key_value(value, typed=False):
+    """Encode one primary key or sort value for use in a row URL or a
+    ``?_next=`` pagination cursor. decode_key_value() reverses it.
+
+    - ``None`` is ``$null`` and the empty string is ``$empty``
+    - bytes are ``b:`` followed by hex
+    - text is tilde-encoded
+    - integers and floats are tilde-encoded as text, unless ``typed`` is true
+      in which case they are ``i:345`` and ``f:`` followed by float.hex()
+
+    A number encoded as text only finds its row if SQLite converts the text
+    back to a number, which it does for a column with a declared type of
+    integer, real, numeric or text. Pass ``typed=True`` for a column SQLite
+    will not convert for - see untyped_columns().
+    """
+    if value is None:
+        return _KEY_NULL
+    if isinstance(value, bytes):
+        return f"b:{value.hex()}"
+    if typed and isinstance(value, int):
+        return f"i:{value}"
+    if typed and isinstance(value, float):
+        # float.hex() writes positive exponents as "p+1". A raw "+" in a query
+        # string decodes to a space, so drop it - float.fromhex() accepts "p1".
+        # The "." is tilde-encoded so a row URL does not read it as the start
+        # of a .json style format extension.
+        return "f:" + tilde_encode(value.hex().replace("+", ""))
+    value = str(value)
+    if value == "":
+        return _KEY_EMPTY
+    return tilde_encode(value)
+
+
+def decode_key_value(component):
+    """Decode a value encoded by encode_key_value(). Text comes back as a
+    string, typed values as None, int, float or bytes.
+
+    Raises ValueError if a typed value is malformed."""
+    if component == _KEY_NULL:
+        return None
+    if component == _KEY_EMPTY:
+        return ""
+    # Typed values are not tilde-encoded, so check for them before tilde_decode()
+    try:
+        if component.startswith("i:"):
+            number = int(component[2:])
+            if not -(2**63) <= number < 2**63:
+                raise ValueError
+            return number
+        if component.startswith("f:"):
+            # Not tilde_decode(), which would turn the "+" of "p+1" into a space
+            number = float.fromhex(component[2:].replace("~2E", "."))
+            if math.isnan(number):
+                raise ValueError
+            return number
+        if component.startswith("b:"):
+            return bytes.fromhex(component[2:])
+    except OverflowError:
+        raise ValueError(component)
+    return tilde_decode(component)
+
+
+def key_value_display(value):
+    """A primary key value as text for people to read, in a link or a
+    message. Binary values are shown as hex, labelled as binary."""
+    if isinstance(value, bytes):
+        return f"binary {value.hex()}"
+    return str(value)
+
+
+def decode_key_path(path):
+    "Split a row path on commas and decode_key_value() each component"
+    return [decode_key_value(component) for component in path.split(",")]
+
+
+def untyped_columns(columns):
+    """Names of the columns SQLite will not convert a text value for: those
+    declared with no type, or as a blob. ``columns`` is the result of
+    ``await db.table_column_details(table)``."""
+    from datasette.column_types import SQLiteType
+
+    return frozenset(
+        column.name
+        for column in columns
+        if SQLiteType.from_declared_type(column.type) is SQLiteType.BLOB
+    )
+
+
+def path_from_row_pks(row, pks, use_rowid, quote=True, typed_columns=()):
+    """Generate a unique identifier for a row from its primary keys, encoded
+    for use in a URL unless ``quote`` is false.
+
+    ``typed_columns`` are the primary key columns that need their integers and
+    floats encoded with a type - see untyped_columns()."""
     if use_rowid:
-        bits = [row["rowid"]]
-    else:
-        bits = [
-            row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
-        ]
+        pks = ["rowid"]
+    values = [
+        (pk, row[pk]["value"] if isinstance(row[pk], dict) else row[pk]) for pk in pks
+    ]
     if quote:
-        bits = [tilde_encode(str(bit)) for bit in bits]
+        bits = [encode_key_value(value, pk in typed_columns) for pk, value in values]
     else:
-        bits = [str(bit) for bit in bits]
+        bits = [key_value_display(value) for _, value in values]
 
     return ",".join(bits)
+
+
+def row_has_null_primary_key(row, pks):
+    """True if any of the row's primary key values are null.
+
+    SQLite allows null primary keys in rowid tables, and allows several rows
+    to share one, so such a row has no identifier that can be used to link to
+    it, edit it or delete it."""
+    for pk in pks:
+        value = row[pk]
+        if isinstance(value, dict):
+            value = value["value"]
+        if value is None:
+            return True
+    return False
+
+
+def compound_keys_at_or_before_sql(pks, start_index=0):
+    # The inverse of compound_keys_after_sql(): rows up to and including the
+    # cursor. Written out directly, rather than as "not (...after...)", so
+    # SQLite can answer it with a range search on the primary key index.
+    # For pk1/pk2/pk3 returns:
+    #
+    # ([pk1] < :p0)
+    #   or
+    # ([pk1] = :p0 and [pk2] < :p1)
+    #   or
+    # ([pk1] = :p0 and [pk2] = :p1 and [pk3] <= :p2)
+    or_clauses = []
+    for i, pk in enumerate(pks):
+        and_clauses = [
+            f"{escape_sqlite(earlier)} = :p{j + start_index}"
+            for j, earlier in enumerate(pks[:i])
+        ]
+        op = "<=" if i == len(pks) - 1 else "<"
+        and_clauses.append(f"{escape_sqlite(pk)} {op} :p{i + start_index}")
+        or_clauses.append(f"({' and '.join(and_clauses)})")
+    return "({})".format("\n  or\n".join(or_clauses))
 
 
 def compound_keys_after_sql(pks, start_index=0):
@@ -346,7 +487,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
     Built-in types (text, numbers, lists, etc) are encoded the same as Python's built-in ``json`` module.
 
-    - ``sqlite3.Row`` becomes a tuple
+    - ``datasette.Row`` and ``sqlite3.Row`` become a tuple
     - ``sqlite3.Cursor`` becomes a list
 
     Binary blobs are encoded as an object, with the actual data base64-encoded,
@@ -361,7 +502,7 @@ class CustomJSONEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, sqlite3.Row):
+        if isinstance(obj, (Row, sqlite3.Row)):
             return tuple(obj)
         if isinstance(obj, sqlite3.Cursor):
             return list(obj)
@@ -451,6 +592,11 @@ allowed_sql_res = [
     re.compile(comment_re + r"with\b"),
     re.compile(comment_re + r"explain\s+with\b"),
     re.compile(comment_re + r"explain\s+query\s+plan\s+with\b"),
+    # EXPLAIN compiles a write statement without running it, so these are
+    # read-only. Queries still run on a read-only connection regardless.
+    re.compile(
+        comment_re + r"explain\s+(?:query\s+plan\s+)?(?:insert|update|delete|replace)\b"
+    ),
 ]
 
 allowed_pragmas = (
@@ -490,70 +636,82 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
-def append_querystring(url, querystring):
-    op = "&" if ("?" in url) else "?"
-    return f"{url}{op}{querystring}"
+def request_route_path(request):
+    """
+    The request path with any ``base_url`` prefix removed by the router.
+
+    Use this for paths that will go through ``datasette.urls.path()``, so
+    ``base_url`` is applied exactly once whether or not a proxy stripped it
+    from the request. ``datasette.urls.modify(request)`` does this for you.
+    """
+    return request.scope.get("route_path") or request.path
 
 
-def path_with_added_args(request, args, path=None):
-    path = path or request.path
+def _expand_pairs(args):
+    # Accepts a dictionary or an iterable of (key, value) pairs. A list or
+    # tuple value stands for several values of the same key.
+    if args is None:
+        return []
     if isinstance(args, dict):
         args = args.items()
-    args_to_remove = {k for k, v in args if v is None}
-    current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in args_to_remove:
-            current.append((key, value))
-    current.extend([(key, value) for key, value in args if value is not None])
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+    pairs = []
+    for key, value in args:
+        if isinstance(value, (list, tuple)):
+            pairs.extend((key, item) for item in value)
+        else:
+            pairs.append((key, value))
+    return pairs
 
 
-def path_with_removed_args(request, args, path=None):
-    query_string = request.query_string
-    if path is None:
-        path = request.path
-    else:
-        if "?" in path:
-            bits = path.split("?", 1)
-            path, query_string = bits
-    # args can be a dict or a set
-    current = []
-    if isinstance(args, set):
+@documented
+def modify_query_string(
+    query_string: str, *, add=None, replace=None, remove=None
+) -> str:
+    """
+    Return ``query_string`` with the given changes applied, in this order:
 
-        def should_remove(key, value):
-            return key in args
+    - ``remove`` - a key, or an iterable of keys and ``(key, value)`` pairs,
+      or a dictionary of ``{key: value}``. A key removes every value for that
+      key, a pair removes only that exact value.
+    - ``replace`` - dictionary or pairs. Existing values for each key are
+      dropped and the new value is used instead. ``None`` removes the key.
+    - ``add`` - dictionary or pairs, appended without touching existing values.
 
-    elif isinstance(args, dict):
-        # Must match key AND value
-        def should_remove(key, value):
-            return args.get(key) == value
-
-    for key, value in urllib.parse.parse_qsl(query_string):
-        if not should_remove(key, value):
-            current.append((key, value))
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
-
-
-def path_with_replaced_args(request, args, path=None):
-    path = path or request.path
-    if isinstance(args, dict):
-        args = args.items()
-    keys_to_replace = {p[0] for p in args}
-    current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in keys_to_replace:
-            current.append((key, value))
-    current.extend([p for p in args if p[1] is not None])
-    query_string = urllib.parse.urlencode(current)
-    if query_string:
-        query_string = f"?{query_string}"
-    return path + query_string
+    Blank values such as ``?name=`` are preserved. Existing arguments are only
+    re-encoded if something is removed or replaced. This is the implementation
+    behind :ref:`datasette.urls.modify() <internals_datasette_urls>`.
+    """
+    remove_keys = set()
+    remove_pairs = set()
+    if isinstance(remove, str):
+        remove_keys.add(remove)
+    elif isinstance(remove, dict):
+        remove_pairs.update((k, str(v)) for k, v in _expand_pairs(remove))
+    elif remove is not None:
+        for item in remove:
+            if isinstance(item, str):
+                remove_keys.add(item)
+            else:
+                key, value = item
+                remove_pairs.add((key, str(value)))
+    replace = _expand_pairs(replace)
+    remove_keys.update(key for key, _ in replace)
+    new_pairs = [
+        (key, value) for key, value in replace + _expand_pairs(add) if value is not None
+    ]
+    if remove_keys or remove_pairs:
+        pairs = [
+            (key, value)
+            for key, value in urllib.parse.parse_qsl(
+                query_string, keep_blank_values=True
+            )
+            if key not in remove_keys and (key, value) not in remove_pairs
+        ]
+        return urllib.parse.urlencode(pairs + new_pairs)
+    # Nothing to take out, so leave the existing query string exactly as it is
+    return "&".join(
+        bit for bit in (query_string, urllib.parse.urlencode(new_pairs)) if bit
+    )
 
 
 _css_re = re.compile(r"""['"\n\\]""")
@@ -567,10 +725,43 @@ def escape_css_string(s):
     )
 
 
-def escape_sqlite(s):
+@documented
+def escape_sqlite(s: str) -> str:
+    """
+    Escape a table or column name so it can be safely included in a SQL query.
+
+    Returns the identifier unchanged if it is a plain word that is not a
+    SQLite reserved word, otherwise wraps it in double quotes with any
+    embedded double quotes doubled up.
+
+    e.g. ``escape_sqlite("my table")`` returns ``'"my table"'``
+    """
     if _boring_keyword_re.fullmatch(s) and (s.lower() not in reserved_words):
         return s
     return '"{}"'.format(s.replace('"', '""'))
+
+
+_datasette_requirement_re = re.compile(
+    # A requirement named datasette, or a path or URL to a datasette wheel or sdist
+    r"^datasette(\[[^\]]*\])?\s*($|[=<>!~;@])"
+    r"|(^|/)datasette-\d[^/]*\.(whl|tar\.gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def datasette_install_requirements(install, branch=None):
+    """
+    Requirements to pip install for a published Datasette: Datasette itself
+    followed by any extras from --install. Datasette defaults to the version
+    that is running this command, unless --branch was used or one of the
+    --install values is itself a requirement for Datasette.
+    """
+    install = list(install)
+    if branch:
+        return [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + install
+    if any(_datasette_requirement_re.search(item.strip()) for item in install):
+        return install
+    return [f"datasette=={__version__}"] + install
 
 
 def make_dockerfile(
@@ -614,12 +805,7 @@ def make_dockerfile(
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
+    install = datasette_install_requirements(install, branch)
 
     apt_get_extras_ = []
     apt_get_extras_.extend(apt_get_extras)
@@ -732,19 +918,47 @@ def temporary_docker_directory(
             )
         yield datasette_dir
     finally:
-        tmp.cleanup()
+        # Windows cannot delete the current working directory, so leave it first
         os.chdir(saved_cwd)
+        tmp.cleanup()
 
 
 def detect_primary_keys(conn, table):
     """Figure out primary keys for a table."""
-    columns = table_column_details(conn, table)
-    pks = [column for column in columns if column.is_pk]
-    pks.sort(key=lambda column: column.is_pk)
-    return [column.name for column in pks]
+    # Sorted by position in the primary key, which starts at 1
+    pks = sorted(
+        (pk_position, name)
+        for _cid, name, _type, _notnull, _default, pk_position, _hidden in _table_xinfo(
+            conn, table
+        )
+        if pk_position
+    )
+    return [name for _, name in pks]
+
+
+def refresh_schema(conn):
+    """
+    Make sure this connection has noticed schema changes made by other connections.
+
+    SQLite answers several PRAGMAs from the connection's cached copy of the
+    schema without first checking that the cache is current. If another
+    connection has just created the table, they return no rows at all:
+
+    - ``PRAGMA table_info()`` and ``table_xinfo()`` in SQLite before 3.33.0
+    - ``PRAGMA foreign_key_list()`` and ``index_list()`` in every version
+      tested, up to 3.53
+
+    Running any ordinary query first makes SQLite compare schema versions and
+    reload the schema if needed. This was the cause of intermittent test
+    failures in https://github.com/simonw/datasette/issues/2356,
+    https://github.com/simonw/datasette/issues/1919 and
+    https://github.com/simonw/datasette/issues/2632
+    """
+    conn.execute("select 1 from sqlite_master limit 1").fetchall()
 
 
 def get_outbound_foreign_keys(conn, table):
+    refresh_schema(conn)
     infos = conn.execute(f"PRAGMA foreign_key_list({escape_sqlite(table)})").fetchall()
     fks = []
     for info in infos:
@@ -822,10 +1036,21 @@ def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
     sql, params = detect_fts_sql(table)
     rows = conn.execute(sql, params).fetchall()
-    if len(rows) == 0:
-        return None
-    else:
+    if rows:
         return rows[0][0]
+    # detect_fts_sql() only matches content="table" and content=[table], but
+    # SQLite also accepts content=table, content='table' and content=`table`
+    candidates = conn.execute(
+        "select name, sql from sqlite_master where rootpage = 0"
+        " and sql like '%VIRTUAL TABLE%USING FTS%'"
+        " and instr(lower(sql), lower(?))",
+        [table],
+    ).fetchall()
+    for name, fts_sql in candidates:
+        content_table = _fts_external_content_table(fts_sql)
+        if content_table and content_table.lower() == table.lower():
+            return name
+    return None
 
 
 def detect_fts_sql(table):
@@ -867,29 +1092,62 @@ def detect_json1(conn=None):
 
 
 def table_columns(conn, table):
-    return [column.name for column in table_column_details(conn, table)]
+    return [row[1] for row in _table_xinfo(conn, table)]
+
+
+def _table_xinfo(conn, table):
+    """
+    Returns a row for each column of a table or view, as
+    (cid, name, type, notnull, default_value, pk_position, hidden)
+    """
+    refresh_schema(conn)
+    if supports_table_xinfo():
+        # table_xinfo was added in 3.26.0
+        return conn.execute(f"PRAGMA table_xinfo({escape_sqlite(table)});").fetchall()
+    # table_info does not report hidden, so treat it as 0 for all columns
+    return [
+        (*row, 0)
+        for row in conn.execute(
+            f"PRAGMA table_info({escape_sqlite(table)});"
+        ).fetchall()
+    ]
+
+
+# The values PRAGMA table_xinfo reports as "hidden" for generated columns
+_XINFO_GENERATED = {2: "virtual", 3: "stored"}
+_XINFO_HIDDEN_FOR_GENERATED = {"virtual": 2, "stored": 3}
+
+
+def table_xinfo_hidden(column):
+    """
+    The integer PRAGMA table_xinfo reports as "hidden" for this column: 1 for
+    a hidden column of a virtual table, 2 for a virtual generated column, 3
+    for a stored generated column, otherwise 0.
+    """
+    if column.hidden:
+        return 1
+    return _XINFO_HIDDEN_FOR_GENERATED.get(column.generated, 0)
 
 
 def table_column_details(conn, table):
-    if supports_table_xinfo():
-        # table_xinfo was added in 3.26.0
-        return [
-            Column(*r)
-            for r in conn.execute(
-                f"PRAGMA table_xinfo({escape_sqlite(table)});"
-            ).fetchall()
-        ]
-    else:
-        # First trigger a query against sqlite_master to fix an intermittent
-        # test failure, see https://github.com/simonw/datasette/issues/2632
-        conn.execute("select 1 from sqlite_master limit 1").fetchall()
-        return [
-            # Treat hidden as 0 for all columns.
-            Column(*(list(r) + [0]))
-            for r in conn.execute(
-                f"PRAGMA table_info({escape_sqlite(table)});"
-            ).fetchall()
-        ]
+    """
+    Returns a ``Columns`` object describing every column of a table or view.
+    """
+    return Columns(
+        Column(
+            name=name,
+            # SQLite reports a column declared without a type as ""
+            type=type_ or None,
+            notnull=notnull,
+            default_value=default_value,
+            pk_position=pk_position,
+            hidden=hidden == 1,
+            generated=_XINFO_GENERATED.get(hidden),
+        )
+        for _cid, name, type_, notnull, default_value, pk_position, hidden in _table_xinfo(
+            conn, table
+        )
+    )
 
 
 filter_column_re = re.compile(r"^_filter_column_\d+$")
@@ -946,14 +1204,18 @@ css_class_re = re.compile(r"^[a-zA-Z]+[_a-zA-Z0-9-]*$")
 css_invalid_chars_re = re.compile(r"[^a-zA-Z0-9_\-]")
 
 
-def to_css_class(s):
+@documented
+def to_css_class(s: str) -> str:
     """
     Given a string (e.g. a table name) returns a valid unique CSS class.
+
     For simple cases, just returns the string again. If the string is not a
-    valid CSS class (we disallow - and _ prefixes even though they are valid
+    valid CSS class (we disallow ``-`` and ``_`` prefixes even though they are valid
     as they may be confused with browser prefixes) we strip invalid characters
     and add a 6 char md5 sum suffix, to make sure two tables with identical
     names after stripping characters don't end up with the same CSS class.
+
+    e.g. ``to_css_class("my table")`` returns ``"my-table-9f0572"``
     """
     if css_class_re.match(s):
         return s
@@ -990,54 +1252,17 @@ def module_from_path(path, name):
     # Adapted from http://sayspy.blogspot.com/2011/07/how-to-import-module-from-just-file.html
     mod = types.ModuleType(name)
     mod.__file__ = path
+    # Give the module a loader, so tracebacks through it can show source
+    # lines. Python 3.15 warns about module globals with no __spec__.loader
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    mod.__loader__ = loader
+    mod.__spec__ = importlib.util.spec_from_loader(name, loader, origin=str(path))
     with open(path, "r") as file:
         code = compile(file.read(), path, "exec", dont_inherit=True)
     # Executing the file is the whole point - this is how --plugins-dir loads
     # plugins and how metadata/config .py files are evaluated
     exec(code, mod.__dict__)  # noqa: S102
     return mod
-
-
-def path_with_format(
-    *, request=None, path=None, format=None, extra_qs=None, replace_format=None
-):
-    qs = extra_qs or {}
-    if path is None and request:
-        path = request.path
-    if replace_format and path.endswith(f".{replace_format}"):
-        path = path[: -(1 + len(replace_format))]
-    if "." in path:
-        qs["_format"] = format
-    else:
-        path = f"{path}.{format}"
-    if qs:
-        extra = urllib.parse.urlencode(sorted(qs.items()))
-        if request and request.query_string:
-            path = f"{path}?{request.query_string}&{extra}"
-        else:
-            path = f"{path}?{extra}"
-    elif request and request.query_string:
-        path = f"{path}?{request.query_string}"
-    return path
-
-
-class CustomRow(OrderedDict):
-    # Loose imitation of sqlite3.Row which offers
-    # both index-based AND key-based lookups
-    def __init__(self, columns, values=None):
-        self.columns = columns
-        if values:
-            self.update(values)
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return super().__getitem__(self.columns[key])
-        else:
-            return super().__getitem__(key)
-
-    def __iter__(self):
-        for column in self.columns:
-            yield self[column]
 
 
 def value_as_boolean(value):
@@ -1048,31 +1273,6 @@ def value_as_boolean(value):
 
 class ValueAsBooleanError(ValueError):
     pass
-
-
-class WriteLimitExceeded(Exception):
-    pass
-
-
-class LimitedWriter:
-    def __init__(self, writer, limit_mb):
-        self.writer = writer
-        self.limit_bytes = limit_mb * 1024 * 1024
-        self.bytes_count = 0
-
-    async def write(self, bytes):
-        self.bytes_count += len(bytes)
-        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
-            raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
-        await self.writer.write(bytes)
-
-
-class EscapeHtmlWriter:
-    def __init__(self, writer):
-        self.writer = writer
-
-    async def write(self, content):
-        await self.writer.write(markupsafe.escape(content))
 
 
 _infinities = {float("inf"), float("-inf")}
@@ -1130,22 +1330,20 @@ class LoadExtension(click.ParamType):
         return path, entrypoint
 
 
-def format_bytes(bytes):
-    current = float(bytes)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if current < 1024:
-            break
-        current = current / 1024
-    if unit == "bytes":
-        return f"{int(current)} {unit}"
-    else:
-        return f"{current:.1f} {unit}"
-
-
 _escape_fts_re = re.compile(r'\s+|(".*?")')
 
 
-def escape_fts(query):
+@documented
+def escape_fts(query: str) -> str:
+    """
+    Escape a user-provided search string so it can be safely used with a SQLite
+    full-text search ``MATCH`` operator, by wrapping each term in double quotes.
+
+    e.g. ``escape_fts("hello world")`` returns ``'"hello" "world"'``
+
+    This prevents FTS operators such as ``AND``, ``NOT``, ``*`` and ``:`` in
+    user input from being interpreted as query syntax or causing errors.
+    """
     # If query has unbalanced ", add one at end
     if query.count('"') % 2:
         query += '"'
@@ -1154,7 +1352,16 @@ def escape_fts(query):
     return " ".join(f'"{bit}"' if not bit.startswith('"') else bit for bit in bits)
 
 
+@documented(label="internals_multiparams")
 class MultiParams:
+    """
+    Dictionary-like object for parameters that can have multiple values.
+    ``request.args`` is an instance of this class.
+
+    Construct with a dictionary of ``{"key": ["list", "of", "values"]}``
+    or a list of ``[key, value]`` pairs.
+    """
+
     def __init__(self, data):
         # data is a dictionary of key => [list, of, values] or a list of [["key", "value"]] pairs
         if isinstance(data, dict):
@@ -1230,8 +1437,9 @@ def check_connection(conn):
                 raise ConnectionProblem(e)
 
 
+@documented
 class BadMetadataError(Exception):
-    pass
+    "Raised by :ref:`parse_metadata() <internals_utils_parse_metadata>` if content is not valid JSON or YAML."
 
 
 @documented
@@ -1292,7 +1500,14 @@ async def async_call_with_supported_arguments(fn, **kwargs):
     return await fn(*call_with)
 
 
-def actor_matches_allow(actor, allow):
+@documented
+def actor_matches_allow(actor: dict | None, allow: dict | bool | None) -> bool:
+    """
+    Returns ``True`` if the actor matches the ``allow`` block, using the rules
+    described in :ref:`authentication_permissions_allow`.
+
+    ``allow=None`` matches every actor, including ``None`` for an unauthenticated user.
+    """
     if allow is True:
         return True
     if allow is False:
@@ -1372,7 +1587,16 @@ async def initial_path_for_datasette(datasette):
     return path
 
 
+@documented
 class PrefixedUrlString(str):
+    """
+    A ``str`` subclass returned by the :ref:`datasette.urls <internals_datasette_urls>` methods,
+    marking a path that has already had the :ref:`setting_base_url` prefix applied.
+
+    String methods such as ``.replace()`` and concatenation with ``+`` return
+    a ``PrefixedUrlString``, so the marker survives further manipulation.
+    """
+
     def __add__(self, other):
         return type(self)(super().__add__(other))
 
@@ -1398,8 +1622,12 @@ class PrefixedUrlString(str):
             return super().__getattribute__(name)
 
 
+@documented
 class StartupError(Exception):
-    pass
+    """
+    Raise this from a :ref:`startup() <plugin_hook_startup>` plugin hook to prevent Datasette
+    from starting. The message is shown to the user without a traceback.
+    """
 
 
 # Comments and string literals, matched in a single pass so that whichever
@@ -1468,6 +1696,22 @@ UNSTABLE_API_MESSAGE = (
 )
 
 
+def request_wants_json(request):
+    """
+    True if errors for this request should use the JSON error format: the
+    path ends in .json, or the Accept header mentions application/json, or
+    the request body was sent as application/json (with or without a
+    charset parameter).
+    """
+    path = request.path.split("?")[0]
+    if path.endswith(".json"):
+        return True
+    if "application/json" in (request.headers.get("accept") or ""):
+        return True
+    content_type = (request.headers.get("content-type") or "").split(";")[0]
+    return content_type.strip().lower() == "application/json"
+
+
 def error_body(messages, status):
     """
     The canonical JSON error body used by every Datasette JSON error response:
@@ -1489,10 +1733,17 @@ def error_body(messages, status):
     }
 
 
-def add_cors_headers(headers):
+@documented
+def add_cors_headers(headers: dict) -> None:
+    """
+    Add the CORS headers that Datasette sends when run with ``--cors``
+    to the provided ``headers`` dictionary, modifying it in place.
+    """
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
-    headers["Access-Control-Expose-Headers"] = "Link"
+    headers["Access-Control-Expose-Headers"] = (
+        "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+    )
     headers["Access-Control-Allow-Methods"] = "GET, POST, HEAD, OPTIONS"
     headers["Access-Control-Max-Age"] = "3600"
 
@@ -1660,8 +1911,9 @@ def prune_empty_dicts(d: dict):
 def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
-    hierarchy in destination if needed. After moving, recursively remove any keys
-    in the source that are left empty.
+    hierarchy in destination if needed. A 'plugins' block is merged by plugin name
+    with one already in the destination, the source winning for a name in both.
+    After moving, recursively remove any keys in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1676,8 +1928,16 @@ def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]
                 d = dest
                 for step in path:
                     d = d.setdefault(step, {})
-                # Move the plugins
-                d[key] = value
+                # Move the plugins, keeping any the destination already has
+                # for other plugin names
+                if (
+                    key == "plugins"
+                    and isinstance(value, dict)
+                    and isinstance(d.get(key), dict)
+                ):
+                    d[key] = {**d[key], **value}
+                else:
+                    d[key] = value
                 # Remove the plugins from source
                 src.pop(key, None)
             elif isinstance(value, dict):

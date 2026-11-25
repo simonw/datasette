@@ -94,7 +94,7 @@ looks like this:
 
 The ``"rows"`` key is a list of objects, each one representing a row.
 
-The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
+The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting). Query responses also return this as a ``Datasette-Truncated: true`` or ``Datasette-Truncated: false`` HTTP header, in JSON and in every other format - see :ref:`csv_export_truncated`.
 
 For table pages, two additional keys are present: ``"next"``, an opaque token that can be used to retrieve the next page using ``?_next=TOKEN``, and ``"next_url"``, the full URL of that next page. Both are ``null`` on the final page. See :ref:`json_api_pagination`.
 
@@ -129,10 +129,11 @@ Some endpoints add extra context keys. For example, a SQL error from a
 ``"rows"`` and ``"truncated"`` keys of the response it was unable to
 produce.
 
-Permission errors use the same format: a request that fails a permission
-check receives a ``403`` with this JSON error body when the URL ends in
-``.json`` or the request sends an ``Accept: application/json`` or
-``Content-Type: application/json`` header.
+Errors handled by Datasette's exception and permission handlers use this
+format when the URL ends in ``.json`` or the request sends an
+``Accept: application/json`` or ``Content-Type: application/json`` header.
+Without one of these signals, an error on an HTML page is rendered as HTML.
+Errors on explicit ``.csv`` URLs remain plain text, regardless of headers.
 
 .. _json_api_custom_sql:
 
@@ -153,6 +154,34 @@ Values for named SQL parameters can be provided as additional query string param
 
 The response uses the same default representation described above.
 
+.. _json_api_row:
+
+Rows
+----
+
+Every row in a table has its own JSON URL, see :ref:`RowView`. The row is returned as an object in the ``"row"`` key:
+
+::
+
+    GET /fixtures/simple_primary_key/1.json
+
+.. code-block:: json
+
+    {
+      "ok": true,
+      "database": "fixtures",
+      "table": "simple_primary_key",
+      "primary_keys": ["id"],
+      "primary_key_values": ["1"],
+      "query_ms": 1.2,
+      "row": {
+        "id": 1,
+        "content": "hello"
+      }
+    }
+
+Pass any :ref:`?_shape= option <json_api_shapes>` to return the row using the same shapes as table JSON instead. ``?_shape=objects`` returns the table default representation, with the row as the only item in the ``"rows"`` list.
+
 .. _json_api_shapes:
 
 Different shapes
@@ -162,7 +191,7 @@ The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
 options:
 
-* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default for tables and queries
 * ``?_shape=arrays`` - ``"rows"`` is a list of lists, where the order of values in each list matches the order of the columns
 * ``?_shape=array`` - a JSON array of objects - effectively just the ``"rows"`` key from the default representation
 * ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
@@ -296,7 +325,10 @@ query string arguments:
     JSON. Without this argument those columns will be returned as JSON objects
     that have been double-encoded into a JSON string value.
 
-    Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
+    With ``_shape=object``, the object keys still use the original database
+    primary-key values, even when a primary-key column is decoded using ``_json``.
+
+    Compare `this query without the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array>`_ to `this query using the argument <https://latest.datasette.io/fixtures/-/query.json?sql=select+%27%7B%22this+is%22%3A+%22a+json+object%22%7D%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``
     If your data contains infinity or -infinity values, Datasette will replace
@@ -308,7 +340,9 @@ query string arguments:
     Sets a custom time limit for the query in ms. You can use this for optimistic
     queries where you would like Datasette to give up if the query takes too
     long, for example if you want to implement autocomplete search but only if
-    it can be executed in less than 10ms.
+    it can be executed in less than 10ms. This can only shorten the time limit:
+    a value higher than the :ref:`setting_sql_time_limit_ms` setting is
+    reduced to that setting.
 
 ``?_ttl=SECONDS``
     For how many seconds should this response be cached by HTTP proxies? Use
@@ -511,7 +545,7 @@ The available table extras are listed below.
         }
 
 ``display_columns``
-    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.
 
     Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
 
@@ -576,7 +610,7 @@ The available table extras are listed below.
             "table": "facetable",
             "format": "json"
           },
-          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=274432)>, table='facetable', is_view=False)",
           "nofacet": null,
           "nosuggest": null
         }
@@ -753,7 +787,9 @@ The available table extras are listed below.
     .. code-block:: json
 
         {
-          "json": "/fixtures/facetable.json?_extra=renderers&_format=json&_labels=on"
+          "json": "/fixtures/facetable.json?_extra=renderers&_labels=on",
+          "tsv": "/fixtures/facetable.tsv?_extra=renderers&_labels=on",
+          "csv": "/fixtures/facetable.csv?_extra=renderers&_labels=on"
         }
 
 ``custom_table_templates``
@@ -865,6 +901,17 @@ The available table extras are listed below.
           ]
         ]
 
+``expanded_columns``
+    List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects. (See :ref:`expand_foreign_keys` for how to expand these labels.)
+
+    ``GET /fixtures/facetable.json?_labels=on&_extra=expanded_columns``
+
+    .. code-block:: json
+
+        [
+          "_city_id"
+        ]
+
 ``form_hidden_args``
     List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
 
@@ -937,22 +984,18 @@ The following extras are available for row JSON responses.
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
 
-    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+    The ``render_cell`` object is keyed by column name. Only columns whose rendered value differs from the default are included. If a ``?_shape=`` is specified ``render_cell`` is instead a list with one item, matching the ``rows`` list.
 
     .. code-block:: json
 
         {
-          "rows": [
-            {
-              "id": 4,
-              "content": "RENDER_CELL_DEMO"
-            }
-          ],
-          "render_cell": [
-            {
-              "content": "<strong>Custom rendered HTML</strong>"
-            }
-          ]
+          "row": {
+            "id": 4,
+            "content": "RENDER_CELL_DEMO"
+          },
+          "render_cell": {
+            "content": "<strong>Custom rendered HTML</strong>"
+          }
         }
 
 ``debug``
@@ -1361,8 +1404,12 @@ The ``q`` parameter is required. If it is omitted or blank, the endpoint returns
 an empty ``"rows"`` list.
 
 The response includes a ``"pks"`` object containing the primary key value or
-values for each row. If Datasette can detect a label column, or one has been
-configured using ``label_column``, each row will also include ``"label"``:
+values for each row, and a ``"path"`` which is the last part of the URL to that
+row's page, ``/<database>/<table>/<path>``. ``"path"`` is ``null`` for a row
+with a null primary key, which has no page. If Datasette can detect a label
+column, or one has been configured using ``label_column``, each row will also
+include ``"label"``. A binary value is returned as a
+``{"$base64": true, "encoded": "..."}`` object, as it is in table JSON.
 
 .. code-block:: json
 
@@ -1372,6 +1419,7 @@ configured using ``label_column``, each row will also include ``"label"``:
                 "pks": {
                     "id": 1
                 },
+                "path": "1",
                 "label": "Example row"
             }
         ]
@@ -1400,6 +1448,8 @@ You can filter the data returned by the table based on column values using a que
 
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
+
+    A value that looks like a number matches numbers as well as text if the column has no declared type, which is the case for a column in a view that is calculated by an expression such as ``count(*)`` or ``sum(amount)``. ``?total=5`` returns rows where ``total`` is the number ``5`` or the text ``"5"``. The same applies to ``__not``, ``__in`` and ``__notin``.
 
 ``?column__not=value``
     Returns rows where the column does not match the value.
@@ -1610,6 +1660,10 @@ looks like:
 The column in the foreign key table that is used for the label can be specified
 in ``datasette.yaml`` - see :ref:`table_configuration_label_column`.
 
+A value is only expanded if a label was found for it. A foreign key that refers
+to a table with no label column is returned as the plain value, as is a value
+that does not match a row in the other table.
+
 .. _json_api_discover_alternate:
 
 Discovering the JSON for a page
@@ -1652,7 +1706,7 @@ served with the following additional HTTP headers:
 
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization, Content-Type
-    Access-Control-Expose-Headers: Link
+    Access-Control-Expose-Headers: Link, Datasette-Truncated, Datasette-Max-Returned-Rows
     Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
     Access-Control-Max-Age: 3600
 
@@ -1873,6 +1927,8 @@ To return the newly inserted rows, add the ``"return": true`` key to the request
     }
 
 This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
+
+If the table does not have an explicit primary key, each returned row will include the ``rowid`` that SQLite assigned to it. You can also set the ``rowid`` yourself by including it as a key in the row.
 
 If any of your rows have a primary key that is already in use, you will get an error and none of the rows will be inserted:
 
@@ -2163,6 +2219,9 @@ The JSON here describes the table that will be created:
   If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an auto-incrementing integer ID column for you.
 
 * ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+
+  Primary key columns are created as ``NOT NULL``, because SQLite would otherwise allow rows with a null primary key. The exception is a single integer primary key, which SQLite never allows to be null. This also applies to tables created from example ``rows``.
+
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.

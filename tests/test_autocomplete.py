@@ -1,10 +1,7 @@
-import pytest
-
 from datasette.app import Datasette
 from datasette.database import QueryInterrupted
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_single_pk_exact_match_and_label_order():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_single")
@@ -27,16 +24,15 @@ async def test_autocomplete_single_pk_exact_match_and_label_order():
     assert response.json() == {
         "ok": True,
         "rows": [
-            {"pks": {"id": 2}, "label": "Longer non-label pk match"},
-            {"pks": {"id": 20}, "label": "2"},
-            {"pks": {"id": 21}, "label": "22"},
-            {"pks": {"id": 3}, "label": "A label containing 2"},
-            {"pks": {"id": 200}, "label": "A"},
+            {"pks": {"id": 2}, "path": "2", "label": "Longer non-label pk match"},
+            {"pks": {"id": 20}, "path": "20", "label": "2"},
+            {"pks": {"id": 21}, "path": "21", "label": "22"},
+            {"pks": {"id": 3}, "path": "3", "label": "A label containing 2"},
+            {"pks": {"id": 200}, "path": "200", "label": "A"},
         ],
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_blank_q_returns_no_results():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_blank")
@@ -61,7 +57,6 @@ async def test_autocomplete_blank_q_returns_no_results():
     assert response.json() == {"ok": True, "rows": []}
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_initial_returns_latest_rows():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_initial")
@@ -84,9 +79,9 @@ async def test_autocomplete_initial_returns_latest_rows():
     assert response.json() == {
         "ok": True,
         "rows": [
-            {"pks": {"id": 3}, "label": "Cleo"},
-            {"pks": {"id": 2}, "label": "Bob"},
-            {"pks": {"id": 1}, "label": "Alice"},
+            {"pks": {"id": 3}, "path": "3", "label": "Cleo"},
+            {"pks": {"id": 2}, "path": "2", "label": "Bob"},
+            {"pks": {"id": 1}, "path": "1", "label": "Alice"},
         ],
     }
 
@@ -98,14 +93,13 @@ async def test_autocomplete_initial_returns_latest_rows():
     assert response.json() == {
         "ok": True,
         "rows": [
-            {"pks": {"id": 3}, "label": "Cleo"},
-            {"pks": {"id": 2}, "label": "Bob"},
-            {"pks": {"id": 1}, "label": "Alice"},
+            {"pks": {"id": 3}, "path": "3", "label": "Cleo"},
+            {"pks": {"id": 2}, "path": "2", "label": "Bob"},
+            {"pks": {"id": 1}, "path": "1", "label": "Alice"},
         ],
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_escapes_like_characters():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_escape")
@@ -126,12 +120,11 @@ async def test_autocomplete_escapes_like_characters():
     assert response.json() == {
         "ok": True,
         "rows": [
-            {"pks": {"id": 1}, "label": "100% real"},
+            {"pks": {"id": 1}, "path": "1", "label": "100% real"},
         ],
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_compound_pk_searches_all_pk_columns():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("autocomplete_compound")
@@ -155,14 +148,25 @@ async def test_autocomplete_compound_pk_searches_all_pk_columns():
     assert response.json() == {
         "ok": True,
         "rows": [
-            {"pks": {"country": "mx", "code": "ca"}, "label": "Campeche"},
-            {"pks": {"country": "us", "code": "ca"}, "label": "California"},
-            {"pks": {"country": "ca", "code": "bc"}, "label": "British Columbia"},
+            {
+                "pks": {"country": "mx", "code": "ca"},
+                "path": "mx,ca",
+                "label": "Campeche",
+            },
+            {
+                "pks": {"country": "us", "code": "ca"},
+                "path": "us,ca",
+                "label": "California",
+            },
+            {
+                "pks": {"country": "ca", "code": "bc"},
+                "path": "ca,bc",
+                "label": "British Columbia",
+            },
         ],
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_primary_key_called_label():
     ds = Datasette(
         memory=True,
@@ -191,12 +195,11 @@ async def test_autocomplete_primary_key_called_label():
     assert response.json() == {
         "ok": True,
         "rows": [
-            {"pks": {"label": "abc"}, "label": "Display value"},
+            {"pks": {"label": "abc"}, "path": "abc", "label": "Display value"},
         ],
     }
 
 
-@pytest.mark.asyncio
 async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
     ds = Datasette(
         memory=True,
@@ -254,7 +257,11 @@ async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
     assert data == {
         "ok": True,
         "rows": [
-            {"pks": {"id": f"item-1999{i:02d}"}, "label": f"name 1999{i:02d}"}
+            {
+                "pks": {"id": f"item-1999{i:02d}"},
+                "path": f"item-1999{i:02d}",
+                "label": f"name 1999{i:02d}",
+            }
             for i in range(10)
         ],
     }

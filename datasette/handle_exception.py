@@ -1,14 +1,15 @@
+import dataclasses
 import traceback
 
 from markupsafe import Markup
 
 from datasette import Response, hookimpl
 
-from .utils import add_cors_headers, error_body
+from .utils import add_cors_headers, error_body, request_wants_json
 from .utils.asgi import (
     Base400,
 )
-from .views.base import DatasetteError
+from .views.base import DatasetteError, ErrorContext
 
 # Debugger imports are deliberate - they back the "pdb" setting, which drops
 # into a debugger on unhandled exceptions
@@ -55,28 +56,28 @@ def handle_exception(datasette, request, exception):
         headers = {}
         if datasette.cors:
             add_cors_headers(headers)
-        if request.path.split("?")[0].endswith(".json"):
-            body = dict(info)
-            body.update(error_body(plain_message or message, status))
-            return Response.json(body, status=status, headers=headers)
-        if request.path.split("?")[0].endswith(".csv"):
+        path = request.path.split("?")[0]
+        if path.endswith((".csv", ".tsv")):
             return Response.text(
                 plain_message or message, status=status, headers=headers
             )
-        info.update(
-            {
-                "ok": False,
-                "error": message,
-                "status": status,
-                "title": title,
-            }
-        )
+        if request_wants_json(request):
+            body = dict(info)
+            body.update(error_body(plain_message or message, status))
+            return Response.json(body, status=status, headers=headers)
+        context = ErrorContext(error=message, status=status, title=title)
         environment = datasette.get_jinja_environment(request)
         template = environment.select_template(templates)
+        # Rendered directly rather than using datasette.render_template(),
+        # so that an error in a plugin hook cannot break the error page
         return Response.html(
             await template.render_async(
                 dict(
                     info,
+                    **{
+                        f.name: getattr(context, f.name)
+                        for f in dataclasses.fields(context)
+                    },
                     urls=datasette.urls,
                     menu_links=list,
                 )

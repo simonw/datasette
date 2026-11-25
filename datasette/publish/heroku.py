@@ -10,7 +10,12 @@ from subprocess import call, check_output
 import click
 
 from datasette import hookimpl
-from datasette.utils import link_or_copy, link_or_copy_directory, parse_metadata
+from datasette.utils import (
+    datasette_install_requirements,
+    link_or_copy,
+    link_or_copy_directory,
+    parse_metadata,
+)
 
 from .common import (
     add_common_publish_arguments_and_options,
@@ -198,12 +203,7 @@ def temporary_heroku_directory(
         with open("runtime.txt", "w") as fp:
             fp.write("python-3.11.0")
 
-        if branch:
-            install = [
-                f"https://github.com/simonw/datasette/archive/{branch}.zip"
-            ] + list(install)
-        else:
-            install = ["datasette"] + list(install)
+        install = datasette_install_requirements(install, branch)
 
         with open("requirements.txt", "w") as fp:
             fp.write("\n".join(install))
@@ -250,5 +250,6 @@ def temporary_heroku_directory(
         yield
 
     finally:
-        tmp.cleanup()
+        # Windows cannot delete the current working directory, so leave it first
         os.chdir(saved_cwd)
+        tmp.cleanup()

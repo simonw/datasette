@@ -10,7 +10,6 @@ from datasette.permissions import PermissionSQL
 from datasette.resources import TableResource
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("scope", [None, "global", "database", "table", "root"])
 async def test_statistics_denied_despite_allow_rules(scope):
     config = {"databases": {"data": {"tables": {"sqlite_stat1": {}}}}}
@@ -47,7 +46,6 @@ async def test_statistics_denied_despite_allow_rules(scope):
         ds.close()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table", ["sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"]
 )
@@ -67,7 +65,6 @@ async def test_statistics_names_denied(table, default_deny):
         ds.close()
 
 
-@pytest.mark.asyncio
 async def test_plugin_can_replace_statistics_policy():
     class ReplacementPolicy:
         @hookimpl

@@ -106,7 +106,6 @@ def test_datasette_package_never_imports_the_sdk():
     ), f"datasette imported the OpenTelemetry SDK: {result.stdout.strip()}"
 
 
-@pytest.mark.asyncio
 async def test_db_query_span_basic_attributes(ds_client, otel_spans):
     response = await ds_client.get("/fixtures/-/query.json?sql=select+1")
     assert response.status_code == 200
@@ -124,7 +123,6 @@ async def test_db_query_span_basic_attributes(ds_client, otel_spans):
     assert span.status.status_code == StatusCode.UNSET
 
 
-@pytest.mark.asyncio
 async def test_truncated_result_sets_truncated_attribute(otel_spans):
     "A result cut short by max_returned_rows records truncated=True."
     ds = Datasette(memory=True, settings={"max_returned_rows": 5})
@@ -141,7 +139,6 @@ async def test_truncated_result_sets_truncated_attribute(otel_spans):
     assert span.attributes["datasette.rows_returned"] == 5
 
 
-@pytest.mark.asyncio
 async def test_facetable_request_produces_db_query_spans(ds_client, otel_spans):
     response = await ds_client.get("/fixtures/facetable.json")
     assert response.status_code == 200
@@ -174,7 +171,6 @@ def test_sql_attribute_truncates_at_2048():
     assert truncated.endswith("…[truncated]")
 
 
-@pytest.mark.asyncio
 async def test_db_query_text_is_truncated_in_real_span(ds_client, otel_spans):
     # A long trailing comment keeps the SQL valid but over the 2048 character limit
     long_sql = "select 1 -- " + ("x" * 3000)
@@ -192,7 +188,6 @@ async def test_db_query_text_is_truncated_in_real_span(ds_client, otel_spans):
         assert len(recorded) <= MAX_SQL_LENGTH + len("…[truncated]")
 
 
-@pytest.mark.asyncio
 async def test_no_span_attribute_ever_contains_a_parameter_value(ds_client, otel_spans):
     response = await ds_client.get(
         "/fixtures/-/query.json",
@@ -217,7 +212,6 @@ async def test_no_span_attribute_ever_contains_a_parameter_value(ds_client, otel
     assert span.attributes.get("datasette.param_count") == 1
 
 
-@pytest.mark.asyncio
 async def test_query_interrupted_sets_error_status(otel_spans):
     """
     A query that exceeds the sql_time_limit_ms setting is a span error.
@@ -262,7 +256,6 @@ async def _expected_timeout_count_span(otel_spans, database_name):
     return spans[0]
 
 
-@pytest.mark.asyncio
 async def test_expected_timeout_is_not_a_span_error(otel_spans):
     span = await _expected_timeout_count_span(otel_spans, "t09_expected_timeout")
     # Recorded as interrupted, but not as an error:
@@ -271,7 +264,6 @@ async def test_expected_timeout_is_not_a_span_error(otel_spans):
     assert not [event for event in span.events if event.name == "exception"]
 
 
-@pytest.mark.asyncio
 async def test_expected_timeout_does_not_error_the_inner_execute_span(otel_spans):
     "The db.query.execute child span is not marked as an error either."
     span = await _expected_timeout_count_span(otel_spans, "t09_expected_timeout_inner")
@@ -282,19 +274,18 @@ async def test_expected_timeout_does_not_error_the_inner_execute_span(otel_spans
     assert not [event for event in child.events if event.name == "exception"]
 
 
-@pytest.mark.asyncio
-async def test_unexpected_timeout_is_still_a_span_error(otel_spans):
+async def test_longer_custom_time_limit_timeout_is_a_span_error(otel_spans):
     "A timeout is an error if custom_time_limit is above sql_time_limit_ms."
-    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 20})
-    db = ds.add_memory_database("t09_custom_limit_ignored")
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 10})
+    db = ds.add_memory_database("t09_longer_custom_limit")
     with pytest.raises(QueryInterrupted):
-        await db.execute(SLOW_SQL, custom_time_limit=5000)
+        await db.execute(SLOW_SQL, custom_time_limit=30)
 
-    spans = _spans_for_namespace(otel_spans, "t09_custom_limit_ignored")
+    spans = _spans_for_namespace(otel_spans, "t09_longer_custom_limit")
     assert spans
     span = spans[-1]
-    # The setting overrides the larger custom_time_limit:
-    assert span.attributes["datasette.time_limit_ms"] == 20
+    # The longer custom_time_limit replaced the setting:
+    assert span.attributes["datasette.time_limit_ms"] == 30
     assert span.attributes["datasette.interrupted"] is True
     assert span.status.status_code == StatusCode.ERROR
     assert any(event.name == "exception" for event in span.events)
@@ -304,7 +295,61 @@ async def test_unexpected_timeout_is_still_a_span_error(otel_spans):
     assert children[0].status.status_code == StatusCode.ERROR
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "timelimit,expected_time_limit_ms",
+    (
+        # ?_timelimit= can shorten the limit...
+        (5, 5),
+        # ... but cannot extend it past sql_time_limit_ms
+        (5000, 20),
+    ),
+)
+@pytest.mark.parametrize("path", ("/{}/-/query.json?sql=select+1", "/{}/t.json?"))
+async def test_timelimit_query_string_cannot_extend_time_limit(
+    otel_spans, path, timelimit, expected_time_limit_ms
+):
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 20})
+    name = "t09_timelimit_{}_{}".format(timelimit, "query" in path)
+    db = ds.add_memory_database(name)
+    await db.execute_write("create table t (id integer primary key)")
+    otel_spans.clear()
+    response = await ds.client.get(f"{path.format(name)}&_timelimit={timelimit}")
+    assert response.status_code == 200
+    sql = "select 1" if "query" in path else "select id from t"
+    limits = [
+        span.attributes["datasette.time_limit_ms"]
+        for span in _spans_for_namespace(otel_spans, name)
+        if span.attributes.get("db.query.text", "").startswith(sql)
+    ]
+    assert limits == [expected_time_limit_ms]
+
+
+async def test_internal_time_limits_are_capped_by_sql_time_limit_ms(otel_spans):
+    "Facet, facet suggestion and count limits cannot exceed sql_time_limit_ms."
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 7})
+    assert ds.setting("facet_time_limit_ms") > 7
+    assert ds.setting("facet_suggest_time_limit_ms") > 7
+    name = "t09_internal_limits_capped"
+    db = ds.add_memory_database(name)
+    await db.execute_write("create table t (id integer primary key, category text)")
+    await db.execute_write_many(
+        "insert into t (category) values (?)", [[str(i % 3)] for i in range(30)]
+    )
+    otel_spans.clear()
+    response = await ds.client.get(
+        f"/{name}/t.json?_facet=category&_extra=suggested_facets"
+    )
+    assert response.status_code == 200
+    assert response.json()["facet_results"]["results"]["category"]["results"]
+    await db.table_counts(5000)
+    limits = {
+        span.attributes["datasette.time_limit_ms"]
+        for span in _spans_for_namespace(otel_spans, name)
+        if "datasette.time_limit_ms" in span.attributes
+    }
+    assert limits == {7}
+
+
 async def test_unsuppressed_sql_error_is_a_span_error(ds_client, otel_spans):
     db = ds_client.ds.get_database("fixtures")
     with pytest.raises(sqlite3.OperationalError):
@@ -318,7 +363,6 @@ async def test_unsuppressed_sql_error_is_a_span_error(ds_client, otel_spans):
     assert "datasette.sql_error_suppressed" not in span.attributes
 
 
-@pytest.mark.asyncio
 async def test_suppressed_sql_error_is_not_a_span_error(ds_client, otel_spans):
     "With log_sql_errors=False the error is recorded as suppressed, not a span error."
     db = ds_client.ds.get_database("fixtures")
@@ -333,7 +377,6 @@ async def test_suppressed_sql_error_is_not_a_span_error(ds_client, otel_spans):
     assert not [event for event in span.events if event.name == "exception"]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_produces_db_query_span(otel_spans):
     # Named in-memory databases are shared, so each test uses a unique name.
     db = Datasette(memory=True).add_memory_database("t03_write_span")
@@ -352,7 +395,6 @@ async def test_execute_write_produces_db_query_span(otel_spans):
     assert span.attributes["datasette.param_count"] == 2
 
 
-@pytest.mark.asyncio
 async def test_execute_write_script_sets_executescript_attribute(otel_spans):
     db = Datasette(memory=True).add_memory_database("t03_write_script_span")
     await db.execute_write_script(
@@ -369,7 +411,6 @@ async def test_execute_write_script_sets_executescript_attribute(otel_spans):
     assert "insert into docs" in span.attributes["db.query.text"]
 
 
-@pytest.mark.asyncio
 async def test_execute_write_many_records_param_sets_not_rows_returned(otel_spans):
     db = Datasette(memory=True).add_memory_database("t03_write_many_span")
     await db.execute_write("create table docs (id integer primary key)")
@@ -393,7 +434,6 @@ async def test_execute_write_many_records_param_sets_not_rows_returned(otel_span
 # These tests check span parentage, not just that the spans exist.
 
 
-@pytest.mark.asyncio
 async def test_db_query_execute_parents_to_db_query(ds_client, otel_spans):
     # execute_fn() submits to the executor, so db.query.execute is created on
     # another thread.
@@ -420,7 +460,6 @@ async def test_db_query_execute_parents_to_db_query(ds_client, otel_spans):
     assert children[0].end_time <= query_span.end_time
 
 
-@pytest.mark.asyncio
 async def test_immutable_database_propagates_context(tmp_path, otel_spans):
     # Immutable databases run execute_isolated_fn() on another thread using
     # loop.run_in_executor(), not the write thread.
@@ -456,7 +495,6 @@ async def test_immutable_database_propagates_context(tmp_path, otel_spans):
     assert len(children) == 1
 
 
-@pytest.mark.asyncio
 async def test_write_spans_parent_to_db_query(otel_spans):
     # execute_write() queues a WriteTask for the write thread.
     # db.write.queue_wait and db.write.execute are both children of db.query.
@@ -483,7 +521,6 @@ async def test_write_spans_parent_to_db_query(otel_spans):
     assert queue_wait_children[0].end_time <= execute_span.start_time
 
 
-@pytest.mark.asyncio
 async def test_write_queue_wait_duration_reflects_real_wait(otel_spans):
     # db.write.queue_wait runs from task.enqueued_at_ns, captured on the event
     # loop, to when the write thread dequeues the task.
@@ -547,7 +584,6 @@ async def _write_spans_from_one_enqueue(otel_spans, name, block):
     return enqueuer_context, spans
 
 
-@pytest.mark.asyncio
 async def test_blocking_write_spans_still_parent_normally(otel_spans):
     # block=True waits for the write, so its spans are children of the
     # enqueueing span, with no links.
@@ -562,7 +598,6 @@ async def test_blocking_write_spans_still_parent_normally(otel_spans):
         assert span.links == (), f"{name} should be parented, not linked"
 
 
-@pytest.mark.asyncio
 async def test_nonblocking_write_spans_are_roots_with_a_link(otel_spans):
     # block=False returns before the write runs, so the write spans are roots
     # linked to the enqueueing span.
@@ -585,7 +620,6 @@ async def test_nonblocking_write_spans_are_roots_with_a_link(otel_spans):
     )
 
 
-@pytest.mark.asyncio
 async def test_nonblocking_write_link_has_no_attributes(otel_spans):
     _, spans = await _write_spans_from_one_enqueue(
         otel_spans, "t07_nonblocking_link_attrs", block=False
@@ -595,7 +629,6 @@ async def test_nonblocking_write_link_has_no_attributes(otel_spans):
         assert dict(span.links[0].attributes or {}) == {}, name
 
 
-@pytest.mark.asyncio
 async def test_nonblocking_write_spans_ignore_the_write_threads_ambient_context(
     otel_spans,
 ):
@@ -651,7 +684,6 @@ async def test_nonblocking_write_spans_ignore_the_write_threads_ambient_context(
         assert span.links[0].context.span_id == enqueuer_context.span_id
 
 
-@pytest.mark.asyncio
 async def test_suppressed_error_does_not_mark_execute_span(ds_client, otel_spans):
     "The inner db.query.execute span also respects log_sql_errors=False."
     db = ds_client.ds.get_database("fixtures")
@@ -669,7 +701,6 @@ async def test_suppressed_error_does_not_mark_execute_span(ds_client, otel_spans
     assert not [event for event in span.events if event.name == "exception"]
 
 
-@pytest.mark.asyncio
 async def test_invoke_startup_produces_one_trace_not_dozens_of_orphans(otel_spans):
     "Spans emitted by invoke_startup() share a single datasette.startup root span."
     ds = Datasette(memory=True)
@@ -726,7 +757,6 @@ async def test_invoke_startup_produces_one_trace_not_dozens_of_orphans(otel_span
 # --- Semantic conventions: span kind, scope, db.operation.name -------------
 
 
-@pytest.mark.asyncio
 async def test_db_query_is_client_kind_and_children_are_internal(otel_spans):
     """
     db.query spans are CLIENT. Their child spans are INTERNAL because they are
@@ -756,7 +786,6 @@ async def test_db_query_is_client_kind_and_children_are_internal(otel_spans):
             assert span.kind == SpanKind.INTERNAL, f"{name} should be INTERNAL"
 
 
-@pytest.mark.asyncio
 async def test_instrumentation_scope_declares_version_and_schema_url(
     ds_client, otel_spans
 ):
@@ -789,7 +818,6 @@ def test_db_operation_name_from_leading_keyword():
     assert sql_operation_name("") is None
 
 
-@pytest.mark.asyncio
 async def test_db_operation_name_on_real_span(ds_client, otel_spans):
     response = await ds_client.get("/fixtures/-/query.json?sql=select+1")
     assert response.status_code == 200
@@ -803,7 +831,6 @@ async def test_db_operation_name_on_real_span(ds_client, otel_spans):
     assert spans[-1].attributes["db.operation.name"] == "SELECT"
 
 
-@pytest.mark.asyncio
 async def test_execute_write_sets_db_operation_name(otel_spans):
     db = Datasette(memory=True).add_memory_database("t06_write_operation")
     await db.execute_write("create table docs (id integer primary key)")
@@ -820,7 +847,6 @@ async def test_execute_write_sets_db_operation_name(otel_spans):
     assert by_operation["insert into docs (id) values (?)"] == "INSERT"
 
 
-@pytest.mark.asyncio
 async def test_execute_write_script_has_no_operation_name(otel_spans):
     """
     Scripts can contain several statements, so db.operation.name is omitted.
@@ -845,7 +871,6 @@ async def test_execute_write_script_has_no_operation_name(otel_spans):
 # --- Callback-style calls: execute_fn / execute_write_fn / execute_isolated_fn
 
 
-@pytest.mark.asyncio
 async def test_execute_fn_produces_db_query_span(otel_spans):
     db = Datasette(memory=True).add_memory_database("t16_execute_fn")
     await db.execute_write("create table t (id integer primary key)")
@@ -872,7 +897,6 @@ async def test_execute_fn_produces_db_query_span(otel_spans):
     assert len(children) == 1
 
 
-@pytest.mark.asyncio
 async def test_execute_fn_lambda_reports_lambda(otel_spans):
     db = Datasette(memory=True).add_memory_database("t16_lambda")
     otel_spans.clear()
@@ -882,7 +906,6 @@ async def test_execute_fn_lambda_reports_lambda(otel_spans):
     assert spans[0].attributes["datasette.callback"].endswith("<lambda>")
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_produces_db_query_span(otel_spans):
     db = Datasette(memory=True).add_memory_database("t16_write_fn")
 
@@ -906,7 +929,6 @@ async def test_execute_write_fn_produces_db_query_span(otel_spans):
         assert len(_children_named(otel_spans, name, span.context)) == 1, name
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_callback_name_is_not_the_hook_wrapper(otel_spans):
     # _wrap_fn_with_hooks() wraps callbacks that accept track_event
     db = Datasette(memory=True).add_memory_database("t16_wrapper_name")
@@ -924,7 +946,6 @@ async def test_execute_write_fn_callback_name_is_not_the_hook_wrapper(otel_spans
     )
 
 
-@pytest.mark.asyncio
 async def test_execute_write_fn_nonblocking_spans_link_to_the_new_span(otel_spans):
     # With block=False the write thread spans link to the db.query span from
     # execute_write_fn(), not to the span that was current when it was called.
@@ -960,7 +981,6 @@ async def test_execute_write_fn_nonblocking_spans_link_to_the_new_span(otel_span
         assert span.links[0].context.span_id != enqueuer_context.span_id, span.name
 
 
-@pytest.mark.asyncio
 async def test_execute_does_not_double_wrap(otel_spans):
     # execute() and the SQL string write methods call the private
     # _execute_fn() and _execute_write_fn(), so they create one db.query span.
@@ -975,7 +995,6 @@ async def test_execute_does_not_double_wrap(otel_spans):
     assert len(_children_named(otel_spans, "db.query.execute", spans[0].context)) == 1
 
 
-@pytest.mark.asyncio
 async def test_execute_isolated_fn_span_on_mutable_and_immutable(tmp_path, otel_spans):
     def read_one(conn):
         return conn.execute("select 1").fetchone()[0]
@@ -1006,7 +1025,6 @@ async def test_execute_isolated_fn_span_on_mutable_and_immutable(tmp_path, otel_
     assert not _children_named(otel_spans, "db.write.execute", spans[0].context)
 
 
-@pytest.mark.asyncio
 async def test_execute_fn_exception_marks_span_error(otel_spans):
     # execute_fn() has no log_sql_errors option, so exceptions are span errors
     db = Datasette(memory=True).add_memory_database("t16_fn_error")

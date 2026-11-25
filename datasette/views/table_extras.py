@@ -1,18 +1,17 @@
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
+from datasette.facets import start_suggest_deadline
 from datasette.plugins import pm
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
-    path_with_added_args,
-    path_with_format,
-    path_with_removed_args,
+    table_xinfo_hidden,
     to_css_class,
 )
 
@@ -29,6 +28,7 @@ class TableExtraContext:
     private: bool
     rows: list
     columns: list
+    expanded_columns: list
     results_description: list
     table_columns: list
     pks: list
@@ -55,6 +55,8 @@ class TableExtraContext:
     run_sequential: object
     query_name: str | None = None
     scope: ExtraScope = ExtraScope.TABLE
+    # {column: other_table} for foreign keys to tables with no label column
+    foreign_key_links: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -188,7 +190,7 @@ class FacetInstancesProvider(Provider):
                     context.request,
                     context.database_name,
                     sql=context.sql_no_order_no_limit,
-                    params=context.params,
+                    params=context.from_sql_params,
                     table=context.table_name,
                     table_config=context.table_metadata,
                     row_count=count,
@@ -285,15 +287,16 @@ class SuggestedFacetsExtra(Extra):
         suggested_facets = []
         if (
             context.datasette.setting("suggest_facets")
-            and context.datasette.setting("allow_facet")
+            and context.datasette.setting("default_allow_facet")
             and not context.next_arg
             and not context.nofacet
             and not context.nosuggest
         ):
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await context.run_sequential(
-                *facet_suggest_awaitables
-            ):
+            start_suggest_deadline(context.datasette, facet_instances)
+            for facet in facet_instances:
+                if facet.suggest_time_exceeded():
+                    break
+                (suggest_result,) = await context.run_sequential(facet.suggest())
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 
@@ -366,13 +369,13 @@ class PrimaryKeysExtra(Extra):
 
 def column_detail_as_json(column):
     return {
-        "type": column.type,
+        "type": column.type or "",
         "sqlite_type": SQLiteType.from_declared_type(column.type).value,
         "notnull": bool(column.notnull),
         "default": column.default_value,
-        "is_pk": bool(column.is_pk),
-        "pk_position": column.is_pk,
-        "hidden": column.hidden,
+        "is_pk": bool(column.pk_position),
+        "pk_position": column.pk_position,
+        "hidden": table_xinfo_hidden(column),
     }
 
 
@@ -574,6 +577,7 @@ class DisplayColumnsAndRowsProvider(Provider):
             truncate_cells=context.datasette.setting("truncate_cells_html"),
             sortable_columns=context.sortable_columns,
             request=context.request,
+            foreign_key_links=context.foreign_key_links,
         )
         return {
             "columns": display_columns,
@@ -582,7 +586,7 @@ class DisplayColumnsAndRowsProvider(Provider):
 
 
 class DisplayColumnsExtra(Extra):
-    description = "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+    description = "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row."
     example = ExtraExample(
         value=[
             {
@@ -614,7 +618,7 @@ class DisplayColumnsExtra(Extra):
 class DisplayRowsExtra(Extra):
     description = "Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys; table pages may also provide ``pk_path``, ``row_path`` and ``row_label`` attributes on each row object."
     scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
-    # Contains markupsafe/sqlite3.Row values - not JSON serializable
+    # Contains markupsafe values - not JSON serializable
     public = False
 
     async def resolve(self, context, display_columns_and_rows):
@@ -647,13 +651,14 @@ class RenderCellExtra(Extra):
     examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             value={
-                "rows": [{"id": 4, "content": "RENDER_CELL_DEMO"}],
-                "render_cell": [{"content": "<strong>Custom rendered HTML</strong>"}],
+                "row": {"id": 4, "content": "RENDER_CELL_DEMO"},
+                "render_cell": {"content": "<strong>Custom rendered HTML</strong>"},
             },
             note=(
-                "The ``render_cell`` array has one item for the requested row. "
-                "The object is keyed by column name. Only columns whose rendered "
-                "value differs from the default are included."
+                "The ``render_cell`` object is keyed by column name. Only columns "
+                "whose rendered value differs from the default are included. If a "
+                "``?_shape=`` is specified ``render_cell`` is instead a list with "
+                "one item, matching the ``rows`` list."
             ),
         ),
         ExtraScope.QUERY: ExtraExample(
@@ -1118,7 +1123,7 @@ class RenderersExtra(Extra):
         if expandable_columns:
             url_labels_extra = {"_labels": "on"}
         table_name = context.table_name
-        view_name = "table" if context.scope == ExtraScope.TABLE else "database"
+        view_name = context.scope.value  # "table", "row" or "query"
         for key, (_, can_render) in context.datasette.renderers.items():
             it_can_render = call_with_supported_arguments(
                 can_render,
@@ -1130,17 +1135,16 @@ class RenderersExtra(Extra):
                 database=context.database_name,
                 table=table_name,
                 request=context.request,
+                path=context.datasette.urls.modify(
+                    context.request, format=False
+                ).partition("?")[0],
+                full_path=context.datasette.urls.modify(context.request, format=False),
                 view_name=view_name,
             )
             it_can_render = await await_me_maybe(it_can_render)
             if it_can_render:
-                renderers[key] = context.datasette.urls.path(
-                    path_with_format(
-                        request=context.request,
-                        path=context.request.scope.get("route_path"),
-                        format=key,
-                        extra_qs={**url_labels_extra},
-                    )
+                renderers[key] = context.datasette.urls.modify(
+                    context.request, format=key, add={**url_labels_extra}
                 )
         return renderers
 
@@ -1190,6 +1194,18 @@ class ExpandableColumnsExtra(Extra):
             label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
+
+
+class ExpandedColumnsExtra(Extra):
+    description = 'List of foreign key columns that have been expanded with labels on this page, using ``?_labels=on`` or ``?_label=column``. Values in those columns are returned as ``{"value": ..., "label": ...}`` objects.'
+    docs_note = "See :ref:`expand_foreign_keys` for how to expand these labels."
+    example = ExtraExample(
+        "/fixtures/facetable.json?_labels=on&_extra=expanded_columns"
+    )
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
+
+    async def resolve(self, context):
+        return list(context.expanded_columns)
 
 
 class ForeignKeyTablesExtra(Extra):
@@ -1255,10 +1271,14 @@ class ExtrasExtra(Extra):
                 "description": description,
                 "toggle_url": context.datasette.absolute_url(
                     context.request,
-                    context.datasette.urls.path(
-                        path_with_added_args(context.request, {"_extra": name})
+                    (
+                        context.datasette.urls.modify(
+                            context.request, add={"_extra": name}
+                        )
                         if name not in context.extras
-                        else path_with_removed_args(context.request, {"_extra": name})
+                        else context.datasette.urls.modify(
+                            context.request, remove={"_extra": name}
+                        )
                     ),
                 ),
                 "selected": name in context.extras,
@@ -1338,6 +1358,7 @@ TABLE_EXTRA_CLASSES = [
     IsViewExtra,
     PrivateExtra,
     ExpandableColumnsExtra,
+    ExpandedColumnsExtra,
     ForeignKeyTablesExtra,
     FormHiddenArgsExtra,
 ]

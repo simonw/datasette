@@ -26,10 +26,6 @@ def _count_open_files():
     return len(psutil.Process().open_files())
 
 
-def _count_threads():
-    return threading.active_count()
-
-
 @pytest.mark.skipif(psutil is None, reason="psutil not installed")
 def test_close_releases_file_descriptors():
     # Warm-up so Python/library caches don't skew the baseline
@@ -38,7 +34,7 @@ def test_close_releases_file_descriptors():
     ds.close()
 
     baseline_fds = _count_open_files()
-    baseline_threads = _count_threads()
+    baseline_threads = threading.active_count()
 
     for _ in range(50):
         ds = Datasette(memory=True)
@@ -46,7 +42,7 @@ def test_close_releases_file_descriptors():
         ds.close()
 
     after_fds = _count_open_files()
-    after_threads = _count_threads()
+    after_threads = threading.active_count()
 
     assert (
         after_fds - baseline_fds <= 2

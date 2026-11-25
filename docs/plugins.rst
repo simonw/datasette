@@ -140,7 +140,7 @@ This should output the following:
 Seeing what plugins are installed
 ---------------------------------
 
-You can see a list of installed plugins by navigating to the ``/-/plugins`` page of your Datasette instance - for example: https://fivethirtyeight.datasettes.com/-/plugins
+You can see a list of installed plugins by navigating to the ``/-/plugins`` page of your Datasette instance - for example: https://latest.datasette.io/-/plugins
 
 You can also use the ``datasette plugins`` command::
 
@@ -191,6 +191,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
         },
         {
             "name": "datasette.blob_renderer",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_output_renderer"
+            ]
+        },
+        {
+            "name": "datasette.csv_renderer",
             "static": false,
             "templates": false,
             "version": null,
@@ -350,6 +359,7 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
+                "asgi_wrapper",
                 "publish_subcommand"
             ]
         },

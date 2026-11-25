@@ -242,7 +242,6 @@ def test_rst_heading_underlines_match_title_length():
 
 # fmt: off
 # -- start test_homepage --
-@pytest.mark.asyncio
 async def test_homepage():
     ds = Datasette(memory=True)
     response = await ds.client.get("/")
@@ -252,7 +251,6 @@ async def test_homepage():
 
 
 # -- start test_actor_is_null --
-@pytest.mark.asyncio
 async def test_actor_is_null():
     ds = Datasette(memory=True)
     response = await ds.client.get("/-/actor.json")
@@ -261,7 +259,6 @@ async def test_actor_is_null():
 
 
 # -- start test_signed_cookie_actor --
-@pytest.mark.asyncio
 async def test_signed_cookie_actor():
     ds = Datasette(memory=True)
     cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}

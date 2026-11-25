@@ -509,3 +509,28 @@ async def test_tsv_plugin_renderer_takes_over():
         ]
     finally:
         pm.unregister(plugin, name="tsv_plugin")
+
+
+async def test_table_blank_filter_preserved_in_sort_and_csv_export(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key?content__exact=")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    sort_hrefs = [a["href"] for a in soup.select("table.rows-and-columns thead th a")]
+    assert sort_hrefs
+    assert all("content__exact=" in href for href in sort_hrefs)
+    hidden_inputs = [
+        (inp.get("name"), inp.get("value"))
+        for inp in soup.select('#export-dialog form input[type="hidden"]')
+    ]
+    assert ("content__exact", "") in hidden_inputs
+
+
+async def test_row_csv_hidden_args_preserve_blank_query_values(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1?foo=")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    hidden_inputs = [
+        (inp.get("name"), inp.get("value"))
+        for inp in soup.select('#export-dialog form input[type="hidden"]')
+    ]
+    assert ("foo", "") in hidden_inputs

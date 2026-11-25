@@ -501,7 +501,9 @@ class Datasette:
         ):
             inspect_data = json.loads((config_dir / "inspect-data.json").read_text())
             if not immutables:
-                immutable_filenames = [i["file"] for i in inspect_data.values()]
+                immutable_filenames = {
+                    Path(i["file"]).name for i in inspect_data.values() if i.get("file")
+                }
                 immutables = [
                     f for f in self.files if Path(f).name in immutable_filenames
                 ]

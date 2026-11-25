@@ -2,8 +2,10 @@ import json
 import pathlib
 
 import pytest
+from click.testing import CliRunner
 
 from datasette.app import Datasette
+from datasette.cli import cli
 from datasette.plugins import pm
 from datasette.utils import StartupError
 from datasette.utils.sqlite import sqlite3
@@ -156,3 +158,130 @@ def test_store_config_dir(config_dir_client):
     assert hasattr(ds, "config_dir")
     assert ds.config_dir is not None
     assert isinstance(ds.config_dir, pathlib.Path)
+
+
+def _create_db(path):
+    conn = sqlite3.connect(str(path))
+    conn.execute("CREATE TABLE items (id integer primary key, name text)")
+    conn.execute("INSERT INTO items (id, name) VALUES (1, 'one')")
+    conn.commit()
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    "file_value_factory",
+    [
+        lambda d: "immutable.db",
+        lambda d: "./immutable.db",
+        lambda d: "subdir/immutable.db",
+        lambda d: str(d / "immutable.db"),
+        lambda d: str(d.parent / "moved" / "immutable.db"),
+    ],
+    ids=["filename", "dot-relative", "subdir-relative", "absolute", "moved-absolute"],
+)
+async def test_inspect_data_file_paths_mark_databases_immutable(
+    tmp_path, file_value_factory
+):
+    site = tmp_path / "site"
+    site.mkdir()
+    _create_db(site / "demo.db")
+    _create_db(site / "immutable.db")
+    (site / "inspect-data.json").write_text(
+        json.dumps(
+            {
+                "immutable": {
+                    "hash": "abc123",
+                    "size": 8192,
+                    "file": file_value_factory(site),
+                    "tables": {"items": {"count": 1}},
+                }
+            }
+        ),
+        "utf-8",
+    )
+    ds = Datasette([], config_dir=site)
+    try:
+        response = await ds.client.get("/-/databases.json")
+        assert response.status_code == 200
+        by_name = {db["name"]: db for db in response.json()["databases"]}
+        assert by_name["immutable"]["is_mutable"] is False
+        assert by_name["immutable"]["hash"] == "abc123"
+        assert by_name["demo"]["is_mutable"] is True
+        assert ds.databases["immutable"].cached_table_counts == {"items": 1}
+    finally:
+        ds.close()
+
+
+def test_inspect_data_cli_absolute_path_in_config_dir(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    _create_db(site / "demo.db")
+    immutable_db = site / "immutable.db"
+    _create_db(immutable_db)
+    inspect_file = site / "inspect-data.json"
+
+    runner = CliRunner()
+    inspect_result = runner.invoke(
+        cli, ["inspect", str(immutable_db), "--inspect-file", str(inspect_file)]
+    )
+    assert inspect_result.exit_code == 0, inspect_result.output
+    inspect_data = json.loads(inspect_file.read_text("utf-8"))
+    assert inspect_data["immutable"]["file"] == str(immutable_db)
+
+    serve_result = runner.invoke(
+        cli, ["serve", str(site), "--get", "/-/databases.json"]
+    )
+    assert serve_result.exit_code == 0, serve_result.output
+    by_name = {db["name"]: db for db in json.loads(serve_result.output)["databases"]}
+    assert by_name["immutable"]["is_mutable"] is False
+    assert by_name["immutable"]["hash"] == inspect_data["immutable"]["hash"]
+    assert by_name["demo"]["is_mutable"] is True
+
+
+def test_inspect_data_missing_or_empty_file_key(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    _create_db(site / "demo.db")
+    (site / "inspect-data.json").write_text(
+        json.dumps(
+            {
+                "no_file": {"hash": "abc", "size": 1, "tables": {}},
+                "empty_file": {"hash": "def", "size": 1, "file": "", "tables": {}},
+            }
+        ),
+        "utf-8",
+    )
+    ds = Datasette([], config_dir=site)
+    try:
+        assert ds.databases["demo"].is_mutable is True
+    finally:
+        ds.close()
+
+
+def test_explicit_immutables_not_overridden_by_inspect_data(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    _create_db(site / "demo.db")
+    _create_db(site / "immutable.db")
+    external = tmp_path / "external.db"
+    _create_db(external)
+    (site / "inspect-data.json").write_text(
+        json.dumps(
+            {
+                "immutable": {
+                    "hash": "abc123",
+                    "size": 8192,
+                    "file": str(site / "immutable.db"),
+                    "tables": {"items": {"count": 1}},
+                }
+            }
+        ),
+        "utf-8",
+    )
+    ds = Datasette([], immutables=[str(external)], config_dir=site)
+    try:
+        assert ds.databases["external"].is_mutable is False
+        assert ds.databases["immutable"].is_mutable is True
+        assert ds.databases["demo"].is_mutable is True
+    finally:
+        ds.close()

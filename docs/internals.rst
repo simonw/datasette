@@ -1601,7 +1601,7 @@ The ``custom_time_limit=`` argument to :ref:`db.execute() <database_execute>` ca
         sql, custom_time_limit=time_limit_ms
     )
 
-Datasette uses this method for the ``?_timelimit=`` query string argument and for the :ref:`setting_facet_time_limit_ms` and :ref:`setting_facet_suggest_time_limit_ms` settings.
+Datasette uses this method for the ``?_timelimit=`` query string argument and for the :ref:`setting_facet_suggest_time_limit_ms` setting.
 
 .. _datasette_resolve_database:
 

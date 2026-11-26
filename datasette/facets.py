@@ -115,12 +115,12 @@ class Facet:
         # row_count can be None, in which case we calculate it ourselves:
         self.row_count = row_count
 
-    # The facet time limit settings can shorten sql_time_limit_ms, but a
-    # facet query never runs for longer than a regular query
+    # Requested facets use facet_time_limit_ms directly. Facet suggestions
+    # are still capped by sql_time_limit_ms.
 
     @property
     def time_limit_ms(self):
-        return self.ds.capped_time_limit_ms(self.ds.setting("facet_time_limit_ms"))
+        return self.ds.setting("facet_time_limit_ms")
 
     @property
     def suggest_time_limit_ms(self):

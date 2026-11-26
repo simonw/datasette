@@ -10,6 +10,7 @@ Unreleased
 ----------
 
 - Arbitrary SQL queries can now use ``explain`` and ``explain query plan`` with ``insert``, ``update``, ``delete`` and ``replace`` statements.
+- :ref:`setting_facet_time_limit_ms` can now exceed :ref:`setting_sql_time_limit_ms` for requested facets, without increasing the time limit for the main query. (:issue:`1780`)
 
 .. _v1_0_a44:
 

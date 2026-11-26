@@ -324,8 +324,8 @@ async def test_timelimit_query_string_cannot_extend_time_limit(
     assert limits == [expected_time_limit_ms]
 
 
-async def test_internal_time_limits_are_capped_by_sql_time_limit_ms(otel_spans):
-    "Facet, facet suggestion and count limits cannot exceed sql_time_limit_ms."
+async def test_internal_time_limits_respect_sql_time_limit(otel_spans):
+    "Requested facets can exceed sql_time_limit_ms; suggestions and counts cannot."
     ds = Datasette(memory=True, settings={"sql_time_limit_ms": 7})
     assert ds.setting("facet_time_limit_ms") > 7
     assert ds.setting("facet_suggest_time_limit_ms") > 7
@@ -347,7 +347,7 @@ async def test_internal_time_limits_are_capped_by_sql_time_limit_ms(otel_spans):
         for span in _spans_for_namespace(otel_spans, name)
         if "datasette.time_limit_ms" in span.attributes
     }
-    assert limits == {7}
+    assert limits == {7, ds.setting("facet_time_limit_ms")}
 
 
 async def test_unsuppressed_sql_error_is_a_span_error(ds_client, otel_spans):

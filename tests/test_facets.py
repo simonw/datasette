@@ -324,6 +324,58 @@ async def test_column_facet_results(ds_client):
     ]
 
 
+@pytest.mark.parametrize("facet_class", (ColumnFacet, ArrayFacet, DateFacet))
+def test_facet_time_limit_can_exceed_sql_time_limit(facet_class):
+    ds = Datasette(
+        memory=True,
+        settings={
+            "sql_time_limit_ms": 5,
+            "facet_time_limit_ms": 500,
+            "facet_suggest_time_limit_ms": 50,
+        },
+    )
+    try:
+        facet = facet_class(
+            ds,
+            Request.fake("/"),
+            database="_memory",
+            sql="select 1 as value",
+        )
+        assert facet.time_limit_ms == 500
+        # Facet suggestions are still capped by sql_time_limit_ms
+        assert facet.suggest_time_limit_ms == 5
+    finally:
+        ds.close()
+
+
+async def test_requested_facet_can_run_longer_than_sql_time_limit():
+    ds = Datasette(
+        memory=True,
+        settings={"sql_time_limit_ms": 5, "facet_time_limit_ms": 30000},
+    )
+    ds.add_memory_database("facet_time_limit")
+    sql = """
+        with recursive counter(x) as (
+            select 1 union all select x + 1 from counter where x < 300000
+        )
+        select x % 3 as category from counter
+    """
+    facet = ColumnFacet(
+        ds,
+        Request.fake("/?_facet=category"),
+        database="facet_time_limit",
+        sql=sql,
+    )
+    try:
+        buckets, timed_out = await facet.facet_results()
+        assert timed_out == []
+        assert [
+            (result["value"], result["count"]) for result in buckets[0]["results"]
+        ] == [(0, 100000), (1, 100000), (2, 100000)]
+    finally:
+        ds.close()
+
+
 @pytest.mark.parametrize(
     "column,filters,remaining",
     [

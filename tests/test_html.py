@@ -642,6 +642,16 @@ async def test_query_parameter_form_fields(ds_client):
     )
 
 
+async def test_codemirror_scripts_opt_out_of_cloudflare_rocket_loader(ds_client):
+    # https://github.com/simonw/datasette/issues/1969
+    response = await ds_client.get("/fixtures/-/query?sql=select+1")
+    assert response.status_code == 200
+    # Both SQL editor scripts must carry data-cfasync="false" (before src, as
+    # Cloudflare requires) so Rocket Loader cannot asynchronize them
+    assert '<script data-cfasync="false" src=' in response.text
+    assert response.text.count('data-cfasync="false"') == 2
+
+
 async def test_database_page_sql_parameter_refresh_markup(ds_client):
     response = await ds_client.get("/fixtures")
     assert response.status_code == 200

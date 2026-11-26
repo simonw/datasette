@@ -10,6 +10,7 @@ Unreleased
 ----------
 
 - Arbitrary SQL queries can now use ``explain`` and ``explain query plan`` with ``insert``, ``update``, ``delete`` and ``replace`` statements.
+- The SQL editor and SQL formatter ``<script>`` tags now carry ``data-cfasync="false"``, so Cloudflare's Rocket Loader no longer breaks the editor and "Format SQL" on instances proxied by Cloudflare. (:issue:`1969`)
 
 .. _v1_0_a44:
 

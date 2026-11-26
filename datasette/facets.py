@@ -9,10 +9,15 @@ from datasette.utils import (
     escape_sqlite,
     sqlite3,
 )
+from datasette.utils.asgi import BadRequest
 
 # Suggesting facets for a page can take at most this many multiples of
 # the facet_suggest_time_limit_ms setting in total, see #862
 SUGGEST_TOTAL_TIME_LIMIT_MULTIPLE = 10
+
+# Built-in facets expect {"simple": column} or {"column": column}. Plugins can
+# register facet types with their own config keys, so only validate these here.
+BUILTIN_FACET_TYPES = frozenset({"column", "date", "array"})
 
 
 def start_suggest_deadline(ds, facet_instances):
@@ -66,9 +71,24 @@ def load_facet_configs(request, table_config):
                 type = key[len("_facet_") :]
             for value in values:
                 # The value is the facet_config - either JSON or not
-                facet_config = (
-                    json.loads(value) if value.startswith("{") else {"simple": value}
-                )
+                try:
+                    facet_config = (
+                        json.loads(value)
+                        if value.startswith("{")
+                        else {"simple": value}
+                    )
+                except (ValueError, TypeError):
+                    raise BadRequest("Invalid _facet configuration")
+                if type in BUILTIN_FACET_TYPES:
+                    if not isinstance(facet_config, dict) or not (
+                        "simple" in facet_config or "column" in facet_config
+                    ):
+                        raise BadRequest("Invalid _facet configuration")
+                    if any(
+                        key in facet_config and not isinstance(facet_config[key], str)
+                        for key in ("simple", "column")
+                    ):
+                        raise BadRequest("Invalid _facet configuration")
                 facet_configs.setdefault(type, []).append(
                     {"source": "request", "config": facet_config}
                 )

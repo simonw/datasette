@@ -55,6 +55,40 @@ async def test_malformed_facet_config_returns_bad_request(
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize(
+    "key,config",
+    (
+        ("_facet", {"simple": 5}),
+        ("_facet", {"simple": ["a"]}),
+        ("_facet", {"column": None}),
+        ("_facet_date", {"column": ["d"]}),
+    ),
+)
+async def test_facet_config_with_non_string_value_returns_bad_request(
+    ds_client, key, config
+):
+    response = await ds_client.get(
+        f"/fixtures/facetable.json?{key}={json.dumps(config)}"
+    )
+    assert response.status_code == 400
+
+
+async def test_plugin_facet_config_with_custom_keys_is_accepted(ds_client):
+    # my_plugin.py registers DummyFacet (type "dummy") via register_facet_classes
+    response = await ds_client.get(
+        "/fixtures/facetable.json?_facet_dummy="
+        + json.dumps({"columns": ["state", "city"]})
+    )
+    assert response.status_code == 200
+
+
+def test_load_facet_configs_allows_custom_keys_for_plugin_facet_types():
+    config = {"columns": ["state", "city"]}
+    assert load_facet_configs(
+        Request.fake("/?_facet_dummy=" + json.dumps(config)), None
+    ) == {"dummy": [{"source": "request", "config": config}]}
+
+
 # https://github.com/simonw/datasette/issues/3021
 @pytest.mark.parametrize(
     "query_string,where_sql",

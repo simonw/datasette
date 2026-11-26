@@ -414,3 +414,39 @@ async def test_filters_against_untyped_table_columns_and_text(path, expected_ids
     response = await ds.client.get(path)
     assert response.status_code == 200
     assert [row["id"] for row in response.json()["rows"]] == expected_ids
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "qs,expected_ids",
+    [
+        # Numeric JSON arrays must match text stored in a no-affinity column
+        ("value__in=[1]", [1]),
+        ("value__in=[2]", [2]),
+        ("value__notin=[2]", [1]),
+        ("value__notin=[1]", [2]),
+        ("value__in=[1,2]", [1, 2]),
+        ("value__notin=[1,2]", []),
+        # String variants must keep working
+        ('value__in=["1"]', [1]),
+        ('value__in=["2"]', [2]),
+        ('value__notin=["2"]', [1]),
+        ('value__notin=["1"]', [2]),
+        # Mixed numeric and string values
+        ('value__in=[1,"2"]', [1, 2]),
+    ],
+)
+async def test_numeric_json_array_filters_on_no_affinity_text_column(qs, expected_ids):
+    from datasette.app import Datasette
+
+    ds = Datasette()
+    db = ds.add_memory_database("data")
+    await db.execute_write_script("""
+        create table t (id integer primary key, value);
+        insert into t values (1, '1');
+        insert into t values (2, '2');
+    """)
+    await ds.invoke_startup()
+    response = await ds.client.get("/data/t.json?" + qs)
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["rows"]] == expected_ids

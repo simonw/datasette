@@ -363,8 +363,15 @@ class InFilter(Filter):
         for i, individual_value in enumerate(values):
             param = f":p{param_counter + i}"
             params.append(param)
-            if looks_numeric(individual_value):
+            is_json_number = isinstance(
+                individual_value, (int, float)
+            ) and not isinstance(individual_value, bool)
+            if is_json_number or looks_numeric(individual_value):
                 params.append(f"cast({param} as numeric)")
+            if is_json_number:
+                # Numbers from a JSON array bind as numbers, so they also need
+                # a text alternative to match no-affinity columns storing text
+                params.append(f"cast({param} as text)")
         sql = f"{escape_sqlite(column)} {self.operator} ({', '.join(params)})"
         return sql, values
 

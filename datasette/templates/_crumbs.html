@@ -4,7 +4,7 @@
   {% if items %}
     <p class="crumbs">
       {% for item in items %}
-        <a href="{{ item.href }}">{{ item.label }}</a>
+        <a href="{{ item.href }}">{% for part in (item.label|string).split("_") %}{{ part }}{% if not loop.last %}_<wbr>{% endif %}{% endfor %}</a>
         {% if not loop.last %}
           /
         {% endif %}

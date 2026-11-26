@@ -1709,6 +1709,15 @@ async def test_breadcrumbs_respect_permissions(ds_client, path, config, expected
         ds_client.ds.config = previous_config
 
 
+async def test_breadcrumbs_allow_wrapping_at_underscores(ds_client):
+    # Long names should be able to wrap at underscores on narrow screens
+    response = await ds_client.get("/fixtures/simple_primary_key")
+    soup = Soup(response.text, "html.parser")
+    link = soup.select("p.crumbs a")[-1]
+    assert link.text == "simple_primary_key"
+    assert link.decode_contents() == "simple_<wbr/>primary_<wbr/>key"
+
+
 async def test_database_color(ds_client):
     expected_color = ds_client.ds.get_database("fixtures").color
     # Should be something like #9403e5

@@ -25,6 +25,11 @@ def get_task_id():
     return id(asyncio.current_task(loop=loop))
 
 
+def tracing_active():
+    task_id = get_task_id()
+    return task_id is not None and task_id in tracers
+
+
 @contextmanager
 def trace_child_tasks():
     token = trace_task_id.set(get_task_id())

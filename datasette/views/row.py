@@ -772,7 +772,19 @@ class RowDeleteView(BaseView):
         # Delete table
         def delete_row(conn):
             check_structured_write_table(conn, resolved.table)
-            sqlite_utils.Database(conn)[resolved.table].delete(resolved.pk_values)
+            table = sqlite_utils.Database(conn)[resolved.table]
+            if table.pks == resolved.pks:
+                table.delete(resolved.pk_values)
+            else:
+                # Shadowed rowid column: sqlite_utils hardcodes `rowid`, so
+                # delete by the resolved rowid alias (_rowid_ or oid) directly.
+                rowid_col = resolved.pks[0]
+                cur = conn.execute(
+                    f"delete from {escape_sqlite(resolved.table)} where {escape_sqlite(rowid_col)} = ?",
+                    resolved.pk_values,
+                )
+                if cur.rowcount == 0:
+                    raise sqlite_utils.db.NotFoundError
 
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
@@ -855,9 +867,41 @@ class RowUpdateView(BaseView):
 
         def update_row(conn):
             check_structured_write_table(conn, resolved.table)
-            sqlite_utils.Database(conn)[resolved.table].update(
-                resolved.pk_values, update, alter=alter
-            )
+            table = sqlite_utils.Database(conn)[resolved.table]
+            if table.pks == resolved.pks:
+                table.update(resolved.pk_values, update, alter=alter)
+            else:
+                # Shadowed rowid column: sqlite_utils hardcodes `rowid`, so
+                # update by the resolved rowid alias (_rowid_ or oid) directly.
+                rowid_col = resolved.pks[0]
+                exists = conn.execute(
+                    f"select 1 from {escape_sqlite(resolved.table)} where {escape_sqlite(rowid_col)} = ?",
+                    resolved.pk_values,
+                ).fetchone()
+                if exists is None:
+                    raise sqlite_utils.db.NotFoundError
+                if not update:
+                    return
+                sets = [f"{escape_sqlite(key)} = ?" for key in update]
+                args = [
+                    sqlite_utils.db.jsonify_if_needed(value)
+                    for value in update.values()
+                ]
+                args.extend(resolved.pk_values)
+                sql = (
+                    f"update {escape_sqlite(resolved.table)} "
+                    f"set {', '.join(sets)} where {escape_sqlite(rowid_col)} = ?"
+                )
+                try:
+                    rowcount = conn.execute(sql, args).rowcount
+                except sqlite3.OperationalError as e:
+                    if alter and (" column" in e.args[0]):
+                        table.add_missing_columns([update])
+                        rowcount = conn.execute(sql, args).rowcount
+                    else:
+                        raise
+                if rowcount != 1:
+                    raise sqlite_utils.db.NotFoundError
 
         try:
             await resolved.db.execute_write_fn(update_row, request=request)

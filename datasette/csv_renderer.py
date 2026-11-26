@@ -19,17 +19,35 @@ FORMATS = {
 }
 
 
-def _blob_url(datasette, request, format_, database, table, pks, columns, row, column):
+def _blob_url(
+    datasette,
+    request,
+    format_,
+    database,
+    table,
+    pks,
+    columns,
+    row,
+    column,
+    rowid_col="rowid",
+):
     "URL that serves the binary content of this cell"
     cell = row[columns.index(column)]
     # If this is a table page with a way to identify the row, use
     # .urls.row_blob(). Views usually have no rowid, and rows with a null
     # primary key cannot be identified, so they use the content hash.
-    if table and (pks or "rowid" in columns) and not row_has_null_primary_key(row, pks):
+    if (
+        table
+        and (pks or (rowid_col and rowid_col in columns))
+        and not row_has_null_primary_key(row, pks)
+    ):
         return datasette.absolute_url(
             request,
             datasette.urls.row_blob(
-                database, table, path_from_row_pks(row, pks, not pks), column
+                database,
+                table,
+                path_from_row_pks(row, pks, not pks, rowid_column=rowid_col),
+                column,
             ),
         )
     # Otherwise generate URL for this query
@@ -62,7 +80,7 @@ def render_delimited(
         if column in expanded_columns:
             headings.append(f"{column}_label")
 
-    def cells(row):
+    def cells(row, rowid_col):
         labels = getattr(row, "labels", {})
         for column, cell in zip(columns, row):
             if isinstance(cell, bytes):
@@ -76,6 +94,7 @@ def render_delimited(
                     columns,
                     row,
                     column,
+                    rowid_col=rowid_col,
                 )
             if column not in expanded_columns:
                 yield cell
@@ -93,6 +112,11 @@ def render_delimited(
     trace = request.args.get("_trace")
 
     async def body():
+        rowid_col = None
+        if table and not pks:
+            db = datasette.get_database(database)
+            if not await db.view_exists(table):
+                rowid_col = await db.rowid_column(table)
         buffer = io.StringIO()
         writer = csv.writer(buffer, dialect=dialect)
 
@@ -112,7 +136,7 @@ def render_delimited(
         # Send one chunk for each page of rows
         async for rows in row_stream.pages():
             for row in rows:
-                writer.writerow(cells(row))
+                writer.writerow(cells(row, rowid_col))
             yield written()
         if trace:
             yield "</textarea></body></html>"

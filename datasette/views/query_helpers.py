@@ -10,6 +10,7 @@ from datasette.utils import (
     escape_sqlite,
     parse_size_limit,
     path_from_row_pks,
+    rowid_select_expr,
     sqlite3,
     untyped_columns,
     validate_sql_select,
@@ -517,14 +518,17 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
         return None
     pks = await db.primary_keys(table)
     use_rowid = not pks
+    rowid_col = await db.rowid_column(table)
+    if rowid_col is None:
+        return None
     select = (
-        "rowid"
+        rowid_select_expr(rowid_col)
         if use_rowid
         else ", ".join(escape_sqlite(primary_key) for primary_key in pks)
     )
     try:
         result = await db.execute(
-            f"select {select} from {escape_sqlite(table)} where rowid = ?",
+            f"select {select} from {escape_sqlite(table)} where {rowid_col} = ?",
             [lastrowid],
         )
     except sqlite3.DatabaseError:
@@ -537,6 +541,7 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
         pks,
         use_rowid,
         typed_columns=untyped_columns(await db.table_column_details(table)),
+        rowid_column=rowid_col,
     )
     return datasette.urls.row(db.name, table, row_path)
 

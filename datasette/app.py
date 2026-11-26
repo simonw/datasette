@@ -3273,6 +3273,8 @@ ORDER BY allowed.parent, allowed.child
         except ValueError:
             raise BadRequest("Invalid row identifier")
         sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
+        if sql is None:
+            raise RowNotFound(db.name, table_name, pk_values)
         if len(pk_values) != len(pks):
             raise BadRequest(
                 "URL row identifier does not match the primary key for this table"

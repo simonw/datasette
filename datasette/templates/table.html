@@ -87,7 +87,18 @@
 
 <form class="core filters" action="{{ urls.table(database, table) }}" method="get">
     {% if supports_search %}
-        <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
+        <div class="search-row">
+            <label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}">
+        </div>
+        {% if search_sort_url %}
+            <div class="search-sort">
+                {% if search_sorted_by_relevance %}
+                    Sorted by relevance. <a href="{{ search_sort_url }}">Use default sort</a>
+                {% else %}
+                    <a href="{{ search_sort_url }}">Sort by relevance</a>
+                {% endif %}
+            </div>
+        {% endif %}
     {% endif %}
     {% for column, lookup, value in filters.selections() %}
         <div class="filter-row filter-controls-row">

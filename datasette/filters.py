@@ -1,6 +1,7 @@
 import json
 import math
 import re
+from dataclasses import dataclass
 from typing import ClassVar
 
 from datasette import hookimpl
@@ -12,6 +13,22 @@ from .utils import (
     detect_json1,
     escape_sqlite,
 )
+
+
+@dataclass(frozen=True)
+class _SearchMatch:
+    table: str
+    source_key: str
+    match_clause: str
+
+    @property
+    def from_sql(self):
+        table = escape_sqlite(self.table)
+        return f"from {table} where {table} match {self.match_clause}"
+
+    @property
+    def where_clause(self):
+        return f"{escape_sqlite(self.source_key)} in (select rowid {self.from_sql})"
 
 
 @hookimpl(specname="filters_from_request")
@@ -57,6 +74,7 @@ def search_filters(request, database, table, datasette):
         params = {}
         human_descriptions = []
         extra_context = {}
+        search_match = None
 
         # Figure out which trusted fts_table to use. Query string parameters can
         # repeat this mapping (for backwards compatibility), but must not select
@@ -75,7 +93,7 @@ def search_filters(request, database, table, datasette):
         search_args = {
             key: request.args[key]
             for key in request.args
-            if key.startswith("_search") and key != "_searchmode"
+            if key == "_search" or key.startswith("_search_")
         }
         search = ""
         search_mode_raw = table_metadata.get("searchmode") == "raw"
@@ -97,15 +115,16 @@ def search_filters(request, database, table, datasette):
             if "_search" in search_args:
                 # Simple ?_search=xxx
                 search = search_args["_search"]
-                where_clauses.append(
-                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})".format(
-                        fts_table=escape_sqlite(fts_table),
-                        fts_pk=escape_sqlite(fts_pk),
-                        match_clause=(
-                            ":search" if search_mode_raw else "escape_fts(:search)"
-                        ),
-                    )
+                match = _SearchMatch(
+                    table=fts_table,
+                    source_key=fts_pk,
+                    match_clause=(
+                        ":search" if search_mode_raw else "escape_fts(:search)"
+                    ),
                 )
+                where_clauses.append(match.where_clause)
+                if search.strip():
+                    search_match = match
                 human_descriptions.append(f'search matches "{search}"')
                 params["search"] = search
                 extra_context["search"] = search
@@ -133,7 +152,11 @@ def search_filters(request, database, table, datasette):
                     params[f"search_{i}"] = search_text
                     extra_context["search"] = search_text
 
-        return FilterArguments(where_clauses, params, human_descriptions, extra_context)
+        arguments = FilterArguments(
+            where_clauses, params, human_descriptions, extra_context
+        )
+        arguments._search_match = search_match
+        return arguments
 
     return inner
 
@@ -188,6 +211,8 @@ def through_filters(request, database, table, datasette):
 
 
 class FilterArguments:
+    _search_match: _SearchMatch | None = None
+
     def __init__(
         self, where_clauses, params=None, human_descriptions=None, extra_context=None
     ):

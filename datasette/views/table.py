@@ -61,7 +61,7 @@ from datasette.utils.asgi import (
     Request,
     Response,
 )
-from datasette.utils.sqlite import check_structured_write_table
+from datasette.utils.sqlite import _virtual_table_module, check_structured_write_table
 
 from . import Context, from_extra
 from .base import (
@@ -162,6 +162,12 @@ class TableContext(Context):
         metadata={
             "help": "The current full-text search from ``?_search=``, or an empty string"
         }
+    )
+    search_sort_url: str | None = field(
+        metadata={"help": "URL to toggle FTS5 relevance sorting, when available."}
+    )
+    search_sorted_by_relevance: bool = field(
+        metadata={"help": "True if the full-text search is sorted by relevance."}
     )
     extra_wheres_for_ui: list = field(
         metadata={
@@ -1617,13 +1623,25 @@ class TableCountView(BaseView):
         )
         if not visible:
             raise Forbidden("You do not have permission to view this table")
-        _, where_clauses, params, _, _ = await _table_filters(
+        _, where_clauses, params, _, filter_context = await _table_filters(
             self.ds, request, resolved.db.name, resolved.table
         )
+        sort_by_relevance = _relevance_sort_requested(request) and (
+            await _supports_relevance_sort(
+                resolved, filter_context.get("_search_match")
+            )
+        )
+        if sort_by_relevance:
+            where_clauses = _group_where_clauses(where_clauses)
         _next = request.args.get("_next")
         if request.args.get("_count") == "before" and _next:
             return await self.count_before(
-                request, resolved, _next, where_clauses, params
+                request,
+                resolved,
+                _next,
+                where_clauses,
+                params,
+                paginate_with_offset=resolved.is_view or sort_by_relevance,
             )
         sql = f"select count(*) from {escape_sqlite(resolved.table)}"
         if where_clauses:
@@ -1639,18 +1657,17 @@ class TableCountView(BaseView):
             headers={"Cache-Control": "no-store"},
         )
 
-    async def count_before(self, request, resolved, _next, where_clauses, params):
+    async def count_before(
+        self, request, resolved, _next, where_clauses, params, *, paginate_with_offset
+    ):
         """Count the filtered rows that come before a ?_next= cursor.
 
         Used to show "Rows 51-100" on pages after the first, without slowing
         down the page itself."""
         db, table_name = resolved.db, resolved.table
-        if resolved.is_view:
-            # For views _next is a plain offset
-            try:
-                count = int(_next)
-            except ValueError:
-                return Response.error("Invalid _next", status=400)
+        if paginate_with_offset:
+            # For views and relevance sorts _next is a plain offset
+            count = _pagination_offset(_next)
         else:
             pks = await db.primary_keys(table_name)
             use_rowid = not pks
@@ -2178,6 +2195,8 @@ async def table_view_traced(datasette, request):
             filter_columns=data["filter_columns"],
             supports_search=data["supports_search"],
             search=data.get("search") or "",
+            search_sort_url=data["search_sort_url"],
+            search_sorted_by_relevance=data["search_sorted_by_relevance"],
             extra_wheres_for_ui=data["extra_wheres_for_ui"],
             clear_filters_url=data["clear_filters_url"],
             page_position=data["page_position"],
@@ -2445,7 +2464,19 @@ def _next_where_clauses(
     return clauses
 
 
-def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid):
+def _pagination_offset(token):
+    try:
+        offset = int(token)
+    except ValueError:
+        raise BadRequest("Invalid _next") from None
+    if offset < 0:
+        raise BadRequest("Invalid _next")
+    return offset
+
+
+def _page_position(
+    datasette, request, paginate_with_offset, sort, sort_desc, pks, use_rowid
+):
     """Context for the "you are not on the first page" strip, or None on page 1."""
     _next = request.args.get("_next")
     if not _next:
@@ -2461,7 +2492,7 @@ def _page_position(datasette, request, is_view, sort, sort_desc, pks, use_rowid)
         "after_column": None,
         "after_value": None,
     }
-    if is_view:
+    if paginate_with_offset:
         return position
     sort_value, components = _parse_next(_next, sort, sort_desc)
     if (sort or sort_desc) and len(_next.split(",")) > 1:
@@ -2527,6 +2558,9 @@ async def _table_filters(datasette, request, database_name, table_name):
             params.update(filter_arguments.params)
             extra_human_descriptions.extend(filter_arguments.human_descriptions)
             extra_context_from_filters.update(filter_arguments.extra_context)
+            search_match = getattr(filter_arguments, "_search_match", None)
+            if search_match is not None:
+                extra_context_from_filters["_search_match"] = search_match
 
     return (
         filters,
@@ -2535,6 +2569,52 @@ async def _table_filters(datasette, request, database_name, table_name):
         extra_human_descriptions,
         extra_context_from_filters,
     )
+
+
+def _relevance_sort_requested(request):
+    return request.args.get("_searchsort") == "relevance" and not (
+        request.args.get("_sort") or request.args.get("_sort_desc")
+    )
+
+
+def _group_where_clauses(where_clauses):
+    # Keep an OR within a filter from bypassing the other filters.
+    return [f"({clause})" for clause in where_clauses]
+
+
+async def _supports_relevance_sort(resolved, match):
+    if match is None or resolved.is_view:
+        return False
+    db = resolved.db
+    table = await db._table_name_nocase(match.table)
+    return table is not None and (
+        _virtual_table_module(await db.get_table_definition(table)) == "fts5"
+    )
+
+
+def _fts_relevance_join(table_name, table_columns, match):
+    # Keep the join's column names distinct from the table's. Existing
+    # filters and selected columns can then stay unqualified.
+    used_names = {name.lower() for name in table_columns}
+    used_names.add(table_name.lower())
+
+    def alias(prefix):
+        name = prefix
+        while name in used_names:
+            name += "_"
+        used_names.add(name)
+        return name
+
+    matches = alias("_search_matches")
+    match_key = alias("_search_rowid")
+    rank = alias("_search_rank")
+    join = (
+        f"join (select rowid as {match_key}, rank as {rank} {match.from_sql}) "
+        f"as {matches} "
+        f"on {escape_sqlite(table_name)}.{escape_sqlite(match.source_key)} "
+        f"= {matches}.{match_key} "
+    )
+    return join, f"{matches}.{rank}"
 
 
 async def table_view_data(
@@ -2634,15 +2714,26 @@ async def table_view_data(
         extra_human_descriptions,
         extra_context_from_filters,
     ) = await _table_filters(datasette, request, database_name, table_name)
+    match = extra_context_from_filters.pop("_search_match", None)
+    relevance_requested = _relevance_sort_requested(request)
+    supports_relevance = (context_for_html_hack or relevance_requested) and (
+        await _supports_relevance_sort(resolved, match)
+    )
+    sort_by_relevance = relevance_requested and supports_relevance
+    paginate_with_offset = is_view or sort_by_relevance
+    if sort_by_relevance:
+        where_clauses = _group_where_clauses(where_clauses)
 
     # Deal with custom sort orders
     sortable_columns = await _sortable_columns_for_table(
         datasette, database_name, table_name, use_rowid
     )
 
-    sort, sort_desc, order_by = await _sort_order(
-        table_metadata, sortable_columns, request, order_by
-    )
+    sort = sort_desc = None
+    if not sort_by_relevance:
+        sort, sort_desc, order_by = await _sort_order(
+            table_metadata, sortable_columns, request, order_by
+        )
 
     from_sql = "from {table_name} {where}".format(
         table_name=escape_sqlite(table_name),
@@ -2657,14 +2748,22 @@ async def table_view_data(
 
     count_sql = f"select count(*) {from_sql}"
 
+    rows_from_sql = f"from {escape_sqlite(table_name)} "
+    if sort_by_relevance:
+        join, rank = _fts_relevance_join(table_name, table_columns, match)
+        rows_from_sql += join
+        # The join matches the same rows as the search filter. Counts, facets
+        # and other consumers of from_sql still use the original filter.
+        where_clauses.remove(f"({match.where_clause})")
+        order_by = f"{rank}, {order_by_pks}"
+
     # Handle pagination driven by ?_next=
     _next = _next or request.args.get("_next")
 
     offset = ""
     if _next:
-        if is_view:
-            # _next is an offset
-            offset = f" offset {int(_next)}"
+        if paginate_with_offset:
+            offset = f" offset {_pagination_offset(_next)}"
         else:
             where_clauses.extend(
                 _next_where_clauses(
@@ -2733,7 +2832,7 @@ async def table_view_data(
     sql_no_order_no_limit = f"select {select_all_columns} {from_sql}"
 
     # This is the SQL that populates the main table on the page
-    sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
+    sql = f"select {select_specified_columns} {rows_from_sql}{where_clause}{order_by} limit {page_size + 1}{offset}"
 
     # The rowid of the last row on the page, for a cursor that needs it
     last_rowid_sql = (
@@ -2828,7 +2927,7 @@ async def table_view_data(
         sort,
         sort_desc,
         page_size,
-        is_view,
+        paginate_with_offset,
         last_rowid_sql=last_rowid_sql,
         params=params,
     )
@@ -2973,11 +3072,15 @@ async def table_view_data(
                     ]
                 ),
                 "sort_description_en": (
-                    "sorted by {}{}".format(
-                        sort or sort_desc, " descending" if sort_desc else ""
+                    "sorted by relevance"
+                    if sort_by_relevance
+                    else (
+                        "sorted by {}{}".format(
+                            sort or sort_desc, " descending" if sort_desc else ""
+                        )
+                        if (sort or sort_desc)
+                        else ""
                     )
-                    if (sort or sort_desc)
-                    else ""
                 ),
                 "url_csv": url_csv,
                 "url_csv_path": url_csv_path,
@@ -2993,12 +3096,24 @@ async def table_view_data(
                 + [("_size", "max")],
             }
         )
+        data["search_sorted_by_relevance"] = sort_by_relevance
+        data["search_sort_url"] = None
+        if sort_by_relevance:
+            data["search_sort_url"] = datasette.urls.modify(
+                request, remove=["_searchsort", "_next"]
+            )
+        elif supports_relevance:
+            data["search_sort_url"] = datasette.urls.modify(
+                request,
+                replace={"_searchsort": "relevance"},
+                remove=["_sort", "_sort_desc", "_next"],
+            )
         data["page_position"] = _page_position(
-            datasette, request, is_view, sort, sort_desc, pks, use_rowid
+            datasette, request, paginate_with_offset, sort, sort_desc, pks, use_rowid
         )
         # if no sort specified AND table has a single primary key,
         # set sort to that so arrow is displayed
-        if not sort and not sort_desc:
+        if not sort and not sort_desc and not sort_by_relevance:
             if 1 == len(pks):
                 sort = pks[0]
             elif use_rowid:
@@ -3067,7 +3182,7 @@ async def _next_value_and_url(
     sort,
     sort_desc,
     page_size,
-    is_view,
+    paginate_with_offset,
     last_rowid_sql=None,
     params=None,
 ):
@@ -3075,7 +3190,7 @@ async def _next_value_and_url(
     next_url = None
     last_rowid = None
     if 0 < page_size < len(rows):
-        if is_view:
+        if paginate_with_offset:
             next_value = int(_next or 0) + page_size
         else:
             next_value = path_from_row_pks(
@@ -3091,7 +3206,7 @@ async def _next_value_and_url(
                 last_rowid = (await db.execute(last_rowid_sql, params)).single_value()
                 next_value = f"{next_value},{last_rowid}"
         # If there's a sort or sort_desc, add that value as a prefix
-        if (sort or sort_desc) and not is_view:
+        if (sort or sort_desc) and not paginate_with_offset:
             try:
                 prefix = rows[-2][sort or sort_desc]
             except KeyError:

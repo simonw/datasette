@@ -1006,8 +1006,8 @@ await .set_instance_metadata(self, key, value)
 
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
+``value`` - string or other value
+    The value of the metadata entry to insert. Non-string values are stored as JSON.
 
 Adds a new metadata entry for the entire Datasette instance.
 Any previous instance-level metadata entry with the same ``key`` will be overwritten.
@@ -1022,8 +1022,8 @@ await .set_database_metadata(self, database_name, key, value)
     The database the metadata entry belongs to.
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
+``value`` - string or other value
+    The value of the metadata entry to insert. Non-string values are stored as JSON.
 
 Adds a new metadata entry for the specified database.
 Any previous database-level metadata entry with the same ``key`` will be overwritten.
@@ -1040,8 +1040,8 @@ await .set_resource_metadata(self, database_name, resource_name, key, value)
     The resource (table, view, or stored query) the metadata entry belongs to.
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
+``value`` - string or other value
+    The value of the metadata entry to insert. Non-string values are stored as JSON.
 
 Adds a new metadata entry for the specified "resource".
 Any previous resource-level metadata entry with the same ``key`` will be overwritten.
@@ -1060,8 +1060,8 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
     The column the metadata entry belongs to.
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
+``value`` - string or other value
+    The value of the metadata entry to insert. Non-string values are stored as JSON.
 
 Adds a new metadata entry for the specified column.
 Any previous column-level metadata entry with the same ``key`` will be overwritten.

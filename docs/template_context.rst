@@ -432,6 +432,12 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``search`` - ``str``
     The current full-text search from ``?_search=``, or an empty string
 
+``search_sort_url`` - ``str | None``
+    URL to toggle FTS5 relevance sorting, when available.
+
+``search_sorted_by_relevance`` - ``bool``
+    True if the full-text search is sorted by relevance.
+
 ``select_templates`` - ``list``
     List of template names that were considered for this page, with the selected template prefixed by ``*``.
 

@@ -32,6 +32,20 @@ You can also run searches against just the content of a specific named column by
     /dbname/tablename?_search_name=Sarah
 
 
+Sorting by relevance
+~~~~~~~~~~~~~~~~~~~~
+
+After searching a table with an FTS5 index, select **Sort by relevance** to show the best matches first. Add ``&_searchsort=relevance`` to a ``?_search=TERMS`` URL to use the same order in the table API or exports:
+
+::
+
+    /dbname/tablename.json?_search=headlamp&_searchsort=relevance
+
+Datasette uses the FTS5 index's `rank column <https://www.sqlite.org/fts5.html#sorting_by_auxiliary_function_results>`__ and breaks ties using the table's primary key or rowid. Filters still apply and the result columns stay the same.
+
+An explicit ``_sort`` or ``_sort_desc`` takes precedence. The relevance option applies to table-wide ``_search`` queries against FTS5 indexes. Column-specific searches, views and older FTS versions retain their usual ordering.
+
+
 .. _full_text_search_advanced_queries:
 
 Advanced SQLite search queries

@@ -251,6 +251,7 @@ async def test_no_files_uses_memory_database():
                 "views": 0,
                 "url": "/_memory",
                 "size": None,
+                "metadata": {},
             },
         ],
         "items": [],

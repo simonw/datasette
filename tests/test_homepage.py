@@ -369,6 +369,7 @@ async def test_homepage_json(ds):
         "views": 1,
         "url": "/books",
         "size": None,
+        "metadata": {},
     }
     # The same tables and views as the HTML version, in the same order
     html = await ds.client.get("/")
@@ -580,4 +581,94 @@ async def test_recent_context_in_base_template(ds):
         in response.text
         or 'window.datasetteRecentContext = {"base": "/", "actor": "alice"};'
         in response.text
+    )
+
+
+async def test_homepage_database_metadata_in_template_and_json(tmp_path):
+    (tmp_path / "index.html").write_text(
+        "{% for db in databases %}"
+        "<div data-db='{{ db.name }}'>"
+        "<span class='title'>{{ db.metadata.title }}</span>"
+        "<span class='desc'>{{ db.metadata.description }}</span>"
+        "<span class='source'>{{ db.metadata.source }}</span>"
+        "<span class='source-url'>{{ db.metadata.source_url }}</span>"
+        "</div>"
+        "{% endfor %}"
+    )
+    ds = Datasette(
+        template_dir=str(tmp_path),
+        metadata={
+            "databases": {
+                "books": {
+                    "title": "Library Books",
+                    "description": "Catalog of all library holdings",
+                    "source": "City Library",
+                    "source_url": "https://example.com/library",
+                }
+            }
+        },
+    )
+    await ds.invoke_startup()
+    ds.add_memory_database("books")
+    ds.add_memory_database("music")
+
+    html_response = await ds.client.get("/")
+    assert html_response.status_code == 200
+    soup = Soup(html_response.text, "html.parser")
+    books_div = soup.select_one('div[data-db="books"]')
+    assert books_div.select_one(".title").text == "Library Books"
+    assert books_div.select_one(".desc").text == "Catalog of all library holdings"
+    assert books_div.select_one(".source").text == "City Library"
+    assert books_div.select_one(".source-url").text == "https://example.com/library"
+    music_div = soup.select_one('div[data-db="music"]')
+    assert music_div.select_one(".title").text == ""
+
+    json_response = await ds.client.get("/.json")
+    assert json_response.status_code == 200
+    by_name = {d["name"]: d for d in json_response.json()["databases"]}
+    assert by_name["books"]["metadata"] == {
+        "title": "Library Books",
+        "description": "Catalog of all library holdings",
+        "source": "City Library",
+        "source_url": "https://example.com/library",
+    }
+    assert by_name["music"]["metadata"] == {}
+
+
+async def test_homepage_database_metadata_permissions_and_runtime_update():
+    ds = Datasette(
+        config={"databases": {"secret_db": {"allow": {"id": "root"}}}},
+        metadata={
+            "databases": {
+                "secret_db": {
+                    "title": "Classified Records",
+                    "source": "Internal Archive",
+                }
+            }
+        },
+    )
+    await ds.invoke_startup()
+    ds.add_memory_database("secret_db")
+
+    anon_resp = await ds.client.get("/.json")
+    assert anon_resp.status_code == 200
+    assert "Classified Records" not in anon_resp.text
+    assert all(d["name"] != "secret_db" for d in anon_resp.json()["databases"])
+
+    root_resp = await ds.client.get("/.json", cookies=cookies(ds, "root"))
+    assert root_resp.status_code == 200
+    by_name = {d["name"]: d for d in root_resp.json()["databases"]}
+    assert by_name["secret_db"]["metadata"] == {
+        "title": "Classified Records",
+        "source": "Internal Archive",
+    }
+
+    await ds.set_database_metadata(
+        "secret_db", "source_url", "https://example.com/internal"
+    )
+    updated_resp = await ds.client.get("/.json", cookies=cookies(ds, "root"))
+    updated_by_name = {d["name"]: d for d in updated_resp.json()["databases"]}
+    assert (
+        updated_by_name["secret_db"]["metadata"]["source_url"]
+        == "https://example.com/internal"
     )

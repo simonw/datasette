@@ -58,6 +58,13 @@ from datasette.utils.asgi import BadRequest, Request
             [10],
         ),
         ((("foo__in", "1,2,3"),), ["foo in (:p0, :p1, :p2)"], ["1", "2", "3"]),
+        # Commas followed by whitespace do not split the value
+        ((("foo__in", "Smith, John"),), ["foo in (:p0)"], ["Smith, John"]),
+        (
+            (("foo__in", "Smith, John,Doe, Jane"),),
+            ["foo in (:p0, :p1)"],
+            ["Smith, John", "Doe, Jane"],
+        ),
         # date
         ((("foo__date", "1988-01-01"),), ['date("foo") = :p0'], ["1988-01-01"]),
         # JSON array variants of __in (useful for unexpected characters)
@@ -69,6 +76,7 @@ from datasette.utils.asgi import BadRequest, Request
         ),
         # Not in, and JSON array not in
         ((("foo__notin", "1,2,3"),), ["foo not in (:p0, :p1, :p2)"], ["1", "2", "3"]),
+        ((("foo__notin", "Smith, John"),), ["foo not in (:p0)"], ["Smith, John"]),
         ((("foo__notin", "[1,2,3]"),), ["foo not in (:p0, :p1, :p2)"], [1, 2, 3]),
         # JSON arraycontains, arraynotcontains
         (

@@ -346,7 +346,9 @@ class InFilter(Filter):
                 )
             return values
         else:
-            return [v.strip() for v in value.split(",")]
+            # Only split on commas not followed by whitespace, so values
+            # like "Smith, John" are treated as a single value
+            return [v.strip() for v in re.split(r",(?!\s)", value)]
 
     operator = "in"
 

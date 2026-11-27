@@ -1492,6 +1492,8 @@ You can filter the data returned by the table based on column values using a que
 
     You can use a comma separated string, or you can use a JSON array.
 
+    Values are only split on commas that are not followed by whitespace, so ``?column__in=Smith, John`` matches the single value ``Smith, John`` while ``?column__in=Smith,John`` matches ``Smith`` or ``John``.
+
     The JSON array option is useful if one of your matching values itself contains a comma:
 
     ``?column__in=["value","value,with,commas"]``

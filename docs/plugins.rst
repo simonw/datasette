@@ -187,7 +187,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "actor_from_request"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.blob_renderer",
@@ -196,7 +198,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "register_output_renderer"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.csv_renderer",
@@ -214,6 +218,115 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "register_actions"
+            ],
+            "actions": [
+                {
+                    "name": "alter-table",
+                    "description": "Alter tables"
+                },
+                {
+                    "name": "create-table",
+                    "description": "Create tables"
+                },
+                {
+                    "name": "create-view",
+                    "description": "Create views"
+                },
+                {
+                    "name": "debug-menu",
+                    "description": "View debug menu items"
+                },
+                {
+                    "name": "delete-query",
+                    "description": "Delete stored queries"
+                },
+                {
+                    "name": "delete-row",
+                    "description": "Delete rows"
+                },
+                {
+                    "name": "drop-table",
+                    "description": "Drop tables"
+                },
+                {
+                    "name": "drop-view",
+                    "description": "Drop views"
+                },
+                {
+                    "name": "execute-sql",
+                    "description": "Execute read-only SQL queries"
+                },
+                {
+                    "name": "execute-write-sql",
+                    "description": "Execute writable SQL queries"
+                },
+                {
+                    "name": "insert-row",
+                    "description": "Insert rows"
+                },
+                {
+                    "name": "permissions-debug",
+                    "description": "Access permission debug tool"
+                },
+                {
+                    "name": "set-column-type",
+                    "description": "Set column type"
+                },
+                {
+                    "name": "store-query",
+                    "description": "Create stored queries"
+                },
+                {
+                    "name": "update-query",
+                    "description": "Update stored queries"
+                },
+                {
+                    "name": "update-row",
+                    "description": "Update rows"
+                },
+                {
+                    "name": "view-database",
+                    "description": "View database"
+                },
+                {
+                    "name": "view-database-download",
+                    "description": "Download database file"
+                },
+                {
+                    "name": "view-instance",
+                    "description": "View Datasette instance"
+                },
+                {
+                    "name": "view-query",
+                    "description": "View named query results"
+                },
+                {
+                    "name": "view-table",
+                    "description": "View table"
+                }
+            ],
+            "permissions": [
+                "alter-table",
+                "create-table",
+                "create-view",
+                "debug-menu",
+                "delete-query",
+                "delete-row",
+                "drop-table",
+                "drop-view",
+                "execute-sql",
+                "execute-write-sql",
+                "insert-row",
+                "permissions-debug",
+                "set-column-type",
+                "store-query",
+                "update-query",
+                "update-row",
+                "view-database",
+                "view-database-download",
+                "view-instance",
+                "view-query",
+                "view-table"
             ]
         },
         {
@@ -223,7 +336,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "register_column_types"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_database_actions",
@@ -232,7 +347,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "database_actions"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_debug_menu",
@@ -241,7 +358,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "jump_items_sql"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_jump_items",
@@ -250,7 +369,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "jump_items_sql"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_magic_parameters",
@@ -259,7 +380,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "register_magic_parameters"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_permissions",
@@ -268,7 +391,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "permission_resources_sql"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_permissions.sqlite_statistics",
@@ -277,7 +402,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "permission_resources_sql"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_permissions.tokens",
@@ -287,7 +414,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "hooks": [
                 "actor_from_request",
                 "register_token_handler"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_query_actions",
@@ -296,7 +425,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "query_actions"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.default_table_actions",
@@ -305,7 +436,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "table_actions"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.events",
@@ -315,7 +448,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "hooks": [
                 "register_events",
                 "write_wrapper"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.facets",
@@ -324,7 +459,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "register_facet_classes"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.filters",
@@ -333,7 +470,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "filters_from_request"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.forbidden",
@@ -342,7 +481,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "forbidden"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.handle_exception",
@@ -351,7 +492,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "handle_exception"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.publish.cloudrun",
@@ -361,7 +504,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "hooks": [
                 "asgi_wrapper",
                 "publish_subcommand"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.publish.heroku",
@@ -370,7 +515,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "publish_subcommand"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         },
         {
             "name": "datasette.sql_functions",
@@ -379,7 +526,9 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "prepare_connection"
-            ]
+            ],
+            "actions": [],
+            "permissions": []
         }
     ]
 

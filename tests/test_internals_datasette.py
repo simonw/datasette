@@ -311,6 +311,62 @@ async def test_apply_metadata_json():
     assert value == '{"nested": [1, 2, 3]}'
 
 
+# Values passed to the set_*_metadata() methods and the string each one
+# should be stored as - non-string values are stored as JSON, matching
+# the encoding used by apply_metadata_json()
+SET_METADATA_VALUES = [
+    ("a string", "a string"),
+    ([1, 2, 3], "[1, 2, 3]"),
+    ({"nested": [1, 2, 3]}, '{"nested": [1, 2, 3]}'),
+    (42, "42"),
+    (3.14, "3.14"),
+    (True, "true"),
+    (False, "false"),
+    (None, "null"),
+]
+
+
+def _db_with_table(tmp_path):
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key, name text)")
+    conn.commit()
+    conn.close()
+    return path
+
+
+@pytest.mark.parametrize("value,expected", SET_METADATA_VALUES)
+async def test_set_instance_metadata_non_string_values(value, expected):
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    await ds.set_instance_metadata("key", value)
+    assert (await ds.get_instance_metadata())["key"] == expected
+
+
+@pytest.mark.parametrize("value,expected", SET_METADATA_VALUES)
+async def test_set_database_metadata_non_string_values(tmp_path, value, expected):
+    ds = Datasette(files=[_db_with_table(tmp_path)])
+    await ds.invoke_startup()
+    await ds.set_database_metadata("data", "key", value)
+    assert (await ds.get_database_metadata("data"))["key"] == expected
+
+
+@pytest.mark.parametrize("value,expected", SET_METADATA_VALUES)
+async def test_set_resource_metadata_non_string_values(tmp_path, value, expected):
+    ds = Datasette(files=[_db_with_table(tmp_path)])
+    await ds.invoke_startup()
+    await ds.set_resource_metadata("data", "t", "key", value)
+    assert (await ds.get_resource_metadata("data", "t"))["key"] == expected
+
+
+@pytest.mark.parametrize("value,expected", SET_METADATA_VALUES)
+async def test_set_column_metadata_non_string_values(tmp_path, value, expected):
+    ds = Datasette(files=[_db_with_table(tmp_path)])
+    await ds.invoke_startup()
+    await ds.set_column_metadata("data", "t", "name", "key", value)
+    assert (await ds.get_column_metadata("data", "t", "name"))["key"] == expected
+
+
 async def test_allowed_resources_sql(datasette):
     result = await datasette.allowed_resources_sql(
         action="view-table",

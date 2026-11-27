@@ -10,6 +10,7 @@ Unreleased
 ----------
 
 - Arbitrary SQL queries can now use ``explain`` and ``explain query plan`` with ``insert``, ``update``, ``delete`` and ``replace`` statements.
+- The ``set_instance_metadata()``, ``set_database_metadata()``, ``set_resource_metadata()`` and ``set_column_metadata()`` methods now accept non-string values, storing them as JSON in the same way as values from ``metadata`` documents. (:issue:`3117`)
 
 .. _v1_0_a44:
 

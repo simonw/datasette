@@ -1138,7 +1138,8 @@ class Datasette:
         )
         return dict(rows)
 
-    async def set_instance_metadata(self, key: str, value: str):
+    async def set_instance_metadata(self, key: str, value: Any):
+        value = _to_string(value)
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
@@ -1149,7 +1150,8 @@ class Datasette:
             [key, value],
         )
 
-    async def set_database_metadata(self, database_name: str, key: str, value: str):
+    async def set_database_metadata(self, database_name: str, key: str, value: Any):
+        value = _to_string(value)
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
@@ -1161,8 +1163,9 @@ class Datasette:
         )
 
     async def set_resource_metadata(
-        self, database_name: str, resource_name: str, key: str, value: str
+        self, database_name: str, resource_name: str, key: str, value: Any
     ):
+        value = _to_string(value)
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
@@ -1179,8 +1182,9 @@ class Datasette:
         resource_name: str,
         column_name: str,
         key: str,
-        value: str,
+        value: Any,
     ):
+        value = _to_string(value)
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """

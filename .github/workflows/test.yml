@@ -48,8 +48,8 @@ jobs:
       run: |
         if [ "${{ matrix.coverage }}" = "true" ]; then
           COV="--cov=datasette --cov-config=.coveragerc"
-          pytest -n auto -m "not serial" $COV --cov-report=
-          pytest -m "serial" $COV --cov-append --cov-report xml:coverage.xml --cov-report term
+          python -m pytest -n auto -m "not serial" $COV --cov-report=
+          python -m pytest -m "serial" $COV --cov-append --cov-report xml:coverage.xml --cov-report term
         else
           pytest -n auto -m "not serial"
           pytest -m "serial"

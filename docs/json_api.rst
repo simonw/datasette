@@ -1512,6 +1512,12 @@ You can filter the data returned by the table based on column values using a que
 ``?column__date=value``
     Column is a datestamp occurring on the specified YYYY-MM-DD date, e.g. ``2018-01-02``.
 
+``?column__month=value``
+    Column is a datestamp occurring in the specified YYYY-MM month, e.g. ``2018-01``.
+
+``?column__year=value``
+    Column is a datestamp occurring in the specified YYYY year, e.g. ``2018``.
+
 ``?column__isnull=1``
     Matches rows where the column is null.
 
@@ -1612,6 +1618,9 @@ Special table arguments
 
 ``?_facet=column``
     Facet by column. Can be applied multiple times, see :ref:`facets`. Only works on the default JSON output, not on any of the custom shapes.
+
+``?_facet_date=column``
+    Facet by the date of a datestamp column, see :ref:`facet_by_date`. Use ``?_facet_date={"column":"column","interval":"month"}`` to facet by month or ``"interval":"year"`` to facet by year instead.
 
 ``?_facet_size=100``
     Increase the number of facet results returned for each facet. Use ``?_facet_size=max`` for the maximum available size, determined by :ref:`setting_max_returned_rows`.

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
+import pytest_asyncio
 
 from datasette.app import Datasette
 from datasette.database import Database
@@ -139,6 +140,12 @@ async def test_facet_value_link_resets_pagination(ds_client):
             ("_facet_date", "created"),
             "select '2019-01-14 08:00:00' as created",
             ("created__date", "2019-01-14"),
+        ),
+        (
+            DateFacet,
+            ("_facet_date", '{"column":"created","interval":"month"}'),
+            "select '2019-01-14 08:00:00' as created",
+            ("created__month", "2019-01"),
         ),
     ],
 )
@@ -697,6 +704,24 @@ async def test_date_facet_results(ds_client):
         {
             "name": "created",
             "type": "date",
+            "interval": "day",
+            "interval_options": [
+                {
+                    "interval": "day",
+                    "url": "http://localhost/?_facet_date=created",
+                    "selected": True,
+                },
+                {
+                    "interval": "month",
+                    "url": "http://localhost/?_facet_date=%7B%22column%22%3A%22created%22%2C%22interval%22%3A%22month%22%7D",
+                    "selected": False,
+                },
+                {
+                    "interval": "year",
+                    "url": "http://localhost/?_facet_date=%7B%22column%22%3A%22created%22%2C%22interval%22%3A%22year%22%7D",
+                    "selected": False,
+                },
+            ],
             "results": [
                 {
                     "value": "2019-01-14",
@@ -732,6 +757,177 @@ async def test_date_facet_results(ds_client):
             "truncated": False,
         }
     ]
+
+
+@pytest_asyncio.fixture
+async def ds_dates():
+    ds = Datasette()
+    db = ds.add_memory_database("date_intervals")
+    await db.execute_write("create table events (id integer primary key, created text)")
+    await db.execute_write_many(
+        "insert into events (created) values (:created)",
+        [
+            {"created": created}
+            for created in (
+                "2019-01-14 08:00:00",
+                "2019-01-14 09:00:00",
+                "2019-01-20",
+                "2019-02-01T10:00:00",
+                "2020-03-05",
+                None,
+            )
+        ],
+    )
+    yield ds
+    ds.close()
+
+
+# https://github.com/simonw/datasette/issues/483
+@pytest.mark.parametrize(
+    "interval,lookup,expected",
+    (
+        (
+            "day",
+            "date",
+            [
+                ("2019-01-14", 2),
+                ("2019-01-20", 1),
+                ("2019-02-01", 1),
+                ("2020-03-05", 1),
+            ],
+        ),
+        ("month", "month", [("2019-01", 3), ("2019-02", 1), ("2020-03", 1)]),
+        ("year", "year", [("2019", 4), ("2020", 1)]),
+    ),
+)
+async def test_date_facet_interval(ds_dates, interval, lookup, expected):
+    facet_arg = json.dumps({"column": "created", "interval": interval})
+    response = await ds_dates.client.get(
+        "/date_intervals/events.json",
+        params={"_facet_date": facet_arg, "_extra": "facet_results"},
+    )
+    assert response.status_code == 200
+    facet = response.json()["facet_results"]["results"]["created"]
+    assert facet["interval"] == interval
+    assert [
+        (result["value"], result["count"]) for result in facet["results"]
+    ] == expected
+    # Selecting a value filters using the lookup for that interval, and the
+    # filtered rows match the facet count
+    for result in facet["results"]:
+        toggle_url = urlsplit(result["toggle_url"])
+        query = dict(parse_qsl(toggle_url.query))
+        assert query["created__" + lookup] == result["value"]
+        selected = (
+            await ds_dates.client.get(
+                f"{toggle_url.path}?{toggle_url.query}&_extra=count"
+            )
+        ).json()
+        assert selected["count"] == result["count"]
+        selected_results = selected["facet_results"]["results"]["created"]["results"]
+        assert [r["value"] for r in selected_results if r["selected"]] == [
+            result["value"]
+        ]
+    # Removing the facet removes the JSON argument
+    assert parse_qsl(urlsplit(facet["toggle_url"]).query) == [
+        ("_extra", "facet_results")
+    ]
+
+
+async def test_date_facet_interval_options(ds_dates):
+    response = await ds_dates.client.get(
+        "/date_intervals/events.json",
+        params={
+            "_facet_date": '{"column": "created", "interval": "year"}',
+            "created__year": "2019",
+            "_extra": "facet_results",
+        },
+    )
+    facet = response.json()["facet_results"]["results"]["created"]
+    options = {
+        option["interval"]: (
+            option["selected"],
+            parse_qsl(urlsplit(option["url"]).query),
+        )
+        for option in facet["interval_options"]
+    }
+    # Each option swaps out the _facet_date argument and keeps everything else
+    other_args = [("created__year", "2019"), ("_extra", "facet_results")]
+    assert options == {
+        "day": (False, other_args + [("_facet_date", "created")]),
+        "month": (
+            False,
+            other_args + [("_facet_date", '{"column":"created","interval":"month"}')],
+        ),
+        "year": (
+            True,
+            other_args + [("_facet_date", '{"column":"created","interval":"year"}')],
+        ),
+    }
+    # The HTML links to the other intervals
+    html = (
+        await ds_dates.client.get(
+            "/date_intervals/events",
+            params={"_facet_date": '{"column":"created","interval":"month"}'},
+        )
+    ).text
+    assert '<p class="facet-info-intervals">' in html
+    assert (
+        '<a href="http://localhost/date_intervals/events?_facet_date=created">day</a>'
+        in html
+    )
+    assert '<strong aria-current="true">month</strong>' in html
+
+
+async def test_date_facet_invalid_interval(ds_dates):
+    response = await ds_dates.client.get(
+        "/date_intervals/events.json",
+        params={"_facet_date": '{"column":"created","interval":"week"}'},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == (
+        "Invalid date facet interval: week, must be one of day, month, year"
+    )
+
+
+async def test_date_facet_interval_suggest_skips_enabled_column(ds_dates):
+    response = await ds_dates.client.get(
+        "/date_intervals/events.json",
+        params={
+            "_facet_date": '{"column":"created","interval":"month"}',
+            "_extra": "suggested_facets",
+        },
+    )
+    assert response.status_code == 200
+    assert not any(
+        facet.get("type") == "date" and facet["name"] == "created"
+        for facet in response.json()["suggested_facets"]
+    )
+
+
+async def test_date_facet_interval_in_metadata():
+    ds = await make_ds(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "tables": {
+                        "facetable": {
+                            "facets": [
+                                {"date": {"column": "created", "interval": "month"}}
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    )
+    response = await ds.client.get("/fixtures/facetable.json?_extra=facet_results")
+    facet = response.json()["facet_results"]["results"]["created"]
+    assert facet["interval"] == "month"
+    assert not facet["hideable"]
+    # Metadata facets cannot be swapped for another interval
+    assert facet["interval_options"] == []
+    assert [(r["value"], r["count"]) for r in facet["results"]] == [("2019-01", 15)]
 
 
 async def test_json_array_with_blanks_and_nulls():
